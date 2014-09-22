@@ -1,0 +1,32 @@
+<BioTapestryPlugIns>
+  <plugIns>
+  <!-- plug-ins for nodes -->  
+    <!-- some plug-in examples: Caution!  These use the legacy interface!  nodePlugIn is now preferred! -->  
+    <!-- <plugIn type="ExternalDataDisplay" class="org.systemsbiology.biotapestry.plugin.examples.HelloWorldPlugIn" order="9" /> -->
+    <!-- <plugIn type="ExternalDataDisplay" class="org.systemsbiology.biotapestry.plugin.examples.HelloWebPlugIn" order="10" /> -->
+  </plugIns>
+  <nodePlugIns>
+  <!-- plug-ins for nodes -->  
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.genome.FreeTextDisplayPlugIn" order="1" />
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.genome.URLNodeDisplayPlugIn" order="2" />  
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.perturb.PertDataDisplayPlugIn" order="3" />  
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoDisplayPlugIn" order="4" />
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.TimeCourseDisplayPlugIn" order="5" />
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.PerturbedTimeCourseDisplayPlugIn" order="6" />
+    <nodePlugIn type="InternalNodeDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.TemporalInputDisplayPlugIn" order="7" />
+    <!-- some plug-in examples -->
+    <!--<nodePlugIn type="ExternalNodeDataDisplay" class="org.systemsbiology.biotapestry.plugin.examples.HelloWebPluginWithWorker" order="9" />-->  
+  </nodePlugIns>
+  <linkPlugIns>
+    <!-- plug-ins for links -->  
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.genome.FreeLinkTextDisplayPlugIn" order="1" />
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.genome.URLLinkDisplayPlugIn" order="2" />  
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.perturb.LinkPertDataDisplayPlugIn" order="3" />  
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.TimeCourseLinkDisplayPlugIn" order="4" />
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.PerturbedTimeCourseLinkDisplayPlugIn" order="5" />
+    <linkPlugIn type="InternalLinkDataDisplay" class="org.systemsbiology.biotapestry.timeCourse.TemporalInputLinkDisplayPlugIn" order="6" />
+ 
+    <!-- some plug-in examples -->  
+    <!--<linkPlugIn type="ExternalLinkDataDisplay" class="org.systemsbiology.biotapestry.plugin.examples.LinkArgsPlugIn" order="7" />-->
+ </linkPlugIns>
+</BioTapestryPlugIns>
