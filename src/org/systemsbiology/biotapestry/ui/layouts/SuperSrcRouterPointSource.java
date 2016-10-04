@@ -688,6 +688,10 @@ public class SuperSrcRouterPointSource {
       SpecialtyLayoutLinkData.NoZeroList initRoute = sin.getInitRoute(); 
       Point2D ob = initRoute.get(initRoute.size() - 1).getPoint();
       sin.setExitFramework(new SpecialtyLayoutLinkData.PlacedPoint(ob, false), SpecialtyLayoutLinkData.INIT_POINT);
+      // We need a left tip to handle the case of right and bottom exits with no other targets in stack (Issue 186)
+      Point2D lpt = (Point2D)ob.clone();
+      sin.setExitFramework(new SpecialtyLayoutLinkData.PlacedPoint(lpt, false), SpecialtyLayoutLinkData.LEFT_TIP);
+      // Finish Issue 186
       Point2D initStack = (Point2D)getInitialStackedTrace().clone();
       sin.setExitFramework(new SpecialtyLayoutLinkData.PlacedPoint(initStack, false), SpecialtyLayoutLinkData.INIT_TRACE);
       sin.setBorderPosition(SpecialtyLayoutLinkData.LEFT_BORDER, initStack);

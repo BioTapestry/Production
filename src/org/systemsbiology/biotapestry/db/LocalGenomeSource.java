@@ -238,7 +238,12 @@ public class LocalGenomeSource implements GenomeSource {
   */ 
    
   public NetOverlayOwner getOverlayOwnerWithOwnerKey(String key) {
-    throw new UnsupportedOperationException();
+    // Need to implement to fix 2nd half of issue #187
+    NetOverlayOwner genOwn = getGenome(key);
+    if (genOwn == null) {
+      throw new IllegalArgumentException();
+    }     
+    return (genOwn);
   }   
  
   /***************************************************************************

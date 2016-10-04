@@ -266,8 +266,6 @@ public class GenomePresentation implements ZoomPresentation {
 		// This is done in up to two passes
 		//
 
-		// overMoc.setDrawLayer(DrawLayer.OVERLAY);
-
 		DataAccessContext rcx = new DataAccessContext(rcxI);
 			
 		List<GroupFree.ColoredRect> renderedRects = null;
@@ -321,11 +319,9 @@ public class GenomePresentation implements ZoomPresentation {
 			moc.setDrawLayer(DrawLayer.FOREGROUND_REGIONS);
 			renderGroupsInForeground(moc, rcx, rootvfg, child);
 		} else {
-			// TODO check that this is the correct layer
 			moc.setDrawLayer(DrawLayer.UNDERLAY);
 			hideLinks = overlayRender(moc,  null, null, true, showComponents, rcx);
 
-			// TODO check that this is the correct layer
 			moc.setDrawLayer(DrawLayer.MODEL_NODEGROUPS);
 
 			// linkRoc = presentationGuts(moc, null, layout, false, showBubbles,
@@ -349,7 +345,7 @@ public class GenomePresentation implements ZoomPresentation {
 
 		if (overMoc != null) {
 			// TODO remove null ROC parameter
-			// overlayRender sets the drawLayer for the cache
+			overMoc.setDrawLayer(DrawLayer.OVERLAY);
 			overlayRender(overMoc, renderedRects, null, false, showComponents, rcx);
 		}
 		
@@ -443,6 +439,7 @@ public class GenomePresentation implements ZoomPresentation {
         		NetOverlayProperties nop = layout.getNetOverlayProperties(no.getID());
         		// For underlays to be rendered, the type of the overlay has to be OvrType.UNDERLAY
         		// and the doUnderlay parameter to renderNetworkOverlay has to be true.
+        		moc.setDrawLayer(DrawLayer.OVERLAY);
         		if (nop.getType() == NetOverlayProperties.OvrType.UNDERLAY) {
         			renderNetworkOverlay(moc, no, renderedRects, layout, true, showComponents, overlayAccessContext);
         		}
@@ -511,8 +508,6 @@ public class GenomePresentation implements ZoomPresentation {
 		NetOverlayProperties nop = layout.getNetOverlayProperties(no.getID());
 		hideLinks = nop.hideLinks();
 		NetOverlayFree nof = nop.getRenderer();
-
-		moc.setDrawLayer(DrawLayer.OVERLAY);
 
 		nof.render(moc, no, renderedRects, doUnderlay, showComponents, rcx);
 		return hideLinks;
@@ -2361,7 +2356,7 @@ public class GenomePresentation implements ZoomPresentation {
         rcxP.setGenome(rootParent);
 		    rcxP.pushGhosted(false);
         render.render(moc, link, null, rcxP, adoptf);
-        rcx.popGhosted();
+        rcxP.popGhosted();
 		  }
 		}
 	}

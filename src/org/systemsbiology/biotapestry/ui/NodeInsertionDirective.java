@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2007 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.ui;
 
+import java.awt.geom.Point2D;
 import java.util.List;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
@@ -32,8 +33,8 @@ public class NodeInsertionDirective {
   public int launchPad;
   public int orientation;
   public Vector2D offset;
-  public List landingCorners;
-  public List launchCorners;
+  public List<Point2D> landingCorners;
+  public List<Point2D> launchCorners;
   
   public NodeInsertionDirective(int land, int launch) {
     landingPad = land;
@@ -54,7 +55,7 @@ public class NodeInsertionDirective {
   }
   
   public NodeInsertionDirective(int land, int launch, int orient, Vector2D offset, 
-                                List landingCorners, List launchCorners) {
+                                List<Point2D> landingCorners, List<Point2D> launchCorners) {
     landingPad = land;
     launchPad = launch;
     orientation = orient;

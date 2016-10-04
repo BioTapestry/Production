@@ -209,8 +209,11 @@ public class UpwardSync extends AbstractControlFlow  {
       bwcm_ = bwcm;
       cancelled_ = false;
       
+      // Issue #187: Can run this command from any level.
+      DataAccessContext dacxR = dacx.getContextForRoot();
+      
       UpwardLayoutSynchRunner runner = 
-        new UpwardLayoutSynchRunner(appState_, dacx, support, ld, center);
+        new UpwardLayoutSynchRunner(appState_, dacxR, support, ld, center);
       //
       // We may need to do lots of link relayout operations.  This MUST occur on a background
       // thread!

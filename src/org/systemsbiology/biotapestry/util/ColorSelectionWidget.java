@@ -104,7 +104,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
     
     changedColors_ = new HashMap<String, String>();
     colorDeletionListeners_ = (colorDeletionListeners == null) ? new ArrayList<ColorDeletionListener>() 
-                                                               : new ArrayList<ColorDeletionListener>(colorDeletionListeners);
+                                                               : colorDeletionListeners; // Need a global copy
     colorDeletionListeners_.add(this);
     
     //

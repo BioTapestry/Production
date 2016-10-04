@@ -34,6 +34,7 @@ import org.systemsbiology.biotapestry.genome.GenomeItem;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.AnnotatedFont;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -185,7 +186,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
         return (new Intersection(item.getID(), null, 0.0));
       }
     } else {
-      if (inbounds.contains(myBounds)) {
+      if (inbounds.contains(myBounds)) { 
         return (new Intersection(item.getID(), null, 0.0));
       }      
     }
@@ -253,7 +254,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   ** Figure out which pad we intersect 
   */
   
-  protected List<Intersection.PadVal> calcPadIntersects(GenomeItem item, 
+  public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, 
                                                         Point2D pt, DataAccessContext icx) {     
     return (calcSharedNamespacePadIntersectSupport(item, pt, MAX_PADS_, PAD_WIDTH_, icx));  
   }
@@ -561,13 +562,14 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   	
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
+  	DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
   	
     if (rcx.showBubbles) {
-      renderPads(group, (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
+      renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
     }
     
     String name = item.getName();
-		Color finalTextColor = (textGhosted) ? Color.LIGHT_GRAY : textCol;
+		Color finalTextColor = (textGhosted) ? dop.getInactiveGray() : textCol;
 		
     float textX = (float)(origin.getX() - textBounds.getWidth() / 2.0);
     float textY = (float)(origin.getY() + ((textBounds.getHeight() * HEIGHT_HACK_) / 2.0));
@@ -589,11 +591,11 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
     
     FontRenderContext frc = g2.getFontRenderContext();    
     if (showBubbles) {
-      renderPads(null, (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK, item, layout, MAX_PADS_, PAD_WIDTH_);
+      renderPads(null, (isGhosted) ?  dopt.getInactiveGray() : Color.BLACK, item, layout, MAX_PADS_, PAD_WIDTH_);
     }
 
     String name = item.getName();    
-    g2.setPaint((textGhosted) ? Color.LIGHT_GRAY : textCol);    
+    g2.setPaint((textGhosted) ?  dopt.getInactiveGray() : textCol);    
     g2.setFont(mFont);
     float textX = (float)(origin.getX() - textBounds.getWidth() / 2.0);
     float textY = (float)(origin.getY() + ((textBounds.getHeight() * HEIGHT_HACK_) / 2.0));

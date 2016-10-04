@@ -348,7 +348,17 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   public Map<String, Set<String>> findMatchingNetworkModules(int searchMode, String key, NameValuePair nvPair) {
     return (ovrops_.findMatchingNetworkModules(searchMode, key, nvPair));
   }
-  
+
+  /***************************************************************************
+  **
+  ** Return network modules that a node belongs to (Net Overlay keys map to sets of matching module keys in return map)
+  **
+  */
+    
+  public Map<String, Set<String>> getModuleMembership(String nodeID) {
+    return (ovrops_.getModuleMembership(nodeID));
+  }
+    
   /***************************************************************************
   **
   ** Get the firstView preference

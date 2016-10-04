@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@ import org.systemsbiology.biotapestry.genome.GenomeItem;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.ui.AnnotatedFont;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
@@ -106,9 +107,11 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
       textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
     }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.getDisplayOptsSource().getDisplayOptions());
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, rcx.getDisplayOptsSource().getDisplayOptions());
+    
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);
 
     AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
     Point2D origin = np.getLocation();
@@ -153,7 +156,7 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
       textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
     }
     Color vac = getVariableActivityColor(item, np.getColor(), false, dopt);
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
     Color textCol = getVariableActivityColor(item, Color.BLACK, true, dopt);
            
     Font mFont = appState_.getFontMgr().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());

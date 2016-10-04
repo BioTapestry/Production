@@ -148,6 +148,16 @@ public class BusProperties extends LinkProperties implements Cloneable {
 
   /***************************************************************************
   **
+  ** Constructor to change source
+  */  
+  
+  public BusProperties(BusProperties other, String newSource) {
+    super(other);
+    this.srcTag_ = newSource;
+  }   
+
+  /***************************************************************************
+  **
   ** Constructor: Make a direct link to the given target
   */  
   
@@ -302,6 +312,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
   **
   */
   
+  @Override
   public String toString() {
     String retval = super.toString();
     return ("BusProperties " + retval);
@@ -331,6 +342,27 @@ public class BusProperties extends LinkProperties implements Cloneable {
     return (newProps);
   }
   
+ /***************************************************************************
+  **
+  ** Merge complementary links in the tree. This assumes we have confirmed that
+  ** all links are mergeable.
+  */
+  
+  public void mergeComplementaryLinks(Map<String, String> oldToNew) {
+    
+    Iterator<String> kit = oldToNew.keySet().iterator();
+    while (kit.hasNext()) {
+      String oldKey = kit.next();
+      String newKey = oldToNew.get(oldKey);
+      LinkSegmentID segID = LinkSegmentID.buildIDForEndDrop(oldKey);
+      BusDrop drop = (BusDrop)getDropOrNot(segID);
+      if (drop != null) {
+        drop.setTargetRef(newKey);
+      }
+    }
+    return;
+  }
+
   /***************************************************************************
   **
   ** Get a fake "link segment" for a direct path that goes to the pads.
@@ -992,7 +1024,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
   protected Vector2D getSourceForcedDir(Genome genome, Layout lo) {
     String srcID = getSourceTag();
     Node src = genome.getNode(srcID);
-    NodeProperties np = lo.getNodeProperties(srcID);    
+    NodeProperties np = lo.getNodeProperties(srcID);
     INodeRenderer render = np.getRenderer();
     return (render.getDepartureDirection(getLaunchPad(genome, lo), src, lo));  
   }

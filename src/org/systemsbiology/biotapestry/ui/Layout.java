@@ -1213,6 +1213,31 @@ public class Layout {
   
   /***************************************************************************
   **
+  ** Merge complementary links together. Do in layout transaction
+  */
+  
+  public void mergeLinkProperties(Map<String, String> oldToNew) {
+    HashMap<String, BusProperties> forSrc = new HashMap<String, BusProperties>(); 
+    Iterator<String> kit = oldToNew.keySet().iterator();
+    while (kit.hasNext()) {
+      String key = kit.next();
+      String newKey = oldToNew.get(key);
+      BusProperties lp = getLinkProperties(key);
+      String srcTag = lp.getSourceTag();
+      BusProperties forSrcProp = forSrc.get(srcTag);
+      if (forSrcProp == null) {
+        forSrc.put(srcTag, lp);
+        forSrcProp = lp;
+      }
+      forSrcProp.mergeComplementaryLinks(oldToNew);
+      linkProps_.remove(key);
+      linkProps_.put(newKey, forSrcProp);
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
   ** Use for large batch removes within a layout undo transaction
   */
   
@@ -2325,7 +2350,7 @@ public class Layout {
     lpreq.rigidMoves = modProps.moveShape(iexi, dx, dy, padNeeds);   
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     changes.add(replaceNetModuleProperties(nmpKey, modProps, ovrKey));
- 
+    
     PropChange[] retval = new PropChange[changes.size()];
     return (changes.toArray(retval));            
   } 
@@ -2860,6 +2885,12 @@ public class Layout {
     
     Genome useGenome = gSrc.getGenome(targetGenome_);
     DataAccessContext irx = new DataAccessContext(rcx, useGenome);
+    //
+    // OK, maybe need to change the genome, but we CANNOT change the layout. Per Issue #214, the
+    // layout must be the one provided, as it could the be the temporary moving layout.
+    //
+    irx.setLayout(rcx.getLayout());
+    // End Issue #214 Fix
     Set<String> useGroups = noo.getGroupsForOverlayRendering();
     Map<PointNoPoint, NetModuleFree.LinkPad> bestFits = nmp.getRenderer().closestRemainingPads(dip, useGroups, mod, fullKey.ovrKey, 
                                                                                                nmp, irx, padNeeds.rigidMoves, padNeeds.linkPadInfo, 
@@ -2921,7 +2952,7 @@ public class Layout {
       String linkID = lidit.next();
       PointNoPoint oldEnd = padNeeds.linkIDToEnds.get(linkID);
       ShiftAndSide shift = newPadShifts.get(oldEnd.point);
-      if (shift != null) { 
+      if (shift != null) {
         String treeID = noProps.getNetModuleLinkagePropertiesID(linkID);
         NetModuleLinkageProperties modLProps = modTrees.get(treeID);
         if (modLProps == null) {
@@ -3995,7 +4026,7 @@ public class Layout {
     undoPostProcess(retval, bp, overID, rcx);
     return (retval);
   }
- 
+
   /***************************************************************************
   **
   ** Fix all non-ortho segments in the layout
@@ -4130,6 +4161,7 @@ public class Layout {
         }
       }
       LinkSegmentID lsid = lp.getDeepestNonOrtho(icx, skipFails);
+      boolean isDirect = lp.isDirect();
       currFrac += progFrac;
       if (currFrac > endFrac) {
         currFrac = endFrac;
@@ -4147,7 +4179,26 @@ public class Layout {
         break;
       }
       if (!lp.fixNonOrtho(lsid, icx, minCorners, overID, monitor)) {
-        skipFails.add(lsid);
+        //
+        // Issue #210. In complex cases, direct links will not orthogonalize. If this happens,
+        // we split the link and give it another chance.
+        //
+        if (isDirect) {
+          HashSet<Point2D> points = new HashSet<Point2D>();
+          LinkSegment segGro = lp.getSegmentGeometryForID(lsid, icx, false);
+          points.add(segGro.getStart());
+          points.add(segGro.getEnd());
+          Point2D split = AffineCombination.combination(points, UiUtil.GRID_SIZE);   
+          if (!split.equals(segGro.getStart()) && !split.equals(segGro.getEnd())) {
+            lp.linkSplitSupport(lsid, split);
+            undoPostProcess(retval, lp, overID, icx);      
+            retList.add(retval);
+          } else {
+            skipFails.add(lsid);
+          }
+        } else {
+          skipFails.add(lsid);
+        }
         continue;
       }
       double nextFrac = currFrac + progFrac;
@@ -5412,6 +5463,11 @@ public class Layout {
         retList.add(pending);
         pending = new PropChange();
         pending.layoutKey = name_;
+      } else {
+        // These restorations of the original null value if nothing changes is the fix for Issue #224.
+        // Undo ops typically look for the non-null members to decide what to do. Without these resets
+        // (see below as well), we get messed up.
+        pending.nOrig = null;
       }
     }    
     
@@ -5428,6 +5484,8 @@ public class Layout {
         retList.add(pending);
         pending = new PropChange();
         pending.layoutKey = name_; 
+      } else { //Issue #224
+        pending.grOrig = null;
       }
     }
 
@@ -5444,6 +5502,8 @@ public class Layout {
         retList.add(pending);
         pending = new PropChange();
         pending.layoutKey = name_; 
+      } else { // Issue #224
+        pending.ntOrig = null;
       }
     }    
     
@@ -5467,6 +5527,9 @@ public class Layout {
         undoPostProcess(pending, lp, null, null);
         retList.add(pending);
         pending = new PropChange(); 
+      } else { // Issue #224
+        pending.orig = null;                 
+        pending.linkIDs = null;
       }
     }
     
@@ -5484,6 +5547,8 @@ public class Layout {
         retList.add(pending);
         pending = new PropChange();
         pending.layoutKey = name_; 
+      } else { // Issue #224
+        pending.nopOrig = null;
       }
     }
     
@@ -7415,6 +7480,12 @@ public class Layout {
         while (sit.hasNext()) {
           String unwantedID = sit.next();
           Linkage unwantedLink = genome.getLinkage(unwantedID);
+          //
+          // Issue #182. Ongoing VfN null problems here...
+          //
+          if (unwantedLink == null) {
+            continue;
+          }
           Intersection unwantedInter = Intersection.pathIntersection(unwantedLink, irx);
           prohibitedSegs.addAll(((MultiSubID)unwantedInter.getSubID()).getParts());
         }

@@ -67,6 +67,42 @@ public interface INodeRenderer extends IRenderer {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  ** 
+  ** Get our preferred target color (bubbles want to be white)
+  */
+    
+  public String getTargetColor();
+
+  /***************************************************************************
+  ** 
+  ** Answer if we can be in a simple fan in
+  */
+    
+  public boolean simpleFanInOK();
+   
+  /***************************************************************************
+  ** 
+  ** Answer if assigning landing is consistent with direct landing:
+  */
+    
+  public boolean landOKForDirect(int landing);
+  
+  /***************************************************************************
+  ** 
+  ** Answer if node ignores force top directive
+  */
+    
+  public boolean ignoreForceTop();
+  
+  /***************************************************************************
+  ** 
+  ** Get the left pad number
+  */
+    
+  public int getLeftPad();
+  
   /***************************************************************************
   **
   ** Get the actual available source pad range (not checking for occupancy)
@@ -145,6 +181,14 @@ public interface INodeRenderer extends IRenderer {
   */
   
   public double getLandingPadWidth(int padNum, GenomeItem item, Layout layout); 
+  
+  /***************************************************************************
+  **
+  ** Figure out which pad we intersect 
+  */
+  
+  public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, 
+                                                     Point2D pt, DataAccessContext icx);
   
   /***************************************************************************
   **
@@ -283,7 +327,7 @@ public interface INodeRenderer extends IRenderer {
   ** Get a list of pads near the given one.  Ordered by distance
   */
   
-  public List<Integer> getNearbyPads(GenomeItem item, int startPad, Layout layout);  
+  public List<Integer> getNearbyPads(GenomeItem item, int startPad, NodeProperties np);  
 
   /***************************************************************************
   **

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.TreeSet;
-import java.util.SortedSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -59,9 +58,9 @@ public class CopiesPerEmbryoData {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private ArrayList genes_;
+  private ArrayList<CopiesPerEmbryoGene> genes_;
   private HashMap<String, List<String>> gpeMap_;
-  private TreeSet defaultTimes_;
+  private TreeSet<Integer> defaultTimes_;
   private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -77,9 +76,9 @@ public class CopiesPerEmbryoData {
 
   public CopiesPerEmbryoData(BTState appState) {
     appState_ = appState;
-    genes_ = new ArrayList();
+    genes_ = new ArrayList<CopiesPerEmbryoGene>();
     gpeMap_ = new HashMap<String, List<String>>();
-    defaultTimes_ = new TreeSet();
+    defaultTimes_ = new TreeSet<Integer>();
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -133,13 +132,13 @@ public class CopiesPerEmbryoData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = getPerEmbryoCountDataKeysWithDefault(nodeID);
+    List<String> mapped = getPerEmbryoCountDataKeysWithDefault(nodeID);
     if (mapped == null) {
       return (false);
     }
-    Iterator mit = mapped.iterator();
+    Iterator<String> mit = mapped.iterator();
     while (mit.hasNext()) {
-      String name = (String)mit.next();
+      String name = mit.next();
       if (getCopyPerEmbryroData(name) != null) {
         return (true);
       }
@@ -157,13 +156,13 @@ public class CopiesPerEmbryoData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = getPerEmbryoCountDataKeysWithDefaultGivenName(nodeID, deadName);
+    List<String> mapped = getPerEmbryoCountDataKeysWithDefaultGivenName(nodeID, deadName);
     if (mapped == null) {
       return (false);
     }
-    Iterator mit = mapped.iterator();
+    Iterator<String> mit = mapped.iterator();
     while (mit.hasNext()) {
-      String name = (String)mit.next();
+      String name = mit.next();
       if (getCopyPerEmbryroData(name) != null) {
         return (true);
       }
@@ -217,7 +216,7 @@ public class CopiesPerEmbryoData {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
     retval.genePos = genes_.size();      
     genes_.add(gene);
-    retval.gNew = (CopiesPerEmbryoGene)gene.clone();
+    retval.gNew = gene.clone();
     retval.gOrig = null;
     return (retval);
   }  
@@ -227,7 +226,7 @@ public class CopiesPerEmbryoData {
   ** Get an iterator over the genes
   */
   
-  public Iterator getGenes() {
+  public Iterator<CopiesPerEmbryoGene> getGenes() {
     return (genes_.iterator());
   }
   
@@ -237,7 +236,7 @@ public class CopiesPerEmbryoData {
   */
   
   public CopiesPerEmbryoGene getGene(int n) {
-    return ((CopiesPerEmbryoGene)genes_.get(n));
+    return (genes_.get(n));
   }
 
   /***************************************************************************
@@ -250,31 +249,31 @@ public class CopiesPerEmbryoData {
     // Crank through the maps and look for entries that target the 
     // given entry.  Delete it.
     //
-    ArrayList retvalList = new ArrayList();
-    Iterator mit = new HashSet(gpeMap_.keySet()).iterator();
+    ArrayList<CopiesPerEmbryoChange> retvalList = new ArrayList<CopiesPerEmbryoChange>();
+    Iterator<String> mit = new HashSet<String>(gpeMap_.keySet()).iterator();
     while (mit.hasNext()) {
-      String mapKey = (String)mit.next();
-      List targList = (List)gpeMap_.get(mapKey);
+      String mapKey = mit.next();
+      List<String> targList = gpeMap_.get(mapKey);
       int tlSize = targList.size();
       for (int i = 0; i < tlSize; i++) {
-        String targ = (String)targList.get(i);
+        String targ = targList.get(i);
         if (targ.equals(nodeID)) {
           CopiesPerEmbryoChange tcc = new CopiesPerEmbryoChange();
           tcc.mapKey = mapKey;
-          tcc.mapListOrig = new ArrayList(targList);
+          tcc.mapListOrig = new ArrayList<String>(targList);
           targList.remove(i);
           if (targList.isEmpty()) {
             tcc.mapListNew = null;
             gpeMap_.remove(mapKey);
           } else {
-            tcc.mapListNew = new ArrayList(targList);
+            tcc.mapListNew = new ArrayList<String>(targList);
           }
           retvalList.add(tcc);
           break;
         }
       }
     }
-    return ((CopiesPerEmbryoChange[])retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]));
+    return (retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]));
   }    
  
   /***************************************************************************
@@ -284,8 +283,8 @@ public class CopiesPerEmbryoData {
   
   public CopiesPerEmbryoChange dropGene(int n) {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
-    CopiesPerEmbryoGene gene = (CopiesPerEmbryoGene)genes_.get(n);
-    retval.gOrig = (CopiesPerEmbryoGene)gene.clone();
+    CopiesPerEmbryoGene gene = genes_.get(n);
+    retval.gOrig = gene.clone();
     retval.gNew = null;
     retval.genePos = n;
     genes_.remove(n);    
@@ -300,7 +299,7 @@ public class CopiesPerEmbryoData {
   public CopiesPerEmbryoChange dropGene(String nodeID) {
     int size = genes_.size();
     for (int i = 0; i < size; i++) {
-      CopiesPerEmbryoGene gene = (CopiesPerEmbryoGene)genes_.get(i);
+      CopiesPerEmbryoGene gene = genes_.get(i);
       if (gene.getName().equals(nodeID)) {
         CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
         retval.gOrig = gene;
@@ -320,13 +319,13 @@ public class CopiesPerEmbryoData {
   
   public CopiesPerEmbryoChange startGeneUndoTransaction(String geneName) {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
-    Iterator git = getGenes();
+    Iterator<CopiesPerEmbryoGene> git = getGenes();
     int count = 0;
     while (git.hasNext()) {
-      CopiesPerEmbryoGene tg = (CopiesPerEmbryoGene)git.next();
+      CopiesPerEmbryoGene tg = git.next();
       if (DataUtil.keysEqual(tg.getName(), geneName)) {
         retval.genePos = count;
-        retval.gOrig = (CopiesPerEmbryoGene)tg.clone();
+        retval.gOrig = tg.clone();
         return (retval);
       }
       count++;
@@ -339,9 +338,10 @@ public class CopiesPerEmbryoData {
   ** Finish an undo transaction
   */
   
+  @SuppressWarnings("unused")
   public CopiesPerEmbryoChange finishGeneUndoTransaction(String geneName, CopiesPerEmbryoChange change) {
-    CopiesPerEmbryoGene tg = (CopiesPerEmbryoGene)genes_.get(change.genePos);
-    change.gNew = (CopiesPerEmbryoGene)tg.clone();
+    CopiesPerEmbryoGene tg = genes_.get(change.genePos);
+    change.gNew = tg.clone();
     return (change);
   }
   
@@ -389,7 +389,7 @@ public class CopiesPerEmbryoData {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
     retval.mapKey = geneId;
     retval.mapListNew = null;
-    retval.mapListOrig = (List)gpeMap_.remove(geneId);
+    retval.mapListOrig = gpeMap_.remove(geneId);
     return (retval);
   }
 
@@ -430,7 +430,7 @@ public class CopiesPerEmbryoData {
   ** Return an iterator over the default times
   */
   
-  public Iterator getDefaultTimes() {
+  public Iterator<Integer> getDefaultTimes() {
     return (defaultTimes_.iterator());
   } 
   
@@ -451,9 +451,9 @@ public class CopiesPerEmbryoData {
   
   public CopiesPerEmbryoChange dropDefaultTimes() {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
-    retval.oldDefaultTimes = (SortedSet)defaultTimes_.clone();
+    retval.oldDefaultTimes = new TreeSet<Integer>(defaultTimes_);
     defaultTimes_.clear();
-    retval.newDefaultTimes = (SortedSet)defaultTimes_.clone();
+    retval.newDefaultTimes = new TreeSet<Integer>(defaultTimes_);
     return (retval);
   }
   
@@ -464,9 +464,9 @@ public class CopiesPerEmbryoData {
   
   public CopiesPerEmbryoChange addDefaultTime(int time) {
     CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
-    retval.oldDefaultTimes = (SortedSet)defaultTimes_.clone();
+    retval.oldDefaultTimes = new TreeSet<Integer>(defaultTimes_);
     defaultTimes_.add(new Integer(time));   
-    retval.newDefaultTimes = (SortedSet)defaultTimes_.clone();
+    retval.newDefaultTimes = new TreeSet<Integer>(defaultTimes_);
     return (retval);
   }  
 
@@ -476,9 +476,9 @@ public class CopiesPerEmbryoData {
   */
   
   public CopiesPerEmbryoGene getCopyPerEmbryroData(String targetName) {
-    Iterator trgit = genes_.iterator();
+    Iterator<CopiesPerEmbryoGene> trgit = genes_.iterator();
     while (trgit.hasNext()) {
-      CopiesPerEmbryoGene trg = (CopiesPerEmbryoGene)trgit.next();
+      CopiesPerEmbryoGene trg = trgit.next();
       if (DataUtil.keysEqual(targetName, trg.getName())) {
         return (trg);
       }
@@ -495,9 +495,9 @@ public class CopiesPerEmbryoData {
     StringWriter sw = new StringWriter();
     PrintWriter out = new PrintWriter(sw);
     
-    Iterator trgit = genes_.iterator();  // FIX ME: use a hash map
+    Iterator<CopiesPerEmbryoGene> trgit = genes_.iterator();  // FIX ME: use a hash map
     while (trgit.hasNext()) {
-      CopiesPerEmbryoGene trg = (CopiesPerEmbryoGene)trgit.next();
+      CopiesPerEmbryoGene trg = trgit.next();
       String name = trg.getName();
       if (DataUtil.keysEqual(name, targetName)) {
         trg.getCountTable(out, appState);
@@ -511,7 +511,7 @@ public class CopiesPerEmbryoData {
   ** Add a map from a node to a List of target nodes
   */
   
-  public CopiesPerEmbryoChange addCpeMap(String key, List mapSets) {
+  public CopiesPerEmbryoChange addCpeMap(String key, List<String> mapSets) {
     CopiesPerEmbryoChange retval = null;
     if ((mapSets != null) && (mapSets.size() > 0)) {
       retval = new CopiesPerEmbryoChange();
@@ -530,22 +530,22 @@ public class CopiesPerEmbryoData {
   */
   
   public CopiesPerEmbryoChange[] changeCpeMapToName(String oldName, String newName) {  
-    ArrayList retvalList = new ArrayList();
-    Iterator tmit = gpeMap_.keySet().iterator();
+    ArrayList<CopiesPerEmbryoChange> retvalList = new ArrayList<CopiesPerEmbryoChange>();
+    Iterator<String> tmit = gpeMap_.keySet().iterator();
     while (tmit.hasNext()) {
-      String mkey = (String)tmit.next();
-      List keys = (List)gpeMap_.get(mkey);
+      String mkey = tmit.next();
+      List<String> keys = gpeMap_.get(mkey);
       if (keys.contains(oldName)) {
         CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
         retval.mapKey = mkey;
-        retval.mapListOrig = (ArrayList)((ArrayList)keys).clone();
+        retval.mapListOrig = new ArrayList<String>(keys);
         keys.remove(oldName);
         keys.add(newName);
-        retval.mapListNew = (ArrayList)((ArrayList)keys).clone();
+        retval.mapListNew = new ArrayList<String>(keys);
         retvalList.add(retval);
       }
     }
-    return ((CopiesPerEmbryoChange[])retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]));
+    return (retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]));
   }
   
   /***************************************************************************
@@ -556,7 +556,7 @@ public class CopiesPerEmbryoData {
   */
   
   public CopiesPerEmbryoChange[] changeName(String oldName, String newName) {
-    ArrayList retvalList = new ArrayList();
+    ArrayList<CopiesPerEmbryoChange> retvalList = new ArrayList<CopiesPerEmbryoChange>();
 
     if (getCopyPerEmbryroData(newName) != null) {
       throw new IllegalArgumentException();
@@ -578,22 +578,22 @@ public class CopiesPerEmbryoData {
     // Fix any custom entry maps
     //
     
-    Iterator dmit = gpeMap_.keySet().iterator();
+    Iterator<String> dmit = gpeMap_.keySet().iterator();
     while (dmit.hasNext()) {
-      String mkey = (String)dmit.next();
-      List keys = (List)gpeMap_.get(mkey);
+      String mkey = dmit.next();
+      List<String> keys = gpeMap_.get(mkey);
       if (DataUtil.containsKey(keys, oldName)) {
         CopiesPerEmbryoChange retval = new CopiesPerEmbryoChange();
         retval.mapKey = mkey;
-        retval.mapListOrig = (ArrayList)((ArrayList)keys).clone();
+        retval.mapListOrig = new ArrayList<String>(keys);
         keys.remove(oldName);
         keys.add(newName);
-        retval.mapListNew = (ArrayList)((ArrayList)keys).clone();
+        retval.mapListNew = new ArrayList<String>(keys);
         retvalList.add(retval);
       }
     }
 
-    return (CopiesPerEmbryoChange[])retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]);
+    return (retvalList.toArray(new CopiesPerEmbryoChange[retvalList.size()]));
   }
 
   /***************************************************************************
@@ -623,10 +623,10 @@ public class CopiesPerEmbryoData {
   ** Get the list of targets names for the node ID.  May be empty.
   */
   
-  public List getPerEmbryoCountDataKeysWithDefaultGivenName(String nodeId, String nodeName) {
-    List retval = (List)gpeMap_.get(nodeId);
+  public List<String> getPerEmbryoCountDataKeysWithDefaultGivenName(String nodeId, String nodeName) {
+    List<String> retval = gpeMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
+      retval = new ArrayList<String>();
       if ((nodeName == null) || (nodeName.trim().equals(""))) {
         return (retval);
       }
@@ -640,8 +640,8 @@ public class CopiesPerEmbryoData {
   ** Get the list of targets names for the node ID.  May be null
   */
   
-  public List getCustomPerEmbryoCountDataKeys(String nodeId) {
-    return ((List)gpeMap_.get(nodeId));
+  public List<String> getCustomPerEmbryoCountDataKeys(String nodeId) {
+    return (gpeMap_.get(nodeId));
   }
   
   /***************************************************************************
@@ -649,9 +649,9 @@ public class CopiesPerEmbryoData {
   ** Get the set of nodeIDs that target the given name. May be empty, not null.
   */
   
-  public Set getPerEmbryoCountDataKeyInverses(String name) {
+  public Set<String> getPerEmbryoCountDataKeyInverses(String name) {
     name = name.toUpperCase().replaceAll(" ", "");
-    HashSet retval = new HashSet();
+    HashSet<String> retval = new HashSet<String>();
     //
     // If there is anybody out there with the same name and no custom map, it
     // will map by default:
@@ -665,24 +665,24 @@ public class CopiesPerEmbryoData {
       }
     }
     
-    Set nodes = genome.getNodesWithName(name);
+    Set<Node> nodes = genome.getNodesWithName(name);
     if (!nodes.isEmpty()) {
-      Iterator sit = nodes.iterator();
+      Iterator<Node> sit = nodes.iterator();
       while (sit.hasNext()) {
-        node = (Node)sit.next();
+        node = sit.next();
         if (!haveCustomMapForNode(node.getID())) {
           retval.add(node.getID());
         }
       }
     }
 
-    Iterator kit = gpeMap_.keySet().iterator();
+    Iterator<String> kit = gpeMap_.keySet().iterator();
     while (kit.hasNext()) {
-      String key = (String)kit.next();
-      List targs = ((List)gpeMap_.get(key));
-      Iterator trit = targs.iterator();
+      String key = kit.next();
+      List<String> targs = gpeMap_.get(key);
+      Iterator<String> trit = targs.iterator();
       while (trit.hasNext()) {
-        String testName = (String)trit.next();
+        String testName = trit.next();
         if (testName.replaceAll(" ", "").equalsIgnoreCase(name)) {
           retval.add(key);
         }
@@ -700,10 +700,10 @@ public class CopiesPerEmbryoData {
     ind.indent();    
     out.println("<CopiesPerEmbryoData>");
     if (genes_.size() > 0) {
-      Iterator git = getGenes();
+      Iterator<CopiesPerEmbryoGene> git = getGenes();
       ind.up();    
       while (git.hasNext()) {
-        CopiesPerEmbryoGene tg = (CopiesPerEmbryoGene)git.next();
+        CopiesPerEmbryoGene tg = git.next();
         tg.writeXML(out, ind);
       }
       ind.down();
@@ -735,9 +735,9 @@ public class CopiesPerEmbryoData {
   */
   
   public boolean nameIsUnique(String targName) {
-    Iterator git = getGenes();  
+    Iterator<CopiesPerEmbryoGene> git = getGenes();  
     while (git.hasNext()) {
-      CopiesPerEmbryoGene tg = (CopiesPerEmbryoGene)git.next();
+      CopiesPerEmbryoGene tg = git.next();
       if (DataUtil.keysEqual(tg.getName(), targName)) {
         return (false);
       }
@@ -775,7 +775,8 @@ public class CopiesPerEmbryoData {
   ** Handle the attributes for the keyword
   **
   */
-  
+
+  @SuppressWarnings("unused")
   public static CopiesPerEmbryoData buildFromXML(BTState appState, String elemName, 
                                                  Attributes attrs) throws IOException {
     if (!elemName.equals("CopiesPerEmbryoData")) {
@@ -870,21 +871,21 @@ public class CopiesPerEmbryoData {
   private void writeCpeMap(PrintWriter out, Indenter ind) {
     ind.up().indent();    
     out.println("<cpeMaps>");
-    TreeSet sorted = new TreeSet();
+    TreeSet<String> sorted = new TreeSet<String>();
     sorted.addAll(gpeMap_.keySet());
-    Iterator mapKeys = sorted.iterator();
+    Iterator<String> mapKeys = sorted.iterator();
     ind.up();    
     while (mapKeys.hasNext()) {
-      String key = (String)mapKeys.next();     
-      List list = (List)gpeMap_.get(key);
+      String key = mapKeys.next();     
+      List<String> list = gpeMap_.get(key);
       ind.indent();
       out.print("<cpeMap key=\"");
       out.print(key);
       out.println("\">");
-      Iterator lit = list.iterator();
+      Iterator<String> lit = list.iterator();
       ind.up();    
       while (lit.hasNext()) {
-        String usetc = (String)lit.next();      
+        String usetc = lit.next();      
         ind.indent();
         out.print("<useCpe name=\"");
         out.print(usetc);
@@ -908,10 +909,10 @@ public class CopiesPerEmbryoData {
   private void writeDefaultTimes(PrintWriter out, Indenter ind) {
     ind.up().indent();    
     out.println("<cpeDefaultTimes>");
-    Iterator timeit = defaultTimes_.iterator();
+    Iterator<Integer> timeit = defaultTimes_.iterator();
     ind.up();    
     while (timeit.hasNext()) {
-      Integer time = (Integer)timeit.next();     
+      Integer time = timeit.next();     
       ind.indent();
       out.print("<cpeTime time=\"");
       out.print(time);

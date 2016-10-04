@@ -639,10 +639,11 @@ public class PropagateSupport {
   ** Propagate the selected node down from the full genome to the VfA
   */  
  
-  public static boolean propagateNode(BTState appState, boolean doGene, DataAccessContext rcxT, DBNode node, Layout layout, //<- Source layout!
-                                      Vector2D offset, Group group, UndoSupport support) {
-    Node newNode = propagateNodeNoLayout(appState, doGene, rcxT, node, group, support, null);   
-    return (propagateNodeLayoutProps(appState, rcxT, node, newNode, layout, offset, support));
+  public static String propagateNode(BTState appState, boolean doGene, DataAccessContext rcxT, DBNode node, Layout layout, //<- Source layout!
+                                     Vector2D offset, Group group, UndoSupport support) {
+    Node newNode = propagateNodeNoLayout(appState, doGene, rcxT, node, group, support, null);
+    propagateNodeLayoutProps(appState, rcxT, node, newNode, layout, offset, support);
+    return (newNode.getID());
   }
     
   /***************************************************************************
@@ -650,12 +651,11 @@ public class PropagateSupport {
   ** Propagate the selected node layout
   */  
  
-  public static boolean propagateNodeLayoutProps(BTState appState, DataAccessContext rcxT,
-                                                 Node node, Node newNode, 
-                                                 Layout srcLayout,
-                                                 Vector2D offset, 
-                                                 UndoSupport support) {
- 
+  public static void propagateNodeLayoutProps(BTState appState, DataAccessContext rcxT,
+                                              Node node, Node newNode, 
+                                              Layout srcLayout,
+                                              Vector2D offset, 
+                                              UndoSupport support) {
     // Find new location  
 
     NodeProperties oldProp = srcLayout.getNodeProperties(node.getID());
@@ -680,8 +680,9 @@ public class PropagateSupport {
       PropChangeCmd pcc = new PropChangeCmd(appState, rcxT, lpc);
       support.addEdit(pcc);
     }        
-    return (true);
-  }  
+    return; // Previously returned a boolean, but it was ALWAYS true.
+  }
+  
   /***************************************************************************
   **
   ** Propagate the selected node down from the full genome to the VfG, without

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -79,7 +79,6 @@ import org.systemsbiology.biotapestry.ui.menu.XPlatToggleAction;
 import org.systemsbiology.biotapestry.ui.menu.XPlatToolBar;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -442,6 +441,12 @@ public class MenuSource {
     eMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SELECT_ALL));
     eMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SELECT_NONE));
     
+    XPlatMenu topOnlySelMenu = new XPlatMenu(rMan.getString("command.SelectTopOnly"), rMan.getChar("command.SelectTopOnlyMnem"));
+    eMenu.addItem(topOnlySelMenu);
+    
+    topOnlySelMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SELECT_ROOT_ONLY_NODES));
+    topOnlySelMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SELECT_ROOT_ONLY_LINKS));
+   
     XPlatMenu upDownSelMenu = new XPlatMenu(rMan.getString("command.selectUpDown"), rMan.getChar("command.selectUpDownMnem"));
     eMenu.addItem(upDownSelMenu);
     
@@ -466,10 +471,12 @@ public class MenuSource {
       Selection.TypeArg args = new Selection.TypeArg(new Integer(cc.val), cc.name);
       dropSelMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.REMOVE_SELECTIONS_FOR_NODE_TYPE, null, null, false, args));
     }
-    
+   
+    eMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SELECTIONS_TO_INACTIVE));
+        
     eMenu.addItem(new XPlatPlaceholder("SELECTED"));
     eMenu.addItem(new XPlatPlaceholder("CURRENT_MODEL"));
-    
+
     eMenu.addItem(new XPlatSeparator());
     XPlatMenu addMenu = new XPlatMenu(rMan.getString("command.addMenu"), rMan.getChar("command.addMenuMnem"));
     eMenu.addItem(addMenu);
@@ -1291,6 +1298,7 @@ public class MenuSource {
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.RELOCATE_SOURCE_PAD, null, "EDITOR"));
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.RELOCATE_TARGET_PAD, null, "EDITOR"));
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.SWAP_PADS, null, "EDITOR"));
+    rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CHANGE_TARGET_GENE_MODULE, null, "EDITOR"));   
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DELETE_LINKAGE, null, "EDITOR"));
     rMenu.addItem(new XPlatSeparator("EDITOR"));
  
@@ -1320,7 +1328,9 @@ public class MenuSource {
     toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.INSERT_NODE_IN_LINK, null, "EDITOR"));
     toMenu.addItem(new XPlatSeparator("EDITOR"));
     toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CHANGE_SOURCE_NODE, null, "EDITOR"));    
-    toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CHANGE_TARGET_NODE, null, "EDITOR"));    
+    toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CHANGE_TARGET_NODE, null, "EDITOR"));  
+    toMenu.addItem(new XPlatSeparator("EDITOR"));
+    toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.MERGE_LINKS));
     return (toMenu);
  }
  
@@ -1472,6 +1482,16 @@ public class MenuSource {
        
       rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.NODE_SUPER_ADD, null, "EDITOR"));
       rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.NODE_TYPE_CHANGE, null, "EDITOR"));
+      
+      if (!doGene) {
+        rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.MERGE_NODES));
+      } else {   
+        XPlatMenu cregMenu = new XPlatMenu(rMan.getString("genePopup.cisRegMenu"), rMan.getChar("genePopup.cisRegMenuMnem"), null, null);
+        rMenu.addItem(cregMenu);
+        cregMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DEFINE_CIS_REG_MODULE));  
+        cregMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.EDIT_CIS_REG_MODULE));
+      }
+      
       rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CHANGE_NODE_GROUP_MEMBERSHIP, null, "EDITOR"));
     }
     

@@ -25,6 +25,7 @@ import java.util.Map;
 
 import org.systemsbiology.biotapestry.app.BTState;
 
+import org.systemsbiology.biotapestry.cmd.flow.add.AddCisRegModule;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddExtraProxyNode;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddLink;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNetModule;
@@ -49,6 +50,7 @@ import org.systemsbiology.biotapestry.cmd.flow.display.PathGenerator;
 import org.systemsbiology.biotapestry.cmd.flow.edit.ChangeNodeGroup;
 import org.systemsbiology.biotapestry.cmd.flow.edit.ChangeNodeType;
 import org.systemsbiology.biotapestry.cmd.flow.edit.DupGroups;
+import org.systemsbiology.biotapestry.cmd.flow.edit.EditCisRegModule;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditGroupProperties;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditLinkProperties;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditModelData;
@@ -59,8 +61,11 @@ import org.systemsbiology.biotapestry.cmd.flow.edit.EditNetOverlay;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditNodeProperties;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditNote;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditSimProperties;
+import org.systemsbiology.biotapestry.cmd.flow.edit.MergeDuplicateLinks;
+import org.systemsbiology.biotapestry.cmd.flow.edit.MergeDuplicateNodes;
 import org.systemsbiology.biotapestry.cmd.flow.edit.MultiSelectionProperties;
 import org.systemsbiology.biotapestry.cmd.flow.edit.ResizeModuleCore;
+import org.systemsbiology.biotapestry.cmd.flow.edit.SetSelectedInactive;
 import org.systemsbiology.biotapestry.cmd.flow.editData.PerturbData;
 import org.systemsbiology.biotapestry.cmd.flow.editData.TemporalInput;
 import org.systemsbiology.biotapestry.cmd.flow.editData.TimeCourse;
@@ -292,6 +297,9 @@ public class FlowMeister {
     SET_CURRENT_GAGGLE_TARGET,
     SELECT_STEP_UPSTREAM,
     SELECT_STEP_DOWNSTREAM,
+    SELECT_ROOT_ONLY_NODES,
+    SELECT_ROOT_ONLY_LINKS,
+    SELECTIONS_TO_INACTIVE,
    ;
     
    public FlowType getFlowType() {
@@ -375,6 +383,7 @@ public class FlowMeister {
     RELOCATE_SEGMENT_MOD,
     RELOCATE_SOURCE_PAD_MOD,
     RELOCATE_TARGET_PAD_MOD,
+    CHANGE_TARGET_GENE_MODULE,
     SWAP_PADS,
     DELETE_LINKAGE,
     FIX_ALL_NON_ORTHO_SEGMENTS_MIN_SHIFT,
@@ -428,7 +437,7 @@ public class FlowMeister {
     DISPLAY_DATA,
     GENE_PROPERTIES,
     NODE_PROPERTIES,
-    EDIT_MULTI_SELECTIONS, 
+    EDIT_MULTI_SELECTIONS,
     ZOOM_TO_NET_MODULE,
     TOGGLE_NET_MODULE_CONTENT_DISPLAY,
     SET_AS_SINGLE_CURRENT_NET_MODULE,
@@ -451,6 +460,10 @@ public class FlowMeister {
     DELETE_NODE_FROM_SUB_GROUP,
     INCLUDE_SUB_GROUP,   
     ACTIVATE_SUB_GROUP,
+    MERGE_LINKS,
+    MERGE_NODES,
+    DEFINE_CIS_REG_MODULE,
+    EDIT_CIS_REG_MODULE,
     ;
     
     public FlowType getFlowType() {
@@ -786,6 +799,10 @@ public class FlowMeister {
         return (new Selection(appState_, Selection.SelectAction.DROP_LINKS));
       case SELECT_NON_ORTHO_SEGS:
         return (new Selection(appState_, Selection.SelectAction.SELECT_NON_ORTHO));
+      case SELECT_ROOT_ONLY_NODES:
+        return (new Selection(appState_, Selection.SelectAction.SELECT_ROOT_ONLY_NODE));
+      case SELECT_ROOT_ONLY_LINKS:
+        return (new Selection(appState_, Selection.SelectAction.SELECT_ROOT_ONLY_LINK));
       case REMOVE_CURR_NETWORK_OVERLAY:  
         return (new RemoveOverlay(appState_, false));   
       case SPECIALTY_LAYOUT_HALO:
@@ -953,7 +970,9 @@ public class FlowMeister {
       case DROP_IMAGE_FOR_MODEL:
         return (new ModelImageOps(appState_, ModelImageOps.ImageAction.DROP));
       case DRAW_NETWORK_MODULE:
-        return (new AddNetModule(appState_, true));  
+        return (new AddNetModule(appState_, true));
+      case SELECTIONS_TO_INACTIVE:
+        return (new SetSelectedInactive(appState_));
       case PULLDOWN:
         return (new PullDown(appState_));
      case CLOSE:
@@ -1120,6 +1139,8 @@ public class FlowMeister {
         return (new ChangeNode(appState_, false));  
       case CHANGE_TARGET_NODE:
         return (new ChangeNode(appState_, true));
+      case MERGE_LINKS:
+        return (new MergeDuplicateLinks(appState_));
       case DIVIDE:
         return (new Divide(appState_, false));
       case DIVIDE_MOD:
@@ -1129,13 +1150,15 @@ public class FlowMeister {
       case RELOCATE_SEGMENT_MOD:
         return (new RelocateSeg(appState_, true));        
       case RELOCATE_SOURCE_PAD:
-        return (new ChangePad(appState_, false, false));
+        return (new ChangePad(appState_, false, false, false));
       case RELOCATE_SOURCE_PAD_MOD:
-        return (new ChangePad(appState_, false, true));        
+        return (new ChangePad(appState_, false, true, false));        
       case RELOCATE_TARGET_PAD:
-        return (new ChangePad(appState_, true, false));
+        return (new ChangePad(appState_, true, false, false));
       case RELOCATE_TARGET_PAD_MOD:
-        return (new ChangePad(appState_, true, true));        
+        return (new ChangePad(appState_, true, true, false));
+      case CHANGE_TARGET_GENE_MODULE:
+        return (new ChangePad(appState_, true, false, true));  
       case SWAP_PADS:
         return (new SwapPads(appState_));  
       case DELETE_LINKAGE:
@@ -1243,6 +1266,12 @@ public class FlowMeister {
         return (new EditNodeProperties(appState_, false));         
       case EDIT_MULTI_SELECTIONS:
         return (new MultiSelectionProperties(appState_));
+      case MERGE_NODES:
+        return (new MergeDuplicateNodes(appState_));
+      case DEFINE_CIS_REG_MODULE:
+        return (new AddCisRegModule(appState_));    
+      case EDIT_CIS_REG_MODULE:
+        return (new EditCisRegModule(appState_));    
       case ZOOM_TO_NET_MODULE:
         return (new Zoom(appState_, Zoom.ZoomAction.ZOOM_MOD_POPUP));
       case TOGGLE_NET_MODULE_CONTENT_DISPLAY:

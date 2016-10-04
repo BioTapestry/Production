@@ -428,6 +428,19 @@ public class SpecialtyLayoutEngine {
     sdc_ = workingRcx_.getLayout().getSupplementalCoords(workingRcx_, loModKeys);    
     rememberProps_ = workingRcx_.getLayout().buildRememberProps(workingRcx_);
    
+    
+    //
+    // Dealing with Issue 211. Need to get core geometry up to speed if it is
+    // inconsistent with visible geometry:
+    //
+    
+    Set<String> nexp = sa_.needExpansion();
+    if ((nexp != null) && !nexp.isEmpty()) {
+      for (String netModKey : nexp) {
+        workingRcx_.getLayout().sizeCoreToRegionBounds(workingRcx_.oso.getCurrentOverlay(), netModKey, workingRcx_);
+      }
+    }
+  
     //
     // Handle overlay module geometry recovery:
     //

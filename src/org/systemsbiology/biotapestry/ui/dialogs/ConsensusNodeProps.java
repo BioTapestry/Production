@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -41,7 +41,15 @@ import org.systemsbiology.biotapestry.util.TriStateJComboBox;
 */
 
 public class ConsensusNodeProps implements ConsensusProps {
- 
+
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PUBLIC CONSTANTS
+  //
+  ////////////////////////////////////////////////////////////////////////////  
+  
+  public static int NO_PAD_CHANGE = -1;
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC INSTANCE MEMBERS
@@ -68,7 +76,7 @@ public class ConsensusNodeProps implements ConsensusProps {
   public int consensusGrowth;
   public int growthCoverage;
 
-  public SortedSet consensusPadOptions;
+  public SortedSet<Integer> consensusPadOptions;
   public int consensusDoExtraPads;
   public int consensusExtraPadCount;
   public int extraPadCoverage;
@@ -85,7 +93,7 @@ public class ConsensusNodeProps implements ConsensusProps {
   ** 
   */
     
-  public ConsensusNodeProps(Genome genome, Layout layout, Set nodes) {
+  public ConsensusNodeProps(Genome genome, Layout layout, Set<String> nodes) {
     consensusColor = null;
     variousColor = false;   
     consensusFont = null;
@@ -126,12 +134,12 @@ public class ConsensusNodeProps implements ConsensusProps {
   ** 
   */
   
-  private void buildConsensusProps(Genome genome, Layout layout, Set nodes) {
+  private void buildConsensusProps(Genome genome, Layout layout, Set<String> nodes) {
     boolean haveInstance = (genome instanceof GenomeInstance);
 
-    Iterator nit = nodes.iterator();
+    Iterator<String> nit = nodes.iterator();
     while (nit.hasNext()) {
-      String nodeID = (String)nit.next();
+      String nodeID = nit.next();
       NodeProperties np = layout.getNodeProperties(nodeID);
       Node node = genome.getNode(nodeID);
       int nodeType = node.getNodeType();
@@ -247,11 +255,11 @@ public class ConsensusNodeProps implements ConsensusProps {
 
       int padInc = DBNode.getPadIncrement(nodeType);
       if (padInc != 0) {
-        SortedSet padC = NodeAndLinkPropertiesSupport.generatePadChoices(node);
+        SortedSet<Integer> padC = NodeAndLinkPropertiesSupport.generatePadChoices(node);
         if (consensusPadOptions == null) {
           consensusPadOptions = padC;
         } else if (!consensusPadOptions.equals(padC)) { // Inconsistent pad options
-          consensusPadOptions = new TreeSet();
+          consensusPadOptions = new TreeSet<Integer>();
           extraPadCoverage = NO_OPTION_COVERAGE;
         }    
         if (!consensusPadOptions.isEmpty()) {
@@ -272,7 +280,11 @@ public class ConsensusNodeProps implements ConsensusProps {
             }
           } else if (consensusDoExtraPads != TriStateJComboBox.MIXED_STATE) {
             if (consensusDoExtraPads == TriStateJComboBox.TRUE) {
-              if (!amBig) {
+              if (amBig) {
+                if (consensusExtraPadCount != pads) {
+                  consensusExtraPadCount = NO_PAD_CHANGE;
+                }
+              } else {
                 consensusDoExtraPads = TriStateJComboBox.MIXED_STATE;
                 consensusExtraPadCount = 0;
               }

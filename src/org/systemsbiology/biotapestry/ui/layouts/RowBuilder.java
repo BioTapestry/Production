@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.ui.layouts;
 
+import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
 import java.util.List;
@@ -211,7 +212,51 @@ public class RowBuilder {
     return (retval);
     
   }
+ 
+  /***************************************************************************
+  **
+  ** Assign gene rows alphabetically
+  */
   
+  private SortedMap<String, List<GeneAndSatelliteCluster>> gasByAlpha(List<GeneAndSatelliteCluster> geneClusters,
+                                                                      SpecialtyLayoutEngine.NodePlaceSupport nps) {  
+
+    TreeMap<String, List<GeneAndSatelliteCluster>> nameToGAS = new TreeMap<String, List<GeneAndSatelliteCluster>>();
+    int numTClust = geneClusters.size();
+    for (int i = 0; i < numTClust; i++) {
+      GeneAndSatelliteCluster tc = geneClusters.get(i);
+      String core = tc.getCoreID();
+      String coreName = nps.getNode(core).getName().toUpperCase();
+      List<GeneAndSatelliteCluster> perName = nameToGAS.get(coreName);
+      if (perName == null) {
+        perName = new ArrayList<GeneAndSatelliteCluster>();
+        nameToGAS.put(coreName, perName);
+      }
+      perName.add(tc);
+    }
+    return (nameToGAS);
+  }
+  
+  /***************************************************************************
+  **
+  ** Flatten alpha list
+  */
+  
+  private List<GeneAndSatelliteCluster> flattenGasByAlpha(SortedMap<String, List<GeneAndSatelliteCluster>> nameToGAS) {  
+
+    ArrayList<GeneAndSatelliteCluster> retval = new ArrayList<GeneAndSatelliteCluster>();
+    Iterator<List<GeneAndSatelliteCluster>> ntcit = nameToGAS.values().iterator();
+    while (ntcit.hasNext()) {
+      List<GeneAndSatelliteCluster> perName = ntcit.next();
+      int numPN = perName.size();
+      for (int i = 0; i < numPN; i++) {
+        GeneAndSatelliteCluster tc = perName.get(i);
+        retval.add(tc);
+      }
+    }
+    return (retval);
+  }
+ 
   /***************************************************************************
   **
   ** Assign gene rows alphabetically
@@ -221,37 +266,22 @@ public class RowBuilder {
                                                                              SpecialtyLayoutEngine.NodePlaceSupport nps,
                                                                              int max, Integer startKey) {  
 
-    TreeMap<String, List<GeneAndSatelliteCluster>> nameToGAS = new TreeMap<String, List<GeneAndSatelliteCluster>>();
-    int numTClust = geneClusters.size();
-    for (int i = 0; i < numTClust; i++) {
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)geneClusters.get(i);
-      String core = tc.getCoreID();
-      String coreName = nps.getNode(core).getName().toUpperCase();
-      List<GeneAndSatelliteCluster> perName = nameToGAS.get(coreName);
-      if (perName == null) {
-        perName = new ArrayList<GeneAndSatelliteCluster>();
-        nameToGAS.put(coreName, perName);
-      }
-      perName.add(tc);
-    }           
+    SortedMap<String, List<GeneAndSatelliteCluster>> nameToGAS = gasByAlpha(geneClusters, nps);   
+    List<GeneAndSatelliteCluster> flattenList = flattenGasByAlpha(nameToGAS);
     
     TreeMap<Integer, List<GeneAndSatelliteCluster>> tClustRows = new TreeMap<Integer, List<GeneAndSatelliteCluster>>();
-    Iterator<List<GeneAndSatelliteCluster>> ntcit = nameToGAS.values().iterator();
     int count = (startKey == null) ? 0 : startKey.intValue() * max;
-    while (ntcit.hasNext()) {
-      List<GeneAndSatelliteCluster> perName = ntcit.next();
-      int numPN = perName.size();
-      for (int i = 0; i < numPN; i++) {
-        GeneAndSatelliteCluster tc = perName.get(i);
-        int key = count++ / max;
-        Integer rowObj = new Integer(key);
-        List<GeneAndSatelliteCluster> perTime = tClustRows.get(rowObj);
-        if (perTime == null) {
-          perTime = new ArrayList<GeneAndSatelliteCluster>();
-          tClustRows.put(rowObj, perTime);
-        }
-        perTime.add(tc);
+    int numPN = flattenList.size();
+    for (int i = 0; i < numPN; i++) {
+      GeneAndSatelliteCluster tc = flattenList.get(i);
+      int key = count++ / max;
+      Integer rowObj = new Integer(key);
+      List<GeneAndSatelliteCluster> perTime = tClustRows.get(rowObj);
+      if (perTime == null) {
+        perTime = new ArrayList<GeneAndSatelliteCluster>();
+        tClustRows.put(rowObj, perTime);
       }
+      perTime.add(tc);
     }
     return (tClustRows);
   }  
@@ -356,18 +386,23 @@ public class RowBuilder {
     }          
  
     TreeMap<Integer, List<GeneAndSatelliteCluster>> tClustRows = new TreeMap<Integer, List<GeneAndSatelliteCluster>>();
-  //  ClusterBuilder cb = new ClusterBuilder(genome, targetNodes, inboundLinkMap);    
-  //  cb.buildClusters(); 
-      
-    
+    //
+    // Addressing Issue #213. If there are no source nodes (i.e. no links in network), then nothing got added here.
+    // Even if there were links, any nodes without inputs didn't get placed. So we need to fall back on the alphabetical
+    // ordering for nodes without inputs:
+    //
+    SortedMap<String, List<GeneAndSatelliteCluster>> nameToGAS = gasByAlpha(geneClusters, nps);   
+    List<GeneAndSatelliteCluster> flattenList = flattenGasByAlpha(nameToGAS);
+     
     SortedSet<GraphSearcher.SourcedNodeDegree> srcsNodes = new GraphSearcher(nps).nodeDegreeSetWithSource(srcOrder, ignoreDegree);
+    HashSet<String> seen = new HashSet<String>();  
     
     if (doChunked) {
       GraphSearcher.SourcedNodeDegree lastSND = null;
       List<GraphSearcher.SourcedNodeDegree> clusterOrder = new ArrayList<GraphSearcher.SourcedNodeDegree>(srcsNodes);
       int coSize = clusterOrder.size();
       int currRow = (startKey == null) ? 0 : startKey.intValue();
-      int currIndex = 0;
+      int currIndex = 0;     
       for (int i = 0; i < coSize; i++) {
         GraphSearcher.SourcedNodeDegree snd = clusterOrder.get(i);
         GeneAndSatelliteCluster tc = coreToGAS.get(snd.getNode());
@@ -383,7 +418,38 @@ public class RowBuilder {
             currRow++;
           }
         }
-        Integer rowObj = new Integer(currRow);
+        Integer rowObj = Integer.valueOf(currRow);
+        List<GeneAndSatelliteCluster> perRow = tClustRows.get(rowObj);
+        if (perRow == null) {
+          perRow = new ArrayList<GeneAndSatelliteCluster>();
+          tClustRows.put(rowObj, perRow);
+        }
+        perRow.add(tc);
+        seen.add(tc.getCoreID());
+        currIndex++;
+        lastSND = snd;
+      }
+      //
+      // Addressing Issue #213.
+      //
+      glueOnOrphanTargets(flattenList, seen, currRow, currIndex, max, tClustRows);
+      
+    } else { 
+      List<GraphSearcher.SourcedNodeDegree> clusterOrder = new ArrayList<GraphSearcher.SourcedNodeDegree>(srcsNodes);
+      int coSize = clusterOrder.size();
+      int currRow = (startKey == null) ? 0 : startKey.intValue();
+      int currIndex = 0;    
+      for (int i = 0; i < coSize; i++) {
+        GraphSearcher.SourcedNodeDegree snd = clusterOrder.get(i);
+        GeneAndSatelliteCluster tc = coreToGAS.get(snd.getNode());
+        if (tc == null) {
+          continue;
+        }
+        if (currIndex > max) {
+          currIndex = 0;
+          currRow++;
+        }
+        Integer rowObj = Integer.valueOf(currRow);
         List<GeneAndSatelliteCluster> perRow = tClustRows.get(rowObj);
         if (perRow == null) {
           perRow = new ArrayList<GeneAndSatelliteCluster>();
@@ -391,32 +457,44 @@ public class RowBuilder {
         }
         perRow.add(tc);
         currIndex++;
-        lastSND = snd;
-      }           
-    } else { 
-      List<GraphSearcher.SourcedNodeDegree> clusterOrder = new ArrayList<GraphSearcher.SourcedNodeDegree>(srcsNodes);
-      int coSize = clusterOrder.size();
-      int base = (startKey == null) ? 0 : startKey.intValue();
-      for (int i = 0; i < coSize; i++) {
-        GraphSearcher.SourcedNodeDegree snd = clusterOrder.get(i);
-        GeneAndSatelliteCluster tc = coreToGAS.get(snd.getNode());
-        if (tc == null) {
-          continue;
-        }
-        int key = (i / max) + base;
-        Integer rowObj = new Integer(key);
-        List<GeneAndSatelliteCluster> perRow = tClustRows.get(rowObj);
-        if (perRow == null) {
-          perRow = new ArrayList<GeneAndSatelliteCluster>();
-          tClustRows.put(rowObj, perRow);
-        }
-        perRow.add(tc);
-      }           
+        seen.add(tc.getCoreID());
+      }    
+      //
+      // Addressing Issue #213.
+      //
+      glueOnOrphanTargets(flattenList, seen, currRow, currIndex, max, tClustRows);
+      
     } 
        
     return (tClustRows);
-  }  
-   
+  } 
+  
+  
+  /***************************************************************************
+  **
+  ** Glue on stragglers with no inputs
+  */
+  
+  private void glueOnOrphanTargets(List<GeneAndSatelliteCluster> flattenList, Set<String> seen, 
+                                   int currRow, int currIndex, int max, TreeMap<Integer, List<GeneAndSatelliteCluster>> tClustRows) {                                                                                
+    int flSize = flattenList.size();
+    for (int i = 0; i < flSize; i++) {      
+      GeneAndSatelliteCluster tc = flattenList.get(i);
+      if (seen.contains(tc.getCoreID())) {
+        continue;
+      }
+      int key = ((i + currIndex) / max) + currRow;
+      Integer rowObj = new Integer(key);
+      List<GeneAndSatelliteCluster> perRow = tClustRows.get(rowObj);
+      if (perRow == null) {
+        perRow = new ArrayList<GeneAndSatelliteCluster>();
+        tClustRows.put(rowObj, perRow);
+      }
+      perRow.add(tc);
+    }
+    return;
+  }
+  
   /***************************************************************************
   **
   ** Do assignment for a large cluster

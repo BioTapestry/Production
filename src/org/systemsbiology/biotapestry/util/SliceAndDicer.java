@@ -523,7 +523,7 @@ public class SliceAndDicer  {
       GroupAndChunk gac = bfgkit.next();
       Rectangle2D regBounds = chunkedBounds.get(gac);
       IBResult result = intersectBounds(regBounds, oldShape);
-      chunksPerRes.get(result).add(gac);
+      chunksPerRes.get(result.result).add(gac);
       if (result.interRect != null) {
         interRects.put(gac, result.interRect);
       }
@@ -577,7 +577,6 @@ public class SliceAndDicer  {
   
  
   private static class IBResult {
-    @SuppressWarnings("unused")
     SliceResult result;
     Rectangle2D interRect;
     
@@ -585,6 +584,38 @@ public class SliceAndDicer  {
       this.result = result;
       this.interRect = interRect;
     }
+    
+    @Override
+    public String toString() {
+      return (result + ": " + ((interRect == null) ? "No Rectangle" : interRect.toString()));
+    }
+    
+    @Override
+    public int hashCode() {
+      return (((interRect == null) ? 0 : interRect.hashCode()) + result.hashCode());
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (other == null) {
+        return (false);
+      }
+      if (other == this) {
+        return (true);
+      }
+      if (!(other instanceof IBResult)) {
+        return (false);
+      }
+      IBResult otherTR = (IBResult)other;
+      
+      if (!this.result.equals(otherTR.result)) {
+        return (false);
+      }  
+      if (this.interRect == null) {
+        return (otherTR.interRect == null);
+      }   
+      return (this.interRect.equals(otherTR.interRect));
+    }  
   } 
 
   private static class PreSliceResult {
@@ -654,10 +685,12 @@ public class SliceAndDicer  {
       }    
     }
 
+    @Override
     public int hashCode() {
       return (grp.hashCode() + chunkNum);
     }
 
+    @Override
     public boolean equals(Object other) {
       if (other == null) {
         return (false);

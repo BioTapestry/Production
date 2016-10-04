@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,6 +23,7 @@ import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
 import javax.swing.JPanel;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.Vector;
 import javax.swing.ImageIcon;
@@ -52,6 +53,7 @@ import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.ColorDeletionListener;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.ColorSelectionWidget;
 import org.systemsbiology.biotapestry.util.TriStateJComboBox;
@@ -77,6 +79,7 @@ public class MultiNodeTab {
   private JComboBox evidenceCombo_;
   private BTState appState_;
   private DataAccessContext dacx_;
+  private List<ColorDeletionListener> colorListeners_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -90,11 +93,13 @@ public class MultiNodeTab {
   ** 
   */
   
-  public MultiNodeTab(BTState appState, DataAccessContext dacx, Set<String> nodes, boolean isForGene) {
+  public MultiNodeTab(BTState appState, DataAccessContext dacx, Set<String> nodes, 
+                      boolean isForGene, List<ColorDeletionListener> cdls) {
     appState_ = appState;
     dacx_ = dacx;
     nodes_ = nodes;
     isForGene_ = isForGene;
+    colorListeners_ = cdls;
     nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx);
   }
 
@@ -175,7 +180,8 @@ public class MultiNodeTab {
       if ((gcp.extraPadCoverage != ConsensusProps.UNDEFINED_OPTION_COVERAGE) && 
           (gcp.extraPadCoverage != ConsensusProps.NO_OPTION_COVERAGE)) { 
         boolean isPartial = (gcp.extraPadCoverage == ConsensusProps.PARTIAL_OPTION_COVERAGE);
-        JPanel xtraPads = nps_.extraPadsUI(true, gcp.consensusPadOptions, isPartial, warnIcon);     
+        Vector<ChoiceContent> forExtra = nps_.padsToCC(gcp.consensusPadOptions, true);
+        JPanel xtraPads = nps_.extraPadsUI(true, forExtra, isPartial, warnIcon);     
         if (xtraPads != null) {
           UiUtil.gbcSet(gbc, 0, modelRownum++, 11, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);
           modelPanel.add(xtraPads, gbc);
@@ -187,7 +193,7 @@ public class MultiNodeTab {
     // Color setting:
     //
 
-    colorWidget1_ = new ColorSelectionWidget(appState_, dacx_, null, true, "nprop.color", true, true);
+    colorWidget1_ = new ColorSelectionWidget(appState_, dacx_, colorListeners_, true, "nprop.color", true, true);
     UiUtil.gbcSet(gbc, 0, layoutRownum++, 11, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 0.0);
     layoutPanel.add(colorWidget1_, gbc);     
 
@@ -299,7 +305,9 @@ public class MultiNodeTab {
         }
       }
 
-      nps_.setExtraPadsForMulti(cgp.consensusExtraPadCount, cgp.consensusDoExtraPads, cgp.consensusGrowth);
+      String tag = (cgp.consensusExtraPadCount == ConsensusNodeProps.NO_PAD_CHANGE) ? appState_.getRMan().getString("multiSelProps.various")
+                                                                                    : Integer.toString(cgp.consensusExtraPadCount);
+      nps_.setExtraPadsForMulti(new ChoiceContent(tag, cgp.consensusExtraPadCount), cgp.consensusDoExtraPads, cgp.consensusGrowth);
 
       if (haveStatInstance) {
         nps_.setActivityLevelForMulti(cgp.consensusActivity, false);
@@ -352,11 +360,9 @@ public class MultiNodeTab {
         }
       }
 
-      if (node.getNodeType() != Node.GENE) {
-        if (!nps_.checkExtraPads(node, true)) {
-          return (false);
-        }
-      }       
+      if (!nps_.checkExtraPads(node, true)) {
+        return (false);
+      }     
     }
 
     return (true);
@@ -462,12 +468,23 @@ public class MultiNodeTab {
         Boolean wantExtra = nps_.wantExtraPadsForMulti();
         if (wantExtra != null) {
           boolean wantExtraPads = wantExtra.booleanValue();
-          int newPads = (wantExtraPads) ? nps_.getExtraPadsForMulti().intValue() : DBNode.getDefaultPadCount(nodeType);
-          GenomeChange gc = (nodeType == Node.GENE) ? dacx_.getGenome().changeGeneSize(nodeID, newPads) : dacx_.getGenome().changeNodeSize(nodeID, newPads);
-          if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
-            support.addEdit(gcc);
-            modelChange = true;
+          Integer newPads = null;
+          if (wantExtraPads) {
+            Integer xp = nps_.getExtraPadsForMulti();
+            if (xp != null) {
+              newPads = xp;
+            }
+          } else {
+            newPads = Integer.valueOf(DBNode.getDefaultPadCount(nodeType));
+          }
+          if (newPads != null) {
+            GenomeChange gc = (nodeType == Node.GENE) ? dacx_.getGenome().changeGeneSize(nodeID, newPads.intValue()) 
+                                                      : dacx_.getGenome().changeNodeSize(nodeID, newPads.intValue());
+            if (gc != null) {
+              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              support.addEdit(gcc);
+              modelChange = true;
+            }
           }
           if (wantExtraPads) {
             Integer extraGrowth = nps_.getExtraGrowthForMulti();

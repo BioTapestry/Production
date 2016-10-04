@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,6 +43,7 @@ import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.nav.GroupSettings;
 import org.systemsbiology.biotapestry.ui.AnnotatedFont;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
@@ -270,9 +271,11 @@ public class GroupFree {
                                                    ty - TEXT_PAD_,
                                                    width + (TEXT_PAD_ * 2.0),
                                                    height + (TEXT_PAD_ * 2.0));        
-      }     
+      } 
+      DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+      
       if ((name != null) && !name.trim().equals("") && (!calcHideLabel(genomeIsRoot, gp) || nab.isEmpty)) {
-        Color blackCol = (drawLight) ? Color.LIGHT_GRAY : Color.black;
+        Color blackCol = (drawLight) ? dop.getInactiveGray() : Color.black;
         Color drawCol = (drawLight) ? vlg : col;
         
         if (!doBold) {

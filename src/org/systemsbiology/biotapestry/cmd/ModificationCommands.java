@@ -202,7 +202,10 @@ public class ModificationCommands {
     Layout.PropChange[] padLpc = rcx.getLayout().repairAllNetModuleLinkPadRequirements(rcx, padFixups, orpho);
     if ((padLpc != null) && (padLpc.length != 0)) {
       PropChangeCmd padC = new PropChangeCmd(appState, rcx, padLpc);
-      support.addEdit(padC);
+      // One of the problems uncovered in issue #187, used with null support...
+      if (support != null) { // used in preview mode....
+        support.addEdit(padC);
+      }
     }
     return;
   }

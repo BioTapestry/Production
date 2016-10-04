@@ -384,7 +384,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
     List<String> ttGroups = ng.findTerminalTargetsByGroups(groups);
     List<GeneAndSatelliteCluster> termXClusters = GeneAndSatelliteCluster.fillTargetClustersByGroups(sld_.appState, ttGroups, groups,                                                              
                                                                                                      sld_.nps, sld_.rcx, traceOffset, 
-                                                                                                     false, wlp.spaceForText());
+                                                                                                     false, wlp.spaceForText(), true);
     ArrayList<GeneAndSatelliteCluster> sClustList = new ArrayList<GeneAndSatelliteCluster>();
     findSources(baseGenome, termXClusters, groups, sClustList, wlp.spaceForText(), traceOffset);
     return (new GASCResults(sClustList, termXClusters, queue));
@@ -456,13 +456,16 @@ public class StackedBlockLayout implements SpecialtyLayout {
     //
     // Find target cluster assignment based on...:
     //
+    
+    
+    
       
     if (wlp.targsBelow && (grouping != SrcTypes.SRCS_BY_CURR_POSITION)) {
       TargTypes targGroups = wlp.targGrouping;
       Integer nextKey = (clustRows.isEmpty()) ? null : new Integer(clustRows.lastKey().intValue() + 1);
       if (targGroups == TargTypes.TARGS_BY_TIME) {
         clustRows.putAll(builder.assignRowsByTime(clustResults.trgClusters, rowSize, nextKey));
-      } else if (targGroups == TargTypes.TARGS_BY_ALPHA) {
+      } else if ((targGroups == TargTypes.TARGS_BY_ALPHA)) {
         clustRows.putAll(builder.assignRowsByAlpha(clustResults.trgClusters, sld_.nps, rowSize, nextKey));
       } else if (targGroups == TargTypes.TARGS_BY_INPUTS) {
         clustRows.putAll(builder.assignRowsByInputs(clustResults.trgClusters, sld_.nps, rowSize, true, nextKey));
@@ -476,22 +479,29 @@ public class StackedBlockLayout implements SpecialtyLayout {
         // copy away and just using the order results. Not the most efficient, but the easiest to implement at this
         // point...
         //
-        StackedClusterSeries bogoStacked = new StackedClusterSeries(traceOffset);
-        SortedMap<Integer, List<GeneAndSatelliteCluster>> clustRowsCopy = new TreeMap<Integer, List<GeneAndSatelliteCluster>>();
-        for (Integer key : clustRows.keySet()) {
-          List<GeneAndSatelliteCluster> perRow = clustRows.get(key);
-          List<GeneAndSatelliteCluster> perRowCopy = new ArrayList<GeneAndSatelliteCluster>();
-          clustRowsCopy.put(key, perRowCopy);
-          int numPerRow = perRow.size();
-          for (int i = 0; i < numPerRow; i++) {
-            GeneAndSatelliteCluster gasc = perRow.get(i);
-            perRowCopy.add(i, gasc.clone());          
+        // 01/06/16: BUT this is a disaster if the network has NO LINKS (Issue #213), since that means we have no sources, and
+        // this crashes since we are laying out an empty set. What is best when there are no sources? We skip this step entirely,
+        // then fix assignRowsBySourceOrder to get all the orphan target nodes folded in even without any sources to work from.
+        //
+        List<String> srcOrder = new ArrayList<String>();
+        if (!clustResults.srcClusters.isEmpty()) {
+          StackedClusterSeries bogoStacked = new StackedClusterSeries(traceOffset);
+          SortedMap<Integer, List<GeneAndSatelliteCluster>> clustRowsCopy = new TreeMap<Integer, List<GeneAndSatelliteCluster>>();
+          for (Integer key : clustRows.keySet()) {
+            List<GeneAndSatelliteCluster> perRow = clustRows.get(key);
+            List<GeneAndSatelliteCluster> perRowCopy = new ArrayList<GeneAndSatelliteCluster>();
+            clustRowsCopy.put(key, perRowCopy);
+            int numPerRow = perRow.size();
+            for (int i = 0; i < numPerRow; i++) {
+              GeneAndSatelliteCluster gasc = perRow.get(i);
+              perRowCopy.add(i, gasc.clone());          
+            }
           }
+          int bogoRows = clustRowsCopy.size();
+          SpecialtyLayoutEngine.NodePlaceSupport bogoCopy = new SpecialtyLayoutEngine.NodePlaceSupport(sld_.nps);
+          bogoStacked.prep(bogoRows, clustRowsCopy, sld_.subset, bogoCopy, sld_.rcx, wlp.traceMult(), sld_.existingOrder);
+          srcOrder.addAll(bogoStacked.getSourceOrder().values());
         }
-        int bogoRows = clustRowsCopy.size();
-        SpecialtyLayoutEngine.NodePlaceSupport bogoCopy = new SpecialtyLayoutEngine.NodePlaceSupport(sld_.nps);
-        bogoStacked.prep(bogoRows, clustRowsCopy, sld_.subset, bogoCopy, sld_.rcx, wlp.traceMult(), sld_.existingOrder);
-        List<String> srcOrder = new ArrayList<String>(bogoStacked.getSourceOrder().values());
         // And we do not care anymore about the bogo layout; we have the srcOrder we need. Actual full layout occurs below...
         clustRows.putAll(builder.assignRowsBySourceOrder(clustResults.trgClusters, sld_.nps, rowSize, true, nextKey, ignoreDegree, srcOrder));    
       } else {

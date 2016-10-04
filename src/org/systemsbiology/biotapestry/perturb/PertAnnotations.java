@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -67,8 +67,8 @@ public class PertAnnotations implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
 
   private UniqueLabeller labels_;
-  private TreeMap messages_;
-  private HashMap mapToKeys_;
+  private TreeMap<String, String> messages_;
+  private HashMap<String, String> mapToKeys_;
   private Pattern pattern_;
   private Matcher matcher_;
   
@@ -85,8 +85,8 @@ public class PertAnnotations implements Cloneable {
 
   public PertAnnotations() {
     labels_ = new UniqueLabeller();
-    messages_ = new TreeMap();
-    mapToKeys_ = new HashMap();
+    messages_ = new TreeMap<String, String>();
+    mapToKeys_ = new HashMap<String, String>();
     pattern_ = Pattern.compile("[0-9][0-9]*");
     matcher_ = pattern_.matcher("");
   }
@@ -102,11 +102,11 @@ public class PertAnnotations implements Cloneable {
   ** Merge annotations.
   */
   
-  public void mergeAnnotations(List joinKeys, String commonKey, String tag, String message) {    
+  public void mergeAnnotations(List<String> joinKeys, String commonKey, String tag, String message) {    
     editMessage(commonKey, tag, message);
     int numIDs = joinKeys.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)joinKeys.get(i);
+      String keyID = joinKeys.get(i);
       if (!keyID.equals(commonKey)) {
         deleteMessage(keyID);
       }
@@ -119,12 +119,13 @@ public class PertAnnotations implements Cloneable {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public PertAnnotations clone() {
     try {
       PertAnnotations retval = (PertAnnotations)super.clone();
-      retval.labels_ = (UniqueLabeller)this.labels_.clone();
-      retval.messages_ = (TreeMap)this.messages_.clone();
-      retval.mapToKeys_ = (HashMap)this.mapToKeys_.clone();
+      retval.labels_ = this.labels_.clone();
+      retval.messages_ = new TreeMap<String, String>(this.messages_);
+      retval.mapToKeys_ = new HashMap<String, String>(this.mapToKeys_);
       retval.pattern_ = Pattern.compile("[0-9][0-9]*");
       retval.matcher_ = retval.pattern_.matcher("");
       return (retval);  
@@ -139,7 +140,7 @@ public class PertAnnotations implements Cloneable {
   */
   
   public String getMessage(String id) {
-    return ((String)messages_.get(id));
+    return (messages_.get(id));
   }
   
   /***************************************************************************
@@ -148,9 +149,8 @@ public class PertAnnotations implements Cloneable {
   */
   
   public String getTag(String id) {
-    return ((String)mapToKeys_.get(id));
+    return (mapToKeys_.get(id));
   } 
-  
   
   /***************************************************************************
   **
@@ -168,10 +168,10 @@ public class PertAnnotations implements Cloneable {
   
   public String messageExists(String message) {
     String normMessage = DataUtil.normKey(message);
-    Iterator mit = messages_.keySet().iterator();
+    Iterator<String> mit = messages_.keySet().iterator();
     while (mit.hasNext()) {
-      String key = (String)mit.next();
-      String chkMsg = (String)messages_.get(key); 
+      String key = mit.next();
+      String chkMsg = messages_.get(key); 
       if (normMessage.equals(DataUtil.normKey(chkMsg))) {
         return (key);
       }
@@ -185,10 +185,10 @@ public class PertAnnotations implements Cloneable {
   */
   
   public String addMessage(String message) {
-    Iterator mit = messages_.keySet().iterator();
+    Iterator<String> mit = messages_.keySet().iterator();
     while (mit.hasNext()) {
-      String key = (String)mit.next();
-      String chkMsg = (String)messages_.get(key);
+      String key = mit.next();
+      String chkMsg = messages_.get(key);
       if (chkMsg.equals(message)) {
         return (key);
       }
@@ -200,18 +200,18 @@ public class PertAnnotations implements Cloneable {
     // Provide unique numbers by default:
     //   
  
-    TreeSet numsOnly = new TreeSet();
-    Iterator vit = mapToKeys_.values().iterator();
+    TreeSet<Integer> numsOnly = new TreeSet<Integer>();
+    Iterator<String> vit = mapToKeys_.values().iterator();
     while (vit.hasNext()) {
-      String val = (String)vit.next();
+      String val = vit.next();
       matcher_.reset(val);
       if (matcher_.matches()) {
-        numsOnly.add(new Integer(val));
+        numsOnly.add(Integer.valueOf(val));
       }
     }
 
-    Integer lastNum = (numsOnly.isEmpty()) ? new Integer(0) : (Integer)numsOnly.last();
-    lastNum = new Integer(lastNum.intValue() + 1);    
+    Integer lastNum = (numsOnly.isEmpty()) ? Integer.valueOf(0) : numsOnly.last();
+    lastNum = Integer.valueOf(lastNum.intValue() + 1);    
     mapToKeys_.put(nextLabel, lastNum.toString());
     return (nextLabel);
   } 
@@ -270,12 +270,12 @@ public class PertAnnotations implements Cloneable {
   
   public String addLegacyMessage(String legKey, String message) {
    
-    Iterator kit = mapToKeys_.keySet().iterator();
+    Iterator<String> kit = mapToKeys_.keySet().iterator();
     while (kit.hasNext()) {
-      String id = (String)kit.next();
-      String existing = (String)mapToKeys_.get(id);
+      String id = kit.next();
+      String existing = mapToKeys_.get(id);
       if (existing.equals(legKey)) {
-        String exMsg = (String)messages_.get(id);
+        String exMsg = messages_.get(id);
         if (!exMsg.equals(message)) {
           return (null);
         } else {
@@ -295,8 +295,8 @@ public class PertAnnotations implements Cloneable {
   ** Get a sorted, comma separated list of footnote keys for the note IDs:
   */
   
-  public String getFootnoteListAsString(List noteIDs) {   
-    List flist = getFootnoteList(noteIDs); 
+  public String getFootnoteListAsString(List<String> noteIDs) {   
+    List<String> flist = getFootnoteList(noteIDs); 
     return (convertFootnoteListToString(flist));
   }
   
@@ -305,18 +305,18 @@ public class PertAnnotations implements Cloneable {
   ** Get a string of all key=messages
   */
   
-  public String getFootnoteListAsNVString(List noteIDs) {
+  public String getFootnoteListAsNVString(List<String> noteIDs) {
     if (noteIDs.isEmpty()) {
       return ("");
     }    
     StringBuffer buf = new StringBuffer();
     buf.append("[");
-    List flist = getFootnoteList(noteIDs); 
-    Map n2k = getFootTagToKeyMap();
-    Iterator flit = flist.iterator();
+    List<String> flist = getFootnoteList(noteIDs); 
+    Map<String, String> n2k = getFootTagToKeyMap();
+    Iterator<String> flit = flist.iterator();
     while (flit.hasNext()) {
-      String tag = (String)flit.next();
-      String key = (String)n2k.get(tag);
+      String tag = flit.next();
+      String key = n2k.get(tag);
       String message = getMessage(key);
       buf.append(tag);
       buf.append("=");
@@ -334,14 +334,14 @@ public class PertAnnotations implements Cloneable {
   ** Get a sorted, list of footnote keys for the note IDs:
   */
   
-  public List getFootnoteList(List noteIDs) {
-    TreeSet sortedKeys = new TreeSet(new ReadOnlyTable.NumStrComparator());
+  public List<String> getFootnoteList(List<String> noteIDs) {
+    TreeSet<String> sortedKeys = new TreeSet<String>(new ReadOnlyTable.NumStrComparator());
     int nidNum = noteIDs.size();
     for (int i = 0; i < nidNum; i++) {
-      String noteID = (String)noteIDs.get(i);
-      sortedKeys.add((String)mapToKeys_.get(noteID));
+      String noteID = noteIDs.get(i);
+      sortedKeys.add(mapToKeys_.get(noteID));
     }
-    return (new ArrayList(sortedKeys));
+    return (new ArrayList<String>(sortedKeys));
   }
 
   /***************************************************************************
@@ -358,13 +358,13 @@ public class PertAnnotations implements Cloneable {
   ** Get all the annotations, with a map from number to message:
   */
   
-  public SortedMap getFullMap() {
-    TreeMap retval = new TreeMap(new ReadOnlyTable.NumStrComparator());
-    Iterator mtnkit = mapToKeys_.keySet().iterator();
+  public SortedMap<String, String> getFullMap() {
+    TreeMap<String, String> retval = new TreeMap<String, String>(new ReadOnlyTable.NumStrComparator());
+    Iterator<String> mtnkit = mapToKeys_.keySet().iterator();
     while (mtnkit.hasNext()) {
-      String id = (String)mtnkit.next();
-      String key = (String)mapToKeys_.get(id);
-      String message = (String)messages_.get(id);
+      String id = mtnkit.next();
+      String key = mapToKeys_.get(id);
+      String message = messages_.get(id);
       retval.put(key, message);
     }
     return (retval);
@@ -375,12 +375,12 @@ public class PertAnnotations implements Cloneable {
   ** Get a map from footnoteID to key:
   */
   
-  public SortedMap getFootTagToKeyMap() {
-    TreeMap retval = new TreeMap();
-    Iterator mtnkit = mapToKeys_.keySet().iterator();
+  public SortedMap<String, String> getFootTagToKeyMap() {
+    TreeMap<String, String> retval = new TreeMap<String, String>();
+    Iterator<String> mtnkit = mapToKeys_.keySet().iterator();
     while (mtnkit.hasNext()) {
-      String id = (String)mtnkit.next();
-      String tag = (String)mapToKeys_.get(id);
+      String id = mtnkit.next();
+      String tag = mapToKeys_.get(id);
       retval.put(tag, id);
     }
     return (retval);
@@ -416,11 +416,11 @@ public class PertAnnotations implements Cloneable {
     ind.indent();
     out.println("<pertAnnotations>"); 
     ind.up();
-    Iterator mkit = messages_.keySet().iterator();
+    Iterator<String> mkit = messages_.keySet().iterator();
     while (mkit.hasNext()) {
-      String id = (String)mkit.next();
-      String message = (String)messages_.get(id);
-      String key = (String)mapToKeys_.get(id);
+      String id = mkit.next();
+      String message = messages_.get(id);
+      String key = mapToKeys_.get(id);
       ind.indent();
       out.print("<pAnnot id=\"");
       out.print(id);
@@ -455,11 +455,11 @@ public class PertAnnotations implements Cloneable {
   public Vector getAnnotationOptions() {
     Vector retval = new Vector();
     StringBuffer buf = new StringBuffer();
-    SortedMap fullMap = getFootTagToKeyMap();
-    Iterator oit = fullMap.keySet().iterator();
+    SortedMap<String, String> fullMap = getFootTagToKeyMap();
+    Iterator<String> oit = fullMap.keySet().iterator();
     while (oit.hasNext()) {
-      String tag = (String)oit.next();
-      String key = (String)fullMap.get(tag);
+      String tag = oit.next();
+      String key = fullMap.get(tag);
       String message = getMessage(key);
       buf.setLength(0);
       buf.append(tag);
@@ -477,9 +477,9 @@ public class PertAnnotations implements Cloneable {
   
   public Vector getAvailableTagChoices() {
     UniqueLabeller ul = new UniqueLabeller();
-    Iterator kit = mapToKeys_.values().iterator();
+    Iterator<String> kit = mapToKeys_.values().iterator();
     while (kit.hasNext()) {
-      String tag = (String)kit.next();
+      String tag = kit.next();
       ul.addExistingLabel(tag);
     }
     Vector retval = new Vector();
@@ -495,16 +495,16 @@ public class PertAnnotations implements Cloneable {
   ** Get a temporary tag
   */
   
-  public String getNextTempTag(Set otherTempTags) {
+  public String getNextTempTag(Set<String> otherTempTags) {
     UniqueLabeller ul = new UniqueLabeller();
-    Iterator kit = mapToKeys_.values().iterator();
+    Iterator<String> kit = mapToKeys_.values().iterator();
     while (kit.hasNext()) {
-      String tag = (String)kit.next();
+      String tag = kit.next();
       ul.addExistingLabel(tag);
     }
-    Iterator oit = otherTempTags.iterator();
+    Iterator<String> oit = otherTempTags.iterator();
     while (oit.hasNext()) {
-      String tag = (String)oit.next();
+      String tag = oit.next();
       ul.addExistingLabel(tag);
     }    
     return (ul.getNextLabel());
@@ -521,11 +521,11 @@ public class PertAnnotations implements Cloneable {
   ** Get a sorted, comma separated list of footnote keys for the note IDs:
   */
   
-  public static String convertFootnoteListToString(List flist) {
+  public static String convertFootnoteListToString(List<String> flist) {
     StringBuffer buf = new StringBuffer();
-    Iterator snit = flist.iterator();
+    Iterator<String> snit = flist.iterator();
     while (snit.hasNext()) {
-      String noteNum = (String)snit.next();
+      String noteNum = snit.next();
       buf.append(noteNum);
       if (snit.hasNext()) {
         buf.append(",");
@@ -563,7 +563,8 @@ public class PertAnnotations implements Cloneable {
       }
       return (retval);     
     }  
-        
+     
+    @SuppressWarnings("unused")
     private PertAnnotations buildFromXML(String elemName, Attributes attrs) throws IOException {
       PertAnnotations pa = new PertAnnotations();
       return (pa);

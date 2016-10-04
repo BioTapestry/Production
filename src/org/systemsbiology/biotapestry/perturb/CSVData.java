@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 
 import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
 
@@ -50,13 +49,13 @@ public class CSVData {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private ArrayList perturbs_;
+  private ArrayList<ExperimentTokens> perturbs_;
   private String time_;
   private String date_;
   private String batchID_;
   private String condition_;
-  private ArrayList investigators_;
-  private HashMap measurements_;
+  private ArrayList<String> investigators_;
+  private HashMap<String, List<DataPoint>> measurements_;
   private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -71,12 +70,12 @@ public class CSVData {
   **    RepeatID PerturbationAgent MeasuredGene  Time  DeltaDeltaCt  ExpControl Significancy Comment
   */
 
-  public CSVData(BTState appState, List expToks, String date, List investigators, String time, String condition, String key) {
+  public CSVData(BTState appState, List<ExperimentTokens> expToks, String date, List<String> investigators, String time, String condition, String key) {
     appState_ = appState;
-    perturbs_ = new ArrayList();
+    perturbs_ = new ArrayList<ExperimentTokens>();
     int numEt = expToks.size();
     for (int i = 0; i < numEt; i++) {
-      ExperimentTokens etok = (ExperimentTokens)expToks.get(i);      
+      ExperimentTokens etok = expToks.get(i);      
       perturbs_.add(etok);
     }  
     time_ = time;
@@ -88,9 +87,9 @@ public class CSVData {
     } else {
       condition_ = condition;  
     }
-    investigators_ = new ArrayList(investigators);
+    investigators_ = new ArrayList<String>(investigators);
     batchID_ = key;
-    measurements_ = new HashMap();    
+    measurements_ = new HashMap<String, List<DataPoint>>();    
   }  
   
   ////////////////////////////////////////////////////////////////////////////
@@ -132,9 +131,9 @@ public class CSVData {
   
   public void addDataPoint(DataPoint dp) {
     String target = DataUtil.normKey(dp.target);      
-    ArrayList values = (ArrayList)measurements_.get(target);
+    List<DataPoint> values = measurements_.get(target);
     if (values == null) {
-      values = new ArrayList();
+      values = new ArrayList<DataPoint>();
       measurements_.put(target, values);
     }
     values.add(dp);
@@ -146,7 +145,7 @@ public class CSVData {
   ** Get the set of targets
   */
   
-  public Set getTargets() {
+  public Set<String> getTargets() {
     return (measurements_.keySet());
   }
   
@@ -155,7 +154,7 @@ public class CSVData {
   ** Get the list of sources
   */
   
-  public List getSources() {
+  public List<ExperimentTokens> getSources() {
     return (perturbs_);
   }
   
@@ -182,7 +181,7 @@ public class CSVData {
   ** Get the list of investigators
   */
   
-  public List getInvestigators() {
+  public List<String> getInvestigators() {
     return (investigators_);
   }
   
@@ -209,8 +208,8 @@ public class CSVData {
   ** Get measurements (List of DataPoint) for the target
   */
   
-  public List getMeasurements(String target) {
-    return ((List)measurements_.get(target));
+  public List<DataPoint> getMeasurements(String target) {
+    return (measurements_.get(target));
   }
   
   /***************************************************************************
@@ -219,8 +218,8 @@ public class CSVData {
   */
   
   public String getOriginalTargetName(String targetKey) {
-    List meas = (List)measurements_.get(targetKey);
-    DataPoint dp = (DataPoint)meas.get(0);
+    List<DataPoint> meas = measurements_.get(targetKey);
+    DataPoint dp = meas.get(0);
     return (dp.target);
   }  
   
@@ -230,7 +229,7 @@ public class CSVData {
   ** Build an access key
   */
   
-  public static String buildRowKey(List etoks, String date, List invests, 
+  public static String buildRowKey(List<ExperimentTokens> etoks, String date, List<String> invests, 
                                    String time, String condition, String fullBatchID) {
                
     StringBuffer buf = new StringBuffer();
@@ -243,11 +242,11 @@ public class CSVData {
     buf.append(fullBatchID);
     buf.append("*$*");
     
-    ArrayList sortInv = new ArrayList(invests);
+    ArrayList<String> sortInv = new ArrayList<String>(invests);
     Collections.sort(sortInv);
-    Iterator lit = invests.iterator();
+    Iterator<String> lit = invests.iterator();
     while (lit.hasNext()) {
-      String invest = (String)lit.next();
+      String invest = lit.next();
       buf.append(invest);
       if (lit.hasNext()) {
         buf.append("*$*");
@@ -255,19 +254,19 @@ public class CSVData {
     }
     
     StringBuffer buf2 = new StringBuffer();
-    ArrayList otoks = new ArrayList();
-    Iterator eit = etoks.iterator();
+    ArrayList<String> otoks = new ArrayList<String>();
+    Iterator<ExperimentTokens> eit = etoks.iterator();
     while (eit.hasNext()) {
-      ExperimentTokens tok = (ExperimentTokens)eit.next();
+      ExperimentTokens tok = eit.next();
       buf2.setLength(0);
       buf2.append(tok.base);
       buf2.append(tok.expType);
       otoks.add(buf2.toString());
     }
     Collections.sort(otoks);
-    Iterator oit = otoks.iterator();
+    Iterator<String> oit = otoks.iterator();
     while (oit.hasNext()) {
-      String tok = (String)oit.next();
+      String tok = oit.next();
       buf.append(tok);
       if (oit.hasNext()) {
         buf.append("*$*");
@@ -281,7 +280,7 @@ public class CSVData {
   ** Build a batch key
   */
   
-  public static String buildBatchKey(String date, List list, String repeatNum, String time, String condition, 
+  public static String buildBatchKey(String date, List<String> list, String repeatNum, String time, String condition, 
                                      boolean useDate, boolean useTime, boolean useBatch, boolean useInvest, 
                                      boolean useCondition) {
     StringBuffer buf = new StringBuffer();
@@ -295,11 +294,11 @@ public class CSVData {
         buf.append("::");
       }
       isFirst = false;
-      ArrayList sortInv = new ArrayList(list);
+      ArrayList<String> sortInv = new ArrayList<String>(list);
       Collections.sort(sortInv);
-      Iterator lit = sortInv.iterator();
+      Iterator<String> lit = sortInv.iterator();
       while (lit.hasNext()) {
-        String invest = (String)lit.next();
+        String invest = lit.next();
         buf.append(invest);
         if (lit.hasNext()) {
           buf.append("::");
@@ -346,9 +345,9 @@ public class CSVData {
     public String comment;
     public String control;
     
-    public List annots;
+    public List<String> annots;
     public String measurement;
-    public HashMap userFields;
+    public HashMap<String, String> userFields;
       
     public DataPoint(String target, String value, String control, String isValid, String comment) {
       this.target = target;
@@ -356,7 +355,7 @@ public class CSVData {
       this.isValid = isValid;
       this.comment = comment;
       this.control = control;
-      this.userFields = new HashMap();
+      this.userFields = new HashMap<String, String>();
     }     
   }
   

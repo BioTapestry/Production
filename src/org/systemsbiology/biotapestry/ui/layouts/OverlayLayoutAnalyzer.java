@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -253,8 +253,40 @@ public class OverlayLayoutAnalyzer {
     return (new OverlayReport(OverlayReport.NO_PROBLEMS));
   }
   
+  /***************************************************************************
+  **
+  ** Issue 211 requires that we check if base geometry needs to be updated prior
+  ** to layout.
+  */
   
-    ////////////////////////////////////////////////////////////////////////////
+  public Set<String> mustExpandGeometry(DataAccessContext icx, String overlayKey) {
+    
+    NetOverlayProperties noProps = icx.getLayout().getNetOverlayProperties(overlayKey);
+    
+    //
+    // Every module needs to be of the one-rectangle type:
+    //
+    
+    HashSet<String> retval = new HashSet<String>();
+    
+    Iterator<String> nmpkit = noProps.getNetModulePropertiesKeys();
+    while (nmpkit.hasNext()) {
+      String propID = nmpkit.next();
+      NetModuleProperties nmp = noProps.getNetModuleProperties(propID);
+      int nmpType = nmp.getType();
+      // This has previously been checked for, so it better be right:
+      if (nmpType != NetModuleProperties.CONTIG_RECT) {
+        throw new IllegalStateException();
+      }
+      if (icx.getLayout().coreDefDoesNotMatchVisible(overlayKey, propID, icx)) {
+        retval.add(propID);
+      }
+    }
+    return (retval);
+  } 
+          
+  
+  ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC INNER CLASSES
   //

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -131,8 +131,27 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     this.activity_ = other.activity_;
     this.description_ = other.description_;
     this.urls_ = new ArrayList<String>(other.urls_);
-  }  
+  } 
   
+  /***************************************************************************
+  **
+  ** Copy Constructor for merged instances
+  */
+
+  public LinkageInstance(LinkageInstance other, String newBaseID, int newInstance) {
+    super(other, newInstance);
+    this.myItemID_ = newBaseID;
+    this.src_ = other.src_;
+    this.targ_ = other.targ_;
+    this.pad_ = other.pad_;
+    this.lpad_ = other.lpad_;
+    this.activityLevel_ = other.activityLevel_;
+    this.activity_ = other.activity_;
+    this.description_ = other.description_;
+    this.urls_ = new ArrayList<String>(other.urls_);
+  } 
+  
+
   /***************************************************************************
   **
   ** For UI-based creation

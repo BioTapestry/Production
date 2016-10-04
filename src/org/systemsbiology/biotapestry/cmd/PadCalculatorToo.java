@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,36 +21,34 @@
 package org.systemsbiology.biotapestry.cmd;
 
 import java.awt.Point;
-import java.util.TreeSet;
+import java.awt.geom.Point2D;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.awt.geom.Point2D;
+import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.DBNode;
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
-import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.genome.DBLinkage;
-import org.systemsbiology.biotapestry.genome.Linkage;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.DBGenome;
+import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.Gene;
+import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
-import org.systemsbiology.biotapestry.ui.Layout;
+import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
+import org.systemsbiology.biotapestry.genome.Linkage;
+import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
+import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkRouter;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.PadDotRanking;
 import org.systemsbiology.biotapestry.util.LinkPlacementGrid;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
 /****************************************************************************
@@ -92,21 +90,118 @@ public class PadCalculatorToo {
   }  
 
   /***************************************************************************
+  ** 
+  ** We need to fix slash node pads before 7.0.1
+  */
+
+  public List<String> legacyIOFixupForSlashNodes(GenomeSource gSrc, LayoutSource lSrc) {
+ 
+    DBGenome genome = (DBGenome)gSrc.getGenome();
+    ArrayList<String> fixList = new ArrayList<String>();
+    legacyIOFixupForSlashNodes(genome.getID(), gSrc, lSrc);
+    Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
+    while (git.hasNext()) {
+      GenomeInstance gi = git.next();
+      if (gi.getVfgParent() == null) {
+        fixList.addAll(legacyIOFixupForSlashNodes(gi.getID(), gSrc, lSrc));
+      }
+    }
+    return (fixList);  
+  }
+
+  /***************************************************************************
+  **
+  ** Repair starting in 7.0.1 for slash nodes, where we are going to a non-shared-namespace
+  */
+
+  private Set<String> legacyIOFixupForSlashNodes(String gID, GenomeSource gSrc, LayoutSource lSrc) {
+ 
+    Genome genome = gSrc.getGenome(gID);
+    HashSet<String> fixList = new HashSet<String>();
+   
+    Layout lo = lSrc.getLayoutForGenomeKey(gID);
+    
+    HashSet<String> slashIDs = new HashSet<String>();
+    Iterator<Node> nit = genome.getAllNodeIterator();
+    while (nit.hasNext()) {
+      Node nextNode = nit.next();
+      if (nextNode.getNodeType() == Node.SLASH) {
+        slashIDs.add(nextNode.getID());
+      }
+    }
+ 
+    HashSet<String> flipNodes = new HashSet<String>();
+    HashSet<String> launchToZeroLinks = new HashSet<String>();
+    HashSet<String> landToZeroLinks = new HashSet<String>();
+    
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage nextLinkage = lit.next();
+      String srcNode = nextLinkage.getSource();
+      String trgNode = nextLinkage.getTarget();
+      
+      if (slashIDs.contains(srcNode)) {
+        int launch = nextLinkage.getLaunchPad();
+        if (launch == 1) {
+          launchToZeroLinks.add(nextLinkage.getID());
+          flipNodes.add(srcNode);
+          fixList.add(srcNode);
+        }
+      }
+      if (slashIDs.contains(trgNode)) {
+        int landing = nextLinkage.getLandingPad();
+        if (landing == 0) {
+          flipNodes.add(trgNode);          
+        } else if (landing == 1) {
+          landToZeroLinks.add(nextLinkage.getID());        
+        }
+        fixList.add(trgNode);
+      }
+    }
+    
+    Iterator<String> fit = flipNodes.iterator();
+    while (fit.hasNext()) {
+      String flipNode = fit.next();
+      NodeProperties np = lo.getNodeProperties(flipNode);
+      np.setOrientation(NodeProperties.reverseOrient(np.getOrientation()));
+    }
+    
+    Iterator<String> lazit = launchToZeroLinks.iterator();
+    while (lazit.hasNext()) {
+      String linkID = lazit.next();
+      Linkage link = genome.getLinkage(linkID);
+      link.setLaunchPad(0);
+    }
+    
+    Iterator<String> lnzit = landToZeroLinks.iterator();
+    while (lnzit.hasNext()) {
+      String linkID = lnzit.next();
+      Linkage link = genome.getLinkage(linkID);
+      link.setLandingPad(0);
+    }
+ 
+    return (fixList);
+  } 
+  
+ 
+  /***************************************************************************
   **
   ** Look for pad assignment errors for IO fixup...
   **
   */
 
-  public List<String> checkForGeneSrcPadErrors(GenomeSource gSrc) {      
+  public List<String> checkForGeneSrcPadErrors(GenomeSource gSrc, LayoutSource lSrc) {      
     DBGenome genome = (DBGenome)gSrc.getGenome();
     ArrayList<String> fixList = new ArrayList<String>();
    
-    checkForGeneSrcErrorsInGenome(genome, fixList);
+    Layout lo = lSrc.getLayoutForGenomeKey(genome.getID());
+    checkForGeneSrcErrorsInGenome(genome, lo, fixList);
     Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
     while (git.hasNext()) {
       GenomeInstance gi = git.next();
       if (gi.getVfgParent() == null) {
-        checkForGeneSrcErrorsInGenome(gi, fixList);
+        lo = lSrc.getLayoutForGenomeKey(gi.getID());
+        checkForGeneSrcErrorsInGenome(gi, lo, fixList);
       }
     }
    
@@ -118,17 +213,18 @@ public class PadCalculatorToo {
   ** Look for non-zero gene source pad assignment errors for IO fixup.
   */
 
-  private void checkForGeneSrcErrorsInGenome(Genome genome, List<String> fixList) {
+  private void checkForGeneSrcErrorsInGenome(Genome genome, Layout lo, List<String> fixList) {
     //
     // Super simple:  If we start at a gene, we MUST have a zero source pad.  Period.
     //
+    Map<Integer, NodeProperties.PadLimits> limMap = NodeProperties.getFixedPadLimits();
     Iterator<Linkage> lit = genome.getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String srcNodeID = link.getSource();
       Node srcNode = genome.getNode(srcNodeID);
-      int nodeType = srcNode.getNodeType();
-      if ((nodeType == Node.GENE) || (nodeType == Node.INTERCELL)) {
+      NodeProperties.PadLimits lim = limMap.get(Integer.valueOf(srcNode.getNodeType()));
+      if (!lim.sharedNamespace) {
         if (link.getLaunchPad() != 0) {
           link.setLaunchPad(0);
           fixList.add(srcNode.getName());
@@ -201,7 +297,7 @@ public class PadCalculatorToo {
     while (snit.hasNext()) {
       String src = snit.next();
       Node node = genome.getNode(src);     
-      NodeProperties.PadLimits lim = limMap.get(new Integer(node.getNodeType()));    
+      NodeProperties.PadLimits lim = limMap.get(Integer.valueOf(node.getNodeType()));    
       Set<Integer> usedPads = sourcePadsPerNode.get(src);
       Integer srcPad;
       if (usedPads.size() != 1) {
@@ -343,8 +439,9 @@ public class PadCalculatorToo {
     
     int newTrgPad = Integer.MAX_VALUE;
     
-    INodeRenderer trgRenderer = lo.getNodeProperties(node.getID()).getRenderer();
-    List<Integer> nearby = trgRenderer.getNearbyPads(node, sourcePad, lo);
+    NodeProperties np = lo.getNodeProperties(node.getID());
+    INodeRenderer trgRenderer = np.getRenderer();
+    List<Integer> nearby = trgRenderer.getNearbyPads(node, sourcePad, np);
     if (nearby != null) {
       Iterator<Integer> nit = nearby.iterator();
       while (nit.hasNext()) {
@@ -1040,8 +1137,9 @@ public class PadCalculatorToo {
     HashSet<Integer> grabbedPads = new HashSet<Integer>();
     Node node = genome.getNode(targetID);
     
-    INodeRenderer trgRenderer = NodeProperties.buildRenderer(node.getNodeType());
-  
+   
+    NodeProperties np = rcx.getLayout().getNodeProperties(targetID);
+    INodeRenderer trgRenderer = np.getRenderer();
     boolean dropSource = trgRenderer.sharedPadNamespaces();
       
     Iterator<Linkage> lit = genome.getLinkageIterator();
@@ -1069,7 +1167,8 @@ public class PadCalculatorToo {
     // pad must actually be present on the node (no phantom pad extensions!).  If no
     // dice, start looking for emergency pads!
     //
-        
+      
+   
     Iterator<String> ilit = inboundLinks.iterator();
     while (ilit.hasNext()) {
       String inLink = ilit.next();
@@ -1078,7 +1177,8 @@ public class PadCalculatorToo {
       }
       Linkage link = genome.getLinkage(inLink);
       int lpad = link.getLandingPad();
-      List<Integer> nearby = trgRenderer.getNearbyPads(node, lpad, rcx.getLayout());
+
+      List<Integer> nearby = trgRenderer.getNearbyPads(node, lpad, np);
       Integer lpadObj = new Integer(lpad);
       boolean weAreDone = false;
       

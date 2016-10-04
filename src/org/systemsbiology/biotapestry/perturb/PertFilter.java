@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -122,7 +122,8 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public PertFilter clone() {
     try {
       PertFilter newVal = (PertFilter)super.clone();
       return (newVal);
@@ -190,13 +191,13 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get the result
   */
   
-  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, PertFilterTarget> source, SourceSrc ss) {
+  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, ? extends PertFilterTarget> source, SourceSrc ss) {
     
-    TreeSet retval = new TreeSet();
-    Iterator iit = input.iterator();
+    TreeSet<String> retval = new TreeSet<String>();
+    Iterator<String> iit = input.iterator();
     while (iit.hasNext()) {
-      String key = (String)iit.next();
-      PertFilterTarget pft = (PertFilterTarget)source.get(key);
+      String key = iit.next();
+      PertFilterTarget pft = source.get(key);
       if (pft.matchesFilter(this, ss)) {
         retval.add(key);
       }

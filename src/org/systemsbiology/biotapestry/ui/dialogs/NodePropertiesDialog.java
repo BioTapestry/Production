@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.SortedSet;
+import java.util.Vector;
 
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
@@ -59,6 +60,7 @@ import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
+import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.ColorDeletionListener;
 import org.systemsbiology.biotapestry.util.ColorSelectionWidget;
 import org.systemsbiology.biotapestry.util.LineBreaker;
@@ -282,7 +284,8 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     // Fix for BT-12-15-11:5
     SortedSet<Integer> padOptions = NodeAndLinkPropertiesSupport.generatePadChoices(node);
     if (padOptions != null) {
-      JPanel xtraPads = nps_.extraPadsUI(false, padOptions, false, null);     
+      Vector<ChoiceContent> forExtra = nps_.padsToCC(padOptions, false);
+      JPanel xtraPads = nps_.extraPadsUI(false, forExtra, false, null);     
       if (xtraPads != null) {
         UiUtil.gbcSet(gbc, 0, rownum++, 11, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
         retval.add(xtraPads, gbc);
@@ -465,7 +468,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
         boolean amBig = (pads > DBNode.getDefaultPadCount(nodeType));
         int growthDir = NodeProperties.usesGrowth(nodeType) ? props_.getExtraGrowthDirection() 
                                                             : NodeProperties.UNDEFINED_GROWTH;
-        nps_.setExtraPads(pads, amBig, growthDir);
+        nps_.setExtraPads(new ChoiceContent(Integer.toString(pads), pads), amBig, growthDir);
       }
     }  
     if (topTwoLevels) {

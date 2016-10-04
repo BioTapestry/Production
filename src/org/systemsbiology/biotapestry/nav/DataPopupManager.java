@@ -282,7 +282,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       FrameInfo fi;
       JFrame frame = null;
       if (!appState_.isHeadless()) {
-        frame = createDataWindow(fkey, title, pane, true);
+        frame = createDataWindow(fkey, title, pane, false);
         fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, frame, null, builder);
       } else {
         fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, sbuf, null, builder);

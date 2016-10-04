@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.timeCourse;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
@@ -72,11 +73,11 @@ public class TimeCourseFormatFactory implements ParserClient {
   private String ctrlExpKey_;
   private boolean currExpIsCtrl_;
   
-  private HashSet currRootRegionSet_;  
-  private HashMap currRegionParentMap_;
+  private HashSet<String> currRootRegionSet_;  
+  private HashMap<String, String> currRegionParentMap_;
   private ArrayList<TimeCourseData.TCMapping> currTcMapList_;
   private String currGroupMapKey_;
-  private ArrayList currGroupMapList_;
+  private ArrayList<GroupUsage> currGroupMapList_;
   private boolean mapsAreIllegal_;
   private boolean serialNumberIsIllegal_;
   private long origSerialNumber_;
@@ -170,8 +171,20 @@ public class TimeCourseFormatFactory implements ParserClient {
       currLocRange_ = null;
     } else if (elemName.equals(ctrlExpKey_)) {
       currExpIsCtrl_ = false;
-    } else if (geneKey_.equals(elemName)) {     
-      List<GeneTemplateEntry> template = currGene_.toTemplate();
+    } else if (geneKey_.equals(elemName)) {
+      //
+      // Fix for Issue #169
+      //
+      List<GeneTemplateEntry> template;
+      if (currGeneIsTemplate_) {
+        template = new ArrayList<GeneTemplateEntry>();
+        Iterator<GeneTemplateEntry> gtei = currTarg_.getGeneTemplate();
+        while (gtei.hasNext()) {
+          template.add(gtei.next());
+        }
+      } else {
+        template = currGene_.toTemplate();
+      }
       if (template.isEmpty()) {
         throw new IOException(appState_.getRMan().getString("timeCourseImport.emptyEntry"));
       } else if (mustMatch_ == null) {
@@ -285,7 +298,7 @@ public class TimeCourseFormatFactory implements ParserClient {
         throw new IOException();
       }
       currGroupMapKey_ = TimeCourseData.extractGroupMapKey(elemName, attrs);
-      currGroupMapList_ = new ArrayList();
+      currGroupMapList_ = new ArrayList<GroupUsage>();
     } else if (elemName.equals(useGroupKey_)) {
       if (mapsAreIllegal_) {
         throw new IOException();
@@ -295,8 +308,8 @@ public class TimeCourseFormatFactory implements ParserClient {
       if (mapsAreIllegal_) {
         throw new IOException();
       }
-      currRootRegionSet_ = new HashSet();  
-      currRegionParentMap_ = new HashMap();
+      currRootRegionSet_ = new HashSet<String>();  
+      currRegionParentMap_ = new HashMap<String, String>();
     } else if (elemName.equals(rootRegionKey_)) {
       if (mapsAreIllegal_) {
         throw new IOException();

@@ -20,16 +20,19 @@
 package org.systemsbiology.biotapestry.ui;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItem;
 import org.systemsbiology.biotapestry.genome.Group;
+import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.ui.freerender.MultiSubID;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -456,6 +459,55 @@ public class Intersection {
     return (new Intersection(linkID, retSub, 0.0, true));
   }
   
+  /***************************************************************************
+  **
+  ** Converting set of nodeIDs to a list of Intersections
+  */
+
+  public static List<Intersection> nodeIDsToInters(Set<String> nodeIDs) {
+    ArrayList<Intersection> retval = new ArrayList<Intersection>();
+    Iterator<String> onit = nodeIDs.iterator();
+    while (onit.hasNext()) {
+       String nodeID = onit.next();
+       retval.add(new Intersection(nodeID, null, 0.0));
+    }
+    return (retval);      
+  }
+  
+  
+  /***************************************************************************
+  **
+  ** Converting set of linkIDs to a list of Intersections
+  */
+
+  public static List<Intersection> linkIDsToInters(Set<String> linkIDs, String genomeID, DataAccessContext rcx) {    
+    HashMap<String, Intersection> srcToInter = new HashMap<String, Intersection>();
+    Genome genome = rcx.getGenomeSource().getGenome(genomeID);
+    Layout lo = rcx.getLayout();
+    Iterator<String> olit = linkIDs.iterator();
+    while (olit.hasNext()) {
+      String linkID = olit.next();
+      HashSet<LinkSegmentID> segIDs = new HashSet<LinkSegmentID>();
+      int idType = (lo.getLinkProperties(linkID).isDirect()) ? LinkSegmentID.DIRECT_LINK : LinkSegmentID.END_DROP;
+      LinkSegmentID dropSegID = LinkSegmentID.buildIDForType(linkID, idType);
+      segIDs.add(dropSegID);
+      Linkage link = genome.getLinkage(linkID);
+      String srcID = link.getSource();
+      Intersection inter = srcToInter.get(srcID);
+      if (inter == null) {
+        inter = Intersection.intersectionForSegmentIDs(linkID, segIDs);
+      } else {
+        String oldLink = inter.getObjectID();
+        Intersection second = Intersection.intersectionForSegmentIDs(oldLink, segIDs);
+        inter = Intersection.mergeIntersect(inter, second);
+      }
+      srcToInter.put(srcID, inter);
+    }
+ 
+    ArrayList<Intersection> retval = new ArrayList<Intersection>(srcToInter.values()); 
+    return (retval);      
+  }
+
   /***************************************************************************
   **
   ** Used for pad characterization

@@ -107,7 +107,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
     super(appState.getTopFrame(), appState.getRMan().getString("licreateExisting.title"), true);
     appState_ = appState;
     ResourceManager rMan = appState.getRMan();    
-    setSize(500, 700);
+    setSize(700, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());

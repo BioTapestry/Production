@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
@@ -257,6 +258,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     private SpecialtyLayoutEngineParams params_;
     private int numSub_;
     private boolean isForSubset_;
+    private Set<String> needExpansion_;
     private DataAccessContext rcxT_;
  
     /***************************************************************************
@@ -318,7 +320,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
           break;
         case LAYOUT_PER_OVERLAY:
           String overlayKey = rcxT_.oso.getCurrentOverlay();
-          if (overlayKey != null) {              
+          if (overlayKey != null) {
             // Make sure Overlay/modules semantics are OK
             OverlayLayoutAnalyzer ola = new OverlayLayoutAnalyzer();
             OverlayLayoutAnalyzer.OverlayReport olaor = ola.canSupport(rcxT_, overlayKey);
@@ -340,6 +342,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
               return (new DialogAndInProcessCmd(suf, this));
             }
        
+            needExpansion_ = ola.mustExpandGeometry(rcxT_, overlayKey);     
             NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
             NetworkOverlay nov = owner.getNetworkOverlay(overlayKey);
             Map<String, Rectangle> boundsPerMod = rcxT_.getLayout().getLayoutBoundsForEachNetModule(owner, overlayKey, rcxT_);                           
@@ -525,7 +528,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
         sup.selectNone(appState_.getUndoManager(), rcxT_);
         sup.drawModel(false);
       }
-      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(subsetList_, interModPaths_);
+      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(subsetList_, interModPaths_, needExpansion_);
  
       UndoSupport support = new UndoSupport(appState_, undoStr_);
       SpecialtyLayoutEngine sle = 

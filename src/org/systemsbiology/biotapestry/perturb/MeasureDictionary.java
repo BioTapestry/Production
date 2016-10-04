@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -542,7 +542,8 @@ public class MeasureDictionary implements Cloneable {
       }
       return (retval);     
     }  
-        
+    
+    @SuppressWarnings("unused")
     private MeasureDictionary buildFromXML(String elemName, Attributes attrs) throws IOException {
       MeasureDictionary mDict = new MeasureDictionary();
       return (mDict);

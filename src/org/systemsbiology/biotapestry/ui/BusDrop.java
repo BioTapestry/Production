@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -70,7 +70,17 @@ public class BusDrop extends LinkBusDrop {
   public BusDrop(Layout layout, Genome genome, String startID, Attributes attrs) throws IOException {   
     super(layout, genome, startID, attrs); 
   }
+  
+ /***************************************************************************
+  **
+  ** Constructor
+  */
 
+  public BusDrop(BusDrop other, String replaceID) {   
+    super(other);
+    this.targetRef_ = replaceID;
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC METHODS

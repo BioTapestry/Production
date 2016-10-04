@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -81,56 +81,56 @@ public class DependencyAnalyzer {
  
   public Dependencies getAnnotReferenceSet(String annotID) {
  
-    HashSet pSUses = new HashSet();  
+    HashSet<String> pSUses = new HashSet<String>();  
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
-      List aids = chk.getAnnotationIDs();
+      List<String> aids = chk.getAnnotationIDs();
       if (aids.contains(annotID)) {
         pSUses.add(psdKey);
       }
     }
     
-    HashSet pSIUses = new HashSet();
+    HashSet<String> pSIUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator ppit = pss.getSources();
+      Iterator<String> ppit = pss.getSources();
       while (ppit.hasNext()) {
-        String srcID = (String)ppit.next();
+        String srcID = ppit.next();
         if (pSUses.contains(srcID)) {
           pSIUses.add(psi.getID());
         }
       }
     }
 
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       String id = pdp.getID();
       if (pSIUses.contains(pdp.getExperimentKey())) {
         dpUses.add(id);
       } else {
-        List dpn = pd_.getDataPointNotes(id);
+        List<String> dpn = pd_.getDataPointNotes(id);
         if ((dpn != null) && dpn.contains(annotID)) {
           dpUses.add(id);
         }
       }
     }
     
-    HashSet targUses = new HashSet();
+    HashSet<String> targUses = new HashSet<String>();
     
-    Iterator tkit = pd_.getTargetKeys();
+    Iterator<String> tkit = pd_.getTargetKeys();
     while (tkit.hasNext()) {
-      String targKey = (String)tkit.next();
-      List tn = pd_.getFootnotesForTarget(targKey);
+      String targKey = tkit.next();
+      List<String> tn = pd_.getFootnotesForTarget(targKey);
       if ((tn != null) && tn.contains(annotID)) {
         targUses.add(targKey);
       }
@@ -144,17 +144,17 @@ public class DependencyAnalyzer {
   ** Get the annotation merge set
   */
  
-  public Dependencies getAnnotMergeSet(Set joinKeys, String commonKey) {
+  public Dependencies getAnnotMergeSet(Set<String> joinKeys, String commonKey) {
     
-    HashSet pSUses = new HashSet();     
-    Iterator sdit = pd_.getSourceDefKeys();
+    HashSet<String> pSUses = new HashSet<String>();     
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
-      List aids = chk.getAnnotationIDs();
+      List<String> aids = chk.getAnnotationIDs();
       int numa = aids.size();
       for (int i = 0; i < numa; i++) {
-        String annotKey = (String)aids.get(i);
+        String annotKey = aids.get(i);
         if (joinKeys.contains(annotKey)) {
           pSUses.add(psdKey);
           break;
@@ -162,14 +162,14 @@ public class DependencyAnalyzer {
       }
     }
  
-    HashSet dpUses = new HashSet();  
-    Iterator dpit = pd_.getDataPointNoteKeys();
+    HashSet<String> dpUses = new HashSet<String>();  
+    Iterator<String> dpit = pd_.getDataPointNoteKeys();
     while (dpit.hasNext()) {
-      String id = (String)dpit.next();
-      List aids = pd_.getDataPointNotes(id);
+      String id = dpit.next();
+      List<String> aids = pd_.getDataPointNotes(id);
       int numa = aids.size();
       for (int i = 0; i < numa; i++) {
-        String annotKey = (String)aids.get(i);
+        String annotKey = aids.get(i);
         if (joinKeys.contains(annotKey)) {
           dpUses.add(id);
           break;
@@ -177,15 +177,15 @@ public class DependencyAnalyzer {
       }
     }
     
-    HashSet targUses = new HashSet();   
-    Iterator tkit = pd_.getTargetKeys();
+    HashSet<String> targUses = new HashSet<String>();   
+    Iterator<String> tkit = pd_.getTargetKeys();
     while (tkit.hasNext()) {
-      String targKey = (String)tkit.next();
-      List aids = pd_.getFootnotesForTarget(targKey);
+      String targKey = tkit.next();
+      List<String> aids = pd_.getFootnotesForTarget(targKey);
       if (aids != null) {
         int numa = aids.size();
         for (int i = 0; i < numa; i++) {
-          String annotKey = (String)aids.get(i);
+          String annotKey = aids.get(i);
           if (joinKeys.contains(annotKey)) {
             aids.add(targKey);
             break;
@@ -194,7 +194,7 @@ public class DependencyAnalyzer {
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_ANNOT, commonKey, new HashSet(joinKeys), dpUses, null, pSUses, null, targUses, null, null));  
+    return (new Dependencies(Dependencies.MERGE_ANNOT, commonKey, new HashSet<String>(joinKeys), dpUses, null, pSUses, null, targUses, null, null));  
   }
   
 
@@ -203,41 +203,41 @@ public class DependencyAnalyzer {
   ** Get the count of dependencies referencing all annotations
   */
  
-  public Map getAllAnnotReferenceCounts() {
+  public Map<String, Integer> getAllAnnotReferenceCounts() {
    
-    HashMap retval = new HashMap(); 
+    HashMap<String, Integer> retval = new HashMap<String, Integer>(); 
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
-      List aids = chk.getAnnotationIDs();
+      List<String> aids = chk.getAnnotationIDs();
       int numAids = aids.size();
       for (int i = 0; i < numAids; i++) {
-        String aid = (String)aids.get(i);
+        String aid = aids.get(i);
         DataUtil.bumpCountMap(retval, aid);
       }
     }   
     
-    Iterator dpknit = pd_.getDataPointNoteKeys();   
+    Iterator<String> dpknit = pd_.getDataPointNoteKeys();   
     while (dpknit.hasNext()) {
-      String dpnkey = (String)dpknit.next();
-      List dpn = pd_.getDataPointNotes(dpnkey);
+      String dpnkey = dpknit.next();
+      List<String> dpn = pd_.getDataPointNotes(dpnkey);
       int numDpn = dpn.size();
       for (int i = 0; i < numDpn; i++) {
-        String aid = (String)dpn.get(i);
+        String aid = dpn.get(i);
         DataUtil.bumpCountMap(retval, aid);         
       }
     }
     
-    Iterator tkit = pd_.getTargetKeys();
+    Iterator<String> tkit = pd_.getTargetKeys();
     while (tkit.hasNext()) {
-      String targKey = (String)tkit.next();
-      List tn = pd_.getFootnotesForTarget(targKey);
+      String targKey = tkit.next();
+      List<String> tn = pd_.getFootnotesForTarget(targKey);
       if (tn != null) {
         int numTn = tn.size();
         for (int i = 0; i < numTn; i++) {
-          String aid = (String)tn.get(i);
+          String aid = tn.get(i);
           DataUtil.bumpCountMap(retval, aid);
         }
       }
@@ -252,10 +252,10 @@ public class DependencyAnalyzer {
   */
  
   public Dependencies getExperimentReferenceSet(String psiID) {
-    HashSet retval = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pdp.getExperimentKey().equals(psiID)) {
         retval.add(pdp.getID());
       }
@@ -270,23 +270,23 @@ public class DependencyAnalyzer {
  
   public Dependencies getInvestReferenceSet(String invID) {
         
-    HashSet pSIUses = new HashSet();
+    HashSet<String> pSIUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
-      List invests = psi.getInvestigators();
+      List<String> invests = psi.getInvestigators();
       if (invests.contains(invID)) {
         pSIUses.add(psi.getID());
       }
     }
       
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pSIUses.contains(pdp.getExperimentKey())) {
         dpUses.add(pdp.getID());
       }
@@ -299,18 +299,18 @@ public class DependencyAnalyzer {
   ** Get the counts of references of the perturbation source definition
   */
  
-  public Map getAllSrcDefReferenceCounts() {
+  public Map<String, Integer> getAllSrcDefReferenceCounts() {
         
-    HashMap retval = new HashMap();   
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       Experiment exp = pdp.getExperiment(pd_);
       PertSources ps = exp.getSources();
-      Iterator psit = ps.getSources();
+      Iterator<String> psit = ps.getSources();
       while (psit.hasNext()) {
-        String psdKey = (String)psit.next();
+        String psdKey = psit.next();
         DataUtil.bumpCountMap(retval, psdKey);
       }
     }
@@ -320,11 +320,11 @@ public class DependencyAnalyzer {
     //
     
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psd = tcd.getPertSourceDependencies();
-    Iterator tcit = psd.keySet().iterator();
+    Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+    Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
-      String psdKey = (String)tcit.next();
-      Set forKey = (Set)psd.get(psdKey);
+      String psdKey = tcit.next();
+      Set<String> forKey = psd.get(psdKey);
       int fks = forKey.size();
       for (int i = 0; i < fks; i++) {
         DataUtil.bumpCountMap(retval, psdKey);    
@@ -335,15 +335,15 @@ public class DependencyAnalyzer {
     // Only count the raw usage if it wasn't used in a data point:
     //
     
-    HashMap retvalClone = (HashMap)retval.clone();
-    Iterator ekit = pd_.getExperimentKeys();
+    HashMap<String, Integer> retvalClone = new HashMap<String, Integer>(retval);
+    Iterator<String> ekit = pd_.getExperimentKeys();
     while (ekit.hasNext()) {
-      String eKey = (String)ekit.next();
+      String eKey = ekit.next();
       Experiment exp = pd_.getExperiment(eKey);
       PertSources ps = exp.getSources();
-      Iterator psit = ps.getSources();
+      Iterator<String> psit = ps.getSources();
       while (psit.hasNext()) {
-        String psdKey = (String)psit.next();
+        String psdKey = psit.next();
         if (retvalClone.get(psdKey) == null) {
           DataUtil.bumpCountMap(retval, psdKey);
         }
@@ -358,19 +358,19 @@ public class DependencyAnalyzer {
   ** Get the counts of references of the investigator
   */
  
-  public Map getAllInvestigatorReferenceCounts(boolean primaryOnly) {
+  public Map<String, Integer> getAllInvestigatorReferenceCounts(boolean primaryOnly) {
         
-    HashMap retval = new HashMap();
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();
     
     if (!primaryOnly) {
-      Iterator dpit = pd_.getDataPoints();
+      Iterator<PertDataPoint> dpit = pd_.getDataPoints();
       while (dpit.hasNext()) {
-        PertDataPoint pdp = (PertDataPoint)dpit.next();
+        PertDataPoint pdp = dpit.next();
         Experiment exp = pdp.getExperiment(pd_);
-        List invs = exp.getInvestigators();
+        List<String> invs = exp.getInvestigators();
         int numi = invs.size();
         for (int i = 0; i < numi; i++) {
-          String invKey = (String)invs.get(i);
+          String invKey = invs.get(i);
           DataUtil.bumpCountMap(retval, invKey);
         }
       }
@@ -381,15 +381,15 @@ public class DependencyAnalyzer {
     // or if primary only!
     //
     
-    HashMap retvalClone = (primaryOnly) ? null : (HashMap)retval.clone();
-    Iterator ekit = pd_.getExperimentKeys();
+    HashMap<String, Integer> retvalClone = (primaryOnly) ? null : new HashMap<String, Integer>(retval);
+    Iterator<String> ekit = pd_.getExperimentKeys();
     while (ekit.hasNext()) {
-      String eKey = (String)ekit.next();
+      String eKey = ekit.next();
       Experiment psi = pd_.getExperiment(eKey);
-      List invs = psi.getInvestigators();
+      List<String> invs = psi.getInvestigators();
       int numi = invs.size();
       for (int i = 0; i < numi; i++) {
-        String invKey = (String)invs.get(i);
+        String invKey = invs.get(i);
         if (primaryOnly || (retvalClone.get(invKey) == null)) {
           DataUtil.bumpCountMap(retval, invKey);
         }
@@ -404,24 +404,24 @@ public class DependencyAnalyzer {
   ** Get the keys of experiments referencing the investigator for a merge
   */
  
-  public Dependencies getInvestigatorMergeSet(Set investIDs, String commonKey) {
-    HashSet expUses = new HashSet();
+  public Dependencies getInvestigatorMergeSet(Set<String> investIDs, String commonKey) {
+    HashSet<String> expUses = new HashSet<String>();
     
-    Iterator ekit = pd_.getExperimentKeys();
+    Iterator<String> ekit = pd_.getExperimentKeys();
     while (ekit.hasNext()) {
-      String eKey = (String)ekit.next();
+      String eKey = ekit.next();
       Experiment psi = pd_.getExperiment(eKey);
-      List invs = psi.getInvestigators();
+      List<String> invs = psi.getInvestigators();
       int numi = invs.size();
       for (int i = 0; i < numi; i++) {
-        String invKey = (String)invs.get(i);
+        String invKey = invs.get(i);
         if (investIDs.contains(invKey)) {
           expUses.add(eKey);     
         }
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_INVEST, commonKey, new HashSet(investIDs), null, expUses, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_INVEST, commonKey, new HashSet<String>(investIDs), null, expUses, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -429,12 +429,12 @@ public class DependencyAnalyzer {
   ** Get the keys of data points referencing the experiment
   */
  
-  public Map getAllExperimentReferenceCounts() {
+  public Map<String, Integer> getAllExperimentReferenceCounts() {
         
-    HashMap retval = new HashMap();      
-    Iterator dpit = pd_.getDataPoints();
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();      
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       DataUtil.bumpCountMap(retval, pdp.getExperimentKey());
     } 
     return (retval);
@@ -445,19 +445,19 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for experiments
   */
  
-  public Dependencies getExperimentMergeSet(Set expIDs, String commonKey) {
+  public Dependencies getExperimentMergeSet(Set<String> expIDs, String commonKey) {
     
-    HashSet expUsed = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+    HashSet<String> expUsed = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       String expid = pdp.getExperimentKey();
       if (expIDs.contains(expid)) {
         expUsed.add(pdp.getID());
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_EXPERIMENTS, commonKey, new HashSet(expIDs), expUsed, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_EXPERIMENTS, commonKey, new HashSet<String>(expIDs), expUsed, null, null, null, null, null, null));
   }
 
   /***************************************************************************
@@ -465,13 +465,13 @@ public class DependencyAnalyzer {
   ** Get the counts of references to experimental conditions
   */
  
-  public Map getAllExprConditionReferenceCounts() {
+  public Map<String, Integer> getAllExprConditionReferenceCounts() {
     
-    HashMap retval = new HashMap();   
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       Experiment exp = pdp.getExperiment(pd_);
       DataUtil.bumpCountMap(retval, exp.getConditionKey());
     }
@@ -480,10 +480,10 @@ public class DependencyAnalyzer {
     // Only count the raw usage if it wasn't used in a data point:
     //
     
-    HashMap retvalClone = (HashMap)retval.clone();
-    Iterator ekit = pd_.getExperimentKeys();
+    HashMap<String, Integer> retvalClone = new HashMap<String, Integer>(retval);
+    Iterator<String> ekit = pd_.getExperimentKeys();
     while (ekit.hasNext()) {
-      String eKey = (String)ekit.next();
+      String eKey = ekit.next();
       Experiment exp = pd_.getExperiment(eKey);
       String condKey = exp.getConditionKey();
       if (retvalClone.get(condKey) == null) {
@@ -499,11 +499,11 @@ public class DependencyAnalyzer {
   ** Get the counts of references to experimental controls
   */
  
-  public Map getAllExprControlReferenceCounts() {    
-    HashMap retval = new HashMap();      
-    Iterator dpit = pd_.getDataPoints();
+  public Map<String, Integer> getAllExprControlReferenceCounts() {    
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();      
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       DataUtil.bumpCountMap(retval, pdp.getControl());
     }
     return (retval);
@@ -516,11 +516,11 @@ public class DependencyAnalyzer {
  
   public Dependencies getExprControlReferenceSet(String ctrl) {
   
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       String id = pdp.getID();
       if (ctrl.equals(pdp.getControl())) {
         dpUses.add(id);
@@ -536,11 +536,11 @@ public class DependencyAnalyzer {
  
   public Dependencies getExprConditionReferenceSet(String key) {
     
-    HashSet pSIUses = new HashSet();
+    HashSet<String> pSIUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       String condKey = psi.getConditionKey();
       if (condKey.equals(key)) {
@@ -548,11 +548,11 @@ public class DependencyAnalyzer {
       }
     }
       
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pSIUses.contains(pdp.getExperimentKey())) {
         dpUses.add(pdp.getID());
       }
@@ -565,20 +565,20 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for experimental conditions
   */
  
-  public Dependencies getExprConditionMergeSet(Set ecIDs, String commonKey) {
+  public Dependencies getExprConditionMergeSet(Set<String> ecIDs, String commonKey) {
     
-    HashSet expUsed = new HashSet();
+    HashSet<String> expUsed = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       if (ecIDs.contains(psi.getConditionKey())) {
         expUsed.add(psiKey);
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_EXPR_COND, commonKey, new HashSet(ecIDs), null, expUsed, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_EXPR_COND, commonKey, new HashSet<String>(ecIDs), null, expUsed, null, null, null, null, null));
   }
   
  
@@ -588,10 +588,10 @@ public class DependencyAnalyzer {
   */
  
   public Dependencies getMeasureReferenceSet(String meaID) {
-    HashSet retval = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pdp.getMeasurementTypeKey().equals(meaID)) {
         retval.add(pdp.getID());
       }
@@ -606,21 +606,21 @@ public class DependencyAnalyzer {
  
   public Dependencies getMeasScaleReferenceSet(String scaleID) {
     
-    HashSet mUsed = new HashSet();
+    HashSet<String> mUsed = new HashSet<String>();
     MeasureDictionary md = pd_.getMeasureDictionary();
-    Iterator mkit = md.getKeys();
+    Iterator<String> mkit = md.getKeys();
     while (mkit.hasNext()) {
-      String mkey = (String)mkit.next();
-      MeasureProps mp = (MeasureProps)md.getMeasureProps(mkey);
+      String mkey = mkit.next();
+      MeasureProps mp = md.getMeasureProps(mkey);
       if (mp.getScaleKey().equals(scaleID)) {
         mUsed.add(mkey);
       }
     } 
 
-    HashSet dpUsed = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+    HashSet<String> dpUsed = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (mUsed.contains(pdp.getMeasurementTypeKey())) {
         dpUsed.add(pdp.getID());
       }
@@ -633,18 +633,18 @@ public class DependencyAnalyzer {
   ** Get the counts of references for all perturbation types
   */
  
-  public Map getAllPertPropReferenceCounts() {
+  public Map<String, Integer> getAllPertPropReferenceCounts() {
   
-    HashMap retval = new HashMap();   
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       Experiment exp = pdp.getExperiment(pd_);
       PertSources ps = exp.getSources();
-      Iterator psit = ps.getSources();
+      Iterator<String> psit = ps.getSources();
       while (psit.hasNext()) {
-        String psdKey = (String)psit.next();
+        String psdKey = psit.next();
         PertSource chk = pd_.getSourceDef(psdKey); 
         DataUtil.bumpCountMap(retval, chk.getExpTypeKey());
       }
@@ -655,13 +655,13 @@ public class DependencyAnalyzer {
     //
     
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psd = tcd.getPertSourceDependencies();
-    Iterator tcit = psd.keySet().iterator();
+    Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+    Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
-      String psdKey = (String)tcit.next();
+      String psdKey = tcit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       String typeKey = chk.getExpTypeKey();
-      Set forKey = (Set)psd.get(psdKey);
+      Set<String> forKey = psd.get(psdKey);
       int fks = forKey.size();
       for (int i = 0; i < fks; i++) {
         DataUtil.bumpCountMap(retval, typeKey);    
@@ -672,15 +672,15 @@ public class DependencyAnalyzer {
     // Only count the raw usage if it wasn't used in a data point:
     //
     
-    HashMap retvalClone = (HashMap)retval.clone();
-    Iterator ekit = pd_.getExperimentKeys();
+    HashMap<String, Integer> retvalClone = new HashMap<String, Integer>(retval);
+    Iterator<String> ekit = pd_.getExperimentKeys();
     while (ekit.hasNext()) {
-      String eKey = (String)ekit.next();
+      String eKey = ekit.next();
       Experiment exp = pd_.getExperiment(eKey);
       PertSources ps = exp.getSources();
-      Iterator psit = ps.getSources();
+      Iterator<String> psit = ps.getSources();
       while (psit.hasNext()) {
-        String psdKey = (String)psit.next();
+        String psdKey = psit.next();
         PertSource chk = pd_.getSourceDef(psdKey);
         String typeKey = chk.getExpTypeKey();
         if (retvalClone.get(typeKey) == null) {
@@ -693,10 +693,10 @@ public class DependencyAnalyzer {
     // Even lower:
     //
     
-    retvalClone = (HashMap)retval.clone();
-    Iterator sdit = pd_.getSourceDefKeys();
+    retvalClone = new HashMap<String, Integer>(retval);
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       String typeKey = chk.getExpTypeKey();
       if (retvalClone.get(typeKey) == null) {
@@ -711,15 +711,15 @@ public class DependencyAnalyzer {
   ** Get the counts of references for all measurement scale types
   */
  
-  public Map getAllMeasureScaleReferenceCounts(boolean primaryOnly) {
+  public Map<String, Integer> getAllMeasureScaleReferenceCounts(boolean primaryOnly) {
     
     MeasureDictionary md = pd_.getMeasureDictionary();
-    HashMap retval = new HashMap();   
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
     if (!primaryOnly) {
-      Iterator dpit = pd_.getDataPoints();
+      Iterator<PertDataPoint> dpit = pd_.getDataPoints();
       while (dpit.hasNext()) {
-        PertDataPoint pdp = (PertDataPoint)dpit.next();
+        PertDataPoint pdp = dpit.next();
         String mType = pdp.getMeasurementTypeKey();
         MeasureProps mp = md.getMeasureProps(mType);
         DataUtil.bumpCountMap(retval, mp.getScaleKey());
@@ -731,10 +731,10 @@ public class DependencyAnalyzer {
     // if targeting primary counts:
     //
    
-    HashMap retvalClone = (primaryOnly) ? null : (HashMap)retval.clone();
-    Iterator mkit = md.getKeys();
+    HashMap<String, Integer> retvalClone = (primaryOnly) ? null : new HashMap<String, Integer>(retval);
+    Iterator<String> mkit = md.getKeys();
     while (mkit.hasNext()) {
-      String mKey = (String)mkit.next();
+      String mKey = mkit.next();
       MeasureProps mp = md.getMeasureProps(mKey);
       String scaleKey = mp.getScaleKey();
       if (primaryOnly || (retvalClone.get(scaleKey) == null)) {
@@ -750,19 +750,19 @@ public class DependencyAnalyzer {
   ** Get the keys of objects referencing the measurement scale for a merge
   */
  
-  public Dependencies getMeasureScaleMergeSet(Set msIDs, String commonKey) {
+  public Dependencies getMeasureScaleMergeSet(Set<String> msIDs, String commonKey) {
     
-    HashSet mUsed = new HashSet();
+    HashSet<String> mUsed = new HashSet<String>();
     MeasureDictionary md = pd_.getMeasureDictionary();
-    Iterator mkit = md.getKeys();
+    Iterator<String> mkit = md.getKeys();
     while (mkit.hasNext()) {
-      String mkey = (String)mkit.next();
-      MeasureProps mp = (MeasureProps)md.getMeasureProps(mkey);
+      String mkey = mkit.next();
+      MeasureProps mp = md.getMeasureProps(mkey);
       if (msIDs.contains(mp.getScaleKey())) {
         mUsed.add(mkey);
       }
     } 
-    return (new Dependencies(Dependencies.MERGE_MEASURE_SCALES, commonKey, new HashSet(msIDs), null, null, null, mUsed, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_MEASURE_SCALES, commonKey, new HashSet<String>(msIDs), null, null, null, mUsed, null, null, null));
   }
   
   /***************************************************************************
@@ -770,16 +770,16 @@ public class DependencyAnalyzer {
   ** Get the keys of objects referencing the measurement properties for a merge
   */
  
-  public Dependencies getMeasurePropMergeSet(Set mpIDs, String commonKey) {
-    HashSet dpUsed = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+  public Dependencies getMeasurePropMergeSet(Set<String> mpIDs, String commonKey) {
+    HashSet<String> dpUsed = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (mpIDs.contains(pdp.getMeasurementTypeKey())) {
         dpUsed.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_MEASURE_PROPS, commonKey, new HashSet(mpIDs), dpUsed, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_MEASURE_PROPS, commonKey, new HashSet<String>(mpIDs), dpUsed, null, null, null, null, null, null));
   } 
    
   /***************************************************************************
@@ -787,13 +787,13 @@ public class DependencyAnalyzer {
   ** Get the keys of objects referencing the perturb properties for a merge
   */
  
-  public Dependencies getPertPropMergeSet(Set ppIDs, String commonKey) {
+  public Dependencies getPertPropMergeSet(Set<String> ppIDs, String commonKey) {
       
-    HashSet pPUses = new HashSet();
+    HashSet<String> pPUses = new HashSet<String>();
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       String tkey = chk.getExpTypeKey();
       if (ppIDs.contains(tkey)) {
@@ -802,9 +802,9 @@ public class DependencyAnalyzer {
     }
     
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psmd = tcd.getPertSourceMergeDependencies(pPUses);
+    Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pPUses);
 
-    return (new Dependencies(Dependencies.MERGE_PERT_PROPS, commonKey, new HashSet(ppIDs), null, null, pPUses, null, null, null, psmd));
+    return (new Dependencies(Dependencies.MERGE_PERT_PROPS, commonKey, new HashSet<String>(ppIDs), null, null, pPUses, null, null, null, psmd));
   } 
    
   /***************************************************************************
@@ -812,11 +812,11 @@ public class DependencyAnalyzer {
   ** Get the keys of data points referencing the measurement type
   */
  
-  public Map getAllMeasurePropReferenceCounts() {
-    HashMap retval = new HashMap();
-    Iterator dpit = pd_.getDataPoints();
+  public Map<String, Integer> getAllMeasurePropReferenceCounts() {
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       DataUtil.bumpCountMap(retval, pdp.getMeasurementTypeKey());
     }
     return (retval);
@@ -829,12 +829,12 @@ public class DependencyAnalyzer {
  
   public Dependencies getPertTypeReferenceSets(String pertTypeID) {
     
-    HashSet pSUses = new HashSet();
+    HashSet<String> pSUses = new HashSet<String>();
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     PertDictionary pDict = pd_.getPertDictionary();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       PertProperties pp = chk.getExpType(pDict);
       if (pp.getID().equals(pertTypeID)) {
@@ -842,27 +842,27 @@ public class DependencyAnalyzer {
       }
     }
     
-    HashSet pSIUses = new HashSet();
+    HashSet<String> pSIUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator ppit = pss.getSources();
+      Iterator<String> ppit = pss.getSources();
       while (ppit.hasNext()) {
-        String srcID = (String)ppit.next();
+        String srcID = ppit.next();
         if (pSUses.contains(srcID)) {
           pSIUses.add(psi.getID());
         }
       }
     }
       
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pSIUses.contains(pdp.getExperimentKey())) {
         dpUses.add(pdp.getID());
       }
@@ -872,13 +872,13 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet tcdUses = new HashSet();   
+    HashSet<String> tcdUses = new HashSet<String>();   
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psd = tcd.getPertSourceDependencies();
-    Iterator psuit = pSUses.iterator();
+    Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+    Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
-      String psID = (String)psuit.next();
-      Set forPsID = (Set)psd.get(psID);
+      String psID = psuit.next();
+      Set<String> forPsID = psd.get(psID);
       if (forPsID != null) {
         tcdUses.add(psID);
       }
@@ -893,10 +893,10 @@ public class DependencyAnalyzer {
   */
  
   public Dependencies getTargetReferenceSet(String targID) {
-    HashSet retval = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pdp.getTargetKey().equals(targID)) {
         retval.add(pdp.getID());
       }
@@ -909,16 +909,16 @@ public class DependencyAnalyzer {
   ** Get the keys of data points referencing the targets for a merge
   */
  
-  public Dependencies getTargetMergeSet(Set targIDs, String commonKey) {
-    HashSet retval = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+  public Dependencies getTargetMergeSet(Set<String> targIDs, String commonKey) {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (targIDs.contains(pdp.getTargetKey())) {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_TARGETS, commonKey, new HashSet(targIDs), retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_TARGETS, commonKey, new HashSet<String>(targIDs), retval, null, null, null, null, null, null));
   }
   
     
@@ -927,16 +927,16 @@ public class DependencyAnalyzer {
   ** Get the keys of data points referencing the experimental control for a merge
   */
  
-  public Dependencies getExprControlMergeSet(Set ctrlIDs, String commonKey) {
-    HashSet retval = new HashSet();
-    Iterator dpit = pd_.getDataPoints();
+  public Dependencies getExprControlMergeSet(Set<String> ctrlIDs, String commonKey) {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (ctrlIDs.contains(pdp.getControl())) {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_CONTROLS, commonKey, new HashSet(ctrlIDs), retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.MERGE_CONTROLS, commonKey, new HashSet<String>(ctrlIDs), retval, null, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -954,11 +954,11 @@ public class DependencyAnalyzer {
   ** Get the count of all target references
   */
  
-  public Map getAllTargetReferenceCounts() {
-    HashMap retval = new HashMap();
-    Iterator dpit = pd_.getDataPoints();
+  public Map<String, Integer> getAllTargetReferenceCounts() {
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       String targKey = pdp.getTargetKey();
       DataUtil.bumpCountMap(retval, targKey); 
     }
@@ -972,16 +972,16 @@ public class DependencyAnalyzer {
  
   public Dependencies getSourceDefReferenceSets(String sourceDefID) {
 
-    HashSet pSInfoUses = new HashSet();
+    HashSet<String> pSInfoUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator pssit = pss.getSources();
+      Iterator<String> pssit = pss.getSources();
       while (pssit.hasNext()) {
-        String psid = (String)pssit.next();
+        String psid = pssit.next();
         if (psid.equals(sourceDefID)) {
           pSInfoUses.add(psi.getID());
           break;
@@ -989,11 +989,11 @@ public class DependencyAnalyzer {
       }   
     }
     
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pSInfoUses.contains(pdp.getExperimentKey())) {
         dpUses.add(pdp.getID());
       }
@@ -1003,10 +1003,10 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet tcdUses = new HashSet();   
+    HashSet<String> tcdUses = new HashSet<String>();   
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psd = tcd.getPertSourceDependencies();
-    Set forKey = (Set)psd.get(sourceDefID);
+    Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+    Set<String> forKey = psd.get(sourceDefID);
     if (forKey != null) {
       tcdUses.add(sourceDefID);
     } 
@@ -1019,18 +1019,18 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for pert source definitions
   */
  
-  public Set getMultiSourceDefCollapseMergeSet(Set sdIDs, String commonKey) {
+  public Set<String> getMultiSourceDefCollapseMergeSet(Set<String> sdIDs, String commonKey) {
     
-    HashSet sdUsed = new HashSet();    
-    Iterator psit = pd_.getExperimentKeys();
+    HashSet<String> sdUsed = new HashSet<String>();    
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator pssit = pss.getSources();
+      Iterator<String> pssit = pss.getSources();
       int numDups = 0;
       while (pssit.hasNext()) {
-        String psid = (String)pssit.next();
+        String psid = pssit.next();
         if (sdIDs.contains(psid)) {
           numDups++;
         }
@@ -1047,17 +1047,17 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for pert source definitions
   */
  
-  public Dependencies getSourceDefMergeSet(Set sdIDs, String commonKey) {
+  public Dependencies getSourceDefMergeSet(Set<String> sdIDs, String commonKey) {
     
-    HashSet sdUsed = new HashSet();    
-    Iterator psit = pd_.getExperimentKeys();
+    HashSet<String> sdUsed = new HashSet<String>();    
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator pssit = pss.getSources();
+      Iterator<String> pssit = pss.getSources();
       while (pssit.hasNext()) {
-        String psid = (String)pssit.next();
+        String psid = pssit.next();
         if (sdIDs.contains(psid)) {
           sdUsed.add(psi.getID());
           break;
@@ -1066,9 +1066,9 @@ public class DependencyAnalyzer {
     }
     
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psmd = tcd.getPertSourceMergeDependencies(sdIDs);
+    Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(sdIDs);
  
-    return (new Dependencies(Dependencies.MERGE_SOURCE_DEFS, commonKey, new HashSet(sdIDs), null, sdUsed, null, null, null, null, psmd));
+    return (new Dependencies(Dependencies.MERGE_SOURCE_DEFS, commonKey, new HashSet<String>(sdIDs), null, sdUsed, null, null, null, null, psmd));
   }
  
   /***************************************************************************
@@ -1076,12 +1076,12 @@ public class DependencyAnalyzer {
   ** Get the keys of sourcw defs referencing the source name for a merge
   */
  
-  public Dependencies getSourceNameMergeSet(Set srcIDs, String commonKey) {
-    HashSet pSUses = new HashSet();
+  public Dependencies getSourceNameMergeSet(Set<String> srcIDs, String commonKey) {
+    HashSet<String> pSUses = new HashSet<String>();
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       if (chk.isAProxy() && srcIDs.contains(chk.getProxiedSpeciesKey())) {
         pSUses.add(chk.getID());
@@ -1092,9 +1092,9 @@ public class DependencyAnalyzer {
     }
     
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psmd = tcd.getPertSourceMergeDependencies(pSUses);
+    Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pSUses);
 
-    return (new Dependencies(Dependencies.MERGE_SOURCE_NAMES, commonKey, new HashSet(srcIDs), null, null, pSUses, null, null, null, psmd));
+    return (new Dependencies(Dependencies.MERGE_SOURCE_NAMES, commonKey, new HashSet<String>(srcIDs), null, null, pSUses, null, null, null, psmd));
   }
       
   /***************************************************************************
@@ -1104,11 +1104,11 @@ public class DependencyAnalyzer {
  
   public Dependencies getSourceNameReferenceSets(String sourceNameID) {
 
-    HashSet pSUses = new HashSet();
+    HashSet<String> pSUses = new HashSet<String>();
     
-    Iterator sdit = pd_.getSourceDefKeys();
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);
       if (chk.isAProxy() && chk.getProxiedSpeciesKey().equals(sourceNameID)) {
         pSUses.add(chk.getID());
@@ -1118,16 +1118,16 @@ public class DependencyAnalyzer {
       }
     }
     
-    HashSet pSInfoUses = new HashSet();
+    HashSet<String> pSInfoUses = new HashSet<String>();
     
-    Iterator psit = pd_.getExperimentKeys();
+    Iterator<String> psit = pd_.getExperimentKeys();
     while (psit.hasNext()) {
-      String psiKey = (String)psit.next();
+      String psiKey = psit.next();
       Experiment psi = pd_.getExperiment(psiKey);
       PertSources pss = psi.getSources();
-      Iterator pssit = pss.getSources();
+      Iterator<String> pssit = pss.getSources();
       while (pssit.hasNext()) {
-        String psid =(String)pssit.next();
+        String psid = pssit.next();
         if (pSUses.contains(psid)) {
           pSInfoUses.add(psi.getID());
           break;
@@ -1135,11 +1135,11 @@ public class DependencyAnalyzer {
       }   
     }
     
-    HashSet dpUses = new HashSet();
+    HashSet<String> dpUses = new HashSet<String>();
     
-    Iterator dpit = pd_.getDataPoints();
+    Iterator<PertDataPoint> dpit = pd_.getDataPoints();
     while (dpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)dpit.next();
+      PertDataPoint pdp = dpit.next();
       if (pSInfoUses.contains(pdp.getExperimentKey())) {
         dpUses.add(pdp.getID());
       }
@@ -1149,13 +1149,13 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet tcdUses = new HashSet();   
+    HashSet<String> tcdUses = new HashSet<String>();   
     TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-    Map psd = tcd.getPertSourceDependencies();
-    Iterator psuit = pSUses.iterator();
+    Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+    Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
-      String psID = (String)psuit.next();
-      Set forPsID = (Set)psd.get(psID);
+      String psID = psuit.next();
+      Set<String> forPsID = psd.get(psID);
       if (forPsID != null) {
         tcdUses.add(psID);
       }
@@ -1179,19 +1179,19 @@ public class DependencyAnalyzer {
   ** Get the count of all source name refs.
   */
  
-  public Map getAllSourceNameReferenceCounts(boolean primaryOnly) {
+  public Map<String, Integer> getAllSourceNameReferenceCounts(boolean primaryOnly) {
 
-    HashMap retval = new HashMap();   
+    HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
     if (!primaryOnly) {
-      Iterator dpit = pd_.getDataPoints();
+      Iterator<PertDataPoint> dpit = pd_.getDataPoints();
       while (dpit.hasNext()) {
-        PertDataPoint pdp = (PertDataPoint)dpit.next();
+        PertDataPoint pdp = dpit.next();
         Experiment exp = pdp.getExperiment(pd_);
         PertSources ps = exp.getSources();
-        Iterator psit = ps.getSources();
+        Iterator<String> psit = ps.getSources();
         while (psit.hasNext()) {
-          String psdKey = (String)psit.next();
+          String psdKey = psit.next();
           PertSource chk = pd_.getSourceDef(psdKey);    
           if (chk.isAProxy()) {    
             String proxKey = chk.getProxiedSpeciesKey();
@@ -1206,11 +1206,11 @@ public class DependencyAnalyzer {
       //
 
       TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
-      Map psd = tcd.getPertSourceDependencies();
-      Iterator tcit = psd.keySet().iterator();
+      Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
+      Iterator<String> tcit = psd.keySet().iterator();
       while (tcit.hasNext()) {
-        String psdKey = (String)tcit.next();
-        Set forKey = (Set)psd.get(psdKey);
+        String psdKey = tcit.next();
+        Set<String> forKey = psd.get(psdKey);
         int fks = forKey.size();
         for (int i = 0; i < fks; i++) {
           DataUtil.bumpCountMap(retval, psdKey);    
@@ -1223,10 +1223,10 @@ public class DependencyAnalyzer {
     // are primary only:
     //
 
-    HashMap retvalClone = (primaryOnly) ? null : (HashMap)retval.clone();
-    Iterator sdit = pd_.getSourceDefKeys();
+    HashMap<String, Integer> retvalClone = (primaryOnly) ? null : new HashMap<String, Integer>(retval);
+    Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
+      String psdKey = sdit.next();
       PertSource chk = pd_.getSourceDef(psdKey);    
       if (chk.isAProxy()) {    
         String proxKey = chk.getProxiedSpeciesKey();
@@ -1359,9 +1359,9 @@ public class DependencyAnalyzer {
       //
       if ((refs.timeCourseRefs != null) && (refs.timeCourseRefs.size() > 0)) {
         TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
-        Iterator tcrit = refs.timeCourseRefs.iterator();
+        Iterator<String> tcrit = refs.timeCourseRefs.iterator();
         while (tcrit.hasNext()) {
-          String key = (String)tcrit.next();
+          String key = tcrit.next();
           TimeCourseChange[] tcca = tcd.dropPertSourceDependencies(key);
           for (int j = 0; j < tcca.length; j++) {
             support.addEdit(new TimeCourseChangeCmd(appState_, dacx, tcca[j]));
@@ -1387,9 +1387,9 @@ public class DependencyAnalyzer {
       }
       
       if ((refs.measureProps != null) && (refs.measureProps.size() > 0)) {
-        Iterator mpit = refs.measureProps.iterator();
+        Iterator<String> mpit = refs.measureProps.iterator();
         while (mpit.hasNext()) {
-          String key = (String)mpit.next();
+          String key = mpit.next();
           PertDataChange pdc = pd_.deleteMeasureProp(key);
           support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
         }        
@@ -1453,21 +1453,21 @@ public class DependencyAnalyzer {
     public static final int MERGE_EXPERIMENTS    = 13;
     public static final int MERGE_PERT_PROPS     = 14;
     
-    public Set dataPoints;
-    public Set experiments;
-    public Set pertSources;
-    public Set measureProps;
-    public Set targets;
+    public Set<String> dataPoints;
+    public Set<String> experiments;
+    public Set<String> pertSources;
+    public Set<String> measureProps;
+    public Set<String> targets;
     public int type;
     public String useKey;
-    public Set abandonKeys;
-    public Set timeCourseRefs;
-    public Map timeCourseMergeRefs;
+    public Set<String> abandonKeys;
+    public Set<String> timeCourseRefs;
+    public Map<String, Set<PertSources>> timeCourseMergeRefs;
         
-    Dependencies(int type, String useKey, Set abandonKeys, Set dataPoints, 
-                           Set experiments, Set pertSources, 
-                           Set measureProps, Set targets, Set timeCourseRefs, 
-                           Map timeCourseMergeRefs) {
+    Dependencies(int type, String useKey, Set<String> abandonKeys, Set<String> dataPoints, 
+                           Set<String> experiments, Set<String> pertSources, 
+                           Set<String> measureProps, Set<String> targets, Set<String> timeCourseRefs, 
+                           Map<String, Set<PertSources>> timeCourseMergeRefs) {
       this.type = type;
       this.useKey = useKey;
       this.dataPoints = dataPoints;

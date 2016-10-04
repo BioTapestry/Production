@@ -232,8 +232,8 @@ public class PerturbCsvFormatFactory {
 
   private BTState appState_;
   private DataAccessContext dacx_;
-  private HashMap newParamsInFile_;
-  private HashMap paramNameToPdKeyMap_;
+  private HashMap<String, Map<String, AbstractParam>> newParamsInFile_;
+  private HashMap<String, Map<String, String>> paramNameToPdKeyMap_;
   private boolean useDate_;
   private boolean useTime_; 
   private boolean useBatch_;
@@ -256,8 +256,8 @@ public class PerturbCsvFormatFactory {
                                  boolean useBatch, boolean useInvest, boolean useCondition) {
     appState_ = appState;
     dacx_ = dacx;
-    newParamsInFile_ = new HashMap();
-    paramNameToPdKeyMap_ = new HashMap();
+    newParamsInFile_ = new HashMap<String, Map<String, AbstractParam>>();
+    paramNameToPdKeyMap_ = new HashMap<String, Map<String, String>>();
     useDate_ = useDate;
     useTime_ = useTime;
     useBatch_ = useBatch;
@@ -307,9 +307,9 @@ public class PerturbCsvFormatFactory {
     // Look for newbies and batch collisions:
     //
     
-    HashMap allNewbies = new HashMap();
-    HashMap newbieClosest = new HashMap();
-    TreeMap batchDups = new TreeMap();
+    HashMap<String, Set<String>> allNewbies = new HashMap<String, Set<String>>();
+    HashMap<String, Map<String, String>> newbieClosest = new HashMap<String, Map<String, String>>();
+    TreeMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups = new TreeMap<String, SortedMap<String, SortedMap<String, BatchCollision>>>();
     boolean haveNP = flagNewbieParams(pd, allNewbies);
     boolean haveN = flagNewbies(csvList, pd, allNewbies, newbieClosest, batchDups, ttad.tad);
          
@@ -368,14 +368,14 @@ public class PerturbCsvFormatFactory {
     TimeAxisDefinition newtad = null;
     
     if (!tad.isInitialized()) {
-      Map newTS = (Map)newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
+      Map<String, AbstractParam> newTS = newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
       if ((newTS == null) || (newTS.size() != 1)) {
         boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(appState_, dacx_);
         if (!keepGoing) {
           return (new TaggedTAD(null, false));
         }
       } else {
-        String timeVal = (String)newTS.values().iterator().next();
+        String timeVal = ((StringParam)newTS.values().iterator().next()).val;
         int units;
         try {
           units = TimeAxisDefinition.mapUnitTypeTag(timeVal);        
@@ -390,11 +390,11 @@ public class PerturbCsvFormatFactory {
         newtad.setDefinition(units, null, null, false, null);           
       }
     } else {
-      Map newTS = (Map)newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
+      Map<String, AbstractParam> newTS = newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
       if ((newTS == null) || newTS.isEmpty()) {
         return (new TaggedTAD(null, true));  // Nothing to do...
       } else {
-        String timeVal = (String)newTS.values().iterator().next();
+        String timeVal = ((StringParam)newTS.values().iterator().next()).val;
         if (newTS.size() > 1) {
           throw new IOException(buildNoLineErrorMessage("csvInput.multipleTimeDefs", timeVal));
         } 
@@ -421,7 +421,7 @@ public class PerturbCsvFormatFactory {
   ** report newbie parameters
   */  
 
-  private boolean flagNewbieParams(PerturbationData pd, Map retval) { 
+  private boolean flagNewbieParams(PerturbationData pd, Map<String, Set<String>> retval) { 
     boolean haveNewbie = false;
     
     MeasureDictionary md = pd.getMeasureDictionary();
@@ -433,16 +433,16 @@ public class PerturbCsvFormatFactory {
     // Always have measure scales, so always check: 
     //
     
-    HashSet newbieScales = (HashSet)retval.get(NEWBIE_SCALE);
+    Set<String> newbieScales = retval.get(NEWBIE_SCALE);
     if (newbieScales == null) {
-      newbieScales = new HashSet();
+      newbieScales = new HashSet<String>();
       retval.put(NEWBIE_SCALE, newbieScales);
     }
-    Map scales = (Map)newParamsInFile_.get(CSVState.SCALE_PARAM_UC_);
+    Map<String, AbstractParam> scales = newParamsInFile_.get(CSVState.SCALE_PARAM_UC_);
     if (scales != null) {
-      Iterator sit = scales.keySet().iterator();
+      Iterator<String> sit = scales.keySet().iterator();
       while (sit.hasNext()) {
-        String skey = (String)sit.next();
+        String skey = sit.next();
         MeasureScaleParam sp = (MeasureScaleParam)scales.get(skey);
         newbieScales.add(sp.name);
         haveNewbie = true;
@@ -450,16 +450,16 @@ public class PerturbCsvFormatFactory {
     }
     
     if (md.getMeasurePropsCount() > 0) {
-      HashSet newbieMeasProps = (HashSet)retval.get(NEWBIE_MEASURE_TYPE);
+      Set<String> newbieMeasProps = retval.get(NEWBIE_MEASURE_TYPE);
       if (newbieMeasProps == null) {
-        newbieMeasProps = new HashSet();
+        newbieMeasProps = new HashSet<String>();
         retval.put(NEWBIE_MEASURE_TYPE, newbieMeasProps);      
       }  
-      Map measurements = (Map)newParamsInFile_.get(CSVState.MEASURE_TYPE_PARAM_UC_);      
+      Map<String, AbstractParam> measurements = newParamsInFile_.get(CSVState.MEASURE_TYPE_PARAM_UC_);      
       if (measurements != null) {
-        Iterator mit = measurements.keySet().iterator();
+        Iterator<String> mit = measurements.keySet().iterator();
         while (mit.hasNext()) {
-          String mkey = (String)mit.next();
+          String mkey = mit.next();
           MeasureParam mp = (MeasureParam)measurements.get(mkey);   
           newbieMeasProps.add(mp.name);
           haveNewbie = true;
@@ -468,16 +468,16 @@ public class PerturbCsvFormatFactory {
     }
     
     if (pdict.getPerturbPropsCount() > 0) {
-      HashSet newbiePertProps = (HashSet)retval.get(NEWBIE_PERT_TYPE);
+      Set<String> newbiePertProps = retval.get(NEWBIE_PERT_TYPE);
       if (newbiePertProps == null) {
-        newbiePertProps = new HashSet();
+        newbiePertProps = new HashSet<String>();
         retval.put(NEWBIE_PERT_TYPE, newbiePertProps);      
       }   
-      Map pertTypes = (Map)newParamsInFile_.get(CSVState.PERT_TYPE_PARAM_UC_);      
+      Map<String, AbstractParam> pertTypes = newParamsInFile_.get(CSVState.PERT_TYPE_PARAM_UC_);      
       if (pertTypes != null) {
-        Iterator pit = pertTypes.keySet().iterator();
+        Iterator<String> pit = pertTypes.keySet().iterator();
         while (pit.hasNext()) {
-          String pkey = (String)pit.next();
+          String pkey = pit.next();
           PertPropParam ppp = (PertPropParam)pertTypes.get(pkey);
           newbiePertProps.add(ppp.name);
           haveNewbie = true;
@@ -485,34 +485,34 @@ public class PerturbCsvFormatFactory {
       }
     }  
    
-    HashSet newbieExpCond = (HashSet)retval.get(NEWBIE_EXP_COND);
+    Set<String> newbieExpCond = retval.get(NEWBIE_EXP_COND);
     if (newbieExpCond == null) {
-      newbieExpCond = new HashSet();
+      newbieExpCond = new HashSet<String>();
       retval.put(NEWBIE_EXP_COND, newbieExpCond);      
     }    
-    Map exprConds = (Map)newParamsInFile_.get(CSVState.CONDITION_PARAM_UC_);      
+    Map<String, AbstractParam> exprConds = newParamsInFile_.get(CSVState.CONDITION_PARAM_UC_);      
     if (exprConds != null) {
-      Iterator cit = exprConds.keySet().iterator();
+      Iterator<String> cit = exprConds.keySet().iterator();
       while (cit.hasNext()) {
-        String ekey = (String)cit.next();
-        String condName = (String)exprConds.get(ekey);    
+        String ekey = cit.next();
+        String condName = ((StringParam)exprConds.get(ekey)).val;
         newbieExpCond.add(condName);
         haveNewbie = true;
       }
     }
 
     if (cdict.getExprControlCount() > 0) {
-      HashSet newbieExpControl = (HashSet)retval.get(NEWBIE_CONTROL);
+      Set<String> newbieExpControl = retval.get(NEWBIE_CONTROL);
       if (newbieExpControl == null) {
-        newbieExpControl = new HashSet();
+        newbieExpControl = new HashSet<String>();
         retval.put(NEWBIE_CONTROL, newbieExpControl);      
       }   
-      Map ctrls = (Map)newParamsInFile_.get(CSVState.CONTROL_PARAM_UC_);
+      Map<String, AbstractParam> ctrls = newParamsInFile_.get(CSVState.CONTROL_PARAM_UC_);
       if (ctrls != null) {
-        Iterator cit = ctrls.keySet().iterator();
+        Iterator<String> cit = ctrls.keySet().iterator();
         while (cit.hasNext()) {
-          String tkey = (String)cit.next();
-          String ctrlName = (String)ctrls.get(tkey);
+          String tkey = cit.next();
+          String ctrlName = ((StringParam)ctrls.get(tkey)).val;
           newbieExpControl.add(ctrlName);
           haveNewbie = true;
         }
@@ -520,17 +520,17 @@ public class PerturbCsvFormatFactory {
     }
     
     if (pd.getUserFieldCount() > 0) {
-      HashSet newbieFields = (HashSet)retval.get(NEWBIE_USER_FIELD);
+      Set<String> newbieFields = retval.get(NEWBIE_USER_FIELD);
       if (newbieFields == null) {
-        newbieFields = new HashSet();
+        newbieFields = new HashSet<String>();
         retval.put(NEWBIE_USER_FIELD, newbieFields);      
       }   
-      Map uFields = (Map)newParamsInFile_.get(CSVState.USER_FIELD_PARAM_UC_);
+      Map<String, AbstractParam> uFields = newParamsInFile_.get(CSVState.USER_FIELD_PARAM_UC_);
       if (uFields != null) {
-        Iterator cit = uFields.keySet().iterator();
+        Iterator<String> cit = uFields.keySet().iterator();
         while (cit.hasNext()) {
-          String fkey = (String)cit.next();
-          String fieldName = (String)uFields.get(fkey);
+          String fkey = cit.next();
+          String fieldName = ((StringParam)uFields.get(fkey)).val;
           newbieFields.add(fieldName);
           haveNewbie = true;
         }
@@ -538,16 +538,16 @@ public class PerturbCsvFormatFactory {
     }  
     
     if (pa.getAnnotationCount() > 0) {
-      HashSet newbieAnnots = (HashSet)retval.get(NEWBIE_ANNOTATION);
+      Set<String> newbieAnnots = retval.get(NEWBIE_ANNOTATION);
       if (newbieAnnots == null) {
-        newbieAnnots = new HashSet();
+        newbieAnnots = new HashSet<String>();
         retval.put(NEWBIE_ANNOTATION, newbieAnnots);      
       }   
-      Map annots = (Map)newParamsInFile_.get(CSVState.ANNOT_PARAM_UC_);
+      Map<String, AbstractParam> annots = newParamsInFile_.get(CSVState.ANNOT_PARAM_UC_);
       if (annots != null) {
-        Iterator ait = annots.keySet().iterator();
+        Iterator<String> ait = annots.keySet().iterator();
         while (ait.hasNext()) {
-          String akey = (String)ait.next();
+          String akey = ait.next();
           AnnotParam aparm = (AnnotParam)annots.get(akey);
           newbieAnnots.add(aparm.num);
           haveNewbie = true;
@@ -563,26 +563,28 @@ public class PerturbCsvFormatFactory {
   ** Look for new entities
   */
   
-  private boolean flagNewbies(List cssList, PerturbationData pd, Map retval, 
-                              Map closest, Map batchDups, TimeAxisDefinition pendingTAD) throws IOException { 
+  private boolean flagNewbies(List<CSVState> cssList, PerturbationData pd, Map<String, Set<String>> retval, 
+                              Map<String, Map<String, String>> closest, 
+                              SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups, 
+                              TimeAxisDefinition pendingTAD) throws IOException { 
     boolean haveNewbie = false;
  
-    Iterator cssit = cssList.iterator();
+    Iterator<CSVState> cssit = cssList.iterator();
     while (cssit.hasNext()) {
-      CSVState csvs = (CSVState)cssit.next();
-      Iterator csvit = csvs.getValues().iterator();
+      CSVState csvs = cssit.next();
+      Iterator<CSVData> csvit = csvs.getValues().iterator();
       while (csvit.hasNext()) {
-        CSVData csv = (CSVData)csvit.next(); 
+        CSVData csv = csvit.next(); 
         if (pd.getInvestigatorCount() > 0) {
-          HashSet newbieInvest = (HashSet)retval.get(NEWBIE_INVEST);
+          Set<String> newbieInvest = retval.get(NEWBIE_INVEST);
           if (newbieInvest == null) {
-            newbieInvest = new HashSet();
+            newbieInvest = new HashSet<String>();
             retval.put(NEWBIE_INVEST, newbieInvest);
           }
-          List invests = csv.getInvestigators();
+          List<String> invests = csv.getInvestigators();
           int numInv = invests.size();
           for (int i = 0; i < numInv; i++) {
-            String invest = (String)invests.get(i);
+            String invest = invests.get(i);
             String investKey = pd.getInvestKeyFromName(invest);
             if (investKey == null) {
               newbieInvest.add(invest);
@@ -592,15 +594,15 @@ public class PerturbCsvFormatFactory {
         }
         
         if (pd.getTargetCount() > 0) {
-          HashSet newbieTargets = (HashSet)retval.get(NEWBIE_TARGET);
+          Set<String> newbieTargets = retval.get(NEWBIE_TARGET);
           if (newbieTargets == null) {
-            newbieTargets = new HashSet();
+            newbieTargets = new HashSet<String>();
             retval.put(NEWBIE_TARGET, newbieTargets);  
           }
-          Set targets = csv.getTargets();
-          Iterator trit = targets.iterator();
+          Set<String> targets = csv.getTargets();
+          Iterator<String> trit = targets.iterator();
           while (trit.hasNext()) {
-            String targetKey = (String)trit.next();
+            String targetKey = trit.next();
             String tkey = pd.getTargetFromName(csv.getOriginalTargetName(targetKey));
             if (tkey == null) {
               newbieTargets.add(csv.getOriginalTargetName(targetKey));
@@ -610,19 +612,19 @@ public class PerturbCsvFormatFactory {
         }            
 
         if (pd.getPertSourceCount() > 0) {
-          HashSet newbiePertSource = (HashSet)retval.get(NEWBIE_PERT_SOURCE);
+          Set<String> newbiePertSource = retval.get(NEWBIE_PERT_SOURCE);
           if (newbiePertSource == null) {
-            newbiePertSource = new HashSet();
+            newbiePertSource = new HashSet<String>();
             retval.put(NEWBIE_PERT_SOURCE, newbiePertSource);
           }
           String multiDisp = multiMatchingSources(csv, pd);
           if (multiDisp != null) {  // multi-match forces an exit
             throw new IOException(buildNoLineErrorMessage("csvInput.multiSourceMatch", multiDisp));
           }
-          List srcs = csv.getSources();
+          List<CSVData.ExperimentTokens> srcs = csv.getSources();
           int numSrcs = srcs.size();
           for (int i = 0; i < numSrcs; i++) {
-            CSVData.ExperimentTokens etok = (CSVData.ExperimentTokens)srcs.get(i);
+            CSVData.ExperimentTokens etok = srcs.get(i);
             String psKey = pd.getPertSourceFromName(etok.base);
             if (psKey == null) {
               newbiePertSource.add(etok.base);
@@ -632,22 +634,22 @@ public class PerturbCsvFormatFactory {
         }
         
         if (pd.getExperimentCount() > 0) {
-          HashSet newbieExperiments = (HashSet)retval.get(NEWBIE_EXPERIMENT);
+          Set<String> newbieExperiments = retval.get(NEWBIE_EXPERIMENT);
           if (newbieExperiments == null) {
-            newbieExperiments = new HashSet();
+            newbieExperiments = new HashSet<String>();
             retval.put(NEWBIE_EXPERIMENT, newbieExperiments);  
           }
-          Set matches = matchingExperiments(csv, pd, pendingTAD, true);
+          Set<String> matches = matchingExperiments(csv, pd, pendingTAD, true);
           int numMatch = matches.size();
           if (numMatch != 1) {  // no match or multi-match
             int time = processTime(csv, pendingTAD);
             String times = Experiment.getTimeDisplayString(appState_, new MinMax(time, time), true, true);
             String invests = DataUtil.getMultiDisplayString(csv.getInvestigators());
-            ArrayList tokStrs = new ArrayList();
-            List srcs = csv.getSources();
+            ArrayList<String> tokStrs = new ArrayList<String>();
+            List<CSVData.ExperimentTokens> srcs = csv.getSources();
             int numSrcs = srcs.size();
             for (int i = 0; i < numSrcs; i++) {
-              CSVData.ExperimentTokens etok = (CSVData.ExperimentTokens)srcs.get(i);
+              CSVData.ExperimentTokens etok = srcs.get(i);
               tokStrs.add(etok.orig);
             }          
             String perts = DataUtil.getMultiDisplayString(tokStrs);
@@ -660,44 +662,44 @@ public class PerturbCsvFormatFactory {
               throw new IOException(buildNoLineErrorMessage("csvInput.multiMatch", dispStr));
             }
           } else { // Single match, look for batch key collisions
-            String expKey = (String)matches.iterator().next();
-            Map batchKeys = pd.mergeExperimentBatchCollisions(matches);
-            Set targets = csv.getTargets();
-            Iterator trit = targets.iterator();
+            String expKey = matches.iterator().next();
+            Map<String, Map<String, List<String>>> batchKeys = pd.mergeExperimentBatchCollisions(matches);
+            Set<String> targets = csv.getTargets();
+            Iterator<String> trit = targets.iterator();
             while (trit.hasNext()) {
-              String targetKey = (String)trit.next();
+              String targetKey = trit.next();
               String targName = csv.getOriginalTargetName(targetKey);
               String tkey = pd.getTargetFromName(targName);
               if (tkey != null) {
-                Map forTarg = (Map)batchKeys.get(tkey);
+                Map<String, List<String>> forTarg = batchKeys.get(tkey);
                 String batchID = csv.getBatchID();
                 if (forTarg != null) {
-                  List vals = (List)forTarg.get(batchID);
+                  List<String> vals = forTarg.get(batchID);
                   if (vals == null) {
                     continue;
                   }
                   String dispKey = pd.getExperiment(expKey).getDisplayString(pd);
-                  TreeMap forExp = (TreeMap)batchDups.get(dispKey);
+                  SortedMap<String, SortedMap<String, BatchCollision>> forExp = batchDups.get(dispKey);
                   if (forExp == null) {
-                    forExp = new TreeMap();
+                    forExp = new TreeMap<String, SortedMap<String, BatchCollision>>();
                     batchDups.put(dispKey, forExp);
                   }
                   // use target name for for sorting:
-                  TreeMap perTarg = (TreeMap)forExp.get(targetKey);
+                  SortedMap<String, BatchCollision> perTarg = forExp.get(targetKey);
                   if (perTarg == null) {
-                    perTarg = new TreeMap();
+                    perTarg = new TreeMap<String, BatchCollision>();
                     forExp.put(targetKey, perTarg);
                   }  
-                  BatchCollision bc = (BatchCollision)perTarg.get(batchID);
+                  BatchCollision bc = perTarg.get(batchID);
                   if (bc == null) {
                     bc = new BatchCollision(dispKey, targName, batchID);
                     perTarg.put(batchID, bc);
                     bc.vals.addAll(vals);
                   }
-                  List mea = csv.getMeasurements(targetKey);
+                  List<CSVData.DataPoint> mea = csv.getMeasurements(targetKey);
                   int numMea = mea.size();
                   for (int i = 0; i < numMea; i++) {
-                    CSVData.DataPoint dp = (CSVData.DataPoint)mea.get(i);
+                    CSVData.DataPoint dp = mea.get(i);
                     bc.vals.add(dp.value);
                   }     
                 }  
@@ -716,23 +718,23 @@ public class PerturbCsvFormatFactory {
   */  
 
   private void findNewbieExperimentNeighbor(String tag, CSVData csv, PerturbationData pd, 
-                                            TimeAxisDefinition pendingTAD, Map retval) { 
+                                            TimeAxisDefinition pendingTAD, Map<String, Map<String, String>> retval) { 
   
-    HashMap closest = (HashMap)retval.get(NEWBIE_EXPERIMENT);
+    Map<String, String> closest = retval.get(NEWBIE_EXPERIMENT);
     if (closest == null) {
-      closest = new HashMap();
+      closest = new HashMap<String, String>();
       retval.put(NEWBIE_EXPERIMENT, closest);
     }
-    TreeSet csvInv = new TreeSet(DataUtil.normalizeList(csv.getInvestigators()));    
-    Set matchExp = matchingExperiments(csv, pd, pendingTAD, false);
+    TreeSet<String> csvInv = new TreeSet<String>(DataUtil.normalizeList(csv.getInvestigators()));    
+    Set<String> matchExp = matchingExperiments(csv, pd, pendingTAD, false);
     if (!matchExp.isEmpty()) {
       int minDist = Integer.MAX_VALUE;  
       String minKey = null;
-      Iterator meit = matchExp.iterator();
+      Iterator<String> meit = matchExp.iterator();
       while (meit.hasNext()) {
-        String key = (String)meit.next();
+        String key = meit.next();
         Experiment exp = pd.getExperiment(key);
-        SortedSet invSet = exp.getInvestigatorSortedSet(pd, true);
+        SortedSet<String> invSet = exp.getInvestigatorSortedSet(pd, true);
         int distance = DataUtil.setDistance(invSet, csvInv);
         if (distance < minDist) {
           minDist = distance;
@@ -752,7 +754,7 @@ public class PerturbCsvFormatFactory {
   ** Find closest matches
   */  
 
-  private Map findNewbieNeighbors(PerturbationData pd, Map allNewbies, Map retval) { 
+  private Map<String, Map<String, String>> findNewbieNeighbors(PerturbationData pd, Map<String, Set<String>> allNewbies,  Map<String, Map<String, String>> retval) { 
   
     MeasureDictionary md = pd.getMeasureDictionary();
     PertDictionary pdict = pd.getPertDictionary();
@@ -781,14 +783,15 @@ public class PerturbCsvFormatFactory {
   ** Find the closest newbie match
   */
   
-  private void closestNewbieMatch(String whichNewbie, Set matchCand, Map allNewbies, Map results, int tol) {  
-    HashSet newbies = (HashSet)allNewbies.get(whichNewbie);
+  private void closestNewbieMatch(String whichNewbie, Set<String> matchCand, Map<String, Set<String>> allNewbies, 
+                                  Map<String, Map<String, String>> results, int tol) {  
+    Set<String> newbies = allNewbies.get(whichNewbie);
     if ((newbies != null) && !newbies.isEmpty()) {
-      HashMap closest = new HashMap();
+      HashMap<String, String> closest = new HashMap<String, String>();
       results.put(whichNewbie, closest);
-      Iterator nskit = newbies.iterator();
+      Iterator<String> nskit = newbies.iterator();
       while (nskit.hasNext()) {
-        String newbie = (String)nskit.next();
+        String newbie = nskit.next();
         closest.put(newbie, DataUtil.getClosestStringToName(newbie, tol, matchCand));
       }      
     }
@@ -800,17 +803,17 @@ public class PerturbCsvFormatFactory {
   ** Get experiments that match
   */
   
-  private Set matchingExperiments(CSVData csv, PerturbationData pd, TimeAxisDefinition pendingTAD, boolean withInvests) {  
+  private Set<String> matchingExperiments(CSVData csv, PerturbationData pd, TimeAxisDefinition pendingTAD, boolean withInvests) {  
  
-    HashSet retval = new HashSet();
+    HashSet<String> retval = new HashSet<String>();
     int time = processTime(csv, pendingTAD);
-    TreeSet csvInv = (withInvests) ? new TreeSet(DataUtil.normalizeList(csv.getInvestigators())) : null;
-    TreeSet csvPs = new TreeSet();
-    List srcs = csv.getSources();
+    TreeSet<String> csvInv = (withInvests) ? new TreeSet<String>(DataUtil.normalizeList(csv.getInvestigators())) : null;
+    TreeSet<String> csvPs = new TreeSet<String>();
+    List<CSVData.ExperimentTokens> srcs = csv.getSources();
     int numSrcs = srcs.size();
     StringBuffer buf = new StringBuffer();
     for (int i = 0; i < numSrcs; i++) {
-      CSVData.ExperimentTokens etok = (CSVData.ExperimentTokens)srcs.get(i);
+      CSVData.ExperimentTokens etok = srcs.get(i);
       buf.setLength(0);
       buf.append(etok.base);
       buf.append(etok.expType);
@@ -818,9 +821,9 @@ public class PerturbCsvFormatFactory {
     }
     String condition = csv.getCondition();
 
-    Iterator ekit = pd.getExperimentKeys();
+    Iterator<String> ekit = pd.getExperimentKeys();
     while (ekit.hasNext()) {
-      String expKey = (String)ekit.next();
+      String expKey = ekit.next();
       Experiment exp = pd.getExperiment(expKey);
       if (exp.getTime() != time) {
         continue; 
@@ -833,13 +836,13 @@ public class PerturbCsvFormatFactory {
       }
       
       if (withInvests) {
-        SortedSet invSet = exp.getInvestigatorSortedSet(pd, true);
+        SortedSet<String> invSet = exp.getInvestigatorSortedSet(pd, true);
         if (!csvInv.equals(invSet)) {
           continue;
         }
       }
   
-      SortedSet pset = exp.getPerturbsSortedSet(pd, true);
+      SortedSet<String> pset = exp.getPerturbsSortedSet(pd, true);
       if (!csvPs.equals(pset)) {
         continue;
       }
@@ -855,20 +858,20 @@ public class PerturbCsvFormatFactory {
   
   private String multiMatchingSources(CSVData csv, PerturbationData pd) {  
  
-    List srcs = csv.getSources();
+    List<CSVData.ExperimentTokens> srcs = csv.getSources();
     int numSrcs = srcs.size();
     StringBuffer buf = new StringBuffer();
     PertDictionary pDict = pd.getPertDictionary();
     for (int i = 0; i < numSrcs; i++) {
-      CSVData.ExperimentTokens etok = (CSVData.ExperimentTokens)srcs.get(i);
+      CSVData.ExperimentTokens etok = srcs.get(i);
       buf.setLength(0);
       buf.append(etok.base);
       buf.append(etok.expType);
       String checkStr = DataUtil.normKey(buf.toString());
       int matchCount = 0;
-      Iterator sdit = pd.getSourceDefKeys();
+      Iterator<String> sdit = pd.getSourceDefKeys();
       while (sdit.hasNext()) {
-        String sdKey = (String)sdit.next();
+        String sdKey = sdit.next();
         PertSource ps = pd.getSourceDef(sdKey);      
         String sn = ps.getSourceName(pd);
         PertProperties pp = ps.getExpType(pDict);
@@ -892,20 +895,20 @@ public class PerturbCsvFormatFactory {
   ** Export the measurement
   */
   
-  private void extractMeasurements(List cssList, PerturbationData pd, UndoSupport support) throws IOException {
+  private void extractMeasurements(List<CSVState> cssList, PerturbationData pd, UndoSupport support) throws IOException {
     
     long timeStamp = System.currentTimeMillis();
-    Iterator cssit = cssList.iterator();
+    Iterator<CSVState> cssit = cssList.iterator();
     while (cssit.hasNext()) {
-      CSVState csvs = (CSVState)cssit.next();
-      Iterator csvit = csvs.getValues().iterator();
+      CSVState csvs = cssit.next();
+      Iterator<CSVData> csvit = csvs.getValues().iterator();
       while (csvit.hasNext()) {
-        CSVData csv = (CSVData)csvit.next();
-        ArrayList investIDs = new ArrayList();
-        List invests = csv.getInvestigators();
+        CSVData csv = csvit.next();
+        ArrayList<String> investIDs = new ArrayList<String>();
+        List<String> invests = csv.getInvestigators();
         int numInv = invests.size();
         for (int i = 0; i < numInv; i++) {
-          String invest = (String)invests.get(i);
+          String invest = invests.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.provideInvestigator(invest);
           if (kdac.undoInfo != null) {
             support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
@@ -913,17 +916,17 @@ public class PerturbCsvFormatFactory {
           investIDs.add(kdac.key);
         }
 
-        List srcs = csv.getSources();
+        List<CSVData.ExperimentTokens> srcs = csv.getSources();
         int numSrcs = srcs.size();
         PertSources pss = new PertSources(appState_);
         for (int i = 0; i < numSrcs; i++) {
-          CSVData.ExperimentTokens etok = (CSVData.ExperimentTokens)srcs.get(i);
+          CSVData.ExperimentTokens etok = srcs.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.providePertSrcName(etok.base);
           if (kdac.undoInfo != null) {
             support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
           }
           String pertKey = csvs.getPDKey(CSVState.PERT_TYPE_PARAM_, etok.expType);
-          kdac = pd.providePertSrc(kdac.key, pertKey, null, PertSource.NO_PROXY, new ArrayList(), true);
+          kdac = pd.providePertSrc(kdac.key, pertKey, null, PertSource.NO_PROXY, new ArrayList<String>(), true);
           if (kdac.undoInfo != null) {
             support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
           }
@@ -936,19 +939,19 @@ public class PerturbCsvFormatFactory {
           support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
         }
         String psiKey = kdac.key;
-        Set targets = csv.getTargets();
-        Iterator trit = targets.iterator();
+        Set<String> targets = csv.getTargets();
+        Iterator<String> trit = targets.iterator();
         while (trit.hasNext()) {
-          String targetKey = (String)trit.next();
+          String targetKey = trit.next();
           kdac = pd.provideTarget(csv.getOriginalTargetName(targetKey));
           String targKey = kdac.key;
           if (kdac.undoInfo != null) {
             support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
           }
-          List meas = csv.getMeasurements(targetKey);
+          List<CSVData.DataPoint> meas = csv.getMeasurements(targetKey);
           int numM = meas.size();
           for (int i = 0; i < numM; i++) {
-            CSVData.DataPoint dp = (CSVData.DataPoint)meas.get(i);
+            CSVData.DataPoint dp = meas.get(i);
             double measv = Double.NaN;
             try {
               measv = Double.parseDouble(dp.value);
@@ -977,11 +980,11 @@ public class PerturbCsvFormatFactory {
             //
             
             if ((dp.annots != null) && !dp.annots.isEmpty()) {              
-              Map aToKey = (Map)paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
-              ArrayList keyList = new ArrayList();
+              Map<String, String> aToKey = paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
+              ArrayList<String> keyList = new ArrayList<String>();
               int numdpa = dp.annots.size();
               for (int j = 0; j < numdpa; j++) {
-                String tag = (String)dp.annots.get(j);
+                String tag = dp.annots.get(j);
                 keyList.add(aToKey.get(tag));
               }           
               pdc = pd.setFootnotesForDataPoint(pdp.getID(), keyList);
@@ -993,11 +996,11 @@ public class PerturbCsvFormatFactory {
             //
             
             boolean allEmpty = true;
-            ArrayList userV = new ArrayList();
+            ArrayList<String> userV = new ArrayList<String>();
             int ufCount = pd.getUserFieldCount();
             for (int j = 0; j < ufCount; j++) {
               String ufName = pd.getUserFieldName(j);
-              String ufVal = (String)dp.userFields.get(DataUtil.normKey(ufName));    
+              String ufVal = dp.userFields.get(DataUtil.normKey(ufName));    
               if (ufVal == null) {
                 ufVal = "";
               }
@@ -1029,12 +1032,12 @@ public class PerturbCsvFormatFactory {
     PertDictionary pdict = pd.getPertDictionary();
     ConditionDictionary cdict = pd.getConditionDictionary();
     
-    Map sToKey = (Map)paramNameToPdKeyMap_.get(CSVState.SCALE_PARAM_UC_);
-    Map scales = (Map)newParamsInFile_.get(CSVState.SCALE_PARAM_UC_);
+    Map<String, String> sToKey = paramNameToPdKeyMap_.get(CSVState.SCALE_PARAM_UC_);
+    Map<String, AbstractParam> scales = newParamsInFile_.get(CSVState.SCALE_PARAM_UC_);
     if (scales != null) {
-      Iterator sit = scales.keySet().iterator();
+      Iterator<String> sit = scales.keySet().iterator();
       while (sit.hasNext()) {
-        String skey = (String)sit.next();
+        String skey = sit.next();
         MeasureScaleParam sp = (MeasureScaleParam)scales.get(skey);    
         String nextID = md.getNextDataKey();   
         MeasureScale newScale = new MeasureScale(nextID, sp.name, sp.conv, sp.illegal, sp.unchanged);
@@ -1044,15 +1047,15 @@ public class PerturbCsvFormatFactory {
       }
     }
     
-    Map mToKey = (Map)paramNameToPdKeyMap_.get(CSVState.MEASURE_TYPE_PARAM_UC_);
-    Map measurements = (Map)newParamsInFile_.get(CSVState.MEASURE_TYPE_PARAM_UC_);      
+    Map<String, String> mToKey = paramNameToPdKeyMap_.get(CSVState.MEASURE_TYPE_PARAM_UC_);
+    Map<String, AbstractParam> measurements = newParamsInFile_.get(CSVState.MEASURE_TYPE_PARAM_UC_);      
     if (measurements != null) {
-      Iterator mit = measurements.keySet().iterator();
+      Iterator<String> mit = measurements.keySet().iterator();
       while (mit.hasNext()) {
-        String mkey = (String)mit.next();
+        String mkey = mit.next();
         MeasureParam mp = (MeasureParam)measurements.get(mkey);    
         String nextID = md.getNextDataKey();
-        String scKey = (String)sToKey.get(DataUtil.normKey(mp.scaleName));
+        String scKey = sToKey.get(DataUtil.normKey(mp.scaleName));
         MeasureProps mProps = new MeasureProps(nextID, mp.name, scKey, mp.negThresh, mp.posThresh);
         PertDataChange pdc = pd.setMeasureProp(mProps);
         mToKey.put(mkey, nextID);
@@ -1060,12 +1063,12 @@ public class PerturbCsvFormatFactory {
       }
     }
 
-    Map pToKey = (Map)paramNameToPdKeyMap_.get(CSVState.PERT_TYPE_PARAM_UC_);
-    Map pertTypes = (Map)newParamsInFile_.get(CSVState.PERT_TYPE_PARAM_UC_);      
+    Map<String, String> pToKey = paramNameToPdKeyMap_.get(CSVState.PERT_TYPE_PARAM_UC_);
+    Map<String, AbstractParam> pertTypes = newParamsInFile_.get(CSVState.PERT_TYPE_PARAM_UC_);      
     if (pertTypes != null) {
-      Iterator pit = pertTypes.keySet().iterator();
+      Iterator<String> pit = pertTypes.keySet().iterator();
       while (pit.hasNext()) {
-        String pkey = (String)pit.next();
+        String pkey = pit.next();
         PertPropParam ppp = (PertPropParam)pertTypes.get(pkey);
         String nextID = pdict.getNextDataKey();
         PertProperties pProps = new PertProperties(nextID, ppp.name, ppp.abbrev, ppp.linkRelation);
@@ -1075,13 +1078,13 @@ public class PerturbCsvFormatFactory {
       }
     }
     
-    Map eToKey = (Map)paramNameToPdKeyMap_.get(CSVState.CONDITION_PARAM_UC_);
-    Map exprConds = (Map)newParamsInFile_.get(CSVState.CONDITION_PARAM_UC_);      
+    Map<String, String> eToKey = paramNameToPdKeyMap_.get(CSVState.CONDITION_PARAM_UC_);
+    Map<String, AbstractParam> exprConds = newParamsInFile_.get(CSVState.CONDITION_PARAM_UC_);      
     if (exprConds != null) {
-      Iterator cit = exprConds.keySet().iterator();
+      Iterator<String> cit = exprConds.keySet().iterator();
       while (cit.hasNext()) {
-        String ekey = (String)cit.next();
-        String condName = (String)exprConds.get(ekey);    
+        String ekey = cit.next();
+        String condName = ((StringParam)exprConds.get(ekey)).val;    
         String nextID = cdict.getNextDataKey();  
         ExperimentConditions eCond = new ExperimentConditions(nextID, condName);
         PertDataChange pdc = pd.setExperimentConditions(eCond);
@@ -1090,13 +1093,13 @@ public class PerturbCsvFormatFactory {
       }
     }
 
-    Map tToKey = (Map)paramNameToPdKeyMap_.get(CSVState.CONTROL_PARAM_UC_);
-    Map ctrls = (Map)newParamsInFile_.get(CSVState.CONTROL_PARAM_UC_);
+    Map<String, String> tToKey = paramNameToPdKeyMap_.get(CSVState.CONTROL_PARAM_UC_);
+    Map<String, AbstractParam> ctrls = newParamsInFile_.get(CSVState.CONTROL_PARAM_UC_);
     if (ctrls != null) {
-      Iterator cit = ctrls.keySet().iterator();
+      Iterator<String> cit = ctrls.keySet().iterator();
       while (cit.hasNext()) {
-        String tkey = (String)cit.next();
-        String ctrlName = (String)ctrls.get(tkey);
+        String tkey = cit.next();
+        String ctrlName = ((StringParam)ctrls.get(tkey)).val;
         String nextID = cdict.getNextDataKey();  
         ExperimentControl ctrl = new ExperimentControl(nextID, ctrlName);
         PertDataChange pdc = pd.setExperimentControl(ctrl);
@@ -1105,13 +1108,13 @@ public class PerturbCsvFormatFactory {
       }
     }
 
-    Map uToKey = (Map)paramNameToPdKeyMap_.get(CSVState.USER_FIELD_PARAM_UC_);
-    Map uFields = (Map)newParamsInFile_.get(CSVState.USER_FIELD_PARAM_UC_);
+    Map<String, String> uToKey = paramNameToPdKeyMap_.get(CSVState.USER_FIELD_PARAM_UC_);
+    Map<String, AbstractParam> uFields = newParamsInFile_.get(CSVState.USER_FIELD_PARAM_UC_);
     if (uFields != null) {
-      Iterator cit = uFields.keySet().iterator();
+      Iterator<String> cit = uFields.keySet().iterator();
       while (cit.hasNext()) {
-        String fkey = (String)cit.next();
-        String fieldName = (String)uFields.get(fkey);
+        String fkey = cit.next();
+        String fieldName = ((StringParam)uFields.get(fkey)).val;
         String nextID = Integer.toString(pd.getUserFieldCount());
         PertDataChange pdc = pd.setUserFieldName(nextID, fieldName);
         uToKey.put(fkey, nextID);
@@ -1120,12 +1123,12 @@ public class PerturbCsvFormatFactory {
     }
 
     
-    Map aToKey = (Map)paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
-    Map annots = (Map)newParamsInFile_.get(CSVState.ANNOT_PARAM_UC_);
+    Map<String,String> aToKey = paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
+    Map<String, AbstractParam> annots = newParamsInFile_.get(CSVState.ANNOT_PARAM_UC_);
     if (annots != null) {
-      Iterator ait = annots.keySet().iterator();
+      Iterator<String> ait = annots.keySet().iterator();
       while (ait.hasNext()) {
-        String akey = (String)ait.next();
+        String akey = ait.next();
         AnnotParam aparm = (AnnotParam)annots.get(akey);
         PertDataChange pdc = pd.addAnnotation(aparm.num, aparm.message);
         aToKey.put(akey, pdc.annotKey);  // kinda bogus!
@@ -1160,25 +1163,25 @@ public class PerturbCsvFormatFactory {
   ** Report bad measurements
   */
 
-  private boolean reportBadMeasurements(List csvList, TimeAxisDefinition pendingTAD) {
+  private boolean reportBadMeasurements(List<CSVState> csvList, TimeAxisDefinition pendingTAD) {
     boolean retval = false;
-    Iterator cssit = csvList.iterator();
+    Iterator<CSVState> cssit = csvList.iterator();
     while (cssit.hasNext()) {
-      CSVState csvs = (CSVState)cssit.next();
-      Iterator csvit = csvs.getValues().iterator();
+      CSVState csvs = cssit.next();
+      Iterator<CSVData> csvit = csvs.getValues().iterator();
       while (csvit.hasNext()) {
-        CSVData csv = (CSVData)csvit.next();
+        CSVData csv = csvit.next();
         if (processTime(csv, pendingTAD) == Integer.MIN_VALUE) {
           return (true);
         }
-        Set targets = csv.getTargets();
-        Iterator trit = targets.iterator();
+        Set<String> targets = csv.getTargets();
+        Iterator<String> trit = targets.iterator();
         while (trit.hasNext()) {
-          String target = (String)trit.next();
-          List vals = csv.getMeasurements(target);
+          String target = trit.next();
+          List<CSVData.DataPoint> vals = csv.getMeasurements(target);
           int vSize = vals.size();
           for (int i = 0; i < vSize; i++) {
-            CSVData.DataPoint dpt = (CSVData.DataPoint)vals.get(i);
+            CSVData.DataPoint dpt = vals.get(i);
             BoundedDoubMinMax illegal = csvs.getIllegalBounds(dpt.measurement);
             if (!CSVData.isValidMeasurement(dpt.value, illegal)) {
               retval = true;
@@ -1274,7 +1277,7 @@ public class PerturbCsvFormatFactory {
     Iterator<String> lit = lines.iterator();
     while (lit.hasNext()) {
       String line = lit.next();
-      List argList = csvp.processCSVLine(line);
+      List<String> argList = csvp.processCSVLine(line);
       if (blockNum == 0) {
         if (rowNum == 0) {
           csvState.startTheBlock(argList);          
@@ -1367,20 +1370,20 @@ public class PerturbCsvFormatFactory {
     static final String ANNOT_PARAM_UC_      = ANNOT_PARAM_.toUpperCase();   
 
     private int setNumber_;
-    private ArrayList investigators_;
+    private ArrayList<String> investigators_;
     private String date_;
-    private HashMap userFieldToColMap_;
-    private HashMap argToColMap_;
-    private HashSet vocabulary_;
-    private HashSet paramVocab_;
-    private HashSet required_;
-    private HashMap paramMap_;
-    private Map nameToPdKey_;
-    private HashMap csvMap_;
+    private HashMap<String, Integer> userFieldToColMap_;
+    private HashMap<String, Integer> argToColMap_;
+    private HashSet<String> vocabulary_;
+    private HashSet<String> paramVocab_;
+    private HashSet<String> required_;
+    private HashMap<String, Map<String, AbstractParam>> paramMap_;
+    private Map<String, Map<String, String>> nameToPdKey_;
+    private HashMap<String, CSVData> csvMap_;
     private boolean legacy_;
     private String singleAnnot_;
     private boolean haveMultiAnnots_;
-    private Set requiredUFields_;
+    private Set<String> requiredUFields_;
     private boolean useDate_;
     private boolean useTime_;
     private boolean useBatch_;
@@ -1389,20 +1392,20 @@ public class PerturbCsvFormatFactory {
     private BTState appState_;
     private DataAccessContext dacx_;
     
-    CSVState(BTState appState, DataAccessContext dacx, boolean legacy, int setNumber, Map nameToPdKey, 
+    CSVState(BTState appState, DataAccessContext dacx, boolean legacy, int setNumber, Map<String, Map<String, String>> nameToPdKey, 
              boolean useDate, boolean useTime,
              boolean useBatch, boolean useInvest, 
              boolean useCondition) {
       appState_ = appState;
       dacx_ = dacx;
       setNumber_ = setNumber;
-      investigators_ = new ArrayList();
+      investigators_ = new ArrayList<String>();
       date_ = null;
-      vocabulary_ = new HashSet();
-      required_ = new HashSet();
-      paramVocab_ = new HashSet();
-      csvMap_ = new HashMap();
-      paramMap_ = new HashMap();
+      vocabulary_ = new HashSet<String>();
+      required_ = new HashSet<String>();
+      paramVocab_ = new HashSet<String>();
+      csvMap_ = new HashMap<String, CSVData>();
+      paramMap_ = new HashMap<String, Map<String, AbstractParam>>();
       nameToPdKey_ = nameToPdKey;
       legacy_ = legacy;
       useDate_ = useDate;
@@ -1413,8 +1416,8 @@ public class PerturbCsvFormatFactory {
       buildParamVocabulary();
     }
     
-    List getValues() {
-      return (new ArrayList(csvMap_.values()));
+    List<CSVData> getValues() {
+      return (new ArrayList<CSVData>(csvMap_.values()));
     }
         
     /***************************************************************************
@@ -1422,24 +1425,24 @@ public class PerturbCsvFormatFactory {
     ** read a line of data
     */  
 
-    void readDataLine(List argList, int rowNum) throws IOException { 
-      int batchCol = ((Integer)argToColMap_.get(BATCH_ID_UC)).intValue();
-      int pertCol = ((Integer)argToColMap_.get(PERT_AGENT_UC)).intValue();
-      int timeCol = ((Integer)argToColMap_.get(TIME_UC)).intValue();
+    void readDataLine(List<String> argList, int rowNum) throws IOException { 
+      int batchCol = argToColMap_.get(BATCH_ID_UC).intValue();
+      int pertCol = argToColMap_.get(PERT_AGENT_UC).intValue();
+      int timeCol = argToColMap_.get(TIME_UC).intValue();
       int numArgs = argList.size();
       if ((numArgs <= batchCol) || (numArgs <= pertCol) || (numArgs <= timeCol)) {
         throw new IOException(buildTokenErrorMessage("csvInput.badRow", rowNum, Integer.toString(numArgs)));
       }
       
-      String time = (String)argList.get(timeCol);
-      String batch = (String)argList.get(batchCol);
-      List etoks = experimentParse((String)argList.get(pertCol), rowNum);
+      String time = argList.get(timeCol);
+      String batch = argList.get(batchCol);
+      List<CSVData.ExperimentTokens> etoks = experimentParse(argList.get(pertCol), rowNum);
       String condition = conditionParse(argList, rowNum);
       String fullBatchID = CSVData.buildBatchKey(date_, investigators_, batch, time, condition, 
                                                  useDate_, useTime_, useBatch_, useInvest_, useCondition_);   
       String keyForLine = CSVData.buildRowKey(etoks, date_, investigators_, time, condition, fullBatchID);
   
-      CSVData csvMatch = (CSVData)csvMap_.get(keyForLine);
+      CSVData csvMatch = csvMap_.get(keyForLine);
       if (csvMatch == null) {       
         csvMatch = new CSVData(appState_, etoks, date_, investigators_, time, condition, fullBatchID);
         csvMap_.put(keyForLine, csvMatch);
@@ -1455,8 +1458,8 @@ public class PerturbCsvFormatFactory {
     */  
 
     String getPDKey(String paramKey, String name) {
-      Map toKey = (Map)nameToPdKey_.get(DataUtil.normKey(paramKey));
-      return ((String)toKey.get(DataUtil.normKey(name)));     
+      Map<String,String> toKey = nameToPdKey_.get(DataUtil.normKey(paramKey));
+      return (toKey.get(DataUtil.normKey(name)));     
     }
 
     /***************************************************************************
@@ -1465,7 +1468,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    void augmentParameters(PerturbationData pd, Map newParamsInFile) throws IOException {  
+    void augmentParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {  
       augmentScaleParameters(pd, newParamsInFile);
       augmentMeasureParameters(pd, newParamsInFile);
       augmentPertPropParameters(pd, newParamsInFile);
@@ -1482,26 +1485,26 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentScaleParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentScaleParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
        
       MeasureDictionary md = pd.getMeasureDictionary();
         
-      HashMap scToKey = (HashMap)nameToPdKey_.get(SCALE_PARAM_UC_);
+      Map<String, String> scToKey = nameToPdKey_.get(SCALE_PARAM_UC_);
       if (scToKey == null) {
-        scToKey = new HashMap();
+        scToKey = new HashMap<String, String>();
         nameToPdKey_.put(SCALE_PARAM_UC_, scToKey);
       }
       
-      Map scales = (Map)paramMap_.get(SCALE_PARAM_UC_);
+      Map<String, AbstractParam> scales = paramMap_.get(SCALE_PARAM_UC_);
       if (scales == null) {
-        scales = new HashMap();
+        scales = new HashMap<String, AbstractParam>();
         paramMap_.put(SCALE_PARAM_UC_, scales);
       }       
-      Map newScales = (Map)newParamsInFile.get(SCALE_PARAM_UC_);
+      Map<String, AbstractParam> newScales = newParamsInFile.get(SCALE_PARAM_UC_);
         
-      Iterator skit = md.getScaleKeys();
+      Iterator<String> skit = md.getScaleKeys();
       while (skit.hasNext()) {
-        String key = (String)skit.next();
+        String key = skit.next();
         MeasureScale scale = md.getMeasureScale(key);
         MeasureScaleParam msp = new MeasureScaleParam(scale);
         String scaleName = DataUtil.normKey(scale.getName());
@@ -1527,26 +1530,26 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentMeasureParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentMeasureParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
  
       MeasureDictionary md = pd.getMeasureDictionary();
         
-      HashMap mpToKey = (HashMap)nameToPdKey_.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, String> mpToKey = nameToPdKey_.get(MEASURE_TYPE_PARAM_UC_);
       if (mpToKey == null) {
-        mpToKey = new HashMap();
+        mpToKey = new HashMap<String, String>();
         nameToPdKey_.put(MEASURE_TYPE_PARAM_UC_, mpToKey);
       }
       
-      Map mPropMap = (Map)paramMap_.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> mPropMap = paramMap_.get(MEASURE_TYPE_PARAM_UC_);
       if (mPropMap == null) {
-        mPropMap = new HashMap();
+        mPropMap = new HashMap<String, AbstractParam>();
         paramMap_.put(MEASURE_TYPE_PARAM_UC_, mPropMap);
       }     
-      Map newProps = (Map)newParamsInFile.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> newProps = newParamsInFile.get(MEASURE_TYPE_PARAM_UC_);
  
-      Iterator mpkit = md.getKeys();
+      Iterator<String> mpkit = md.getKeys();
       while (mpkit.hasNext()) {
-        String key = (String)mpkit.next();
+        String key = mpkit.next();
         MeasureProps mProps = md.getMeasureProps(key);
         MeasureParam mp = new MeasureParam(mProps, pd);
         String propName = DataUtil.normKey(mProps.getName());
@@ -1572,26 +1575,26 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentPertPropParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentPertPropParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
       
       PertDictionary pDict = pd.getPertDictionary();
       
-      HashMap pToKey = (HashMap)nameToPdKey_.get(PERT_TYPE_PARAM_UC_);
+      Map<String, String> pToKey = nameToPdKey_.get(PERT_TYPE_PARAM_UC_);
       if (pToKey == null) {
-        pToKey = new HashMap();
+        pToKey = new HashMap<String, String>();
         nameToPdKey_.put(PERT_TYPE_PARAM_UC_, pToKey);
       }
       
-      Map pertTypes = (Map)paramMap_.get(PERT_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> pertTypes = paramMap_.get(PERT_TYPE_PARAM_UC_);
       if (pertTypes == null) {
-        pertTypes = new HashMap();
+        pertTypes = new HashMap<String, AbstractParam>();
         paramMap_.put(PERT_TYPE_PARAM_UC_, pertTypes);
       }   
-      Map newPerts = (Map)newParamsInFile.get(PERT_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> newPerts = newParamsInFile.get(PERT_TYPE_PARAM_UC_);
  
-      Iterator pdkit = pDict.getKeys();
+      Iterator<String> pdkit = pDict.getKeys();
       while (pdkit.hasNext()) {
-        String key = (String)pdkit.next();
+        String key = pdkit.next();
         PertProperties pProps = pDict.getPerturbProps(key);
         PertPropParam ppp = new PertPropParam(pProps);
         String propName = DataUtil.normKey(pProps.getType());
@@ -1617,29 +1620,29 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentConditionParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentConditionParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
       
       ConditionDictionary cDict = pd.getConditionDictionary();
       
-      HashMap eToKey = (HashMap)nameToPdKey_.get(CONDITION_PARAM_UC_);
+      Map<String, String> eToKey = nameToPdKey_.get(CONDITION_PARAM_UC_);
       if (eToKey == null) {
-        eToKey = new HashMap();
+        eToKey = new HashMap<String, String>();
         nameToPdKey_.put(CONDITION_PARAM_UC_, eToKey);
       }
       
-      Map condTypes = (Map)paramMap_.get(CONDITION_PARAM_UC_);
+      Map<String, AbstractParam> condTypes = paramMap_.get(CONDITION_PARAM_UC_);
       if (condTypes == null) {
-        condTypes = new HashMap();
+        condTypes = new HashMap<String, AbstractParam>();
         paramMap_.put(CONDITION_PARAM_UC_, condTypes);
       }   
-      Map newCond = (Map)newParamsInFile.get(CONDITION_PARAM_UC_);
+      Map<String, AbstractParam> newCond = newParamsInFile.get(CONDITION_PARAM_UC_);
  
-      Iterator pdkit = cDict.getKeys();
+      Iterator<String> pdkit = cDict.getKeys();
       while (pdkit.hasNext()) {
-        String key = (String)pdkit.next();
+        String key = pdkit.next();
         ExperimentConditions eCond = cDict.getExprConditions(key);   
         String condName = DataUtil.normKey(eCond.getDescription());
-        String nameMatch = (String)condTypes.get(condName);
+        String nameMatch = ((StringParam)condTypes.get(condName)).val;
         if (nameMatch != null) {
           if (!DataUtil.keysEqual(nameMatch, condName)) {
             throw new IOException(buildParamErrorMessage("csvInput.conditionInconsistent", nameMatch));
@@ -1648,7 +1651,7 @@ public class PerturbCsvFormatFactory {
             newCond.remove(condName);
           }
         } else {
-          condTypes.put(condName, eCond.getDescription());
+          condTypes.put(condName, new StringParam(eCond.getDescription()));
           eToKey.put(condName, eCond.getID());
         }
       }
@@ -1661,34 +1664,34 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentAnnotParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentAnnotParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
       
       PertAnnotations pa = pd.getPertAnnotations();
       
-      HashMap aToKey = (HashMap)nameToPdKey_.get(ANNOT_PARAM_UC_);
+      Map<String, String> aToKey = nameToPdKey_.get(ANNOT_PARAM_UC_);
       if (aToKey == null) {
-        aToKey = new HashMap();
+        aToKey = new HashMap<String, String>();
         nameToPdKey_.put(ANNOT_PARAM_UC_, aToKey);
       }
       
-      Map annotMap = (Map)paramMap_.get(ANNOT_PARAM_UC_);
+      Map<String, AbstractParam> annotMap = paramMap_.get(ANNOT_PARAM_UC_);
       if (annotMap == null) {
-        annotMap = new HashMap();
+        annotMap = new HashMap<String, AbstractParam>();
         paramMap_.put(ANNOT_PARAM_UC_, annotMap);
       }   
       if (annotMap.size() == 1) {
-        singleAnnot_ = (String)annotMap.keySet().iterator().next();
+        singleAnnot_ = annotMap.keySet().iterator().next();
       } else if (annotMap.size() > 1) {
         haveMultiAnnots_ = true;
       }
-      Map newAnnot = (Map)newParamsInFile.get(ANNOT_PARAM_UC_);
+      Map<String, AbstractParam> newAnnot = newParamsInFile.get(ANNOT_PARAM_UC_);
         
-      SortedMap fullMap = pa.getFullMap();
-      SortedMap tagToKey = pa.getFootTagToKeyMap();    
-      Iterator tkit = fullMap.keySet().iterator();
+      SortedMap<String, String> fullMap = pa.getFullMap();
+      SortedMap<String, String> tagToKey = pa.getFootTagToKeyMap();    
+      Iterator<String> tkit = fullMap.keySet().iterator();
       while (tkit.hasNext()) {
-        String key = (String)tkit.next();
-        String message = (String)fullMap.get(key);
+        String key = tkit.next();
+        String message = fullMap.get(key);
         AnnotParam dbAnnot = new AnnotParam(key, message);
         String annotNum = DataUtil.normKey(key);
         AnnotParam nameMatch = (AnnotParam)annotMap.get(annotNum);
@@ -1713,29 +1716,29 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentControlParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentControlParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
       
       ConditionDictionary cDict = pd.getConditionDictionary();
       
-      HashMap ctToKey = (HashMap)nameToPdKey_.get(CONTROL_PARAM_UC_);
+      Map<String, String> ctToKey = nameToPdKey_.get(CONTROL_PARAM_UC_);
       if (ctToKey == null) {
-        ctToKey = new HashMap();
+        ctToKey = new HashMap<String, String>();
         nameToPdKey_.put(CONTROL_PARAM_UC_, ctToKey);
       }
       
-      Map ctrlMap = (Map)paramMap_.get(CONTROL_PARAM_UC_);
+      Map<String, AbstractParam> ctrlMap = paramMap_.get(CONTROL_PARAM_UC_);
       if (ctrlMap == null) {
-        ctrlMap = new HashMap();
+        ctrlMap = new HashMap<String, AbstractParam>();
         paramMap_.put(CONTROL_PARAM_UC_, ctrlMap);
       }   
-      Map newCtrl = (Map)newParamsInFile.get(CONTROL_PARAM_UC_);
+      Map<String, AbstractParam> newCtrl = newParamsInFile.get(CONTROL_PARAM_UC_);
           
-      Iterator ctkit = cDict.getControlKeys();
+      Iterator<String> ctkit = cDict.getControlKeys();
       while (ctkit.hasNext()) {
-        String key = (String)ctkit.next();
+        String key = ctkit.next();
         ExperimentControl ectrl = cDict.getExprControl(key);
         String ctrlName = DataUtil.normKey(ectrl.getDescription());
-        String nameMatch = (String)ctrlMap.get(ctrlName);
+        String nameMatch = ((StringParam)ctrlMap.get(ctrlName)).val;
         if (nameMatch != null) {
           if (!DataUtil.normKey(nameMatch).equals(ctrlName)) {
             throw new IOException(buildParamErrorMessage("csvInput.controlInconsistent", nameMatch));
@@ -1744,7 +1747,7 @@ public class PerturbCsvFormatFactory {
             newCtrl.remove(ctrlName);
           }
         } else {
-          ctrlMap.put(ctrlName, ectrl.getDescription());
+          ctrlMap.put(ctrlName, new StringParam(ectrl.getDescription()));
           ctToKey.put(ctrlName, ectrl.getID());
         }
       }
@@ -1757,29 +1760,29 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentUserFieldParameters(PerturbationData pd, Map newParamsInFile) throws IOException { 
+    private void augmentUserFieldParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
           
-      HashMap ufToKey = (HashMap)nameToPdKey_.get(USER_FIELD_PARAM_UC_);
+      Map<String, String> ufToKey = nameToPdKey_.get(USER_FIELD_PARAM_UC_);
       if (ufToKey == null) {
-        ufToKey = new HashMap();
+        ufToKey = new HashMap<String, String>();
         nameToPdKey_.put(USER_FIELD_PARAM_UC_, ufToKey);
       }
       
-      Map ufMap = (Map)paramMap_.get(USER_FIELD_PARAM_UC_);
+      Map<String, AbstractParam> ufMap = paramMap_.get(USER_FIELD_PARAM_UC_);
       if (ufMap == null) {
-        ufMap = new HashMap();
+        ufMap = new HashMap<String, AbstractParam>();
         paramMap_.put(USER_FIELD_PARAM_UC_, ufMap);
       }   
       if ((ufMap != null) && !ufMap.isEmpty()) {
-        requiredUFields_ = new HashSet(ufMap.keySet());
+        requiredUFields_ = new HashSet<String>(ufMap.keySet());
       } 
-      Map newUF = (Map)newParamsInFile.get(USER_FIELD_PARAM_UC_);
+      Map<String, AbstractParam> newUF = newParamsInFile.get(USER_FIELD_PARAM_UC_);
 
       int numUF = pd.getUserFieldCount();
       for (int i = 0; i < numUF; i++) {
         String ufn = pd.getUserFieldName(i);
         String ufnNorm = DataUtil.normKey(ufn);
-        String nameMatch = (String)ufMap.get(ufnNorm);
+        String nameMatch = ((StringParam)ufMap.get(ufnNorm)).val;
         if (nameMatch != null) {
           if (!DataUtil.normKey(nameMatch).equals(ufnNorm)) {
             throw new IOException(buildParamErrorMessage("csvInput.userFieldInconsistent", nameMatch));
@@ -1788,7 +1791,7 @@ public class PerturbCsvFormatFactory {
             newUF.remove(ufnNorm);
           }
         } else {
-          ufMap.put(ufnNorm, ufn);
+          ufMap.put(ufnNorm, new StringParam(ufn));
           ufToKey.put(ufnNorm, Integer.toString(i));
         }
       }
@@ -1839,24 +1842,24 @@ public class PerturbCsvFormatFactory {
     ** Add a measurement from a line of csv perturb data
     */
 
-    private CSVData.DataPoint buildMeasurement(List args, int rowNum) throws IOException {
+    private CSVData.DataPoint buildMeasurement(List<String> args, int rowNum) throws IOException {
       int numArgs = args.size();
 
-      int targCol = ((Integer)argToColMap_.get(MEAS_GENE_UC)).intValue();
-      String target = (String)args.get(targCol);
+      int targCol = argToColMap_.get(MEAS_GENE_UC).intValue();
+      String target = args.get(targCol);
       if ((target == null) || target.trim().equals("")) {
         throw new IOException(buildTokenErrorMessage("csvInput.badTarget", rowNum, target));
       }
 
       String meaKey = (legacy_) ? DEL_DEL_CT_UC : MEASUREMENT_UC;
-      int valCol = ((Integer)argToColMap_.get(meaKey)).intValue();
-      String value = (String)args.get(valCol);
+      int valCol = argToColMap_.get(meaKey).intValue();
+      String value = args.get(valCol);
       if ((value == null) || value.trim().equals("")) {
         throw new IOException(buildTokenErrorMessage("csvInput.badMeasurement", rowNum, value));
       }
 
-      int isValCol = ((Integer)argToColMap_.get(FORCE_UC)).intValue();
-      String isValid = (numArgs >= (isValCol + 1)) ? (String)args.get(isValCol) : null;
+      int isValCol = argToColMap_.get(FORCE_UC).intValue();
+      String isValid = (numArgs >= (isValCol + 1)) ? args.get(isValCol) : null;
       if (!sigCSVInputOK(isValid)) {
         throw new IOException(buildTokenErrorMessage("csvInput.badSignificance", rowNum, isValid));      
       }    
@@ -1867,7 +1870,7 @@ public class PerturbCsvFormatFactory {
         }
       }
 
-      int commCol = ((Integer)argToColMap_.get(COMMENTS_UC)).intValue();
+      int commCol = argToColMap_.get(COMMENTS_UC).intValue();
       String comment = (numArgs >= (commCol + 1)) ? (String)args.get(commCol) : "";
       comment = (comment == null) ? null : comment.trim();
       
@@ -1876,10 +1879,10 @@ public class PerturbCsvFormatFactory {
       //
       
       String control = null;  
-      Map controls = (Map)paramMap_.get(CONTROL_PARAM_UC_);
+      Map<String, AbstractParam> controls = paramMap_.get(CONTROL_PARAM_UC_);
       if (controls != null) {
         if (controls.size() > 1) {       
-          int contCol = ((Integer)argToColMap_.get(CONTROL_UC)).intValue();
+          int contCol = argToColMap_.get(CONTROL_UC).intValue();
           control = (numArgs >= (contCol + 1)) ? (String)args.get(contCol) : "";  
           if (control != null) {
             control = control.trim();
@@ -1895,10 +1898,10 @@ public class PerturbCsvFormatFactory {
       //
       
       String measurement = null;  
-      Map measurements = (Map)paramMap_.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, AbstractParam>measurements = paramMap_.get(MEASURE_TYPE_PARAM_UC_);
       if (measurements != null) {
         if (measurements.size() > 1) {       
-          int measCol = ((Integer)argToColMap_.get(MEASURE_TYPE_PARAM_UC_)).intValue();
+          int measCol = argToColMap_.get(MEASURE_TYPE_PARAM_UC_).intValue();
           measurement = (numArgs >= (measCol + 1)) ? (String)args.get(measCol) : "";  
           if (measurement != null) {
             measurement = measurement.trim();
@@ -1907,7 +1910,7 @@ public class PerturbCsvFormatFactory {
             }
           }
         } else {
-          measurement = (String)measurements.keySet().iterator().next();
+          measurement = measurements.keySet().iterator().next();
         }
       }
        
@@ -1915,14 +1918,14 @@ public class PerturbCsvFormatFactory {
       // Annotations
       //
       
-      ArrayList annotList = new ArrayList();
-      Integer annotColObj = (Integer)argToColMap_.get(ANNOT_PARAM_UC_);
+      ArrayList<String> annotList = new ArrayList<String>();
+      Integer annotColObj = argToColMap_.get(ANNOT_PARAM_UC_);
       if (annotColObj == null) {
         if (singleAnnot_ != null) {
           annotList.add(singleAnnot_);
         }
       } else {
-        Map annots = (Map)paramMap_.get(ANNOT_PARAM_UC_);
+        Map<String, AbstractParam> annots = paramMap_.get(ANNOT_PARAM_UC_);
         int annotCol = annotColObj.intValue();
         String annotListStr = (numArgs >= (annotCol + 1)) ? (String)args.get(annotCol) : "";  
         if (annotListStr != null) {            
@@ -1937,11 +1940,11 @@ public class PerturbCsvFormatFactory {
         }
       }  
      
-      HashMap ufs = new HashMap(); 
-      Iterator ufit = userFieldToColMap_.keySet().iterator();
+      HashMap<String, String> ufs = new HashMap<String, String>(); 
+      Iterator<String> ufit = userFieldToColMap_.keySet().iterator();
       while (ufit.hasNext()) {
-        String ufname = (String)ufit.next();
-        int ufCol = ((Integer)userFieldToColMap_.get(ufname)).intValue();
+        String ufname = ufit.next();
+        int ufCol = userFieldToColMap_.get(ufname).intValue();
         String ufVal = (numArgs >= (ufCol + 1)) ? (String)args.get(ufCol) : "";
         ufs.put(ufname, ufVal);
       }
@@ -1976,7 +1979,7 @@ public class PerturbCsvFormatFactory {
     ** Gather headings
     */  
 
-    void gatherHeadings(List argList, PerturbationData pd, Map newParamsInFile) throws IOException {
+    void gatherHeadings(List<String> argList, PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
       extractDate();
       augmentParameters(pd, newParamsInFile);
       buildVocabulary();
@@ -1989,17 +1992,17 @@ public class PerturbCsvFormatFactory {
     ** Start processing the block
     */  
 
-    void startTheBlock(List argList) throws IOException {
+    void startTheBlock(List<String> argList) throws IOException {
       if (argList.size() < 1) {
         throw new IOException(buildParamErrorMessage("csvInput.badBlockStart", ""));
       }
-      String firstInvest = (String)argList.get(0);
+      String firstInvest = argList.get(0);
       if ((firstInvest == null) || (firstInvest.trim().equals(""))) {
         throw new IOException(buildParamErrorMessage("csvInput.badInvestigator", firstInvest));
       }
       int numInvest = argList.size();
       for (int i = 0; i < numInvest; i++) {
-        String nextInvest = (String)argList.get(i);
+        String nextInvest = argList.get(i);
         if ((nextInvest != null) && (!nextInvest.trim().equals(""))) {
           investigators_.add(nextInvest.trim());
         }
@@ -2013,11 +2016,11 @@ public class PerturbCsvFormatFactory {
     */  
 
     void extractDate() throws IOException { 
-      HashMap dates = (HashMap)paramMap_.get(DATE_PARAM_UC_);
+      Map<String, AbstractParam> dates = paramMap_.get(DATE_PARAM_UC_);
       if ((dates == null) || (dates.size() != 1)) {
         throw new IOException(buildParamErrorMessage("csvInput.badDateDef", ""));
       }
-      date_ = (String)dates.values().iterator().next();
+      date_ = ((StringParam)dates.values().iterator().next()).val;
       if ((date_ == null) || (date_.trim().equals(""))) {
         throw new IOException(buildParamErrorMessage("csvInput.badDate", date_));
       }
@@ -2030,9 +2033,9 @@ public class PerturbCsvFormatFactory {
     */  
 
     BoundedDoubMinMax getIllegalBounds(String meaKey) {
-      Map measures = (Map)paramMap_.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> measures = paramMap_.get(MEASURE_TYPE_PARAM_UC_);
       MeasureParam mp = (MeasureParam)measures.get(DataUtil.normKey(meaKey));
-      Map scales = (Map)paramMap_.get(SCALE_PARAM_UC_);
+      Map<String, AbstractParam> scales = paramMap_.get(SCALE_PARAM_UC_);
       MeasureScaleParam ms = (MeasureScaleParam)scales.get(DataUtil.normKey(mp.scaleName));
       return (ms.illegal);
     }
@@ -2042,21 +2045,21 @@ public class PerturbCsvFormatFactory {
     ** Break apart the experiment type string.
     */  
 
-    private List experimentParse(String value, int rowNum) throws IOException {
+    private List<CSVData.ExperimentTokens> experimentParse(String value, int rowNum) throws IOException {
 
       //
       // Extract out the experiment type:
       //
       
-      ArrayList retval = new ArrayList();
+      ArrayList<CSVData.ExperimentTokens> retval = new ArrayList<CSVData.ExperimentTokens>();
       StringTokenizer strTok = new StringTokenizer(value.trim(), "&");
       while (strTok.hasMoreTokens()) {
         String tok = strTok.nextToken();
         CSVData.ExperimentTokens exptok = new CSVData.ExperimentTokens(); 
-        Map pertTypes = (Map)paramMap_.get(PERT_TYPE_PARAM_UC_);
-        Iterator kit = pertTypes.keySet().iterator();
+        Map<String, AbstractParam> pertTypes = paramMap_.get(PERT_TYPE_PARAM_UC_);
+        Iterator<String> kit = pertTypes.keySet().iterator();
         while (kit.hasNext()) {
-          String ptKey = (String)kit.next();
+          String ptKey = kit.next();
           PertPropParam ppp = (PertPropParam)pertTypes.get(ptKey); 
           if (exptok.haveAMatch(tok, ppp.name, ppp.abbrev)) {             
             retval.add(exptok);
@@ -2075,14 +2078,14 @@ public class PerturbCsvFormatFactory {
     ** Figure out the condition
     */  
 
-    private String conditionParse(List args, int rowNum) throws IOException {
+    private String conditionParse(List<String> args, int rowNum) throws IOException {
       int numArgs = args.size();
       String condition;  
-      Map conditions = (Map)paramMap_.get(CONDITION_PARAM_UC_);
+      Map<String, AbstractParam> conditions = paramMap_.get(CONDITION_PARAM_UC_);
       if (conditions != null) {
         if (conditions.size() > 1) {       
-          int condCol = ((Integer)argToColMap_.get(CONDITION_PARAM_UC_)).intValue();
-          condition = (numArgs >= (condCol + 1)) ? (String)args.get(condCol) : "";  
+          int condCol = argToColMap_.get(CONDITION_PARAM_UC_).intValue();
+          condition = (numArgs >= (condCol + 1)) ? args.get(condCol) : "";  
           if (condition != null) {
             condition = condition.trim();
             if (!conditions.keySet().contains(DataUtil.normKey(condition))) {
@@ -2090,7 +2093,7 @@ public class PerturbCsvFormatFactory {
             }
           }
         } else {
-          condition = (String)conditions.keySet().iterator().next();
+          condition = conditions.keySet().iterator().next();
         }
       } else {    
         ConditionDictionary cDict = dacx_.getExpDataSrc().getPertData().getConditionDictionary();
@@ -2104,14 +2107,14 @@ public class PerturbCsvFormatFactory {
     ** Figure out the ordering of the heading row
     */  
 
-    private void parseHeadingRow(List argList, PerturbationData pd) throws IOException {
-      HashSet remaining = new HashSet(vocabulary_);
-      HashSet stillRequired = new HashSet(required_);
+    private void parseHeadingRow(List<String> argList, PerturbationData pd) throws IOException {
+      HashSet<String> remaining = new HashSet<String>(vocabulary_);
+      HashSet<String> stillRequired = new HashSet<String>(required_);
 
-      userFieldToColMap_ = new HashMap();
-      argToColMap_ = new HashMap();
+      userFieldToColMap_ = new HashMap<String, Integer>();
+      argToColMap_ = new HashMap<String, Integer>();
       
-      HashSet userFields = new HashSet();
+      HashSet<String> userFields = new HashSet<String>();
       int numUF = pd.getUserFieldCount();
       for (int i = 0; i < numUF; i++) {
         String ufn = pd.getUserFieldName(i);
@@ -2125,7 +2128,7 @@ public class PerturbCsvFormatFactory {
                 
       int listSize = argList.size();
       for (int i = 0; i < listSize; i++) {
-        String arg = ((String)argList.get(i)).trim();
+        String arg = argList.get(i).trim();
         String normArg = DataUtil.normKey(arg);
         if (!vocabulary_.contains(normArg)) {
           throw new IOException(buildHeadingErrorMessage("csvInput.badHeading", normArg));
@@ -2143,7 +2146,7 @@ public class PerturbCsvFormatFactory {
         }
       }
       if (!stillRequired.isEmpty()) {
-        String stillR = (String)stillRequired.iterator().next();
+        String stillR = stillRequired.iterator().next();
         throw new IOException(buildHeadingErrorMessage("csvInput.missingRequiredHeading", stillR));
       }
       return;
@@ -2180,14 +2183,14 @@ public class PerturbCsvFormatFactory {
         vocabulary_.add(CONTROL_UC);
         required_.add(CONTROL_UC);
       } else {
-        Map controls = (Map)paramMap_.get(CONTROL_PARAM_UC_);
+        Map<String, AbstractParam> controls = paramMap_.get(CONTROL_PARAM_UC_);
         if ((controls != null) && (controls.size() > 1)) {
           vocabulary_.add(CONTROL_UC);
           required_.add(CONTROL_UC);
         }
       }
       
-      Map conditions = (Map)paramMap_.get(CONDITION_PARAM_UC_);
+      Map<String, AbstractParam> conditions = paramMap_.get(CONDITION_PARAM_UC_);
       if ((conditions != null) && (conditions.size() > 1)) {
         vocabulary_.add(CONDITION_UC);
         required_.add(CONDITION_UC);
@@ -2196,11 +2199,11 @@ public class PerturbCsvFormatFactory {
       vocabulary_.add(FORCE_UC);
       vocabulary_.add(COMMENTS_UC);
 
-      Map userFields = (Map)paramMap_.get(USER_FIELD_PARAM_UC_);
+      Map<String, AbstractParam> userFields = paramMap_.get(USER_FIELD_PARAM_UC_);
       if (userFields != null) {
-        Iterator ufit = userFields.values().iterator();
+        Iterator<AbstractParam> ufit = userFields.values().iterator();
         while (ufit.hasNext()) {
-          String ufield = (String)ufit.next();
+          String ufield = ((StringParam)ufit.next()).val;
           vocabulary_.add(DataUtil.normKey(ufield));          
         }
         if (requiredUFields_ != null) {
@@ -2208,7 +2211,7 @@ public class PerturbCsvFormatFactory {
         }
       }
 
-      Map measures = (Map)paramMap_.get(MEASURE_TYPE_PARAM_UC_);
+      Map<String, AbstractParam> measures = paramMap_.get(MEASURE_TYPE_PARAM_UC_);
       if ((measures != null) && (measures.size() > 1)) {
         vocabulary_.add(MEASURE_TYPE_UC);
         required_.add(MEASURE_TYPE_UC);
@@ -2244,21 +2247,21 @@ public class PerturbCsvFormatFactory {
     ** Parse a parameter line
     */  
 
-    private void parseParameter(List argList, Map newParamsInFile) throws IOException {
-      HashMap parms = null;
-      ArrayList buildList = new ArrayList();
+    private void parseParameter(List<String> argList, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+      Map<String, AbstractParam> parms = null;
+      ArrayList<String> buildList = new ArrayList<String>();
       String normArg = null;
       int listSize = argList.size();
       for (int i = 0; i < listSize; i++) {
-        String arg = ((String)argList.get(i)).trim();
+        String arg = argList.get(i).trim();
         if (i == 0) {
           normArg = DataUtil.normKey(arg);
           if (!paramVocab_.contains(normArg)) {
             throw new IOException(buildParamErrorMessage("csvInput.badParameterName", arg));
           }
-          parms = (HashMap)paramMap_.get(normArg);
+          parms = paramMap_.get(normArg);
           if (parms == null) {
-            parms = new HashMap();
+            parms = new HashMap<String, AbstractParam>();
             paramMap_.put(normArg, parms);
           }       
         } else {
@@ -2274,11 +2277,12 @@ public class PerturbCsvFormatFactory {
     ** Build the parameter
     */  
 
-    private void buildParameter(String normArg, List buildList, HashMap parms, Map newParamsInFile) throws IOException {
+    private void buildParameter(String normArg, List<String> buildList, Map<String, AbstractParam> parms, 
+                                Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
       if (buildList.isEmpty()) {
         throw new IOException(buildParamErrorMessage("csvInput.invalidParameterDefinition", normArg));
       }
-      String key = DataUtil.normKey((String)buildList.get(0));
+      String key = DataUtil.normKey(buildList.get(0));
       
       if (normArg.equals(MEASURE_TYPE_PARAM_UC_)) {
         buildMeasureParameter(key, buildList, parms, newParamsInFile);
@@ -2308,17 +2312,18 @@ public class PerturbCsvFormatFactory {
     ** Build measure parameter
     */  
 
-    private void buildMeasureParameter(String key, List buildList, HashMap parms, Map newParamsInFile) throws IOException {
+    private void buildMeasureParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
+                                       Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
       if ((buildList.size() != 4) || (parms.get(key) != null)) {
         throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
       }
-      String newMeasureName = (String)buildList.get(0);
-      MeasureParam toAdd = new MeasureParam(newMeasureName, (String)buildList.get(1), 
-                                            (String)buildList.get(2), (String)buildList.get(3), this);        
-      HashMap newMeas = (HashMap)newParamsInFile.get(MEASURE_TYPE_PARAM_UC_);
+      String newMeasureName = buildList.get(0);
+      MeasureParam toAdd = new MeasureParam(newMeasureName, buildList.get(1), 
+                                            buildList.get(2), buildList.get(3), this);        
+      Map<String, AbstractParam> newMeas = newParamsInFile.get(MEASURE_TYPE_PARAM_UC_);
       MeasureParam alreadySeen;
       if (newMeas == null) {
-        newMeas = new HashMap();
+        newMeas = new HashMap<String, AbstractParam>();
         newParamsInFile.put(MEASURE_TYPE_PARAM_UC_, newMeas);
         alreadySeen = null;
       } else {
@@ -2340,16 +2345,17 @@ public class PerturbCsvFormatFactory {
     ** Build pert prop parameter
     */  
 
-    private void buildPertTypeParameter(String key, List buildList, HashMap parms, Map newParamsInFile) throws IOException {  
+    private void buildPertTypeParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
+                                        Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {  
       if ((buildList.size() != 3) || (parms.get(key) != null)) {
         throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
       }
-      String newPertPropName = (String)buildList.get(0);
-      PertPropParam toAdd = new PertPropParam(newPertPropName, (String)buildList.get(1), (String)buildList.get(2), this);
-      HashMap newPP = (HashMap)newParamsInFile.get(PERT_TYPE_PARAM_UC_);
+      String newPertPropName = buildList.get(0);
+      PertPropParam toAdd = new PertPropParam(newPertPropName, buildList.get(1), buildList.get(2), this);
+      Map<String, AbstractParam> newPP = newParamsInFile.get(PERT_TYPE_PARAM_UC_);
       PertPropParam alreadySeen;
       if (newPP == null) {
-        newPP = new HashMap();
+        newPP = new HashMap<String, AbstractParam>();
         newParamsInFile.put(PERT_TYPE_PARAM_UC_, newPP);
         alreadySeen = null;
       } else {
@@ -2371,31 +2377,32 @@ public class PerturbCsvFormatFactory {
     ** Build a single name parameter
     */  
 
-    private void buildSimpleNameParameter(String key, List buildList, HashMap parms, Map newParamsInFile, String pKey) throws IOException {  
+    private void buildSimpleNameParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
+                                          Map<String, Map<String, AbstractParam>> newParamsInFile, String pKey) throws IOException {  
           
       pKey = DataUtil.normKey(pKey);
       
       if ((buildList.size() != 1) || (parms.get(key) != null)) {
         throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
       }      
-      String newSimpleName = (String)buildList.get(0);
-      HashMap newCP = (HashMap)newParamsInFile.get(pKey);
+      String newSimpleName = buildList.get(0);
+      Map<String, AbstractParam> newCP = newParamsInFile.get(pKey);
       String alreadySeen;
       if (newCP == null) {
-        newCP = new HashMap();
+        newCP = new HashMap<String, AbstractParam>();
         newParamsInFile.put(pKey, newCP);
         alreadySeen = null;
       } else {
-        alreadySeen = (String)newCP.get(key);
+        alreadySeen = ((StringParam)newCP.get(key)).val;
       }
       if (alreadySeen != null) {
         if (!DataUtil.normKey(alreadySeen).equals(key)) {
           throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
         }
       } else {
-        newCP.put(key, newSimpleName);
+        newCP.put(key, new StringParam(newSimpleName));
       }
-      parms.put(key, newSimpleName);
+      parms.put(key, new StringParam(newSimpleName));
       return;
     }
     
@@ -2404,27 +2411,28 @@ public class PerturbCsvFormatFactory {
     ** Build the parameter
     */  
 
-    private void buildScaleParameter(String key, List buildList, HashMap parms, Map newParamsInFile) throws IOException {
+    private void buildScaleParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
+                                     Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
       int blSize = buildList.size();
       if ((blSize > 8) || (parms.get(key) != null)) {
         throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
       }
-      String newScaleName = (String)buildList.get(0);
-      String unchangedStr = (blSize > 1) ? (String)buildList.get(1) : null;
-      String convToFoldTypeTag = (blSize > 2) ? (String)buildList.get(2) : null;
-      String convToFoldFacStr = (blSize > 3) ? (String)buildList.get(3) : null;
-      String minIllegalStr = (blSize > 4) ? (String)buildList.get(4) : null;
-      String minIncludeStr = (blSize > 5) ? (String)buildList.get(5) : null;
-      String maxIllegalStr = (blSize > 6) ? (String)buildList.get(6) : null;
-      String maxIncludeStr = (blSize > 7) ? (String)buildList.get(7) : null;      
+      String newScaleName = buildList.get(0);
+      String unchangedStr = (blSize > 1) ? buildList.get(1) : null;
+      String convToFoldTypeTag = (blSize > 2) ? buildList.get(2) : null;
+      String convToFoldFacStr = (blSize > 3) ? buildList.get(3) : null;
+      String minIllegalStr = (blSize > 4) ? buildList.get(4) : null;
+      String minIncludeStr = (blSize > 5) ? buildList.get(5) : null;
+      String maxIllegalStr = (blSize > 6) ? buildList.get(6) : null;
+      String maxIncludeStr = (blSize > 7) ? buildList.get(7) : null;      
   
       MeasureScaleParam toAdd = new MeasureScaleParam(newScaleName, convToFoldTypeTag, convToFoldFacStr, 
                                                       minIllegalStr, minIncludeStr, maxIllegalStr, 
                                                       maxIncludeStr, unchangedStr, this);
-      HashMap newScales = (HashMap)newParamsInFile.get(SCALE_PARAM_UC_);
+      Map<String, AbstractParam> newScales = newParamsInFile.get(SCALE_PARAM_UC_);
       MeasureScaleParam alreadySeen;
       if (newScales == null) {
-        newScales = new HashMap();
+        newScales = new HashMap<String, AbstractParam>();
         newParamsInFile.put(SCALE_PARAM_UC_, newScales);
         alreadySeen = null;
       } else {
@@ -2446,16 +2454,17 @@ public class PerturbCsvFormatFactory {
     ** Build the parameter
     */  
 
-    private void buildAnnotParameter(String key, List buildList, HashMap parms, Map newParamsInFile) throws IOException {
+    private void buildAnnotParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
+                                     Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
       if ((buildList.size() != 2) || (parms.get(key) != null)) {
         throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
       }
-      String newAnnotTag = (String)buildList.get(0);
-      AnnotParam toAdd = new AnnotParam(newAnnotTag, (String)buildList.get(1));
-      HashMap newAnnots = (HashMap)newParamsInFile.get(ANNOT_PARAM_UC_);
+      String newAnnotTag = buildList.get(0);
+      AnnotParam toAdd = new AnnotParam(newAnnotTag, buildList.get(1));
+      Map<String, AbstractParam> newAnnots = newParamsInFile.get(ANNOT_PARAM_UC_);
       AnnotParam alreadySeen;
       if (newAnnots == null) {
-        newAnnots = new HashMap();
+        newAnnots = new HashMap<String, AbstractParam>();
         newParamsInFile.put(ANNOT_PARAM_UC_, newAnnots);
         alreadySeen = null;
       } else {
@@ -2478,7 +2487,29 @@ public class PerturbCsvFormatFactory {
   ** Annot parameter holder
   */  
   
-  private static class AnnotParam {    
+  private static class AbstractParam {
+    
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Annot parameter holder
+  */  
+  
+  private static class StringParam extends AbstractParam {    
+    String val;
+    
+    StringParam(String val) {
+      this.val = val;
+    }
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Annot parameter holder
+  */  
+  
+  private static class AnnotParam extends AbstractParam {    
     String num;
     String message;
     
@@ -2487,6 +2518,7 @@ public class PerturbCsvFormatFactory {
       this.message = message;
     }
     
+    @Override
     public boolean equals(Object other) {
       if (other == null) {
         return (false);
@@ -2515,7 +2547,7 @@ public class PerturbCsvFormatFactory {
   ** Measure Param holder
   */  
   
-  private static class MeasureParam {    
+  private static class MeasureParam extends AbstractParam {    
     String name;
     String scaleName;
     Double negThresh;
@@ -2538,7 +2570,8 @@ public class PerturbCsvFormatFactory {
       this.negThresh = props.getNegThresh();
       this.posThresh = props.getPosThresh();        
     }
-   
+
+    @Override
     public boolean equals(Object other) {
       if (other == null) {
         return (false);
@@ -2583,7 +2616,7 @@ public class PerturbCsvFormatFactory {
   ** Measure Scale Param holder
   */  
   
-  private static class MeasureScaleParam {    
+  private static class MeasureScaleParam extends AbstractParam {    
     String name;
     MeasureScale.Conversion conv;
     BoundedDoubMinMax illegal;
@@ -2650,6 +2683,7 @@ public class PerturbCsvFormatFactory {
       this.unchanged = scale.getUnchanged();
     }
     
+    @Override    
     public boolean equals(Object other) {
       if (other == null) {
         return (false);
@@ -2698,7 +2732,7 @@ public class PerturbCsvFormatFactory {
   ** Pert Prop Param holder
   */  
   
-  private static class PertPropParam {    
+  private static class PertPropParam extends AbstractParam {    
     String name;
     String abbrev;
     PertDictionary.PertLinkRelation linkRelation;
@@ -2725,6 +2759,7 @@ public class PerturbCsvFormatFactory {
       this.linkRelation = pp.getLinkSignRelationship();
     }
     
+    @Override    
     public boolean equals(Object other) {
       if (other == null) {
         return (false);

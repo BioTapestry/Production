@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -113,6 +113,7 @@ public class PanelCommands  {
     RELOCATE_NET_MOD_SOURCE, 
     CHANGE_GROUP_MEMBERSHIP,
     PATHS_FROM_USER_SELECTED,
+    DEFINE_CIS_REG_MODULE,
     ;
   }
    
@@ -826,6 +827,94 @@ public class PanelCommands  {
       return (myMode);
     }    
   }
+  
+  /***************************************************************************
+  **
+  ** Mode Handler used for defining cis-reg module; needs to run for two clicks
+  */ 
+    
+  public class MultiClickHandler extends ModeHandler {
+      
+    protected DialogAndInProcessCmd.MouseClickCmdState mccs;
+    protected Mode myMode;
+     
+    protected MultiClickHandler(DialogAndInProcessCmd daipc) {
+      myMode = daipc.suPanelMode;
+      mccs = (DialogAndInProcessCmd.MouseClickCmdState)daipc.currStateX;
+    }
+      
+    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+      ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
+      try {    
+        result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+      } finally {
+        if (result == ServerControlFlowHarness.ClickResult.REJECT) {
+         appState_.getSUPanel().giveErrorFeedback();       
+        } else if ((result == ServerControlFlowHarness.ClickResult.PROCESSED) || (result == ServerControlFlowHarness.ClickResult.CANCELLED)) {
+          setToNoMode(result, mccs.showBubbles(), false, false);
+          mccs = null;
+        }
+      }
+      appState_.getSUPanel().drawModel(false);
+      return;
+    }
+   
+    @Override
+    public boolean showBubbleHandler() {
+      return (mccs.showBubbles());
+    }   
+  
+    public void cancelMode(Object args) {
+      return;
+    }
+
+    public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
+      appState_.getTextBoxMgr().clearCurrentMouseOver();
+      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+      if (mccs.noSubModels() && modelIsSubset()) {
+        return (Mode.NO_MODE);  // nothing to do for subset stuff
+      }
+      if (mccs.noInstances() && modelIsInstance()) {
+        return (Mode.NO_MODE);  // nothing to do for instance stuff
+      }
+      if (mccs.mustBeDynamic() && !modelIsDynamic()) {
+       return (Mode.NO_MODE);
+      }  
+      if (mccs.noRootModel() && modelIsRoot()) {
+       return (Mode.NO_MODE);
+      }     
+      if (mccs.cannotBeDynamic() && modelIsDynamic()) {
+       return (Mode.NO_MODE);
+      }         
+      if (mccs.showBubbles()) {
+        appState_.getSUPanel().pushBubblesAndShow();
+      }   
+      appState_.getCommonView().disableControls(ms);     
+      appState_.getCursorMgr().showModeCursor();
+      return (myMode);
+    }    
+  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
  
   /***************************************************************************
   **
@@ -974,7 +1063,8 @@ public class PanelCommands  {
     case RELOCATE_NET_MOD_TARGET: return new SUFHHandler(daipc);
     case RELOCATE_NET_MOD_SOURCE: return new SUFHHandler(daipc);    
     case CHANGE_GROUP_MEMBERSHIP: return  new SUFHHandler(daipc); 
-    case PATHS_FROM_USER_SELECTED: return  new SUFHHandler(daipc); 
+    case PATHS_FROM_USER_SELECTED: return  new SUFHHandler(daipc);
+    case DEFINE_CIS_REG_MODULE: return  new MultiClickHandler(daipc);
     default:
       throw new IllegalArgumentException();
     }

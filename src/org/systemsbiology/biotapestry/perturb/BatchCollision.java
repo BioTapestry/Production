@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ public class BatchCollision  {
   public String expDesc;
   public String targetName;
   public String batchID;
-  public ArrayList vals;
+  public ArrayList<String> vals;
   
   /***************************************************************************
   **
@@ -41,6 +41,6 @@ public class BatchCollision  {
     this.expDesc = expDesc;
     this.targetName = targetName;
     this.batchID = batchID;
-    this.vals = new ArrayList();
+    this.vals = new ArrayList<String>();
   }
 }

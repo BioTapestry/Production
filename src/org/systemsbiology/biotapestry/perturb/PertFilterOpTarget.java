@@ -41,6 +41,6 @@ public interface PertFilterOpTarget {
   ** Get the filter
   */
   
-  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, PertFilterTarget> source, SourceSrc ss);
+  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, ? extends PertFilterTarget> source, SourceSrc ss);
  
 }

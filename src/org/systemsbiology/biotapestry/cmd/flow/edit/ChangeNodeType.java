@@ -43,6 +43,7 @@ import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
+import org.systemsbiology.biotapestry.ui.INodeRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
@@ -321,6 +322,21 @@ public class ChangeNodeType extends AbstractControlFlow {
             String nodeID = isit.next();
             Layout.PropChange lpc = lo.changeNodePropertiesType(nodeID, existingType_, newType_.intValue());
             support.addEdit(new PropChangeCmd(appState_, dacx_, new Layout.PropChange[] {lpc}));
+            //
+            // Code for Issue #241. If node is white, and the target type is not happy with white, change it
+            // to black so it does not disappear:
+            //
+            NodeProperties np = lo.getNodeProperties(nodeID);
+            String name = np.getColorName();
+            if (name.equals("white")) {
+              INodeRenderer ir = NodeProperties.buildRenderer(newType_.intValue());
+              if (!ir.getTargetColor().equals("white")) {
+                NodeProperties npc = np.clone();
+                npc.setColor("black");
+                lpc = lo.setNodeProperties(nodeID, npc);
+                support.addEdit(new PropChangeCmd(appState_, dacx_, new Layout.PropChange[] {lpc}));
+              }
+            } 
           }
           LayoutChangeEvent lcev = new LayoutChangeEvent(lo.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
           support.addEvent(lcev);

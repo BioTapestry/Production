@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,11 +37,14 @@ import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.GenomeInstance.GroupTuple;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.NameValuePairList;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -276,6 +279,104 @@ public class FullGenomeHierarchyOracle {
       }
     }    
     return (false);
+  }
+  
+  /***************************************************************************
+  **
+  ** For finding links only used in the root genome
+  */
+
+  public Set<String> findRootOnlyLinks() {    
+  
+    DBGenome genome = (DBGenome)getGenomeSource().getGenome();
+    HashSet<String> usageSet = new HashSet<String>();
+    
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage link = lit.next();
+      String linkID = link.getID();
+      usageSet.add(linkID);
+    }
+
+    Iterator<GenomeInstance> iit = getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      Iterator<Linkage> liit = gi.getLinkageIterator();
+      while (liit.hasNext()) {
+        Linkage link = liit.next();
+        String linkID = link.getID();
+        String baseID = GenomeItemInstance.getBaseID(linkID);
+        usageSet.remove(baseID);
+      }
+    }
+    return (usageSet);
+  }
+  
+  /***************************************************************************
+  **
+  ** For finding nodes only used in the root genome
+  */
+
+  public Set<String> findRootOnlyNodes() {    
+  
+    DBGenome genome = (DBGenome)getGenomeSource().getGenome();
+    HashSet<String> usageSet = new HashSet<String>();
+    
+    Iterator<Node> nit = genome.getAllNodeIterator();
+    while (nit.hasNext()) {
+      Node node = nit.next();
+      String nodeID = node.getID();
+      usageSet.add(nodeID);
+    }
+
+    Iterator<GenomeInstance> iit = getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      Iterator<Node> niit = gi.getAllNodeIterator();
+      while (niit.hasNext()) {
+        Node node = niit.next();
+        String nodeID = node.getID();
+        String baseID = GenomeItemInstance.getBaseID(nodeID);
+        usageSet.remove(baseID);
+      }
+    }
+    return (usageSet);
+  } 
+  
+  /***************************************************************************
+  **
+  ** Answers if the given master link and associated dups have any overlaps in
+  ** genome instances.
+  **
+  */
+  
+  public boolean noInstanceOverlap(String master, Set<String> dups) {
+    
+    HashSet<String> allLinks = new HashSet<String>(dups);
+    allLinks.add(master);
+    GenomeSource gSrc = getGenomeSource(); 
+    Iterator<GenomeInstance> iit = gSrc.getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      HashSet<GenomeInstance.GroupTuple> gtset = new HashSet<GenomeInstance.GroupTuple>();
+      if (gi.getVfgParent() == null) {
+        Iterator<String> lit = allLinks.iterator();
+        while (lit.hasNext()) {
+          String lid = lit.next();
+          Set<String> liSet = gi.returnLinkInstanceIDsForBacking(lid);
+          Iterator<String> liit = liSet.iterator();
+          while (liit.hasNext()) {
+            String liid = liit.next();
+            GenomeInstance.GroupTuple lgt = gi.getRegionTuple(liid);
+            if (gtset.contains(lgt)) {
+              return (false);
+            }
+            gtset.add(lgt);
+          }
+        }
+      }
+    }  
+    return (true);
   }
 
   /***************************************************************************
@@ -721,6 +822,449 @@ public class FullGenomeHierarchyOracle {
 
   public boolean matchesExistingGeneOrNodeName(String name) {
     return (matchesExistingGeneOrNodeName(name, null, null));
-  } 
+  }
+  
+  /***************************************************************************
+  **
+  ** Global Analysis of how child models are respecting link module boundaries:
+  */
+       
+  public static boolean hasModuleProblems(Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla) {    
+  
+    boolean retval = false;
+    for (String genomeID : gla.keySet()) {
+      Map<String, DBGeneRegion.LinkAnalysis> lsMap = gla.get(genomeID);
+      for (String geneID : lsMap.keySet()) {
+        DBGeneRegion.LinkAnalysis ls = lsMap.get(geneID);
+        for (String linkID : ls.status.keySet()) {
+          DBGeneRegion.LinkModStatus stat = ls.status.get(linkID);
+          if ((stat == DBGeneRegion.LinkModStatus.ORPHANED) || (stat == DBGeneRegion.LinkModStatus.TRESSPASS)) {
+            return (true);
+          }
+        }
+      } 
+    }
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** For a gene, find holders with links into them
+  */
+       
+  public static Set<DBGeneRegion.DBRegKey> holdersWithLinks(String baseGeneID, Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla) {    
+  
+    HashSet<DBGeneRegion.DBRegKey> retval = new HashSet<DBGeneRegion.DBRegKey>();
+    for (String genomeID : gla.keySet()) {
+      Map<String, DBGeneRegion.LinkAnalysis> lsMap = gla.get(genomeID);
+      for (String geneID : lsMap.keySet()) {
+        if (GenomeItemInstance.getBaseID(geneID).equals(baseGeneID)) {
+          DBGeneRegion.LinkAnalysis ls = lsMap.get(geneID);
+          for (String linkID : ls.status.keySet()) {
+            DBGeneRegion.LinkModStatus stat = ls.status.get(linkID);
+            if (stat == DBGeneRegion.LinkModStatus.NON_MODULE) {
+              DBGeneRegion.PadOffset po = ls.offsets.get(linkID);
+              retval.add(po.regKey);
+            }
+          }
+        }
+      }
+    }
+    return (retval);
+  }
 
+  /***************************************************************************
+  **
+  ** Global Analysis of how child models are respecting link module boundaries:
+  */
+       
+  public Map<String, Map<String, DBGeneRegion.LinkAnalysis>> fullyAnalyzeLinksIntoModules() {    
+    return (analyzeLinksIntoModules(null));
+  }
+
+  /***************************************************************************
+  **
+  ** What genes need fixing?
+  */
+       
+  public static Set<String> geneModsNeedFixing(Map<String, Map<String, DBGeneRegion.LinkAnalysis>> analysis) {
+    HashSet<String> retval = new HashSet<String>();
+    for (String genKey : analysis.keySet()) {
+      Map<String, DBGeneRegion.LinkAnalysis> forGen = analysis.get(genKey);
+      for (String geneID : forGen.keySet()) {
+        retval.add(GenomeItemInstance.getBaseID(geneID));  
+      }
+    }
+    return (retval);
+  }
+
+  /***************************************************************************
+  **
+  ** Global Analysis of how child models are respecting link module boundaries:
+  */
+       
+  public Map<String, Map<String, DBGeneRegion.LinkAnalysis>> analyzeLinksIntoModules(String baseGeneID) {    
+  
+    Map<String, Map<String, DBGeneRegion.LinkAnalysis>> retval = new HashMap<String, Map<String, DBGeneRegion.LinkAnalysis>>();
+
+    GenomeSource gSrc = getGenomeSource(); 
+    DBGenome genome = (DBGenome)gSrc.getGenome();
+    Map<String, DBGeneRegion.LinkAnalysis> canonical = canonicalGeneRegions(genome, baseGeneID);
+    retval.put(genome.getID(), canonical);
+      
+    Iterator<GenomeInstance> iit = gSrc.getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      retval.put(gi.getID(), analyzeLinksIntoModulesInInstance(gi, canonical));
+    }  
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** Provide the canonical definition of which links go to which gene modules, from the root definition:
+  */
+       
+  private Map<String, DBGeneRegion.LinkAnalysis> canonicalGeneRegions(DBGenome genome, String baseGeneID) {    
+  
+
+    Map<String, DBGeneRegion.LinkAnalysis> result = new HashMap<String, DBGeneRegion.LinkAnalysis>();
+    
+    //
+    // Find the genes that have module definitions, and map from pad number to region key (for all pads in regions);
+    //
+    
+    ArrayList<Gene> miniList = null;
+    if (baseGeneID != null) {
+      miniList = new ArrayList<Gene>();
+      miniList.add(genome.getGene(baseGeneID));  
+    }
+    Iterator<Gene> git = (miniList == null) ? genome.getGeneIterator() : miniList.iterator();
+    while (git.hasNext()) {
+      Gene gene = git.next();
+      if (gene.getNumRegions() > 0) {
+        DBGeneRegion.LinkAnalysis la = new DBGeneRegion.LinkAnalysis(gene.getID());
+        result.put(gene.getID(), la);
+        Iterator<DBGeneRegion> rit = gene.regionIterator();
+        while (rit.hasNext()) {
+          DBGeneRegion reg = rit.next();
+          DBGeneRegion.DBRegKey key = reg.getKey();
+          la.keyToReg.put(key, reg);
+          int startPad = reg.getStartPad();
+          int endPad = reg.getEndPad();
+          for (int i = startPad; i <= endPad; i++) {
+            la.padToReg.put(Integer.valueOf(i), key);
+          }
+        }   
+      }
+    }
+   
+    //
+    // Find the links landing on genes of interest:
+    //
+    
+    Set<String> genesWithRegs = result.keySet();
+    
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage link = lit.next();
+      String linkID = link.getID();
+      String targ = link.getTarget();
+      if (!genesWithRegs.contains(targ)) {
+        continue;
+      }
+      int tpad = link.getLandingPad();
+      Integer tPabObj = Integer.valueOf(tpad);
+      DBGeneRegion.LinkAnalysis la = result.get(targ);
+      DBGeneRegion.DBRegKey key = la.padToReg.get(tPabObj);
+      if (key == null) {
+       
+      } else {
+        DBGeneRegion reg = la.keyToReg.get(key);
+        DBGeneRegion.LinkModStatus lms = (reg.isHolder()) ? DBGeneRegion.LinkModStatus.NON_MODULE : DBGeneRegion.LinkModStatus.CONSISTENT;
+        la.offsets.put(linkID, new DBGeneRegion.PadOffset(key, tpad - reg.getStartPad()));
+        la.status.put(linkID, lms);
+      }
+    }
+    return (result);
+  }
+  
+  /***************************************************************************
+  **
+  ** Provide the canonical definition of which links go to which gene modules, from the root definition:
+  */
+       
+  public Map<String, DBGeneRegion.LinkAnalysis> analyzeLinksIntoModulesInInstance(GenomeInstance gi,
+                                                                                  Map<String, DBGeneRegion.LinkAnalysis> canonical) {
+ 
+    Map<String, DBGeneRegion.LinkAnalysis> result = new HashMap<String, DBGeneRegion.LinkAnalysis>();
+    
+    //
+    // Go to all instances of all the genes in the canonical description, and see how they match that
+    // requirement.
+    //
+    
+    for (String geneID : canonical.keySet()) {
+      DBGeneRegion.LinkAnalysis lac = canonical.get(geneID);
+      for (String lid : lac.status.keySet()) {
+        DBGeneRegion.LinkModStatus canonStatus = lac.status.get(lid);
+        DBGeneRegion.PadOffset forPadCanon = lac.offsets.get(lid); // null if not in region.
+        for (String liid : gi.returnLinkInstanceIDsForBacking(lid)) {
+          Linkage iLink = gi.getLinkage(liid);
+          int tPad = iLink.getLandingPad();
+          String lTarg = iLink.getTarget();
+          DBGeneRegion.LinkAnalysis lai = result.get(lTarg);
+          if (lai == null) {
+            lai = new DBGeneRegion.LinkAnalysis(lTarg, lac.keyToReg, lac.padToReg);
+            result.put(lTarg, lai);
+          }       
+          DBGeneRegion.DBRegKey forPadMine = lai.padToReg.get(Integer.valueOf(tPad));
+          DBGeneRegion.LinkModStatus myStatus;
+          DBGeneRegion reg = lai.keyToReg.get(forPadMine);
+          if (reg.isHolder()) { // I am outside any region         
+            if (canonStatus == DBGeneRegion.LinkModStatus.CONSISTENT) {
+              myStatus = DBGeneRegion.LinkModStatus.ORPHANED;  
+            } else if (canonStatus == DBGeneRegion.LinkModStatus.NON_MODULE) {
+              myStatus = DBGeneRegion.LinkModStatus.NON_MODULE;
+            } else {
+              throw new IllegalStateException();
+            }
+          } else if (canonStatus == DBGeneRegion.LinkModStatus.NON_MODULE) { // Canonical outside any region
+            myStatus = DBGeneRegion.LinkModStatus.TRESSPASS; // We must be in somebody's territory....
+          } else if (canonStatus == DBGeneRegion.LinkModStatus.CONSISTENT) { // Canonical in a module
+            if (forPadCanon.regKey.equals(forPadMine)) { // forPadCanon must != null
+              myStatus = DBGeneRegion.LinkModStatus.CONSISTENT;
+            } else {
+              myStatus = DBGeneRegion.LinkModStatus.TRESSPASS;
+            }   
+          } else {
+            throw new IllegalStateException();
+          }
+          lai.status.put(liid, myStatus);
+          lai.offsets.put(liid, new DBGeneRegion.PadOffset(forPadMine, tPad - reg.getStartPad()));
+        }
+      }
+    }
+    return (result);
+  }   
+
+  /***************************************************************************
+  ** 
+  ** Get all the instances of a DBNode
+  */
+
+  public List<NodeUsage> getAllNodeInstances(String baseID) {
+    ArrayList<NodeUsage> usageList = new ArrayList<NodeUsage>();
+    Iterator<GenomeInstance> iit = getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      String giID = gi.getID();
+      Set<String> niSet = gi.getNodeInstances(baseID);
+      Iterator<String> nisit = niSet.iterator();
+      while (nisit.hasNext()) {
+        String nodeInstID = nisit.next();
+        Group grp = gi.getGroupForNode(nodeInstID, GenomeInstance.ALWAYS_MAIN_GROUP);
+        String grpID = (grp == null) ? null : grp.getID();
+        Map<String, Set<String>> modMem = gi.getModuleMembership(nodeInstID);
+        GroupMembership grm = gi.getNodeGroupMembership(gi.getNode(nodeInstID));
+        NodeUsage le1 = new NodeUsage(baseID, giID, nodeInstID, grpID, modMem, grm.subGroups);
+        usageList.add(le1);
+      }
+    }
+    return (usageList);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get all the instances of a Linkage
+  */
+  
+  public List<LinkUsage> getAllLinkInstances(String linkID) {
+    ArrayList<LinkUsage> usageList = new ArrayList<LinkUsage>();
+    Iterator<GenomeInstance> iit = getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      String giID = gi.getID();
+      Set<String> liSet = gi.returnLinkInstanceIDsForBacking(linkID);
+      Iterator<String> lisit = liSet.iterator();
+      while (lisit.hasNext()) {
+        String linkInstID = lisit.next();
+        GroupTuple groupTup = gi.getRegionTuple(linkInstID);
+        usageList.add(new LinkUsage(linkID, giID, linkInstID, groupTup));                      
+      }
+    }
+    return (usageList);
+  }
+ 
+  
+  /***************************************************************************
+  ** 
+  ** We need to fix gene lengths from before 7.0.1. Genes can be shorter than their biggest used pad, and we need
+  ** to check all usages. At the same time, use this as a chance to collect up inbound pads for links into genes
+  ** with cis-reg modules:
+  */
+
+  private void minMaxForGenome(Map<String, MinMax> geneExtents, Genome genome, 
+                               Map<String, Integer> geneLens, Map<String, Map<String, Set<Integer>>> padsForModGenes) {
+    
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage link = lit.next();
+      String target = link.getTarget();
+
+      Node node = genome.getNode(target);
+      if (node.getNodeType() != node.GENE) {
+        continue;
+      }
+      int tPad = link.getLandingPad();
+      String baseID = GenomeItemInstance.getBaseID(target);
+      geneLens.put(baseID, node.getPadCount());
+      
+      MinMax mm = geneExtents.get(baseID);
+      if (mm == null) {
+        mm = new MinMax(tPad, tPad);
+        geneExtents.put(baseID, mm);
+      } else {
+        mm.update(tPad);
+      }
+      
+      Gene gene = (Gene)node;
+      if (gene.getNumRegions() > 0) {
+        
+        Map<String, Set<Integer>> forMods = padsForModGenes.get(baseID);
+        if (forMods == null) {
+          forMods = new HashMap<String, Set<Integer>>();
+          padsForModGenes.put(baseID, forMods);
+        }
+        String baseLink = GenomeItemInstance.getBaseID(link.getID());
+        Set<Integer> allPads = forMods.get(baseLink);
+        if (allPads == null) {
+          allPads = new HashSet<Integer>();
+          forMods.put(baseLink, allPads);
+        }        
+        allPads.add(Integer.valueOf(tPad));
+      }  
+    }
+    return;  
+  }
+
+  
+  /***************************************************************************
+  ** 
+  ** We need to fix gene lengths from before 7.0.1. Genes can be shorter than their biggest used pad, and we need
+  ** to check all usages
+  */
+
+  public void legacyIOGeneLengthFixup(Map<String, Integer> retval, 
+                                      Map<String, Map<String, Set<Integer>>> padsForModGenes) {
+    //
+    // Globally track the min and max pad usage into each (base) geneID.
+    //
+    
+    Map<String, MinMax> geneExtents = new HashMap<String, MinMax>();
+    Map<String, Integer> geneLens = new HashMap<String, Integer>();
+
+    GenomeSource gSrc = getGenomeSource(); 
+    DBGenome genome = (DBGenome)gSrc.getGenome();
+
+    minMaxForGenome(geneExtents, genome, geneLens, padsForModGenes);    
+    Iterator<GenomeInstance> iit = gSrc.getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      minMaxForGenome(geneExtents, gi, geneLens, padsForModGenes);
+    }
+    
+    for (String geneID : geneLens.keySet()) {
+      int length = geneLens.get(geneID).intValue(); 
+      int firstPad = DBGene.DEFAULT_PAD_COUNT - length;
+      MinMax minMax = geneExtents.get(geneID);
+      if (minMax.min < firstPad) {
+        int newLength = length + (firstPad - minMax.min);
+        retval.put(geneID, Integer.valueOf(newLength));    
+      }
+    }
+
+    return;  
+  }
+
+  /***************************************************************************
+  **
+  ** Used to return node usage results
+  */
+  
+  public static class NodeUsage implements Cloneable {
+
+    public String baseID;
+    public String nodeInstID;
+    public String modelID;
+    public String groupID;
+    public Map<String, Set<String>> modMem;
+    public Set<String> subGroups;
+    
+    public NodeUsage(String baseID, String modelID, String nodeInstID, String groupID, Map<String, Set<String>> modMem, Set<String> subGroups) {
+      this.baseID = baseID;
+      this.nodeInstID = nodeInstID;
+      this.modelID = modelID;
+      this.groupID = groupID;
+      this.modMem = modMem;
+      this.subGroups = subGroups;
+    }
+    
+    @Override
+    public String toString() {
+      return ("NodeUsage baseID = " + baseID + " modelID = " + modelID + " nodeInstID = " + nodeInstID + " groupID = " + groupID + " modMem = " + modMem + " subGroups = " + subGroups);
+    }
+   
+    @Override
+    public NodeUsage clone() {
+      try {
+        NodeUsage retval = (NodeUsage)super.clone();
+        retval.modMem = new HashMap<String, Set<String>>();
+        for (String ovrID : this.modMem.keySet()) {
+          Set<String> forOvr = this.modMem.get(ovrID);
+          retval.modMem.put(ovrID, new HashSet<String>(forOvr));
+        }
+        retval.subGroups = (this.subGroups == null) ? null : new HashSet<String>(this.subGroups);
+        return (retval);
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    }
+  }
+  
+  /***************************************************************************
+  **
+  ** Used to return link usage results
+  */
+  
+  public static class LinkUsage implements Cloneable {
+
+    public String baseID;
+    public String linkInstID;
+    public String modelID;
+    public GroupTuple groupTup;
+    
+    public LinkUsage(String baseID, String modelID, String linkInstID, GroupTuple groupTup) {
+      this.baseID = baseID;
+      this.linkInstID = linkInstID;
+      this.modelID = modelID;
+      this.groupTup = groupTup;
+    }
+    
+    @Override
+    public String toString() {
+      return ("NodeUsage baseID = " + baseID + " modelID = " + modelID + " linkInstID = " + linkInstID + " groupTup = " + groupTup);
+    }
+   
+    @Override
+    public LinkUsage clone() {
+      try {
+        LinkUsage retval = (LinkUsage)super.clone();
+        retval.groupTup = this.groupTup.clone();
+        return (retval);
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    }
+  }
 }

@@ -366,7 +366,8 @@ public class MultiLineRenderSupport {
     // Superscript case
     //
     
-    Font mFont = fmgr.getFont(fontType); 
+    AnnotatedFont amFont = fmgr.getOverrideFont(fontType, fo);
+    Font mFont = amFont.getFont();
     int superIndex = text.indexOf('^');
     if (superIndex != -1) {
       String regular = text.substring(0, superIndex);      

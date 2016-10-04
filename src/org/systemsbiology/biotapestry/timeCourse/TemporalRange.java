@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -411,6 +411,7 @@ public class TemporalRange {
   ** Get single range line for display
   */
   
+  @SuppressWarnings("unused")
   public void getRangeLine(PrintWriter out, Set<String> srcIDs, RegionAndRange rar,  TimeAxisDefinition tad, boolean namedStages, String displayUnits, ResourceManager rMan ) { 
     //
     // FIX ME: In endomesoderm, 0 hr used to be written as "M".  Not currently supported.

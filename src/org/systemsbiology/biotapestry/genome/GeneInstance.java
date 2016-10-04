@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -189,6 +189,15 @@ public class GeneInstance extends NodeInstance implements Gene {
     return (((DBGene)getBacking()).getNumRegions());
   }
   
+  /***************************************************************************
+  **
+  ** Get the region holding a pad. May be null:
+  */
+  
+  public DBGeneRegion getRegionForPad(int padNum){
+    return (((DBGene)getBacking()).getRegionForPad(padNum));
+  }
+ 
   /***************************************************************************
   **
   ** Get the experimental verification level

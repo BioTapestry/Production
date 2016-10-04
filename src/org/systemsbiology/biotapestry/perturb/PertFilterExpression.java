@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -130,20 +130,21 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Clone
   */
 
+  @Override
   public PertFilterExpression clone() {
     try {
       PertFilterExpression newVal = (PertFilterExpression)super.clone();
       // BOGUS!!
       if (this.target1_ instanceof PertFilter) {
-        newVal.target1_ = (PertFilter)((PertFilter)this.target1_).clone();
+        newVal.target1_ = ((PertFilter)this.target1_).clone();
       } else {
-        newVal.target1_ = (PertFilterExpression)((PertFilterExpression)this.target1_).clone();
+        newVal.target1_ = ((PertFilterExpression)this.target1_).clone();
       }
       if (this.target2_ != null) {
         if (this.target2_ instanceof PertFilter) {
-          newVal.target2_ = (PertFilter)((PertFilter)this.target2_).clone();
+          newVal.target2_ = ((PertFilter)this.target2_).clone();
         } else {
-          newVal.target2_ = (PertFilterExpression)((PertFilterExpression)this.target2_).clone();
+          newVal.target2_ = ((PertFilterExpression)this.target2_).clone();
         }
       }
       return (newVal);
@@ -193,7 +194,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Get the filter
   */
   
-  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, PertFilterTarget> source, SourceSrc ss) {
+  public SortedSet<String> getFilteredResult(SortedSet<String> input, SortedMap<String, ? extends PertFilterTarget> source, SourceSrc ss) {
     
     if (isAlwaysFilter()) {
       return (input);
