@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
@@ -70,7 +70,7 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   private List annotResult_;
   private EditableTable estAnnotForEdit_;
   private EditableTable estAnnotForMerge_;
-  private ArrayList annotList_;
+  private ArrayList<EnumCell> annotList_;
   private PertSimpleNameEditPanel.Client client_;
   private List allMerge_;
   private String copyName_;
@@ -89,13 +89,13 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertTargetAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, 
+  public PertTargetAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, 
                                   PertSimpleNameEditPanel.Client client, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 4);
+    super(uics, dacx, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
     client_ = client;
-    annotList_ = new ArrayList();
+    annotList_ = new ArrayList<EnumCell>();
     
     //
     // Edit version:
@@ -331,8 +331,8 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   
   protected void updateOptions() {
     annotList_ = pmh_.buildAnnotEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_, EnumCell.class));      
     EditableTable useTable = (mode_ == MERGE_MODE) ? estAnnotForMerge_ : estAnnotForEdit_;
     useTable.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)useTable.getModel()).setCurrentEnums(annotList_);         
@@ -353,10 +353,10 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   private JPanel buildAnnotTable(boolean forMerge) {   
     final EditableTable useTable;
     if (!forMerge) {
-      estAnnotForEdit_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "ptae.annot", annotList_), parent_);
+      estAnnotForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "ptae.annot", annotList_), parent_);
       useTable = estAnnotForEdit_;
     } else {
-      estAnnotForMerge_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "ptae.annot", annotList_), parent_);
+      estAnnotForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "ptae.annot", annotList_), parent_);
       useTable = estAnnotForMerge_;
     }
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);
@@ -367,7 +367,7 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
           String who = pmh_.getSelectedEnumVal(useTable);        
           pet_.jumpToRemoteEdit(PertAnnotManagePanel.MANAGER_KEY, PertAnnotManagePanel.ANNOT_KEY, who);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });

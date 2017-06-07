@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,20 +23,20 @@ package org.systemsbiology.biotapestry.cmd.flow.add;
 import java.io.IOException;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GroupChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.GroupChange;
 import org.systemsbiology.biotapestry.genome.GroupMember;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -66,8 +66,7 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNodeToSubGroup(BTState appState, NodeInGroupArgs nia) {
-    super(appState);
+  public AddNodeToSubGroup(NodeInGroupArgs nia) {
     name = nia.getName();
     desc = nia.getName();
     niID_ = nia.getNiID();
@@ -87,8 +86,8 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, niID_, groupID_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(niID_, groupID_, dacx);
     return (retval);
   }
  
@@ -106,6 +105,7 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToProcess")) {
           next = ans.stepToProcess();      
         } else {
@@ -124,29 +124,21 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState {
     
     private String myNiID_;
-    private String myGroupID_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
+    private String myGroupID_;  
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, String niID, String groupID, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(String niID, String groupID, StaticDataAccessContext dacx) {
+      super(dacx);
       myNiID_ = niID;
       myGroupID_ = groupID;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -164,9 +156,8 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToProcess() {
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
-      addNodeToSubGroup(appState_, dacx_, gi, myGroupID_, myNiID_, null);
-    
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
+      addNodeToSubGroup(dacx_, gi, myGroupID_, myNiID_, null, uFac_);   
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
   }
@@ -176,7 +167,8 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
   ** Add a node to a subgroup
   */  
  
-  public static boolean addNodeToSubGroup(BTState appState, DataAccessContext dacx, GenomeInstance gi, String groupID, String niID, UndoSupport support) {
+  public static boolean addNodeToSubGroup(StaticDataAccessContext dacx, GenomeInstance gi, 
+                                          String groupID, String niID, UndoSupport support, UndoFactory uFac) {
       
     //
     // Undo/Redo support
@@ -184,15 +176,15 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
     
     boolean gottaFinish = false;
     if (support == null) {
-      support = new UndoSupport(appState, "undo.addNewSubGroup");
+      support = uFac.provideUndoSupport("undo.addNewSubGroup", dacx);
       gottaFinish = true;
     }
     Group group = gi.getGroup(groupID);
     GroupChange grc = group.addMember(new GroupMember(niID), gi.getID());
     if (grc != null) {
-      GroupChangeCmd grcc = new GroupChangeCmd(appState, dacx, grc);
+      GroupChangeCmd grcc = new GroupChangeCmd(dacx, grc);
       support.addEdit(grcc);
-      ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);      
     }
     if (gottaFinish) {

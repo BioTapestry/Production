@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.ui.freerender.NetOverlayFree;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -202,7 +202,7 @@ public class NetOverlayProperties implements Cloneable {
       }  
     }
 
-    DBGenome rootGenome = (DBGenome)gSrc.getGenome();
+    DBGenome rootGenome = (DBGenome)gSrc.getRootDBGenome();
     
     HashMap<String, String> treeToTree = new HashMap<String, String>();
     this.linkTreeProps_ = new HashMap<String, NetModuleLinkageProperties>();
@@ -249,6 +249,7 @@ public class NetOverlayProperties implements Cloneable {
   ** 
   */  
   
+  @Override
   public NetOverlayProperties clone() { 
     try {
       NetOverlayProperties retval = (NetOverlayProperties)super.clone();      
@@ -456,7 +457,7 @@ public class NetOverlayProperties implements Cloneable {
 
   public void removeNetModuleLinkagePropertiesWithTreeID(GenomeSource gSrc, String treeID) {
     linkTreeProps_.remove(treeID);
-    ((DBGenome)gSrc.getGenome()).removeKey(treeID);
+    ((DBGenome)gSrc.getRootDBGenome()).removeKey(treeID);
     return;
   }  
  
@@ -476,7 +477,7 @@ public class NetOverlayProperties implements Cloneable {
     linkToTree_.remove(linkID);
     if (!linkToTree_.values().contains(treeID)) {
       linkTreeProps_.remove(treeID);
-      ((DBGenome)gSrc.getGenome()).removeKey(treeID);
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(treeID);
       return (treeID);
     }
     
@@ -531,25 +532,6 @@ public class NetOverlayProperties implements Cloneable {
     }    
     return (retval);
   } 
-
-  /***************************************************************************
-  **
-  ** Find out the rows and columns that we require for displaying the overlay
- 
-  
-  public void getNeededRowsAndCols(SortedSet needRows, SortedSet needCols, Rectangle bounds) { 
-    Iterator mpit = modules_.values().iterator();
-    while (mpit.hasNext()) {
-      NetModuleProperties np = (NetModuleProperties)mpit.next();
-   //   np.compress(emptyRows, emptyCols, bounds);
-    }
-    Iterator ltpit = linkTreeProps_.values().iterator();
-    while (ltpit.hasNext()) {
-      NetModuleLinkageProperties nmlp = (NetModuleLinkageProperties)ltpit.next();
-    //  nmlp.compress(emptyRows, emptyCols, bounds);
-    }    
-    return;
-  }   
   
   /***************************************************************************
   **
@@ -746,10 +728,10 @@ public class NetOverlayProperties implements Cloneable {
   ** Return possible type choices values
   */
   
-  public static Vector<TrueObjChoiceContent> getOverlayTypes(BTState appState) {
+  public static Vector<TrueObjChoiceContent> getOverlayTypes(DataAccessContext dacx) {
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
     for (OvrType daType : OvrType.values()) {
-      retval.add(typeForCombo(appState, daType));
+      retval.add(typeForCombo(dacx, daType));
     }
     return (retval);
   }  
@@ -759,8 +741,8 @@ public class NetOverlayProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static TrueObjChoiceContent typeForCombo(BTState appState, OvrType type) {
-    return (new TrueObjChoiceContent(mapTypeToDisplay(appState, type), type));
+  public static TrueObjChoiceContent typeForCombo(DataAccessContext dacx, OvrType type) {
+    return (new TrueObjChoiceContent(mapTypeToDisplay(dacx, type), type));
   }  
 
   /***************************************************************************
@@ -768,9 +750,9 @@ public class NetOverlayProperties implements Cloneable {
   ** Map node types
   */
 
-  public static String mapTypeToDisplay(BTState appState, OvrType type) {
+  public static String mapTypeToDisplay(DataAccessContext dacx, OvrType type) {
     String typeTag = mapToTypeTag(type);
-    return (appState.getRMan().getString("noverlay." + typeTag));
+    return (dacx.getRMan().getString("noverlay." + typeTag));
   }  
 
   /***************************************************************************
@@ -801,10 +783,10 @@ public class NetOverlayProperties implements Cloneable {
   ** Return possible relayout modes
   */
   
-  public static Vector<ChoiceContent> getRelayoutOptions(BTState appState) {
+  public static Vector<ChoiceContent> getRelayoutOptions(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_RELAYOUT_OPTIONS_; i++) {
-      retval.add(relayoutForCombo(appState, i));
+      retval.add(relayoutForCombo(dacx, i));
     }
     return (retval);
   }  
@@ -814,8 +796,8 @@ public class NetOverlayProperties implements Cloneable {
   ** Get a combo box element for relayout
   */
   
-  public static ChoiceContent relayoutForCombo(BTState appState, int option) {
-    return (new ChoiceContent(mapRelayoutToDisplay(appState, option), option));
+  public static ChoiceContent relayoutForCombo(DataAccessContext dacx, int option) {
+    return (new ChoiceContent(mapRelayoutToDisplay(dacx, option), option));
   }  
 
   /***************************************************************************
@@ -823,9 +805,9 @@ public class NetOverlayProperties implements Cloneable {
   ** Map relayout options
   */
 
-  public static String mapRelayoutToDisplay(BTState appState, int option) {
+  public static String mapRelayoutToDisplay(DataAccessContext dacx, int option) {
     String optionTag = mapToRelayoutTag(option);
-    return (appState.getRMan().getString("noverlay." + optionTag));
+    return (dacx.getRMan().getString("noverlay." + optionTag));
   }  
 
   /***************************************************************************
@@ -868,10 +850,10 @@ public class NetOverlayProperties implements Cloneable {
   ** Return possible cpex layout modes
   */
   
-  public static Vector<ChoiceContent> getCompressExpandLayoutOptions(BTState appState) {
+  public static Vector<ChoiceContent> getCompressExpandLayoutOptions(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_CPEX_LAYOUT_OPTIONS_; i++) {
-      retval.add(cpexLayoutForCombo(appState, i));
+      retval.add(cpexLayoutForCombo(dacx, i));
     }
     return (retval);
   }  
@@ -881,8 +863,8 @@ public class NetOverlayProperties implements Cloneable {
   ** Get a combo box element for cpex layout
   */
   
-  public static ChoiceContent cpexLayoutForCombo(BTState appState, int option) {
-    return (new ChoiceContent(mapCpexLayoutToDisplay(appState, option), option));
+  public static ChoiceContent cpexLayoutForCombo(DataAccessContext dacx, int option) {
+    return (new ChoiceContent(mapCpexLayoutToDisplay(dacx, option), option));
   }  
 
   /***************************************************************************
@@ -890,9 +872,9 @@ public class NetOverlayProperties implements Cloneable {
   ** Map cpex layout options
   */
 
-  public static String mapCpexLayoutToDisplay(BTState appState, int option) {
+  public static String mapCpexLayoutToDisplay(DataAccessContext dacx, int option) {
     String optionTag = mapToCpexLayoutTag(option);
-    return (appState.getRMan().getString("noverlay." + optionTag));
+    return (dacx.getRMan().getString("noverlay." + optionTag));
   }  
 
   /***************************************************************************
@@ -940,13 +922,21 @@ public class NetOverlayProperties implements Cloneable {
       
   public static class NetOverlayPropertiesWorker extends AbstractFactoryClient {
    
-    public NetOverlayPropertiesWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    private MyLinkGlue mlg_;
+    
+    public NetOverlayPropertiesWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add("nOvrProp");
       installWorker(new NetModuleProperties.NetModulePropertiesWorker(whiteboard), new MyGlue());
-      installWorker(new NetModuleLinkageProperties.NetModuleLinkagePropertiesWorker(appState, whiteboard), new MyLinkGlue(appState));      
+      mlg_ = new MyLinkGlue();
+      installWorker(new NetModuleLinkageProperties.NetModuleLinkagePropertiesWorker(whiteboard), mlg_);      
     }
   
+    public void installContext(DataAccessContext dacx) {
+      mlg_.installContext(dacx);
+      return;
+    }
+
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("nOvrProp")) {
@@ -980,12 +970,15 @@ public class NetOverlayProperties implements Cloneable {
   }
   public static class MyLinkGlue implements GlueStick {
     
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public MyLinkGlue(BTState appState) {
-      appState_ = appState;
+    public MyLinkGlue() {
     }
     
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+    }
+
     public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
                                   Object optionalArgs) throws IOException {
       FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
@@ -996,7 +989,7 @@ public class NetOverlayProperties implements Cloneable {
       // are not ambiguous.  But this means we need to keep that source (the
       // root Genome) informed:
       try {
-        ((DBGenome)appState_.getDB().getGenome()).addKey(nmlp.getID());
+        dacx_.getDBGenome().addKey(nmlp.getID());
       } catch (IllegalStateException isex) {
         throw new IOException();
       }

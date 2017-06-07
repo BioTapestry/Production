@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,16 +25,13 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -72,8 +69,7 @@ public class RemoveSelections extends AbstractControlFlow {
   ** Constructor
   */ 
   
-  public RemoveSelections(BTState appState) {
-    super(appState);
+  public RemoveSelections() {
     name =  "command.DeleteSelections";
     desc = "command.DeleteSelections";
     mnem =  "command.DeleteSelectionsMnem"; 
@@ -107,9 +103,10 @@ public class RemoveSelections extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToWarn")) {
         next = ans.stepToWarn();      
@@ -134,27 +131,19 @@ public class RemoveSelections extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
     
-    private DataAccessContext rcxT_;
-    private String nextStep_;    
-    private BTState appState_;
     private HashMap<String, Intersection> linkInter_;
     private RemoveSupport.DataDeleteQueryState ddqs_;
-   
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToWarn";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -165,11 +154,11 @@ public class RemoveSelections extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToWarn() {
      
       // RE: Issue 163. Cut this off right at the start
-      if (rcxT_.getGenome() instanceof DynamicGenomeInstance) {
+      if (dacx_.currentGenomeIsADynamicInstance()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));       
       }
       
-      Map<String, Intersection> selmap = appState_.getGenomePresentation().getSelections();
+      Map<String, Intersection> selmap = uics_.getGenomePresentation().getSelections();
 
       //
       // Crank through the selections.  For selections that are linkages, 
@@ -185,14 +174,14 @@ public class RemoveSelections extends AbstractControlFlow {
       while (selKeys.hasNext()) {
         String key = selKeys.next();
         Intersection inter = selmap.get(key);
-        Linkage link = rcxT_.getGenome().getLinkage(key);
+        Linkage link = dacx_.getCurrentGenome().getLinkage(key);
         if (link != null) {
           if (inter.getSubID() == null) {
-            inter = Intersection.fullIntersection(link, rcxT_, true);
+            inter = Intersection.fullIntersection(link, dacx_, true);
           }
           linkInter_.put(key, inter);
         }
-        Node node = rcxT_.getGenome().getNode(key);
+        Node node = dacx_.getCurrentGenome().getNode(key);
         if (node != null) {
           deadSet.add(key);
         }
@@ -208,15 +197,15 @@ public class RemoveSelections extends AbstractControlFlow {
 
       ArrayList<String> deadList = new ArrayList<String>(deadSet);
       DialogAndInProcessCmd daipc;
-      SimpleUserFeedback suf = RemoveSupport.deleteWarningHelperNew(appState_, rcxT_);
+      SimpleUserFeedback suf = RemoveSupport.deleteWarningHelperNew(dacx_);
       if (suf != null) {
         daipc = new DialogAndInProcessCmd(suf, this);     
       } else {
         daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
       }
       
-      if (!rcxT_.genomeIsRootGenome() || (deadList.size() == 0)) {
-        ddqs_ = new RemoveSupport.DataDeleteQueryState(deadList, daipc, rcxT_.genomeIsRootGenome());
+      if (!dacx_.currentGenomeIsRootDBGenome() || (deadList.size() == 0)) {
+        ddqs_ = new RemoveSupport.DataDeleteQueryState(deadList, daipc, dacx_.currentGenomeIsRootDBGenome());
         nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
       } else {
         ddqs_ = new RemoveSupport.DataDeleteQueryState(deadList, daipc);
@@ -229,8 +218,8 @@ public class RemoveSelections extends AbstractControlFlow {
     **
     ** Mapping function
     */ 
-       
-    private String mapNextStepToFunction(RemoveSupport.DataDeleteQueryState.NextStep next) {
+     
+   private String mapNextStepToFunction(RemoveSupport.DataDeleteQueryState.NextStep next) {
       switch (next) {
         case GO_DELETE:
           return ("stepToRemove");
@@ -242,14 +231,14 @@ public class RemoveSelections extends AbstractControlFlow {
           throw new IllegalArgumentException();
       }
     } 
-    
+      
     /***************************************************************************
     **
     ** Do the step
     */ 
        
     private DialogAndInProcessCmd stepToCheckDataDelete() {    
-      RemoveSupport.stepToCheckDataDelete(rcxT_, ddqs_, this);
+      RemoveSupport.stepToCheckDataDelete(dacx_, ddqs_, this);
       nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
       return (ddqs_.retval);
     } 
@@ -273,33 +262,33 @@ public class RemoveSelections extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToRemove() {
       
    
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = (new FullGenomeHierarchyOracle(appState_)).getGlobalNetModuleLinkPadNeeds();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
     
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteSelected");        
-      appState_.getGenomePresentation().clearSelections(rcxT_, support);
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteSelected", dacx_);        
+      uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
       boolean didDelete = false;
    
-      if (RemoveLinkage.deleteLinksFromModel(appState_, linkInter_, rcxT_, support)) {
+      if (RemoveLinkage.deleteLinksFromModel(linkInter_, dacx_, support, uFac_)) {
         didDelete = true;
       }
   
       Iterator<String> dsit = ddqs_.deadList.iterator();
       while (dsit.hasNext()) {
         String deadID = dsit.next();
-        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(appState_, deadID, rcxT_, support, ddqs_.dataDelete, true);
+        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(uics_, deadID, dacx_, support, ddqs_.dataDelete, true, uFac_);
         didDelete |= nodeRemoved;
       }
       
       if (globalPadNeeds != null) {
-        ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxT_, globalPadNeeds,false, support);
+        ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds,false, support);
       }    
    
       if (didDelete) {
-        support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }
   
       support.finish();  // no matter what to handle selection clearing
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
   }

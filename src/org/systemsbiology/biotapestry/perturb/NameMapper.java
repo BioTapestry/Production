@@ -33,7 +33,7 @@ import java.util.Map;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -70,7 +70,7 @@ public class NameMapper implements Cloneable {
   private HashMap<String, List<String>> mapToData_;
   private long serialNumber_;
   private String usage_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -83,8 +83,8 @@ public class NameMapper implements Cloneable {
   ** Constructor
   */
 
-  public NameMapper(BTState appState, String usage) {
-    appState_ = appState;
+  public NameMapper(DataAccessContext dacx, String usage) {
+    dacx_ = dacx;
     mapToData_ = new HashMap<String, List<String>>();
     serialNumber_ = 0L;
     usage_ = usage;
@@ -101,6 +101,7 @@ public class NameMapper implements Cloneable {
   ** Clone
   */
 
+  @Override
   public NameMapper clone() {
     try {
       NameMapper newVal = (NameMapper)super.clone();
@@ -352,7 +353,7 @@ public class NameMapper implements Cloneable {
   */
   
   public PertDataChange[] dropIdentityMaps(Map<String, String> nameResolver) {    
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();    
+    DBGenome genome = dacx_.getDBGenome();    
     ArrayList<PertDataChange> retvalList = new ArrayList<PertDataChange>();       
     // copy avoids concurrent modification:
     Iterator<String> mit = new HashSet<String>(mapToData_.keySet()).iterator();
@@ -483,8 +484,7 @@ public class NameMapper implements Cloneable {
     // will map by default:
     //
     
-   
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx_.getDBGenome();
     String resolvesToName = nameResolver.get(key);
     Node node = genome.getGeneWithName(resolvesToName);
     if (node != null) {
@@ -546,7 +546,7 @@ public class NameMapper implements Cloneable {
     // have an issue:
     //
     
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx_.getDBGenome();
     String resolvesToName = nameResolver.get(key);
     Node node = genome.getGeneWithName(resolvesToName);
     if (node != null) {
@@ -666,13 +666,17 @@ public class NameMapper implements Cloneable {
       
   public static class NameMapperWorker extends AbstractFactoryClient {
  
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public NameMapperWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public NameMapperWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      appState_ = appState;
       myKeys_.add("dataMap");
       installWorker(new MapFromWorker(whiteboard), new MyMapFromGlue());
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
     }
     
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
@@ -688,7 +692,7 @@ public class NameMapper implements Cloneable {
     private NameMapper buildFromXML(String elemName, Attributes attrs) throws IOException {  
       String serNum = AttributeExtractor.extractAttribute(elemName, attrs, "dataMap", "serialNum", false);
       String usage = AttributeExtractor.extractAttribute(elemName, attrs, "dataMap", "usage", true);
-      NameMapper retval = new NameMapper(appState_, usage);
+      NameMapper retval = new NameMapper(dacx_, usage);
       if (serNum != null) { 
         try {
           long sNum = Long.parseLong(serNum);

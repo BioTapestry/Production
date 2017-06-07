@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,8 +27,11 @@ import java.util.Map;
 import java.util.Set;
 
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
@@ -67,8 +70,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public NodeSrcTargSearch(BTState appState, boolean genesOnly, boolean isForSource) {
-    super(appState);
+  public NodeSrcTargSearch(boolean genesOnly, boolean isForSource) {
     isForSource_ = isForSource;
     isForLinks_ = false;
     if (isForSource) {
@@ -88,8 +90,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
    ** Constructor for links
    */ 
    
-   public NodeSrcTargSearch(BTState appState, boolean isForSource) {
-     super(appState);
+   public NodeSrcTargSearch(boolean isForSource) {
      isForSource_ = isForSource;
      isForLinks_ = true;
      if (isForSource) {
@@ -116,12 +117,13 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
   */ 
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (isForLinks_) {
       return (true);
     }
     String oid = inter.getObjectID();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String nod = (isForSource_) ? link.getTarget() : link.getSource();
@@ -154,9 +156,8 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    NodeSrcSearchState retval = new NodeSrcSearchState(appState_, genesOnly_, isForSource_, isForLinks_, dacx);
-    retval.nextStep_ = "processCommand";
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    NodeSrcSearchState retval = new NodeSrcSearchState(genesOnly_, isForSource_, isForLinks_, dacx);
     return (retval);
   }   
   
@@ -174,6 +175,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         NodeSrcSearchState ans = (NodeSrcSearchState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("processCommand")) {
           next = ans.processCommand();
         } else {
@@ -192,16 +194,13 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
   ** Running State:
   */
          
-  public static class NodeSrcSearchState implements DialogAndInProcessCmd.PopupCmdState, GraphSearcher.CriteriaJudge {
+  public static class NodeSrcSearchState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, GraphSearcher.CriteriaJudge {
     
-    private BTState appState_;
     private SearchRequestPreload spr;
-    private String nextStep_;
     private SourceAndTargetSelector.SearchResult sres;
     private boolean myGenesOnly_;
     private boolean myIsForSource_;
     private boolean myIsForLinks_;
-    private DataAccessContext rcxT_;
     private Intersection intersection_;
    
     /***************************************************************************
@@ -209,23 +208,14 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
     ** Construct
     */
        
-    NodeSrcSearchState(BTState appState, boolean genesOnly, boolean isForSource, boolean isForLinks, DataAccessContext dacx) {
-      appState_ = appState;
+    NodeSrcSearchState(boolean genesOnly, boolean isForSource, boolean isForLinks, StaticDataAccessContext dacx) {
+      super(dacx);
       myGenesOnly_ = genesOnly;
       myIsForSource_ = isForSource;
       myIsForLinks_ = isForLinks;
-      rcxT_ = dacx;
+      nextStep_ = "processCommand";
     } 
-    
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-     
+
     /***************************************************************************
     **
     ** CriteriaJudge interface:
@@ -235,7 +225,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
       if (intersection_.getObjectID().equals(nodeID)) {
         return (false);
       }
-      return (rcxT_.getGenome().getGene(nodeID) != null);      
+      return (dacx_.getCurrentGenome().getGene(nodeID) != null);      
     }
     
     /***************************************************************************
@@ -245,23 +235,23 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
        
     public void setIntersection(Intersection inter) {
       intersection_ = inter;
-      BTState.SearchModifiers sm = appState_.getSearchModifiers();
+      CmdSource.SearchModifiers sm = cmdSrc_.getSearchModifiers();
       if (myIsForLinks_) {
         if (myIsForSource_) {
-          Linkage link = rcxT_.getGenome().getLinkage(inter.getObjectID());
+          Linkage link = dacx_.getCurrentGenome().getLinkage(inter.getObjectID());
           String src = link.getSource();
-          spr = new NodeSrcTargSearch.SearchRequestPreload(src, rcxT_);
+          spr = new NodeSrcTargSearch.SearchRequestPreload(src, dacx_);
           spr.injectFromPop(false, SourceAndTargetSelector.Searches.DIRECT_SELECT, sm.includeQueryNode, false, !sm.appendToCurrent, null);   
         } else { 
-          BusProperties bp = rcxT_.getLayout().getLinkProperties(inter.getObjectID());
+          BusProperties bp = dacx_.getCurrentLayout().getLinkProperties(inter.getObjectID());
           LinkSegmentID segID = inter.segmentIDFromIntersect();
           Set<String> linksThru = bp.resolveLinkagesThroughSegment(segID);
-          spr = new NodeSrcTargSearch.SearchRequestPreload(null, rcxT_);    
+          spr = new NodeSrcTargSearch.SearchRequestPreload(null, dacx_);    
           spr.injectLinksFromPop(linksThru, true);      
         }
       } else {   
-        spr = new NodeSrcTargSearch.SearchRequestPreload(inter.getObjectID(), rcxT_);
-        boolean showLinks = (myGenesOnly_) ? false : sm.includeLinks && !appState_.getSUPanel().linksAreHidden(rcxT_);      
+        spr = new NodeSrcTargSearch.SearchRequestPreload(inter.getObjectID(), dacx_);
+        boolean showLinks = (myGenesOnly_) ? false : sm.includeLinks && !uics_.getGenomePresentation().linksAreHidden(dacx_);      
         SourceAndTargetSelector.Searches srch = (myIsForSource_) ? SourceAndTargetSelector.Searches.SOURCE_SELECT : SourceAndTargetSelector.Searches.TARGET_SELECT;  
         spr.injectFromPop(myGenesOnly_, srch, sm.includeQueryNode, showLinks, !sm.appendToCurrent, this);  
       }
@@ -282,7 +272,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
         nodeSet.add(spr.selectedID);
         sres = sats.doSelection(nodeSet, spr.stype, spr.includeItem, spr.includeLinks);
       } else if (spr.genesOnly) {
-        sres = sats.doCriteriaSelection(spr.selectedID, spr.stype, spr.includeItem, spr.includeLinks, spr.judge);
+        sres = sats.doCriteriaSelection(spr.selectedID, spr.stype, spr.includeLinks, spr.judge);
       } else { 
         HashSet<String> nodeSet = new HashSet<String>();
         nodeSet.add(spr.selectedID);
@@ -332,7 +322,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
 
   public static class SearchRequestPreload implements ServerControlFlowHarness.UserInputs {
   
-    public DataAccessContext rcx;
+    public StaticDataAccessContext rcx;
     public String selectedID;
     public Set<String> linksThru;
     public boolean genesOnly;
@@ -344,7 +334,7 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
     private boolean haveResult;
     
     
-    public SearchRequestPreload(String selectedID, DataAccessContext rcx) {
+    public SearchRequestPreload(String selectedID, StaticDataAccessContext rcx) {
       this.rcx = rcx;
       this.selectedID = selectedID;
     }
@@ -374,6 +364,10 @@ public class NodeSrcTargSearch extends AbstractControlFlow {
       haveResult = false;
       return;
     }   
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }  

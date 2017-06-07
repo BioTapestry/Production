@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,16 +28,16 @@ import java.util.Map;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.layout.WorkspaceSupport;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.FullHierarchyBuilder;
 import org.systemsbiology.biotapestry.genome.FullHierarchyCSVFormatFactory;
@@ -61,6 +61,7 @@ import org.systemsbiology.biotapestry.util.ModelNodeIDPair;
 import org.systemsbiology.biotapestry.util.NodeRegionModelNameTuple;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -87,8 +88,7 @@ public class ImportCSV extends AbstractControlFlow  {
   ** Constructor 
   */ 
   
-  public ImportCSV(BTState appState) {
-    super(appState);
+  public ImportCSV() {
     name = "command.ImportHierarchyCSV";
     desc = "command.ImportHierarchyCSV";
     mnem = "command.ImportHierarchyCSVMnem";
@@ -117,8 +117,8 @@ public class ImportCSV extends AbstractControlFlow  {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -134,13 +134,10 @@ public class ImportCSV extends AbstractControlFlow  {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh; 
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("presentImportChoices")) {
         next = ans.presentImportChoices();  
@@ -171,11 +168,8 @@ public class ImportCSV extends AbstractControlFlow  {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, BackgroundWorkerOwner {
+  public static class StepState extends AbstractStepState implements BackgroundWorkerOwner {
      
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
     private String chosenFile_;
     private boolean headlessFailure_;
@@ -190,27 +184,45 @@ public class ImportCSV extends AbstractControlFlow  {
     private InputStream useStream;
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext rcx_;
  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      myLsSup_ = appState_.getLSSupport();
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "presentImportChoices";
-      dacx_ = dacx.getContextForRoot();
+      // myLsSup_: uics_ not initialized yet!
+      rcx_ = dacx.getContextForRoot();
     }
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "presentImportChoices";
+      myLsSup_ = uics_.getLSSupport();
+      rcx_ = dacx_.getContextForRoot();
+    }
+    
+    /***************************************************************************
+    **
+    ** Gotta override to make sure myLsSup_ can get initialized.
+    */
+    
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      myLsSup_ = uics_.getLSSupport();
+      return;
     }
     
     /***************************************************************************
@@ -245,17 +257,17 @@ public class ImportCSV extends AbstractControlFlow  {
       DialogAndInProcessCmd daipc;
       specLayout_ = null;  // Applies in non-replacement case
       params_ = null;
-      if (!appState_.isHeadless()) { // not headless
-        SIFImportChoicesDialogFactory.BuildArgs ba = new SIFImportChoicesDialogFactory.BuildArgs(false);
-        SIFImportChoicesDialogFactory mddf = new SIFImportChoicesDialogFactory(cfh);   
+      if (!uics_.isHeadless()) { // not headless
+        SIFImportChoicesDialogFactory.BuildArgs ba = new SIFImportChoicesDialogFactory.BuildArgs(false, rcx_);
+        SIFImportChoicesDialogFactory mddf = new SIFImportChoicesDialogFactory(cfh_);   
         ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
         nextStep_ = "stepProcessImportChoices";
         return (retval);
       }
       // headless
-      specLayout_ = new WorksheetLayout(appState_, true);
-      params_ = appState_.getLayoutOptMgr().getDiagLayoutParams();      
+      specLayout_ = new WorksheetLayout(true, new StaticDataAccessContext(rcx_));
+      params_ = rcx_.getLayoutOptMgr().getDiagLayoutParams();      
       daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
       nextStep_ = "getFileOrStream";
       return (daipc);
@@ -280,18 +292,18 @@ public class ImportCSV extends AbstractControlFlow  {
       DialogAndInProcessCmd daipc;
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         SpecialtyLayoutEngine.SpecialtyType strat = crq.layoutType;
-        specLayout_ = SpecialtyLayoutEngine.getLayout(strat, appState_);          
+        specLayout_ = SpecialtyLayoutEngine.getLayout(strat, new StaticDataAccessContext(rcx_));          
         boolean showOptions = crq.showOptionDialog;
         if (showOptions) {
-          Genome targetGenome = appState_.getDB().getGenome();
-          SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout_.getParameterDialogBuildArgs(targetGenome, null, false);
-          SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh);
+          Genome targetGenome = rcx_.getDBGenome();
+          SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout_.getParameterDialogBuildArgs(uics_, targetGenome, null, false);
+          SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh_);
           ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
           daipc = new DialogAndInProcessCmd(cfhd, this);
           nextStep_ = "stepExtractParams";
           return (daipc);
         } else {
-          params_ = appState_.getLayoutOptMgr().getLayoutParams(strat);   
+          params_ = rcx_.getLayoutOptMgr().getLayoutParams(strat);   
         }
         daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
         nextStep_ = "stepWarn";         
@@ -325,10 +337,10 @@ public class ImportCSV extends AbstractControlFlow  {
     */ 
        
     private DialogAndInProcessCmd stepWarn() {
-      if (!appState_.isHeadless() && 
+      if (!uics_.isHeadless() && 
           (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) &&
-          appState_.hasAnUndoChange()) { 
-        ResourceManager rMan = appState_.getRMan();      
+          cmdSrc_.hasAnUndoChange()) { 
+        ResourceManager rMan = rcx_.getRMan();      
         String message = rMan.getString("loadAction.warningMessage");
         String title = rMan.getString("loadAction.warningMessageTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -369,15 +381,15 @@ public class ImportCSV extends AbstractControlFlow  {
       // Going to use a file or a stream:
       //
         
-      if (!appState_.isHeadless()) { // not headless      
-        FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv");
-        useFile = myLsSup_.getFprep().getExistingImportFile("ImportDirectory", filt);
+      if (!uics_.isHeadless()) { // not headless      
+        FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(rcx_.getRMan(), ".csv", "filterName.csv");
+        useFile = myLsSup_.getFprep(dacx_).getExistingImportFile("ImportDirectory", filt);
         if (useFile == null) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
         }
       } else {
         if (doFile.booleanValue()) {
-          if (!myLsSup_.getFprep().checkExistingImportFile(useFile)) {
+          if (!myLsSup_.getFprep(dacx_).checkExistingImportFile(useFile)) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
           }     
         }
@@ -399,32 +411,32 @@ public class ImportCSV extends AbstractControlFlow  {
       chosenFile_ = (useFile == null) ? null : useFile.getName();
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         myLsSup_.setCurrentFile(null);  // since we replace everything
-        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), 
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), rcx_.getCurrentGenomeID(), 
                                                      ModelChangeEvent.MODEL_DROPPED);     
-        appState_.getEventMgr().sendModelChangeEvent(mcev);
-        appState_.getCommonView().manageWindowTitle(chosenFile_);
-        myLsSup_.newModelOperations(dacx_);
+        uics_.getEventMgr().sendModelChangeEvent(mcev);
+        uics_.getCommonView().manageWindowTitle(chosenFile_);
+        myLsSup_.newModelOperations(rcx_);
       }
       
-      if (!appState_.isHeadless()) { // not headless
-        myLsSup_.getFprep().setPreference("ImportDirectory", useFile.getAbsoluteFile().getParent());
-        XPlatMaskingStatus xpms = appState_.getCommonView().calcDisableControls(MainCommands.GENERAL_PUSH, true);
-        appState_.getCommonView().disableControls(xpms);
+      if (!uics_.isHeadless()) { // not headless
+        myLsSup_.getFprep(dacx_).setPreference("ImportDirectory", useFile.getAbsoluteFile().getParent());
+        XPlatMaskingStatus xpms = uics_.getCommonView().calcDisableControls(MainCommands.GENERAL_PUSH, true);
+        uics_.getCommonView().disableControls(xpms);
       }
       
-      UndoSupport support = new UndoSupport(appState_, "undo.buildFromCSV");
+      UndoSupport support = uFac_.provideUndoSupport("undo.buildFromCSV", rcx_);
       FullHierarchyCSVFormatFactory fhcsv;
       FullHierarchyBuilder.BIPData bipd;
      
       try {
-        fhcsv = new FullHierarchyCSVFormatFactory(appState_, dacx_);
+        fhcsv = new FullHierarchyCSVFormatFactory(uics_, rcx_);
         if (useFile != null) {
           bipd = fhcsv.buildFromCSVForeground(useFile, (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), support);
         } else {
           bipd = fhcsv.buildFromCSVForegroundStream(useStream, (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), modelIDMap, support);
         }
         if (bipd == null) {
-          appState_.getCommonView().enableControls();
+          uics_.getCommonView().enableControls();
           finishedImport(new LinkRouter.RoutingResult(), null, null);
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
         }
@@ -432,14 +444,14 @@ public class ImportCSV extends AbstractControlFlow  {
         if (support != null) {
           support.finish(); // does this really belong here?
         }
-        appState_.getCommonView().enableControls(true);
+        uics_.getCommonView().enableControls(true);
         finishedImport(null, null, iiex);
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));                         
       } catch (IOException ioex) {
         if (support != null) { 
           support.finish(); // does this really belong here?
         }
-        appState_.getCommonView().enableControls(true);
+        uics_.getCommonView().enableControls(true);
         finishedImport(null, ioex, null);
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
@@ -450,7 +462,7 @@ public class ImportCSV extends AbstractControlFlow  {
       
       String dbGenomeCSVName = null;
       if (modelIDMap != null) {
-        String dbGenomeKey = dacx_.getGenomeID();
+        String dbGenomeKey = rcx_.getCurrentGenomeID();
         Iterator<String> kit = modelIDMap.keySet().iterator();
         while (kit.hasNext()) {
           String cSVName = kit.next();
@@ -462,23 +474,23 @@ public class ImportCSV extends AbstractControlFlow  {
         }
       }
 
-      CSVImportRunner runner = new CSVImportRunner(appState_, dacx_, fhcsv, bipd, nodeIDMap, dbGenomeCSVName,
-                                                   support, importMode_, doOpt, doSquash, overlayOption, appState_.isHeadless(), 
+      CSVImportRunner runner = new CSVImportRunner(uics_, uFac_, new StaticDataAccessContext(rcx_), fhcsv, bipd, nodeIDMap, dbGenomeCSVName,
+                                                   support, importMode_, doOpt, doSquash, overlayOption, uics_.isHeadless(), 
                                                    specLayout_, params_);
 
       BackgroundWorkerClient bwc;     
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, rcx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
       } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, support);
+        bwc = new BackgroundWorkerClient(uics_, rcx_, this, runner, support);
       }
       runner.setClient(bwc);
       // Already disabled->false arg
       bwc.launchWorker(false);
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
                                                                                        : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done    
-      if (appState_.isHeadless() && headlessFailure_) {
+      if (uics_.isHeadless() && headlessFailure_) {
         daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this);  
       }
       return (daipc);  
@@ -510,43 +522,43 @@ public class ImportCSV extends AbstractControlFlow  {
     private boolean finishedImport(LinkRouter.RoutingResult result, IOException ioEx, 
                                    InvalidInputException iiex) {
       if (result != null) {
-        (new LayoutStatusReporter(appState_, result)).doStatusAnnouncements();
+        (new LayoutStatusReporter(uics_, rcx_, result)).doStatusAnnouncements();
       }
       if (ioEx != null) {
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-          dacx_.drop();
-          appState_.getCommonView().manageWindowTitle(null);
-          myLsSup_.newModelOperations(dacx_);
+          rcx_.drop();
+          uics_.getCommonView().manageWindowTitle(null);
+          myLsSup_.newModelOperations(rcx_);
         }
-        myLsSup_.getFprep().getFileInputError(ioEx).displayFileInputError();
+        myLsSup_.getFprep(dacx_).getFileInputError(ioEx).displayFileInputError();
         return (false);                
       }
       if (iiex != null) {
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-          dacx_.drop();
-          appState_.getCommonView().manageWindowTitle(null);
-          myLsSup_.newModelOperations(dacx_);
+          rcx_.drop();
+          uics_.getCommonView().manageWindowTitle(null);
+          myLsSup_.newModelOperations(rcx_);
         }
         // FIXME! Still gotta route this to the screen:
         SimpleUserFeedback errSUF = myLsSup_.displayInvalidInputError(iiex);
         // return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
-        if (!appState_.isHeadless()) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), errSUF.message, errSUF.title, JOptionPane.ERROR_MESSAGE);
+        if (!uics_.isHeadless()) {
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), errSUF.message, errSUF.title, JOptionPane.ERROR_MESSAGE);
         }  
         return (false);                
       }
-      if (dacx_.getGenomeSource().getGenome() == null) {
-        dacx_.drop();
-        myLsSup_.newModelOperations(dacx_);
-        appState_.getCommonView().manageWindowTitle(null);
-        myLsSup_.getFprep().getFileInputError(null).displayFileInputError();
+      if (rcx_.getGenomeSource().getRootDBGenome() == null) {
+        rcx_.drop();
+        myLsSup_.newModelOperations(rcx_);
+        uics_.getCommonView().manageWindowTitle(null);
+        myLsSup_.getFprep(dacx_).getFileInputError(null).displayFileInputError();
         return (false);
       }
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-        appState_.getCommonView().manageWindowTitle(chosenFile_);
-        myLsSup_.postLoadOperations(true, dacx_);
+        uics_.getCommonView().manageWindowTitle(chosenFile_);
+        myLsSup_.postLoadOperations(true, rcx_, 0, false, false, null);
       }
-      LayoutLinkSupport.offerColorFixup(appState_, dacx_, result);
+      LayoutLinkSupport.offerColorFixup(uics_, rcx_, result, uFac_);
       return (true);
     }  
   }   
@@ -561,8 +573,7 @@ public class ImportCSV extends AbstractControlFlow  {
     private FullHierarchyCSVFormatFactory fhcsv_;
     private FullHierarchyBuilder.BIPData bipd_;
     private UndoSupport support_;   
-    private BTState myAppState_;
-    private DataAccessContext myDacx_;
+    private StaticDataAccessContext myDacx_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
     private boolean doOpts_;
     private boolean doSquash_;
@@ -571,8 +582,12 @@ public class ImportCSV extends AbstractControlFlow  {
     private String dbGenomeCSVName_;
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
+    private UIComponentSource uics_;
+    private UndoFactory uFac_;
     
-    public CSVImportRunner(BTState appState, DataAccessContext dacx,
+    public CSVImportRunner(UIComponentSource uics,
+                           UndoFactory uFac,
+                           StaticDataAccessContext dacx,
                            FullHierarchyCSVFormatFactory fhcsv, 
                            FullHierarchyBuilder.BIPData bipd, 
                            Map<NodeRegionModelNameTuple, ModelNodeIDPair> nodeIDMap, String dbGenomeCSVName,
@@ -583,7 +598,6 @@ public class ImportCSV extends AbstractControlFlow  {
       fhcsv_ = fhcsv;
       bipd_ = bipd;
       support_ = support;
-      myAppState_ = appState;
       importMode_ = importMode;
       doOpts_ = doOpts;
       doSquash_ = doSquash; 
@@ -593,11 +607,14 @@ public class ImportCSV extends AbstractControlFlow  {
       specLayout_ = specLayout;
       params_ = params;
       myDacx_ = dacx;
+      uics_ = uics;
+      uFac_ = uFac;
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      DataAccessContext rcxR = new DataAccessContext(myAppState_);
-      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(myAppState_, rcxR, bipd_, 
+      // Perhaps not needed, but does allow settings to be changed without messing with myDacx_, so safer to keep for now...
+      StaticDataAccessContext rcxR = new StaticDataAccessContext(myDacx_);
+      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(uics_, uFac_, rcxR, bipd_, 
                                                                    (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT),                                                                 
                                                                    support_, doOpts_, doSquash_, overlayOption_, 
                                                                    nodeIDMap_, dbGenomeCSVName_, this, 0.0, 1.0, specLayout_, params_);
@@ -605,9 +622,9 @@ public class ImportCSV extends AbstractControlFlow  {
     }
     
     public Object postRunCore() {
-      if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-        Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-        (new WorkspaceSupport(myAppState_, myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
+      if (myDacx_.modelIsOutsideWorkspaceBounds()) {
+        Rectangle allBounds = myDacx_.getZoomTarget().getAllModelBounds();
+        (new WorkspaceSupport(myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
       }      
       return (null);
     }    

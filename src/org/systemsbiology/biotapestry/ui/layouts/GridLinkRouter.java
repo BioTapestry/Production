@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,9 +31,8 @@ import java.util.Iterator;
 
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -99,7 +98,6 @@ public class GridLinkRouter {
   
   private TrackedGrid grid_;
   private GeneAndSatelliteCluster gasc_;
-  private BTState appState_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -168,8 +166,7 @@ public class GridLinkRouter {
   ** Constructor
   */
         
-  public GridLinkRouter(BTState appState, TrackedGrid grid, GeneAndSatelliteCluster sc) {
-    appState_ = appState;
+  public GridLinkRouter(GeneAndSatelliteCluster sc, TrackedGrid grid) {
     grid_ = grid;
     gasc_ = sc;
   }  
@@ -180,7 +177,6 @@ public class GridLinkRouter {
   */
         
   public GridLinkRouter(GridLinkRouter other, GeneAndSatelliteCluster sc) {
-    this.appState_ = other.appState_;
     this.grid_ = (other.grid_ == null) ? null : other.grid_.clone();
     this.gasc_ = sc;
   }  
@@ -289,7 +285,7 @@ public class GridLinkRouter {
   */
    
   public Map<String, SpecialtyLayoutLinkData> feedbackRoutingForFanout(Set<String> links, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                                                       DataAccessContext irx, 
+                                                                       StaticDataAccessContext irx, 
                                                                        Map<String, PadCalculatorToo.PadResult> workingPads,
                                                                        Map<String, GridRouterPointSource> pointSources, String coreID) { 
      
@@ -317,9 +313,9 @@ public class GridLinkRouter {
         if (grps == null) {
           int srcPad = gasc_.getCurrentLaunchPad(link, workingPads);
           TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(0, coreID);
-          TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, srcPad, coreID, linkID, false, Linkage.NONE, srcRC.row); 
+          TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(colSpec, srcPad, coreID, linkID, false, Linkage.NONE, srcRC.row); 
           TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(rootLoc); 
-          grps = new GridRouterPointSource(appState_, grid_, rootPos, srcRC, coreID);
+          grps = new GridRouterPointSource(grid_, rootPos, srcRC, coreID);
           pointSources.put(coreID, grps);
         }        
         if (firstLink) {          
@@ -416,7 +412,7 @@ public class GridLinkRouter {
 
   public Map<String, SpecialtyLayoutLinkData> convertInternalLinks(Map<String, SpecialtyLayoutLinkData> perSrcPoints, Point2D upperLeft, 
                                                                    SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                                   DataAccessContext irx, String coreID) {
+                                                                   StaticDataAccessContext irx, String coreID) {
 
     HashMap<String, SpecialtyLayoutLinkData> retval = new HashMap<String, SpecialtyLayoutLinkData>();
     Iterator<String> mit = perSrcPoints.keySet().iterator();
@@ -438,7 +434,7 @@ public class GridLinkRouter {
   public SpecialtyLayoutLinkData convertInboundLinks(String srcID, Map<String, SpecialtyLayoutLinkData> perSrcPoints, 
                                                      Point2D upperLeft, 
                                                      SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                     DataAccessContext irx, String coreID) {
+                                                     StaticDataAccessContext irx, String coreID) {
 
     SpecialtyLayoutLinkData sin = perSrcPoints.get(srcID);
     if (sin == null) {  // no inbound linkd into the fan
@@ -457,7 +453,7 @@ public class GridLinkRouter {
   public SpecialtyLayoutLinkData convertAndFixInboundLinks(String srcID, Map<String, SpecialtyLayoutLinkData> perSrcPoints, 
                                                            Point2D upperLeft, 
                                                            SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                           DataAccessContext irx, String coreID, double fixVal) {
+                                                           StaticDataAccessContext irx, String coreID, double fixVal) {
 
     SpecialtyLayoutLinkData sin = perSrcPoints.get(srcID);
     if (sin == null) {  // no inbound link into the fan
@@ -484,7 +480,7 @@ public class GridLinkRouter {
 
   public List<SpecialtyLayoutLinkData.TrackPos> convertPositionListToPoints(List<SpecialtyLayoutLinkData.TrackPos> pointList, Point2D upperLeft, 
                                                                             SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                                            DataAccessContext irx, String coreID) {
+                                                                            StaticDataAccessContext irx, String coreID) {
     ArrayList<SpecialtyLayoutLinkData.TrackPos> plCopy = new ArrayList<SpecialtyLayoutLinkData.TrackPos>();
     int npl = pointList.size();
     for (int i = 0; i < npl; i++) {
@@ -502,7 +498,7 @@ public class GridLinkRouter {
 
   public Point2D convertPositionToPoint(TrackedGrid.TrackPosRC tprc, Point2D upperLeft, 
                                         SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                        DataAccessContext irx, String coreID) {
+                                        StaticDataAccessContext irx, String coreID) {
     return (grid_.convertPositionToPoint(tprc, upperLeft, nps, irx, coreID));     
   }  
 
@@ -513,7 +509,7 @@ public class GridLinkRouter {
   */
 
   public Iterator<List<String>> orderedByPads(Set<String> linkIDs, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                              DataAccessContext irx, 
+                                              StaticDataAccessContext irx, 
                                               Map<String, PadCalculatorToo.PadResult> workingPads, boolean reverse) {
     TreeMap<Integer, List<String>> padSorted = new TreeMap<Integer, List<String>>();
     Iterator<String> feedIt = linkIDs.iterator();
@@ -523,7 +519,7 @@ public class GridLinkRouter {
       Linkage feedLink = nps.getLinkage(linkID);
       String targID = feedLink.getTarget();
       int landing = gasc_.getCurrentLandingPad(feedLink, workingPads, true);
-      Vector2D padOffset = TrackedGrid.landingPadToOffset(appState_, landing, nps, irx, targID, Linkage.POSITIVE);
+      Vector2D padOffset = TrackedGrid.landingPadToOffset(landing, nps, irx, targID, Linkage.POSITIVE);
       Integer padKey = new Integer(sign * (int)(padOffset.getX() / UiUtil.GRID_SIZE));
       List<String> perPad = padSorted.get(padKey);
       if (perPad == null) {
@@ -929,9 +925,9 @@ public class GridLinkRouter {
       } else {
         colSpec = grid_.reserveColumnTrack(reserveCol, src);
       }
-      TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, srcPad, src, aLink, false, Linkage.NONE, srcRC.row); 
+      TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(colSpec, srcPad, src, aLink, false, Linkage.NONE, srcRC.row); 
       TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(rootLoc); 
-      grps = new GridRouterPointSource(appState_, grid_, rootPos, srcRC, src);
+      grps = new GridRouterPointSource(grid_, rootPos, srcRC, src);
       pointSources.put(src, grps);
     }
     Iterator<LinkLayoutOrdering> loit = linkOrdering.keySet().iterator();
@@ -1042,15 +1038,15 @@ public class GridLinkRouter {
           TrackedGrid.TrackPosRC rootPos;
           if (isDirect) {
             TrackedGrid.RCTrack rootLoc = 
-              grid_.buildRCTrackForDualMidline(appState_, trgPad, trg, true, srcPad, 
+              grid_.buildRCTrackForDualMidline(trgPad, trg, true, srcPad, 
                                                src, false, sign, linkID, TrackedGrid.RCTrack.NO_TRACK, srcRC.row); 
             rootPos = new TrackedGrid.TrackPosRC(rootLoc);
           } else {
             TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(srcRC.col + 1, src);
-            TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, srcPad, src, linkID, false, Linkage.NONE, srcRC.row); 
+            TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(colSpec, srcPad, src, linkID, false, Linkage.NONE, srcRC.row); 
             rootPos = new TrackedGrid.TrackPosRC(rootLoc);            
           }
-          grps = new GridRouterPointSource(appState_, grid_, rootPos, srcRC, src);
+          grps = new GridRouterPointSource(grid_, rootPos, srcRC, src);
           pointSources.put(src, grps);
         }
         if (firstLink) {
@@ -1127,9 +1123,9 @@ public class GridLinkRouter {
       // Currently reserving, even if direct, due to the creation of initial corner perhaps??
       // Note this reserves vertical space though it is not needed...
       TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(srcRC.col + 1, src);
-      TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, srcPad, src, linkID, false, Linkage.NONE, srcRC.row); 
+      TrackedGrid.RCTrack rootLoc = grid_.buildRCTrackForRowMidline(colSpec, srcPad, src, linkID, false, Linkage.NONE, srcRC.row); 
       rootPos = new TrackedGrid.TrackPosRC(rootLoc);            
-      grps = new GridRouterPointSource(appState_, grid_, rootPos, srcRC, src);
+      grps = new GridRouterPointSource(grid_, rootPos, srcRC, src);
       pointSources.put(src, grps);
     }  
 
@@ -1225,7 +1221,7 @@ public class GridLinkRouter {
           Grid.RowAndColumn trgRC = grid_.findPositionRandC(trg);
           TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(trgRC.row, src);
           // This is the ROOT POINT for entering into the grid!
-          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(rowSpec, colSpec);
           //
           // If we are entering from the left, we don't specify the inbound column:
           //
@@ -1233,7 +1229,7 @@ public class GridLinkRouter {
             inboundLoc = grid_.buildRCTrack(inboundLoc, TrackedGrid.RCTrack.X_FLOATS);
           }
           TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(inboundLoc); 
-          grps = new GridRouterPointSource(appState_, grid_, rootPos, src);
+          grps = new GridRouterPointSource(grid_, rootPos, src);
           pointSources.put(src, grps);
         }
         int trgPad = gasc_.getCurrentLandingPad(link, workingPads, true);
@@ -1313,9 +1309,9 @@ public class GridLinkRouter {
           //this is where complex inbounds to core are getting their first corner at the upper left:
           TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(0, src);
           TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(0, src);
-          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(rowSpec, colSpec);
           TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(inboundLoc); 
-          grps = new GridRouterPointSource(appState_, grid_, rootPos, src);
+          grps = new GridRouterPointSource(grid_, rootPos, src);
           pointSources.put(src, grps);
         }
         if (isFirst) {
@@ -1417,9 +1413,9 @@ public class GridLinkRouter {
           }
           Grid.RowAndColumn trgRC = grid_.findPositionRandC(trg);
           TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(trgRC.row, src);
-          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+          TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(rowSpec, colSpec);
           TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(inboundLoc); 
-          grps = new GridRouterPointSource(appState_, grid_, rootPos, src);
+          grps = new GridRouterPointSource(grid_, rootPos, src);
           pointSources.put(src, grps);
         }
         int trgPad = gasc_.getCurrentLandingPad(link, workingPads, true);
@@ -1459,9 +1455,9 @@ public class GridLinkRouter {
     if (grps == null) {
       TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(0, src);
       TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(0, src);
-      TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+      TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(rowSpec, colSpec);
       TrackedGrid.TrackPosRC rootPos = new TrackedGrid.TrackPosRC(inboundLoc); 
-      grps = new GridRouterPointSource(appState_, grid_, rootPos, src);
+      grps = new GridRouterPointSource(grid_, rootPos, src);
       pointSources.put(src, grps);
     }
      

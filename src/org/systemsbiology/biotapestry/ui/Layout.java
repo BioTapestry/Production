@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -41,10 +41,10 @@ import java.util.TreeSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
-import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Gene;
@@ -90,7 +90,7 @@ import org.systemsbiology.biotapestry.util.Vector2D;
 ** This represents a geometric layout (including colors) for a genome
 */
 
-public class Layout {
+public class Layout implements Cloneable {
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -122,7 +122,6 @@ public class Layout {
   private HashMap<String, NoteProperties> noteProps_;
   private HashMap<String, Point2D> dataProps_; 
   private LayoutMetadata lmeta_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -135,8 +134,7 @@ public class Layout {
   ** Constructor for new models
   */
 
-  public Layout(BTState appState, String name, String targetGenome) {
-    appState_ = appState;
+  public Layout(String name, String targetGenome) {
     name_ = name;
     targetGenome_ = targetGenome;    
     nodeProps_ = new HashMap<String, NodeProperties>();
@@ -173,6 +171,66 @@ public class Layout {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+ 
+  /***************************************************************************
+  **
+  ** Clone
+  */
+
+  public Layout clone() {
+    try {
+      Layout retval = (Layout)super.clone();
+      retval.copyCore(this, null);
+      return (retval);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  }    
+
+  /***************************************************************************
+  **
+  ** Modify the color key for IO Tab Appending
+  **
+  */
+  
+  public void mapColorKeyForAppend(Map<String, String> daMap) {
+ 
+    for (GroupProperties props : groupProps_.values()) {
+      props.mapColorTags(daMap);
+    }
+    
+    for (NodeProperties props : nodeProps_.values()) {
+      props.mapColorTags(daMap);
+    }
+      
+    for (BusProperties props : linkProps_.values()) {
+      props.mapColorTags(daMap);
+    }
+    
+    for (NoteProperties props : noteProps_.values()) {
+      props.mapColorTags(daMap);
+    }
+ 
+    Iterator<String> opit = ovrProps_.keySet().iterator();
+    while (opit.hasNext()) {
+      String key = opit.next();
+      NetOverlayProperties nop = ovrProps_.get(key);
+      Iterator<String> mpit = nop.getNetModulePropertiesKeys();
+      while (mpit.hasNext()) {
+        String mkey = mpit.next();
+        NetModuleProperties nmp = nop.getNetModuleProperties(mkey);     
+        nmp.mapColorTags(daMap);
+      }
+      Iterator<String> lmpit = nop.getNetModuleLinkagePropertiesKeys();
+      while (lmpit.hasNext()) {
+        String lkey = lmpit.next();
+        NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(lkey);
+        nmlp.mapColorTags(daMap);
+      }
+    }
+    return;
+  }
+  
   
   /***************************************************************************
   **
@@ -223,6 +281,7 @@ public class Layout {
   ** can specify to bound all modules, no modules, or specified modules:
   */
   
+  // Yes, this really handles both dynamic and static DataAccessContexts:
   public Rectangle getLayoutBounds(DataAccessContext rcx,
                                    boolean doLinks, 
                                    boolean doModules, boolean doModuleLinks, boolean doNotes, 
@@ -231,8 +290,8 @@ public class Layout {
                                    TaggedSet modSet, OverlayKeySet allKeys) {
     Rectangle retval = null;
     Genome genome = rcx.getGenomeSource().getGenome(getTarget());
-    DataAccessContext irx = new DataAccessContext(rcx, genome, rcx.lSrc.getLayoutForGenomeKey(getTarget()));
-    if (irx.getLayout() != this) {
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, genome, rcx.getLayoutSource().getLayoutForGenomeKey(getTarget()));
+    if (!irx.getCurrentLayout().getID().equals(getID())) {
       throw new IllegalArgumentException();
     }
     
@@ -280,8 +339,8 @@ public class Layout {
   ** Return the required size of the layout, either with or without links
   */
   
-  public Rectangle getLayoutBoundsViaGroups(DataAccessContext irx, boolean doLinks) {
-    GenomeInstance gi = (GenomeInstance)irx.getGenome();
+  public Rectangle getLayoutBoundsViaGroups(StaticDataAccessContext irx, boolean doLinks) {
+    GenomeInstance gi = (GenomeInstance)irx.getCurrentGenome();
     Rectangle retval = null;
     Iterator<Group> grit = gi.getGroupIterator();
     while (grit.hasNext()) {
@@ -301,7 +360,7 @@ public class Layout {
   ** Get the note bounds
   */
   
-  public Rectangle getNoteBounds(DataAccessContext irx) {
+  public Rectangle getNoteBounds(StaticDataAccessContext irx) {
     
     //
     // Crank through the notes and have the renderer return the
@@ -310,7 +369,7 @@ public class Layout {
     
     Rectangle retval = null;
     
-    Iterator<Note> ntit = irx.getGenome().getNoteIterator();
+    Iterator<Note> ntit = irx.getCurrentGenome().getNoteIterator();
     while (ntit.hasNext()) {
       Note note = ntit.next();
       NoteProperties np = getNoteProperties(note.getID());
@@ -334,14 +393,14 @@ public class Layout {
   public Rectangle getPartialBounds(Set<String> nodeIDs, boolean doLinks, 
                                     boolean doLinkLabels, Set<String> linkIDs, 
                                     Map<String, MultiSubID> linkSubs, boolean legacySegs, 
-                                    DataAccessContext irx) {
+                                    StaticDataAccessContext irx) {
     
     //
     // Crank through the genes and nodes and have the renderer return the
     // bounds.
     //
     
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
     Rectangle retval = null;
 
     Iterator<Node> git = genome.getAllNodeIterator();
@@ -421,14 +480,14 @@ public class Layout {
   ** Return the required size of the group in the layout, with or without links
   */
   
-  public Rectangle getLayoutBoundsForGroup(Group grp, DataAccessContext irx, boolean doLinks, boolean skipModules) {
+  public Rectangle getLayoutBoundsForGroup(Group grp, StaticDataAccessContext irx, boolean doLinks, boolean skipModules) {
     
     //
     // Crank through the genes and nodes IN THE GIVEN GROUP and have the renderer return the
     // bounds.
     //
 
-    GenomeInstance gi = irx.getGenomeAsInstance();
+    GenomeInstance gi = irx.getCurrentGenomeAsInstance();
     
     Rectangle retval = null;
     GroupFree gRend = groupProps_.get(grp.getID()).getRenderer();
@@ -487,7 +546,7 @@ public class Layout {
   public Map<NetModule.FullModuleKey, NetModuleProperties.SliceResult> sliceModulesByAllBounds(Map<String, Rectangle> boundsForGroups, 
                                                                                                Map<String, Integer> groupZOrder, 
                                                                                                Layout.OverlayKeySet fullKeys, 
-                                                                                               DataAccessContext irx) {
+                                                                                               StaticDataAccessContext irx) {
     if (fullKeys == null) {
       return (null);
     }
@@ -622,7 +681,7 @@ public class Layout {
   ** Get approx bounds of the given group
   */  
  
-  public Rectangle getApproxBounds(Iterator<Node> nit, Iterator<Node> git, DataAccessContext irx) {
+  public Rectangle getApproxBounds(Iterator<Node> nit, Iterator<Node> git, StaticDataAccessContext irx) {
 
     Rectangle retval = new Rectangle(0, 0, 0, 0);
     
@@ -651,7 +710,7 @@ public class Layout {
   ** Move the group tag to the given corner:
   */
   
-  public void groupTagToCorner(Group grp, DataAccessContext irx, boolean doLinks) {
+  public void groupTagToCorner(Group grp, StaticDataAccessContext irx, boolean doLinks) {
     
     Rectangle bounds = getLayoutBoundsForGroup(grp, irx, doLinks, true);
     GroupFree gRend = new GroupFree();
@@ -678,7 +737,7 @@ public class Layout {
   ** Get the layout center (may be null)
   */
   
-  public Point2D getLayoutCenterAllOverlays(DataAccessContext irx,
+  public Point2D getLayoutCenterAllOverlays(StaticDataAccessContext irx,
                                             OverlayKeySet allKeys) {
     Rectangle bounds = getLayoutBounds(irx, true, true, true, true, true, null, null, null, allKeys);
     if (bounds == null) {
@@ -696,7 +755,7 @@ public class Layout {
   ** Get the layout center (may be null)
   */
   
-  public Point2D getLayoutCenter(DataAccessContext irx, boolean doModules, String overOwnerKey, 
+  public Point2D getLayoutCenter(StaticDataAccessContext irx, boolean doModules, String overOwnerKey, 
                                  String ovrKey, TaggedSet modSet, OverlayKeySet fullModKeys) {
     Rectangle bounds = getLayoutBounds(irx, true, doModules, doModules, true, true, overOwnerKey, ovrKey, modSet, fullModKeys);
     if (bounds == null) {
@@ -715,29 +774,29 @@ public class Layout {
   ** root, we are allowed to specify matchNodes == true;
   */
   
-  public Vector2D alignToLayout(Layout other, DataAccessContext irx, boolean matchNodes, 
+  public Vector2D alignToLayout(Layout other, StaticDataAccessContext irx, boolean matchNodes, 
                                 OverlayKeySet fullModKeys, OverlayKeySet otherFullModKeys, PadNeedsForLayout padReqs) {
     
     Genome myGenome = irx.getGenomeSource().getGenome(getTarget());
     Point2D otherCenter;
     
     if (matchNodes) {
-      Genome rootGenome = irx.getGenomeSource().getGenome();
+      Genome rootGenome = irx.getGenomeSource().getRootDBGenome();
       if (!other.getTarget().equals(rootGenome.getID()) ||
           !(myGenome instanceof GenomeInstance)) {
         throw new IllegalArgumentException();
       } 
       GenomeInstance gi = (GenomeInstance)myGenome;
-      otherCenter = rootOverlay(other, rootGenome, gi, irx, (otherFullModKeys != null), null, null, null, otherFullModKeys);
+      otherCenter = rootOverlay(other, gi, irx, (otherFullModKeys != null), null, null, null, otherFullModKeys);
 
     } else {  // MAtch centers
-      DataAccessContext orx = new DataAccessContext(irx, irx.getGenomeSource().getGenome(other.getTarget()), other);
+      StaticDataAccessContext orx = new StaticDataAccessContext(irx, irx.getGenomeSource().getGenome(other.getTarget()), other);
       otherCenter = other.getLayoutCenter(orx, (otherFullModKeys != null), null, null, null, otherFullModKeys);
     }
     
     // Still might want to line up kid models with a blank root (e.g. notes)
     if (otherCenter == null) {
-      Rectangle rect = irx.wSrc.getWorkspace().getWorkspace();
+      Rectangle rect = irx.getWorkspaceSource().getWorkspace().getWorkspace();
       otherCenter = new Point2D.Double(rect.getWidth() / 2.0, rect.getHeight() / 2.0);
     }
 
@@ -750,8 +809,8 @@ public class Layout {
   ** Figure out a matching center
   */
   
-  private Point2D rootOverlay(Layout rootLayout, Genome rootGenome, 
-                              GenomeInstance gi, DataAccessContext rcx,
+  private Point2D rootOverlay(Layout rootLayout,
+                              GenomeInstance gi, StaticDataAccessContext rcx,
                               boolean doModules, String overOwnerKey, String ovrKey, 
                               TaggedSet modSet, OverlayKeySet fullModKeys) {
     //
@@ -771,7 +830,7 @@ public class Layout {
     if (gi.groupCount() == 1) {
       matchGroup = git.next();
     } else {
-      DataAccessContext irx = new DataAccessContext(rcx, gi, rcx.getLayout());
+      StaticDataAccessContext irx = new StaticDataAccessContext(rcx, gi, rcx.getCurrentLayout());
       while (git.hasNext()) {
         Group grp = git.next();
         if (grp.isASubset(gi)) {
@@ -848,7 +907,7 @@ public class Layout {
   ** Recenter the layout
   */
   
-  public Vector2D recenterLayout(Point2D center, DataAccessContext irx, boolean doLinks, 
+  public Vector2D recenterLayout(Point2D center, StaticDataAccessContext irx, boolean doLinks, 
                                  boolean doModules, boolean doModuleLinks, String overOwnerKey, String ovrKey,
                                  TaggedSet modSet, OverlayKeySet fullModKeys, PadNeedsForLayout padReqs) {
 
@@ -870,7 +929,7 @@ public class Layout {
   ** Shift the layout
   */
   
-  public void shiftLayout(Vector2D diff, Layout.PadNeedsForLayout padReqs, DataAccessContext rcx) {
+  public void shiftLayout(Vector2D diff, Layout.PadNeedsForLayout padReqs, StaticDataAccessContext rcx) {
 
     double dx = UiUtil.forceToGridValue(diff.getX(), UiUtil.GRID_SIZE);
     double dy = UiUtil.forceToGridValue(diff.getY(), UiUtil.GRID_SIZE);
@@ -1105,8 +1164,8 @@ public class Layout {
   ** transaction!
   */
   
-  public void hideAllMinorNodeNames(DataAccessContext rcx) {
-    Genome genome = rcx.getGenomeSource().getGenome();
+  public void hideAllMinorNodeNames(StaticDataAccessContext rcx) {
+    Genome genome = rcx.getGenomeSource().getRootDBGenome();
     nodeProps_.keySet().iterator();
     Iterator<String> npit = nodeProps_.keySet().iterator();
     while (npit.hasNext()) {
@@ -1172,7 +1231,7 @@ public class Layout {
   */
   
   public void removeLinkPropertiesAndRemember(String itemId, Map<String, BusProperties.RememberProps> rememberProps, 
-                                              DataAccessContext rcx) {
+                                              StaticDataAccessContext rcx) {
     BusProperties lp = getLinkProperties(itemId);
     if (lp == null) {
       return;
@@ -1296,7 +1355,7 @@ public class Layout {
   ** Drop link, node, group, and overlay properties.  Return info on mapping properties
   */
   
-  public Map<String, BusProperties.RememberProps> dropPropertiesIncludingOverlays(DataAccessContext rcx) {
+  public Map<String, BusProperties.RememberProps> dropPropertiesIncludingOverlays(StaticDataAccessContext rcx) {
     Map<String, BusProperties.RememberProps> retval = dropProperties(rcx);
     ovrProps_.clear();
     return (retval);
@@ -1307,7 +1366,7 @@ public class Layout {
   ** Drop link, node, and group properties.  Return info on mapping properties
   */
   
-  public Map<String, BusProperties.RememberProps> dropProperties(DataAccessContext rcx) {
+  public Map<String, BusProperties.RememberProps> dropProperties(StaticDataAccessContext rcx) {
     Map<String, BusProperties.RememberProps> retval = dropNodeAndLinkProperties(rcx);
     groupProps_.clear();
     return (retval);
@@ -1318,7 +1377,7 @@ public class Layout {
   ** Drop link, node, but NOT group properties
   */
   
-  public Map<String, BusProperties.RememberProps> dropNodeAndLinkProperties(DataAccessContext rcx) {
+  public Map<String, BusProperties.RememberProps> dropNodeAndLinkProperties(StaticDataAccessContext rcx) {
     Map<String, BusProperties.RememberProps> retval = buildRememberProps(rcx);
     nodeProps_.clear();
     linkProps_.clear();
@@ -1330,7 +1389,7 @@ public class Layout {
   ** Build rememberProps
   */
   
-  public Map<String, BusProperties.RememberProps> buildRememberProps(DataAccessContext rcx) {
+  public Map<String, BusProperties.RememberProps> buildRememberProps(StaticDataAccessContext rcx) {
     HashMap<String, BusProperties.RememberProps> retval = new HashMap<String, BusProperties.RememberProps>();
     Iterator<String> lpkit = linkProps_.keySet().iterator();
     while (lpkit.hasNext()) {
@@ -1438,7 +1497,7 @@ public class Layout {
   ** Restore special links
   */
   
-  public void restoreLabelLocations(Map<String, BusProperties.RememberProps> rememberProps, DataAccessContext rcx, Rectangle2D rect) {
+  public void restoreLabelLocations(Map<String, BusProperties.RememberProps> rememberProps, StaticDataAccessContext rcx, Rectangle2D rect) {
     HashSet<String> seen = new HashSet<String>();
     Iterator<String> lpkit = linkProps_.keySet().iterator();
     while (lpkit.hasNext()) {
@@ -1460,7 +1519,7 @@ public class Layout {
   ** separate full layout copy. If set is null, remove all link properties.
   */
   
-  public Map<String, BusProperties.RememberProps> dropSelectedLinkProperties(Set<String> toDrop, DataAccessContext rcx) {
+  public Map<String, BusProperties.RememberProps> dropSelectedLinkProperties(Set<String> toDrop, StaticDataAccessContext rcx) {
     Map<String, BusProperties.RememberProps> retval;
     if (toDrop == null) {
       retval = buildRememberProps(rcx);
@@ -1487,12 +1546,12 @@ public class Layout {
   ** Drop useless corners
   */
   
-  public void dropUselessCorners(DataAccessContext rcx, String overID, 
+  public void dropUselessCorners(StaticDataAccessContext rcx, String overID, 
                                  double startFrac, double maxFrac, BTProgressMonitor monitor) 
                                  throws AsynchExitRequestException {
     LinkOptimizer opt = new LinkOptimizer();
     
-    List<LinkProperties> toProcess = listOfProps(rcx.getGenome(), overID, null);
+    List<LinkProperties> toProcess = listOfProps(rcx.getCurrentGenome(), overID, null);
     double progFrac = (maxFrac - startFrac) / toProcess.size();
     double currFrac = startFrac;   
        
@@ -1554,7 +1613,7 @@ public class Layout {
   ** Smooth out staggered runs
   */
   
-  public void eliminateStaggeredRuns(int staggerBound, DataAccessContext rcx,
+  public void eliminateStaggeredRuns(int staggerBound, StaticDataAccessContext rcx,
                                      String overID, Set<Point2D> pinnedPoints,
                                      double startFrac, double maxFrac, BTProgressMonitor monitor) 
                                      throws AsynchExitRequestException {
@@ -1562,7 +1621,7 @@ public class Layout {
     LinkPlacementGrid grid = router.initGrid(rcx, null, INodeRenderer.STRICT, monitor);
     LinkOptimizer opt = new LinkOptimizer(); 
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     List<LinkProperties> toProcess = listOfProps(genome, overID, null);
     double progFrac = (maxFrac - startFrac) / toProcess.size();
     double currFrac = startFrac;    
@@ -1588,7 +1647,7 @@ public class Layout {
   ** Optimize Links
   */
   
-  public void optimizeLinks(Set<String> newLinks, LinkPlacementGrid grid, DataAccessContext rcx,
+  public void optimizeLinks(Set<String> newLinks, LinkPlacementGrid grid, StaticDataAccessContext rcx,
                             String overID,
                             Set<Point2D> pinnedPoints, boolean allowReroutes, BTProgressMonitor monitor,
                             int rounds, double startFrac, double maxFrac) throws AsynchExitRequestException {
@@ -1596,7 +1655,7 @@ public class Layout {
       return;
     }
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     LinkOptimizer opt = new LinkOptimizer();
     int[] opts = opt.getOptimizations(allowReroutes);
     
@@ -1733,7 +1792,7 @@ public class Layout {
   */
   
   public PropChange[] mapOverlayProperties(Map<String, String> ovrIDMap, Map<String, String> modIDMap, 
-                                           Map<String, String> modLinkIDMap, boolean doAdd, DataAccessContext rcx) {
+                                           Map<String, String> modLinkIDMap, boolean doAdd, StaticDataAccessContext rcx) {
     
     ArrayList<PropChange> pcs = new ArrayList<PropChange>();
     Iterator<String> oit = ovrIDMap.keySet().iterator();
@@ -1909,7 +1968,7 @@ public class Layout {
       throw new IllegalArgumentException();
     }
     if (undo.droppedTreeID != null) {
-      ((DBGenome)undo.gSrc.getGenome()).addKey(undo.droppedTreeID);
+      ((DBGenome)undo.gSrc.getRootDBGenome()).addKey(undo.droppedTreeID);
     }  
     return;
   }       
@@ -1930,7 +1989,7 @@ public class Layout {
       throw new IllegalArgumentException();
     }
     if (redo.droppedTreeID != null) {
-      ((DBGenome)redo.gSrc.getGenome()).removeKey(redo.droppedTreeID);
+      ((DBGenome)redo.gSrc.getRootDBGenome()).removeKey(redo.droppedTreeID);
     }   
     return;
   }      
@@ -1953,7 +2012,8 @@ public class Layout {
   ** must have already registered the new tree Object ID.
   */
   
-  public PropChange setNetModuleLinkageProperties(String treeId, NetModuleLinkageProperties props, String ovrRef, DataAccessContext rcx) {
+  public PropChange setNetModuleLinkageProperties(String treeId, NetModuleLinkageProperties props, 
+                                                  String ovrRef, StaticDataAccessContext rcx) {
     NetOverlayProperties nop = getNetOverlayProperties(ovrRef);
     PropChange retval = new PropChange();
     retval.nmlpOrig = null;
@@ -1984,7 +2044,7 @@ public class Layout {
   ** Replace a net module linkage property to the Layout, using the TREE ID!
   */
   
-  public PropChange replaceNetModuleLinkageProperties(String treeId, NetModuleLinkageProperties props, String ovrRef, DataAccessContext rcx) {
+  public PropChange replaceNetModuleLinkageProperties(String treeId, NetModuleLinkageProperties props, String ovrRef, StaticDataAccessContext rcx) {
     NetOverlayProperties nop = getNetOverlayProperties(ovrRef);
     NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeId);
     PropChange retval = new PropChange();
@@ -2042,7 +2102,7 @@ public class Layout {
   
   public PropChange mergeNewModuleLinkToTreeAtSegment(NetModuleLinkageProperties newNmlp,
                                                       String treeID, String linkId, String ovrRef,
-                                                      LinkSegmentID sid, DataAccessContext rcx) {
+                                                      LinkSegmentID sid, StaticDataAccessContext rcx) {
  
     NetOverlayProperties nop = getNetOverlayProperties(ovrRef);
     PropChange retval = new PropChange();
@@ -2117,9 +2177,9 @@ public class Layout {
   ** For a contig rect type, size the region core to match the current boundary
   */
   
-  public PropChange sizeCoreToRegionBounds(String ovrKey, String modKey, DataAccessContext rcx) {
+  public PropChange sizeCoreToRegionBounds(String ovrKey, String modKey, StaticDataAccessContext rcx) {
     
-    String genomeKey = rcx.getGenomeID();
+    String genomeKey = rcx.getCurrentGenomeID();
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);   
     NetModuleProperties nmp = noProps.getNetModuleProperties(modKey);   
     if (nmp.getType() != NetModuleProperties.CONTIG_RECT) {
@@ -2136,7 +2196,7 @@ public class Layout {
     // shown as part of the module (important for dynamic instances!)
     //
     Genome useGenome = Layout.determineLayoutTarget(rcx.getGenomeSource(), genomeKey);
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     
     Set<String> useGroups = irx.getGenomeSource().getOverlayOwnerFromGenomeKey(genomeKey).getGroupsForOverlayRendering();
     modProps.getRenderer().getModuleShapes(ownerGenome, useGroups, ovrKey, modKey, outerRect, irx);
@@ -2150,10 +2210,9 @@ public class Layout {
   /***************************************************************************
   **
   ** For a contig rect type, size the region core to match given bounds
-  ** NOTE: Tied to DB, not to alt genome source!
   */
   
-  public PropChange sizeCoreToGivenBounds(String genomeKey, String ovrKey, String modKey, Rectangle2D newRect) {
+  public PropChange sizeCoreToGivenBounds(String ovrKey, String modKey, Rectangle2D newRect) {
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);   
     NetModuleProperties nmp = noProps.getNetModuleProperties(modKey);   
     if (nmp.getType() != NetModuleProperties.CONTIG_RECT) {
@@ -2202,7 +2261,7 @@ public class Layout {
   ** in the overlay to match:
   */
   
-  public PropChange[] shiftModLinksToNewPositions(String ovrKey, Map<Point2D, Point2D> mappedPositions, boolean forceToGrid, DataAccessContext irx) {
+  public PropChange[] shiftModLinksToNewPositions(String ovrKey, Map<Point2D, Point2D> mappedPositions, boolean forceToGrid, StaticDataAccessContext irx) {
     NetOverlayProperties nop = getNetOverlayProperties(ovrKey);   
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     Iterator<String> trit = nop.getNetModuleLinkagePropertiesKeys(); 
@@ -2225,7 +2284,7 @@ public class Layout {
   */
   
   public boolean coreDefDoesNotMatchVisible(String ovrKey, String modKey, DataAccessContext rcx) {
-    String genomeKey = rcx.getGenomeID();
+    String genomeKey = rcx.getCurrentGenomeID();
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);   
     NetModuleProperties nmp = noProps.getNetModuleProperties(modKey);   
     if (nmp.getType() != NetModuleProperties.CONTIG_RECT) {
@@ -2242,7 +2301,7 @@ public class Layout {
     // shown as part of the module (important for dynamic instances!)
     //
     Genome useGenome = Layout.determineLayoutTarget(rcx.getGenomeSource(), genomeKey);
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     
     Set<String> useGroups = irx.getGenomeSource().getOverlayOwnerFromGenomeKey(genomeKey).getGroupsForOverlayRendering();
     modProps.getRenderer().getModuleShapes(ownerGenome, useGroups, ovrKey, modKey, outerRect, irx);
@@ -2278,7 +2337,7 @@ public class Layout {
   ** only granularity at the moment is to skip entirely by making the padReqs null!
   */
   
-  private void rigidPadFixes(String nodeID, double dx, double dy, Layout.PadNeedsForLayout padReqs, DataAccessContext rcx) {
+  private void rigidPadFixes(String nodeID, double dx, double dy, Layout.PadNeedsForLayout padReqs, StaticDataAccessContext rcx) {
     
     if (padReqs == null) {
       return;
@@ -2325,7 +2384,7 @@ public class Layout {
   */
   
   public PropChange[] moveNetModule(String genomeKey, Intersection modIntersect, String ovrKey, 
-                                    double dx, double dy, Layout.PadNeedsForLayout padReqs, DataAccessContext rcx) {
+                                    double dx, double dy, Layout.PadNeedsForLayout padReqs, StaticDataAccessContext rcx) {
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);
     String nmpKey = modIntersect.getObjectID();
     NetModuleProperties nmp = noProps.getNetModuleProperties(nmpKey);
@@ -2472,7 +2531,7 @@ public class Layout {
   public NetModuleLinkPadRequirements findNetModuleLinkPadRequirements(String ownerKey, 
                                                                        String ovrKey, 
                                                                        String modKey,
-                                                                       DataAccessContext rcx) {
+                                                                       StaticDataAccessContext rcx) {
     
     NetModuleLinkPadRequirements retval = new NetModuleLinkPadRequirements();
     
@@ -2536,9 +2595,9 @@ public class Layout {
     Genome useGenome = rcx.getGenomeSource().getGenome(targetGenome_);
     DynamicInstanceProxy dip = (noo.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)noo : null;
     Set<String> useGroups = noo.getGroupsForOverlayRendering();
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     irx.pushFrc(new FontRenderContext(null, true, true));
-    Set<NetModuleFree.LinkPad> padsForModule = nmp.getRenderer().padsForModule(dip, useGroups, mod, ovrKey, nmp, irx);
+    Set<NetModuleFree.LinkPad> padsForModule = nmp.getRenderer().padsForModule(dip, useGroups, mod, nmp, irx);
     
     //
     // FIX ME Kludge!
@@ -2639,7 +2698,7 @@ public class Layout {
   ** pregenerated map from layout to keys):
   */
   
-  public PadNeedsForLayout findAllNetModuleLinkPadRequirements(DataAccessContext rcx, Map<String, Layout.OverlayKeySet> layoutToFullKeys) {
+  public PadNeedsForLayout findAllNetModuleLinkPadRequirements(StaticDataAccessContext rcx, Map<String, Layout.OverlayKeySet> layoutToFullKeys) {
     
     Layout.OverlayKeySet myKeys = layoutToFullKeys.get(name_);   
     HashMap<NetModule.FullModuleKey, NetModuleLinkPadRequirements> retval = new HashMap<NetModule.FullModuleKey, NetModuleLinkPadRequirements>();
@@ -2661,7 +2720,7 @@ public class Layout {
   ** Find the member-only geometry
   */
   
-  public Map<NetModule.FullModuleKey, Map<String, Rectangle>> stashMemberOnlyGeometry(DataAccessContext rcx, 
+  public Map<NetModule.FullModuleKey, Map<String, Rectangle>> stashMemberOnlyGeometry(StaticDataAccessContext rcx, 
                                                                                       Map<String, OverlayKeySet> layoutToFullKeys) {
     
     Layout.OverlayKeySet myKeys = layoutToFullKeys.get(name_);   
@@ -2687,7 +2746,7 @@ public class Layout {
   ** Find the geometry for a member-only module
   */
   
-  private Map<String, Rectangle> memberOnlyGeom(String ownerKey, String ovrKey, String modKey, DataAccessContext rcx) {
+  private Map<String, Rectangle> memberOnlyGeom(String ownerKey, String ovrKey, String modKey, StaticDataAccessContext rcx) {
 
     NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerWithOwnerKey(ownerKey);
     NetworkOverlay no = noo.getNetworkOverlay(ovrKey);
@@ -2700,7 +2759,7 @@ public class Layout {
     }
 
     Genome rootInstance = rcx.getGenomeSource().getGenome(targetGenome_);
-    DataAccessContext irx = new DataAccessContext(rcx, rootInstance, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, rootInstance, rcx.getCurrentLayout());
     Map<String, Rectangle> rects = NodeBounder.nodeRects(nodes, irx, UiUtil.GRID_SIZE_INT); 
     return (rects);
   }   
@@ -2711,13 +2770,13 @@ public class Layout {
   ** overlay handled by this layout.
   */
   
-  public Layout.PadNeedsForLayout findAllNetModuleLinkPadRequirementsForOverlay(DataAccessContext rcx) { 
-    String ovrKey = rcx.oso.getCurrentOverlay(); 
+  public Layout.PadNeedsForLayout findAllNetModuleLinkPadRequirementsForOverlay(StaticDataAccessContext rcx) { 
+    String ovrKey = rcx.getOSO().getCurrentOverlay(); 
     if (ovrKey == null) {
       return (null);
     }
     HashMap<NetModule.FullModuleKey, NetModuleLinkPadRequirements> retval = new HashMap<NetModule.FullModuleKey, NetModuleLinkPadRequirements>();
-    NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID());
+    NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID());
     String ownerKey = noo.getID();
     int ownerType = noo.overlayModeForOwner();
     NetOverlayProperties nop = getNetOverlayProperties(ovrKey);
@@ -2736,8 +2795,8 @@ public class Layout {
   ** Find pad needs for _all_ net module links handled by this layout
   */
   
-  public PadNeedsForLayout findAllNetModuleLinkPadRequirements(DataAccessContext rcx) {   
-    Map<String, OverlayKeySet> allKeys = rcx.fgho.fullModuleKeysPerLayout();
+  public PadNeedsForLayout findAllNetModuleLinkPadRequirements(StaticDataAccessContext rcx) {   
+    Map<String, OverlayKeySet> allKeys = rcx.getFGHO().fullModuleKeysPerLayout();
     return (findAllNetModuleLinkPadRequirements(rcx, allKeys));    
   }    
   
@@ -2779,7 +2838,7 @@ public class Layout {
   ** 
   */
   
-  public PropChange[] repairAllNetModuleLinkPadRequirements(DataAccessContext rcx, PadNeedsForLayout needsForLayout, Map<String, Boolean> orphansOnlyPerOverlay) {   
+  public PropChange[] repairAllNetModuleLinkPadRequirements(StaticDataAccessContext rcx, PadNeedsForLayout needsForLayout, Map<String, Boolean> orphansOnlyPerOverlay) {   
  
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     Iterator<NetModule.FullModuleKey> mkit = needsForLayout.keyIterator();
@@ -2801,7 +2860,7 @@ public class Layout {
   */
   
   public PropChange[] repairAllEmptyMemberOnlyNetModules(Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> retainedRectsPerLayout, 
-                                                         DataAccessContext rcx) {
+                                                         StaticDataAccessContext rcx) {
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     Map<NetModule.FullModuleKey, Map<String, Rectangle>> keysToRects = retainedRectsPerLayout.get(name_); 
     if (keysToRects != null) {
@@ -2843,7 +2902,7 @@ public class Layout {
   
   public PropChange[] fixNetModuleLinkPads(NetModule.FullModuleKey fullKey, 
                                            NetModuleLinkPadRequirements padNeeds,
-                                           DataAccessContext rcx, boolean orphansOnly) {
+                                           StaticDataAccessContext rcx, boolean orphansOnly) {
     
     NetOverlayProperties noProps = getNetOverlayProperties(fullKey.ovrKey);
     NetModuleProperties nmp = noProps.getNetModuleProperties(fullKey.modKey);
@@ -2884,15 +2943,15 @@ public class Layout {
     // groups from the target genome.
     
     Genome useGenome = gSrc.getGenome(targetGenome_);
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome);
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome);
     //
     // OK, maybe need to change the genome, but we CANNOT change the layout. Per Issue #214, the
     // layout must be the one provided, as it could the be the temporary moving layout.
     //
-    irx.setLayout(rcx.getLayout());
+    irx.setLayout(rcx.getCurrentLayout());
     // End Issue #214 Fix
     Set<String> useGroups = noo.getGroupsForOverlayRendering();
-    Map<PointNoPoint, NetModuleFree.LinkPad> bestFits = nmp.getRenderer().closestRemainingPads(dip, useGroups, mod, fullKey.ovrKey, 
+    Map<PointNoPoint, NetModuleFree.LinkPad> bestFits = nmp.getRenderer().closestRemainingPads(dip, useGroups, mod,
                                                                                                nmp, irx, padNeeds.rigidMoves, padNeeds.linkPadInfo, 
                                                                                                currState, orphansOnly);
     HashMap<Point2D, ShiftAndSide> newPadShifts = new HashMap<Point2D, ShiftAndSide>();
@@ -2985,7 +3044,7 @@ public class Layout {
   ** Move the net module links by the given amount
   */
   
-  public PropChange moveNetModuleLinks(Intersection modIntersect, String ovrKey, double dx, double dy, DataAccessContext irx) {
+  public PropChange moveNetModuleLinks(Intersection modIntersect, String ovrKey, double dx, double dy, StaticDataAccessContext irx) {
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);
     String treeID = modIntersect.getObjectID();
     NetModuleLinkageProperties nmlp = noProps.getNetModuleLinkagePropertiesFromTreeID(treeID);
@@ -3009,7 +3068,7 @@ public class Layout {
   ** Change the target.  We must be given a cloned point forced to the grid
   */
   
-  public PropChange changeNetModuleTarget(String ovrKey, String linkID, Point2D newTarget, Vector2D toSide, DataAccessContext irx) {    
+  public PropChange changeNetModuleTarget(String ovrKey, String linkID, Point2D newTarget, Vector2D toSide, StaticDataAccessContext irx) {    
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);
     NetModuleLinkageProperties nmlp = noProps.getNetModuleLinkageProperties(linkID); 
     PropChange retval = new PropChange();
@@ -3024,7 +3083,8 @@ public class Layout {
   ** Change the source  We must be given a cloned point forced to the grid
   */
   
-  public PropChange changeNetModuleSource(String ovrKey, String treeID, Point2D newSource, Vector2D toSide, DataAccessContext irx) {    
+  public PropChange changeNetModuleSource(String ovrKey, String treeID, Point2D newSource, 
+                                          Vector2D toSide, StaticDataAccessContext irx) {    
     NetOverlayProperties noProps = getNetOverlayProperties(ovrKey);
     NetModuleLinkageProperties nmlp = noProps.getNetModuleLinkagePropertiesFromTreeID(treeID);
     PropChange retval = new PropChange();
@@ -3040,7 +3100,7 @@ public class Layout {
   ** 
   */  
   
-  public PropChange[] convertAllModulesToMemberOnly(OverlayKeySet fullKeys, DataAccessContext rcx) {
+  public PropChange[] convertAllModulesToMemberOnly(OverlayKeySet fullKeys, StaticDataAccessContext rcx) {
 
     if (fullKeys == null) {
       return (null);
@@ -3050,7 +3110,7 @@ public class Layout {
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     // Rendering requirements can be based upon the rootInstance geometry and membership
     Genome useGenome = gSrc.getGenome(targetGenome_);
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
         
     Iterator<NetModule.FullModuleKey> mkit = fullKeys.iterator();
     while (mkit.hasNext()) {
@@ -3095,7 +3155,7 @@ public class Layout {
   ** 
   */  
   
-  public Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> getModuleShapeParams(DataAccessContext rcx,
+  public Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> getModuleShapeParams(StaticDataAccessContext rcx,
                                                                                                    OverlayKeySet fullKeys, 
                                                                                                    Point2D wsCenter) {
     HashMap<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> retval = 
@@ -3110,7 +3170,7 @@ public class Layout {
     GenomeSource gSrc = rcx.getGenomeSource();  
     // Rendering requirements can be based upon the rootInstance geometry and membership
     Genome useGenome = gSrc.getGenome(getTarget());
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     
     while (mkit.hasNext()) {
       NetModule.FullModuleKey fullKey = mkit.next();        
@@ -3130,7 +3190,7 @@ public class Layout {
   
   public PropChange[] shiftModuleShapesPerParams(Layout.OverlayKeySet fullKeys, 
                                                  Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> relocInfoMap, 
-                                                 DataAccessContext rcx) {
+                                                 StaticDataAccessContext rcx) {
 
     if (fullKeys == null) {
       return (null);
@@ -3143,7 +3203,7 @@ public class Layout {
     Iterator<NetModule.FullModuleKey> mkit = fullKeys.iterator();
     GenomeSource gSrc = rcx.getGenomeSource();
     Genome useGenome = gSrc.getGenome(getTarget());    
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
         
     while (mkit.hasNext()) {
       NetModule.FullModuleKey fullKey = mkit.next(); 
@@ -3166,7 +3226,7 @@ public class Layout {
   */
   
   public PropChange[] applySameColorToModuleAndLinks(String overKey, String modKey, String colName, 
-                                                     boolean doModule, String skipTree, DataAccessContext rcx) {
+                                                     boolean doModule, String skipTree, StaticDataAccessContext rcx) {
  
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     
@@ -3217,8 +3277,8 @@ public class Layout {
     // shown as part of the module (important for dynamic instances!)
     //
     
-    Genome useGenome = Layout.determineLayoutTarget(rcx.getGenome());
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    Genome useGenome = Layout.determineLayoutTarget(rcx.getCurrentGenome());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     
     DynamicInstanceProxy dip = (owner.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)owner 
                                                                                              : null;
@@ -3267,7 +3327,7 @@ public class Layout {
   */
   
   public Map<String, Rectangle> getLayoutBoundsForEachNetModule(NetOverlayOwner owner, String ovrKey,
-                                                                DataAccessContext rcx) {
+                                                                StaticDataAccessContext rcx) {
     
     HashMap<String, Rectangle> retval = new HashMap<String, Rectangle>();
     
@@ -3275,8 +3335,8 @@ public class Layout {
     // We use the rootInstance to drive rendering, so that non-included nodes are not
     // shown as part of the module (important for dynamic instances!)
     //
-    Genome useGenome = Layout.determineLayoutTarget(rcx.getGenome());  
-    DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+    Genome useGenome = Layout.determineLayoutTarget(rcx.getCurrentGenome());  
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
     DynamicInstanceProxy dip = (owner.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)owner 
                                                                                              : null;
     Set<String> useGroups = owner.getGroupsForOverlayRendering();    
@@ -3300,7 +3360,7 @@ public class Layout {
   */
   
   public Rectangle getLayoutBoundsForAllOverlays(OverlayKeySet allKeys, boolean doModuleLinks, 
-                                                 DataAccessContext rcx) {
+                                                 StaticDataAccessContext rcx) {
  
     Rectangle retval = null;
     
@@ -3310,8 +3370,8 @@ public class Layout {
       // shown as part of the module (important for dynamic instances!)
       //
       GenomeSource gSrc = rcx.getGenomeSource();
-      Genome useGenome = Layout.determineLayoutTarget(rcx.getGenome());  
-      DataAccessContext irx = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+      Genome useGenome = Layout.determineLayoutTarget(rcx.getCurrentGenome());  
+      StaticDataAccessContext irx = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
       HashSet<String> overKeys = new HashSet<String>();      
       Iterator<NetModule.FullModuleKey> mkit = allKeys.iterator();
       while (mkit.hasNext()) {
@@ -3439,7 +3499,7 @@ public class Layout {
       // Key removal occurs as part of the nop.removeNetMod... call:
       nop.removeNetModuleLinkagePropertiesWithTreeID(undo.gSrc, undo.nmlpNew.getID());
     } else if (undo.nmlpOrig != null) { // Currently never invoked????
-      ((DBGenome)undo.gSrc.getGenome()).addKey(undo.nmlpOrig.getID());
+      ((DBGenome)undo.gSrc.getRootDBGenome()).addKey(undo.nmlpOrig.getID());
       nop.setNetModuleLinkageProperties(undo.nmlpOrig.getID(), undo.nmlpOrig.clone());
     } else if (undo.nmlpTieLinkIDOrig != null) {
        // Note asymmetry with redo case.  We do have a case where undo.nmlpTieLinkIDOrig != null and undo.nmlpTieTreeIDOrig == null
@@ -3465,7 +3525,7 @@ public class Layout {
     if ((redo.nmlpOrig != null) && (redo.nmlpNew != null)) {
       nop.setNetModuleLinkageProperties(redo.nmlpNew.getID(), redo.nmlpNew.clone());
     } else if (redo.nmlpNew != null) {
-      ((DBGenome)redo.gSrc.getGenome()).addKey(redo.nmlpNew.getID());
+      ((DBGenome)redo.gSrc.getRootDBGenome()).addKey(redo.nmlpNew.getID());
       nop.setNetModuleLinkageProperties(redo.nmlpNew.getID(), redo.nmlpNew.clone());
     } else if (redo.nmlpOrig != null) { // Currently never invoked????
       // removal handles the treeID key removal:
@@ -3626,7 +3686,7 @@ public class Layout {
   ** For a particular source and launch pad, find and return a link property.
   */
  
-  public BusProperties getLinkPropertyForSource(String itemId, int launchPad, DataAccessContext rcx) {
+  public BusProperties getLinkPropertyForSource(String itemId, int launchPad, StaticDataAccessContext rcx) {
     Iterator<BusProperties> lpit = linkProps_.values().iterator();
     Genome genome = rcx.getGenomeSource().getGenome(getTarget());
     while (lpit.hasNext()) {
@@ -3646,7 +3706,7 @@ public class Layout {
   ** unless we are working with overlay links
   */
   
-  public TopoRepairInfo repairAllTopology(DataAccessContext icx, String overID,
+  public TopoRepairInfo repairAllTopology(StaticDataAccessContext icx, String overID,
                                           BTProgressMonitor monitor, double minFrac, double maxFrac) throws AsynchExitRequestException {
     return (repairAllTopologyGuts(icx, overID, monitor,  minFrac, maxFrac, null));
   }
@@ -3656,7 +3716,7 @@ public class Layout {
   ** Repair the topology all link trees to eliminate overlaps. Use for autolayout
   */
   
-  public TopoRepairInfo repairAllTopologyForAuto(DataAccessContext icx,  String overID,
+  public TopoRepairInfo repairAllTopologyForAuto(StaticDataAccessContext icx,  String overID,
                                                  BTProgressMonitor monitor, double minFrac, double maxFrac) throws AsynchExitRequestException { 
     QuadTree useQuad = new QuadTree(100, 10);
     return (repairAllTopologyGuts(icx, overID, monitor,  minFrac, maxFrac, useQuad));
@@ -3669,7 +3729,7 @@ public class Layout {
   ** unless we are working with overlay links
   */
   
-  private TopoRepairInfo repairAllTopologyGuts(DataAccessContext icx, String overID,
+  private TopoRepairInfo repairAllTopologyGuts(StaticDataAccessContext icx, String overID,
                                                BTProgressMonitor monitor, double minFrac, double maxFrac, QuadTree useQuad) throws AsynchExitRequestException {
     Genome genome = icx.getGenomeSource().getGenome(getTarget());
     List<LinkProperties> lop = listOfProps(genome, overID, null);
@@ -3711,8 +3771,8 @@ public class Layout {
   ** unless we are working with overlay links
   */
   
-  public TopoRepairInfo repairTreeTopology(LinkProperties lp, DataAccessContext icx, String overID,
-                                           BTProgressMonitor monitor, double minFrac, double maxFrac, boolean forAuto) throws AsynchExitRequestException {
+  public TopoRepairInfo repairTreeTopology(LinkProperties lp, StaticDataAccessContext icx, String overID,
+                                           BTProgressMonitor monitor, double minFrac, double maxFrac) throws AsynchExitRequestException {
     PropChange retval = new PropChange();
     undoPreProcess(retval, lp, overID, icx);
     
@@ -3730,7 +3790,7 @@ public class Layout {
   ** unless we are working with overlay links
   */
   
-  private TopoRepairInfo repairTreeTopologyGuts(LinkProperties lp, DataAccessContext icx, 
+  private TopoRepairInfo repairTreeTopologyGuts(LinkProperties lp, StaticDataAccessContext icx, 
                                                 String overID,
                                                 BTProgressMonitor monitor, double minFrac, double maxFrac, QuadTree useQuad) throws AsynchExitRequestException {
   
@@ -3763,7 +3823,7 @@ public class Layout {
   ** unless we are working with overlay links
   */
   
-  public PropChange relocateSegmentOnTree(LinkProperties lp, LinkSegmentID targID, LinkSegmentID moveID, String ovrKey, DataAccessContext rcx) {
+  public PropChange relocateSegmentOnTree(LinkProperties lp, LinkSegmentID targID, LinkSegmentID moveID, String ovrKey, StaticDataAccessContext rcx) {
     PropChange retval = new PropChange();
     undoPreProcess(retval, lp, ovrKey, rcx);
     if (!lp.moveSegmentOnTree(moveID, targID)) {
@@ -3808,7 +3868,7 @@ public class Layout {
   ** FIX ME: Refactor into above method for root merges?
   */
   
-  public PropChange mergeNewLinkToTreeAtSegment(DataAccessContext rcx,
+  public PropChange mergeNewLinkToTreeAtSegment(StaticDataAccessContext rcx,
                                                 String treeID,
                                                 BusProperties newBp,
                                                 LinkSegmentID sid) {
@@ -3826,7 +3886,7 @@ public class Layout {
     PropChange retval = new PropChange();
     undoPreProcess(retval, bp, null, null);
 
-    DataAccessContext irx = new DataAccessContext(rcx, rcx.getGenomeSource().getGenome(getTarget()), rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, rcx.getGenomeSource().getGenome(getTarget()), rcx.getCurrentLayout());
     bp.mergeSingleToTreeAtSegment(newBp, irx, sid);
     
     //
@@ -3847,10 +3907,10 @@ public class Layout {
   ** 
   */
   
-  public void mergeNewLinkToTreeAtRootBatch(DataAccessContext rcx, String treeID, BusProperties newBp, String slpTag) {
+  public void mergeNewLinkToTreeAtRootBatch(StaticDataAccessContext rcx, String treeID, BusProperties newBp, String slpTag) {
  
     BusProperties bp = getLinkProperties(treeID);    
-    DataAccessContext irx = new DataAccessContext(rcx, rcx.getGenomeSource().getGenome(getTarget()), rcx.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, rcx.getGenomeSource().getGenome(getTarget()), rcx.getCurrentLayout());
     bp.mergeSingleToTreeAtSegment(newBp, irx, null);
     linkProps_.put(slpTag, bp);
     return;   
@@ -3862,7 +3922,7 @@ public class Layout {
   ** props.
   */
   
-  public PropChange setSpecialPropsForSegment(BusProperties bp, LinkSegmentID lsid, SuggestedDrawStyle sds, String ovrKey, DataAccessContext rcx) {
+  public PropChange setSpecialPropsForSegment(BusProperties bp, LinkSegmentID lsid, SuggestedDrawStyle sds, String ovrKey, StaticDataAccessContext rcx) {
     
     PropChange retval = new PropChange();
     undoPreProcess(retval, bp, ovrKey, rcx); 
@@ -3876,7 +3936,7 @@ public class Layout {
   ** Move a node
   */
   
-  public PropChange moveNode(String selection, double dx, double dy, Layout.PadNeedsForLayout padReqs, DataAccessContext rcx) {
+  public PropChange moveNode(String selection, double dx, double dy, Layout.PadNeedsForLayout padReqs, StaticDataAccessContext rcx) {
 
     NodeProperties props = getNodeProperties(selection);    
     
@@ -4004,7 +4064,7 @@ public class Layout {
   ** Delete a linkage corner
   */
   
-  public PropChange deleteCornerForNetModuleLinkTree(NetModuleLinkageProperties nmlp, LinkSegmentID segID, String ovrKey, DataAccessContext rcx) {
+  public PropChange deleteCornerForNetModuleLinkTree(NetModuleLinkageProperties nmlp, LinkSegmentID segID, String ovrKey, StaticDataAccessContext rcx) {
 
     PropChange retval = new PropChange();
     undoPreProcess(retval, nmlp, ovrKey, rcx);
@@ -4018,7 +4078,7 @@ public class Layout {
   ** Delete a linkage corner
   */
   
-  public PropChange deleteLinkageCornerForTree(LinkProperties bp, LinkSegmentID segID, String overID, DataAccessContext rcx) {
+  public PropChange deleteLinkageCornerForTree(LinkProperties bp, LinkSegmentID segID, String overID, StaticDataAccessContext rcx) {
 
     PropChange retval = new PropChange();
     undoPreProcess(retval, bp, overID, rcx);
@@ -4032,12 +4092,12 @@ public class Layout {
   ** Fix all non-ortho segments in the layout
   */
   
-  public OrthoRepairInfo fixAllNonOrthoForLayout(List<Intersection> nonOrtho, DataAccessContext irx, boolean minCorners, 
+  public OrthoRepairInfo fixAllNonOrthoForLayout(List<Intersection> nonOrtho, StaticDataAccessContext irx, boolean minCorners, 
                                                  String overID,
                                                  BTProgressMonitor monitor, double startFrac, double endFrac) 
                                                    throws AsynchExitRequestException {
    
-    Genome genome = irx.getGenome(); 
+    Genome genome = irx.getCurrentGenome(); 
     //
     // Fix the worst offenders first:
     //
@@ -4121,7 +4181,7 @@ public class Layout {
   ** Fix all non-ortho segments in a tree
   */
   
-  public OrthoRepairInfo fixAllNonOrthoForTree(LinkProperties lp, DataAccessContext icx,
+  public OrthoRepairInfo fixAllNonOrthoForTree(LinkProperties lp, StaticDataAccessContext icx,
                                                boolean minCorners, String overID, 
                                                BTProgressMonitor monitor, double startFrac, double endFrac) 
                                                throws AsynchExitRequestException {
@@ -4218,7 +4278,7 @@ public class Layout {
   ** Fix a non-ortho segment
   */
   
-  public OrthoRepairInfo fixNonOrtho(LinkProperties bp, LinkSegmentID segID, DataAccessContext icx,
+  public OrthoRepairInfo fixNonOrtho(LinkProperties bp, LinkSegmentID segID, StaticDataAccessContext icx,
                                      boolean minCorners, String ovrKey, BTProgressMonitor monitor, double startFrac, double endFrac) 
                                        throws AsynchExitRequestException {
     // BIG NETWORK? 35 seconds to do this for one segment. Maybe 8 of that are the topology fixes. Rest is that the
@@ -4265,7 +4325,7 @@ public class Layout {
   ** Make a linkage direct for given ID
   */
   
-  public PropChange makeLinkageDirectForLink(String linkID, NodeInsertionDirective nid, DataAccessContext rcx) {
+  public PropChange makeLinkageDirectForLink(String linkID, NodeInsertionDirective nid, StaticDataAccessContext rcx) {
     
     BusProperties bp = getLinkProperties(linkID);
     if (!bp.isSingleDropTree()) {
@@ -4278,7 +4338,7 @@ public class Layout {
     if ((nid != null) && (nid.landingCorners != null)) {
       int numLand = nid.landingCorners.size();
       for (int i = 0; i < numLand; i++) {
-        Point2D newPt = (Point2D)nid.landingCorners.get(i);
+        Point2D newPt = nid.landingCorners.get(i);
         int idType = (bp.isDirect()) ? LinkSegmentID.DIRECT_LINK : LinkSegmentID.END_DROP;
         LinkSegmentID dropSegID = LinkSegmentID.buildIDForType(linkID, idType);    
         splitBusLink(dropSegID, newPt, bp, null, rcx);
@@ -4293,7 +4353,7 @@ public class Layout {
   ** Split the Linkage at the given point for a bus
   */
   
-  public PropChange splitBusLink(LinkSegmentID segID, Point2D pt, LinkProperties lp, String ovrKey, DataAccessContext rcx) {
+  public PropChange splitBusLink(LinkSegmentID segID, Point2D pt, LinkProperties lp, String ovrKey, StaticDataAccessContext rcx) {
 
     PropChange retval = new PropChange();
     undoPreProcess(retval, lp, ovrKey, rcx);
@@ -4319,7 +4379,7 @@ public class Layout {
   ** Split the direct Linkage from a source in half
   */
   
-  public PropChange splitDirectLinkInHalf(String srcID, DataAccessContext icx) {
+  public PropChange splitDirectLinkInHalf(String srcID, StaticDataAccessContext icx) {
     BusProperties bp = getBusForSource(srcID);
     if (!bp.isDirect()) {
       return (null);
@@ -4410,7 +4470,8 @@ public class Layout {
   
   public PropChange[] supportModuleLinkTreeSwitch(LinkSegmentID segID, Set<String> resolved, String ovrKey,
                                                   String oldTreeID, String newTreeID,
-                                                  LinkSegmentID newConnectionID, Point2D padPoint, Vector2D sideDir, DataAccessContext rcx) {
+                                                  LinkSegmentID newConnectionID, Point2D padPoint, 
+                                                  Vector2D sideDir, StaticDataAccessContext rcx) {
 
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     
@@ -4428,7 +4489,7 @@ public class Layout {
     if (newConnectionID == null) {
       // We want trees to have globally unique IDs.  Dropping this is undo is handled by 
       // e.g. setNetModuleLinkageProperties setup
-      newKey = ((DBGenome)rcx.getGenomeSource().getGenome()).getNextKey();
+      newKey = ((DBGenome)rcx.getGenomeSource().getRootDBGenome()).getNextKey();
       newTreeID = newKey;
     } else {
       newKey = "fakeID";
@@ -4502,7 +4563,7 @@ public class Layout {
   public PropChange[] supportLinkNodeInsertion(LinkSegmentID segID, Set<String> resolved, 
                                                String newNodeID, 
                                                String firstLinkID, Map<String, String> linkMap,
-                                               DataAccessContext icx,
+                                               StaticDataAccessContext icx,
                                                Map<String, NodeInsertionDirective> needDirectFixup, NodeInsertionDirective nid) {
     ArrayList<PropChange> changes = new ArrayList<PropChange>();
     if (resolved.isEmpty()) {
@@ -4571,7 +4632,7 @@ public class Layout {
       BusProperties bp2 = getLinkProperties(firstLinkID);
       int numLand = nid.landingCorners.size();
       for (int i = 0; i < numLand; i++) {
-        Point2D newPt = (Point2D)nid.landingCorners.get(i);
+        Point2D newPt = nid.landingCorners.get(i);
         int idType = (bp2.isDirect()) ? LinkSegmentID.DIRECT_LINK : LinkSegmentID.END_DROP;
         LinkSegmentID dropSegID = LinkSegmentID.buildIDForType(firstLinkID, idType);    
         changes.add(splitBusLink(dropSegID, newPt, bp2, null, null));
@@ -4582,7 +4643,7 @@ public class Layout {
       BusProperties bp2 = getLinkProperties(mappedOneLink);
       int numLau = nid.launchCorners.size();
       for (int i = 0; i < numLau; i++) {
-        Point2D newPt = (Point2D)nid.launchCorners.get(i);
+        Point2D newPt = nid.launchCorners.get(i);
         int idType = (bp2.isDirect()) ? LinkSegmentID.DIRECT_LINK : LinkSegmentID.START_DROP;
         LinkSegmentID dropSegID = LinkSegmentID.buildIDForType(mappedOneLink, idType);    
         changes.add(splitBusLink(dropSegID, newPt, bp2, null, null));
@@ -4602,8 +4663,8 @@ public class Layout {
   public InheritedLinkNodeInsertionResult supportInheritedLinkNodeInsertion(LinkSegmentID rootSegID, 
                                                         Set<String> resolved,
                                                         BusProperties rootProps, Point2D rootSplit,
-                                                        DataAccessContext rcxRoot,
-                                                        DataAccessContext icx,
+                                                        StaticDataAccessContext rcxRoot,
+                                                        StaticDataAccessContext icx,
                                                         String newNodeID, String firstLinkID, 
                                                         Map<String, String> linkMap, Map<String, NodeInsertionDirective> needDirectFixup) {
     
@@ -4647,7 +4708,7 @@ public class Layout {
     // Record the pad changes we are going to need:
     //    
     
-    Genome myGenome = icx.getGenome();
+    Genome myGenome = icx.getCurrentGenome();
     HashMap<String, PadCalculatorToo.PadResult> padChanges = new HashMap<String, PadCalculatorToo.PadResult>();
     Linkage link = myGenome.getLinkage(firstLinkID);
     PadCalculatorToo.PadResult pres = new PadCalculatorToo.PadResult(link.getLaunchPad(), nid.landingPad);    
@@ -4669,12 +4730,12 @@ public class Layout {
   ** Handle more difficult inserted node positioning.
   */
   
-  public PropChange bestFitNodePlacementForInsertion(Layout rootLayout, String newNodeID, DataAccessContext rcx) {
+  public PropChange bestFitNodePlacementForInsertion(Layout rootLayout, String newNodeID, StaticDataAccessContext rcx) {
     //
     // No really good fit, so place the node in same approx position w.r.t. sources or targets
     // as it appears in the root layout, using elements in the same region as the new node.
     //
-    GenomeInstance gi = (GenomeInstance)rcx.getGenome();
+    GenomeInstance gi = (GenomeInstance)rcx.getCurrentGenome();
     
     String rootNewNode = GenomeItemInstance.getBaseID(newNodeID);
     Point2D newRootPos = rootLayout.getNodeProperties(rootNewNode).getLocation();
@@ -4749,7 +4810,7 @@ public class Layout {
   ** Handle more difficult inserted node positioning.
   */
   
-  private Point2D spiralNodePlacement(DataAccessContext rcx, String nodeID, Point2D guessPt) {  
+  private Point2D spiralNodePlacement(StaticDataAccessContext rcx, String nodeID, Point2D guessPt) {  
     LinkRouter router = new LinkRouter();
     LinkPlacementGrid targLinkGrid;
     try {
@@ -4759,7 +4820,7 @@ public class Layout {
     } 
     
     PatternGrid targGrid = targLinkGrid.extractPatternGrid(true);
-    Node node = rcx.getGenome().getNode(nodeID);
+    Node node = rcx.getCurrentGenome().getNode(nodeID);
     NodeProperties props = getNodeProperties(nodeID);   
     PatternGrid nodeGrid = new PatternGrid();
     props.getRenderer().renderToPatternGrid(node, rcx, nodeGrid); 
@@ -4781,8 +4842,8 @@ public class Layout {
   
   public InheritedInsertionInfo findInheritedMatchingLinkSegment(LinkSegmentID rootSegID, Set<String> resolved, 
                                                                  BusProperties rootBus, Point2D rootSplit,
-                                                                 DataAccessContext rcxRoot, 
-                                                                 DataAccessContext rcx) {
+                                                                 StaticDataAccessContext rcxRoot, 
+                                                                 StaticDataAccessContext rcx) {
 
     //
     // NOTE: FIX ME???  Useless corner points are not being ignored in this process.  Is this
@@ -4804,7 +4865,7 @@ public class Layout {
     }
     
     Point2D splitPt = (Point2D)rootSplit.clone();
-    DataAccessContext irx = new DataAccessContext(rcx, rcxRoot.getGenome(), rcxRoot.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, rcxRoot.getCurrentGenome(), rcxRoot.getCurrentLayout());
     LinkSegment rseg = rootBus.getSegmentGeometryForID(rootSegID, irx, true);
 
     
@@ -4973,7 +5034,7 @@ public class Layout {
   ** Move a note
   */
   
-  public PropChange moveNote(String selection, Genome genome, double dx, double dy) {
+  public PropChange moveNote(String selection, double dx, double dy) {
 
     NoteProperties props = getNoteProperties(selection);    
     
@@ -5010,7 +5071,7 @@ public class Layout {
   ** Move a note
   */
   
-  public PropChange moveDataLocation(String key, Genome genome, double dx, double dy) {
+  public PropChange moveDataLocation(String key, double dx, double dy) {
 
     Point2D loc = getDataLocation(key);    
     
@@ -5371,7 +5432,7 @@ public class Layout {
   */
   
   public PropChange foldInNewProperty(Linkage newLink, 
-                                      BusProperties spTree, DataAccessContext irx) {
+                                      BusProperties spTree, StaticDataAccessContext irx) {
                                          
     String linkID = newLink.getID();
     String source = newLink.getSource();
@@ -5593,23 +5654,23 @@ public class Layout {
                                        Map<NetModule.FullModuleKey, NetModule.FullModuleKey> keyMap, Map<String, String> modLinkIDMap, 
                                        Map<NetModule.FullModuleKey, DicedModuleInfo> diceMap,
                                        boolean dataOnly, Map<String, BusProperties.RememberProps> rememberMap, 
-                                       DataAccessContext rcxMine, DataAccessContext rcxLeg) {
-    name_ = rcxLeg.getLayout().name_;
-    targetGenome_ = rcxLeg.getLayout().targetGenome_;
-    Iterator<String> dpit = rcxLeg.getLayout().dataProps_.keySet().iterator();
+                                       StaticDataAccessContext rcxMine, StaticDataAccessContext rcxLeg) {
+    name_ = rcxLeg.getCurrentLayout().name_;
+    targetGenome_ = rcxLeg.getCurrentLayout().targetGenome_;
+    Iterator<String> dpit = rcxLeg.getCurrentLayout().dataProps_.keySet().iterator();
     while (dpit.hasNext()) {
       String key = dpit.next();
-      Point2D pt = rcxLeg.getLayout().dataProps_.get(key);
+      Point2D pt = rcxLeg.getCurrentLayout().dataProps_.get(key);
       if (pt != null) {
         dataProps_.put(key, (Point2D)pt.clone());
       }
     }
     
     if (dataOnly) {  // Even if data only, still transfer notes and overlays
-      Iterator<String> ntit = rcxLeg.getLayout().noteProps_.keySet().iterator();
+      Iterator<String> ntit = rcxLeg.getCurrentLayout().noteProps_.keySet().iterator();
       while (ntit.hasNext()) {
         String key = ntit.next();
-        NoteProperties np = rcxLeg.getLayout().noteProps_.get(key);
+        NoteProperties np = rcxLeg.getCurrentLayout().noteProps_.get(key);
         noteProps_.put(key, np.clone());
       }
       transferOverlayCore(keyMap, modLinkIDMap, diceMap, rcxMine, rcxLeg);
@@ -5626,7 +5687,7 @@ public class Layout {
   ** Shift supplemental layout stuff
   */
   
-  public Rectangle2D applySupplementalDataCoords(SupplementalDataCoords sdc, DataAccessContext irx, OverlayKeySet fullModKeys) {
+  public Rectangle2D applySupplementalDataCoords(SupplementalDataCoords sdc, StaticDataAccessContext irx, OverlayKeySet fullModKeys) {
     
     if (sdc == null) {
       return (null);
@@ -5689,7 +5750,7 @@ public class Layout {
   ** Build up a set of supplemental data coords (used to relocate notes/model data)
   */
   
-  public SupplementalDataCoords getSupplementalCoordsAllOverlays(DataAccessContext irx, OverlayKeySet allKeys) {  
+  public SupplementalDataCoords getSupplementalCoordsAllOverlays(StaticDataAccessContext irx, OverlayKeySet allKeys) {  
     Rectangle lob = getLayoutBounds(irx, true, true, true, true, true, null, null, null, allKeys);
     return (getSupplementalCoordsGuts(lob));
   }
@@ -5699,7 +5760,7 @@ public class Layout {
   ** Build up a set of supplemental data coords (used to relocate notes/model data)
   */
   
-  public SupplementalDataCoords getSupplementalCoords(DataAccessContext irx, OverlayKeySet allKeys) {
+  public SupplementalDataCoords getSupplementalCoords(StaticDataAccessContext irx, OverlayKeySet allKeys) {
     Rectangle lob = getLayoutBounds(irx, true, true, true, true, true, null, null, null, allKeys);
     return (getSupplementalCoordsGuts(lob));
   }
@@ -5831,15 +5892,15 @@ public class Layout {
                                    Map<NetModule.FullModuleKey, DicedModuleInfo> diceMap,
                                    boolean transferNotes, boolean transferSuppData, 
                                    Map<String, BusProperties.RememberProps> rememberMap, 
-                                   DataAccessContext rcxMine, DataAccessContext rcxOther) {
+                                   StaticDataAccessContext rcxMine, StaticDataAccessContext rcxOther) {
     transferLayoutCore(nodeMap, linkMap, groupMap, transferNotes, keyMap,
                        modLinkIDMap, diceMap, rememberMap, rcxMine, rcxOther);
     if (transferSuppData) {
       dataProps_ = new HashMap<String, Point2D>();
-      Iterator<String> dpit = rcxOther.getLayout().dataProps_.keySet().iterator();
+      Iterator<String> dpit = rcxOther.getCurrentLayout().dataProps_.keySet().iterator();
       while (dpit.hasNext()) {
         String key = dpit.next();
-        Point2D pt = rcxOther.getLayout().dataProps_.get(key);
+        Point2D pt = rcxOther.getCurrentLayout().dataProps_.get(key);
         if (pt != null) {
           this.dataProps_.put(key, (Point2D)pt.clone());
         }
@@ -5854,12 +5915,12 @@ public class Layout {
   */
   
   public void extractPartialLayoutForGroup(Group group, Map<String, BusProperties.RememberProps> rememberMap, 
-                                           DataAccessContext rcxMine, DataAccessContext rcxOther,
+                                           StaticDataAccessContext rcxMine, StaticDataAccessContext rcxOther,
                                            Map<NetModule.FullModuleKey, NetModule.FullModuleKey> keyMap, 
                                            Map<String, String> modLinkIDMap,
                                            Map<NetModule.FullModuleKey, DicedModuleInfo> diceMap) {
 
-    GenomeInstance gi = rcxMine.getGenomeAsInstance();
+    GenomeInstance gi = rcxMine.getCurrentGenomeAsInstance();
     
     HashMap<String, String> linkMap = new HashMap<String, String>();
     Iterator<Linkage> glit = gi.getLinkageIterator();
@@ -5874,7 +5935,7 @@ public class Layout {
         continue;
       }
       String linkID = link.getID();
-      if (rcxOther.getLayout().getLinkProperties(linkID) != null) {  // handles in complete source layouts...
+      if (rcxOther.getCurrentLayout().getLinkProperties(linkID) != null) {  // handles in complete source layouts...
         linkMap.put(linkID, linkID);
       }
     }
@@ -5884,14 +5945,14 @@ public class Layout {
     while (gmit.hasNext()) {
       GroupMember memb = gmit.next();
       String mid = memb.getID();
-      if (rcxOther.getLayout().getNodeProperties(mid) != null) {
+      if (rcxOther.getCurrentLayout().getNodeProperties(mid) != null) {
         nodeMap.put(mid, mid);
       }
     }
  
     HashMap<String, String> groupMap = new HashMap<String, String>();
     String grid = group.getID();
-    if (rcxOther.getLayout().getGroupProperties(grid) != null) {
+    if (rcxOther.getCurrentLayout().getGroupProperties(grid) != null) {
       groupMap.put(grid, grid);
     }
  
@@ -6091,7 +6152,7 @@ public class Layout {
                                   Map<String, String> modLinkIDMap,
                                   Map<NetModule.FullModuleKey, DicedModuleInfo> diceMap,
                                   Map<String, BusProperties.RememberProps> rememberMap,
-                                  DataAccessContext rcxMine, DataAccessContext rcxOther) {    
+                                  StaticDataAccessContext rcxMine, StaticDataAccessContext rcxOther) {    
     //
     // Copy node properties:
     //
@@ -6100,7 +6161,7 @@ public class Layout {
       String newNode = nmit.next();
       String oldNode = nodeMap.get(newNode);
       if (oldNode != null) {
-        NodeProperties np = new NodeProperties(newNode, rcxOther.getLayout().getNodeProperties(oldNode));
+        NodeProperties np = new NodeProperties(newNode, rcxOther.getCurrentLayout().getNodeProperties(oldNode));
         setNodeProperties(newNode, np);
       }
     }
@@ -6135,7 +6196,7 @@ public class Layout {
       String newLink = lmit.next();
       String oldLink = linkMap.get(newLink);
       if (oldLink != null) {
-        BusProperties lp = rcxOther.getLayout().getLinkProperties(oldLink);
+        BusProperties lp = rcxOther.getCurrentLayout().getLinkProperties(oldLink);
         // Using default equals() here for LinkProperties!
         BusProperties newLp = seen.get(lp);
         if (newLp != null) {
@@ -6159,10 +6220,10 @@ public class Layout {
     //
     
     if (rememberMap != null) {
-      Iterator<String> legit = rcxOther.getLayout().linkProps_.keySet().iterator();
+      Iterator<String> legit = rcxOther.getCurrentLayout().linkProps_.keySet().iterator();
       while (legit.hasNext()) {
         String linkKey = legit.next();
-        BusProperties lp = rcxOther.getLayout().getLinkProperties(linkKey);
+        BusProperties lp = rcxOther.getCurrentLayout().getLinkProperties(linkKey);
         BusProperties.RememberProps rp = new BusProperties.RememberProps(lp, rcxOther);
         rememberMap.put(linkKey, rp);
       }
@@ -6178,7 +6239,7 @@ public class Layout {
         String newGroup = gmit.next();
         String oldGroup = groupMap.get(newGroup);
         if (oldGroup != null) {
-          GroupProperties oldProp = rcxOther.getLayout().getGroupProperties(oldGroup);
+          GroupProperties oldProp = rcxOther.getCurrentLayout().getGroupProperties(oldGroup);
           GroupProperties gp = new GroupProperties(newGroup, oldProp.getOrder(), oldProp);
           setGroupProperties(newGroup, gp);
         }
@@ -6191,10 +6252,10 @@ public class Layout {
     
     if (transferNotes) {
       this.noteProps_ = new HashMap<String, NoteProperties>();
-      Iterator<String> ntpit = rcxOther.getLayout().noteProps_.keySet().iterator();
+      Iterator<String> ntpit = rcxOther.getCurrentLayout().noteProps_.keySet().iterator();
       while (ntpit.hasNext()) {
         String key = ntpit.next();
-        NoteProperties np = rcxOther.getLayout().noteProps_.get(key);
+        NoteProperties np = rcxOther.getCurrentLayout().noteProps_.get(key);
         this.noteProps_.put(key, np.clone());
       }
     }
@@ -6319,7 +6380,7 @@ public class Layout {
   
   private void transferOverlayCore(Map<NetModule.FullModuleKey, NetModule.FullModuleKey> keyMap, 
                                    Map<String, String> modLinkIDMap, Map<NetModule.FullModuleKey, DicedModuleInfo> diceShapeMap, 
-                                   DataAccessContext rcxMine, DataAccessContext rcxOther) {    
+                                   StaticDataAccessContext rcxMine, StaticDataAccessContext rcxOther) {    
     //
     // Warning!  Note how the last argument to the NetOverlayProperties() contructor is true,
     // so netModule link treeIDs are retained, not mapped.  If mapping is required in a
@@ -6361,7 +6422,7 @@ public class Layout {
         String oldOvr = oit.next();
         String newID = overMap.get(oldOvr);
         Map<String, String> modMap = modsPerOverlay.get(oldOvr); // may be null...
-        NetOverlayProperties oldProps = rcxOther.getLayout().ovrProps_.get(oldOvr);
+        NetOverlayProperties oldProps = rcxOther.getCurrentLayout().ovrProps_.get(oldOvr);
         NetOverlayProperties newProps = new NetOverlayProperties(rcxMine.getGenomeSource(), oldProps, newID, modMap, modLinkIDMap, true);
         this.ovrProps_.put(newID, newProps);
       }
@@ -6397,7 +6458,7 @@ public class Layout {
         String oldOvr = oit.next();
         String newID = diceOverMap.get(oldOvr);
         Map<String, DicedModuleInfo> diceMap = dicePerOverlay.get(oldOvr);
-        NetOverlayProperties oldProps = rcxOther.getLayout().ovrProps_.get(oldOvr);
+        NetOverlayProperties oldProps = rcxOther.getCurrentLayout().ovrProps_.get(oldOvr);
         NetOverlayProperties justAdded = this.ovrProps_.get(newID);
         if (justAdded == null) {          
           justAdded = new NetOverlayProperties(rcxMine.getGenomeSource(), oldProps, newID, junkMap, junkMap, true);
@@ -6450,7 +6511,7 @@ public class Layout {
   ** Reverse the expansion process.
   */
   
-  public void reverseExpansion(DataAccessContext irx,
+  public void reverseExpansion(StaticDataAccessContext irx,
                                ExpansionReversal reversal, 
                                BTProgressMonitor monitor, double startFrac, double endFrac) throws AsynchExitRequestException {
                                               
@@ -6483,7 +6544,7 @@ public class Layout {
   ** are filled in.
   */
   
-  public void chooseCompressionRows(DataAccessContext irx,
+  public void chooseCompressionRows(StaticDataAccessContext irx,
                                     double fracV, double fracH, Rectangle bounds,
                                     boolean makeRegionsOpaque,
                                     OverlayKeySet fullKeysForLayout,
@@ -6502,7 +6563,7 @@ public class Layout {
   */  
   
  
-  private void calcOverlayRequiredRowsAndCols(DataAccessContext rcxi,
+  private void calcOverlayRequiredRowsAndCols(StaticDataAccessContext rcxi,
                                               OverlayKeySet fullKeysForLayout, Rectangle bounds,
                                               SortedSet<Integer> needRows, SortedSet<Integer> needCols,         
                                               BTProgressMonitor monitor) 
@@ -6512,7 +6573,7 @@ public class Layout {
       return;
     }
    // Rendering requirements can be based upon the rootInstance geometry and membership   
-    DataAccessContext irx = new DataAccessContext(rcxi, rcxi.getGenomeSource().getGenome(targetGenome_), rcxi.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcxi, rcxi.getGenomeSource().getGenome(targetGenome_), rcxi.getCurrentLayout());
 
     HashMap<String, Map<String, Set<Point2D>>> padCache = new HashMap<String, Map<String, Set<Point2D>>>();
     Iterator<NetModule.FullModuleKey> fkit = fullKeysForLayout.iterator();
@@ -6540,7 +6601,7 @@ public class Layout {
       }
       NetModuleFree nmf = nmp.getRenderer();
       Set<Point2D> usedPads = pads.get(fullKey.modKey);
-      nmf.needRowsAndCols(dip, module, fullKey.ovrKey, nmp, irx, bounds, needRows, needCols, usedPads);
+      nmf.needRowsAndCols(dip, module, nmp, irx, bounds, needRows, needCols, usedPads);
       if ((monitor != null) && !monitor.keepGoing()) {
         throw new AsynchExitRequestException();
       }
@@ -6565,7 +6626,7 @@ public class Layout {
   */  
   
  
-  private void calcOverlayNonExpansion(DataAccessContext rcxi,
+  private void calcOverlayNonExpansion(StaticDataAccessContext rcxi,
                                        Rectangle bounds, SortedSet<Integer> excludeRows, SortedSet<Integer> excludeCols,
                                        OverlayKeySet fullKeysForLayout,
                                        BTProgressMonitor monitor) 
@@ -6575,7 +6636,7 @@ public class Layout {
       return;
     }
     // Rendering requirements can be based upon the rootInstance geometry and membership      
-    DataAccessContext irx = new DataAccessContext(rcxi, rcxi.getGenomeSource().getGenome(targetGenome_), rcxi.getLayout());
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcxi, rcxi.getGenomeSource().getGenome(targetGenome_), rcxi.getCurrentLayout());
     
     HashMap<String, Map<String, Set<Point2D>>> padCache = new HashMap<String, Map<String, Set<Point2D>>>();
     Iterator<NetModule.FullModuleKey> fkit = fullKeysForLayout.iterator();
@@ -6602,8 +6663,7 @@ public class Layout {
       }
       NetModuleFree nmf = nmp.getRenderer();
       Set<Point2D> usedPads = pads.get(fullKey.modKey);
-      nmf.expansionExcludedRowsAndCols(dip, module, fullKey.ovrKey, nmp, 
-                                       irx, bounds, excludeRows, excludeCols, usedPads);
+      nmf.expansionExcludedRowsAndCols(dip, module, nmp, irx, bounds, excludeRows, excludeCols, usedPads);
       if ((monitor != null) && !monitor.keepGoing()) {
         throw new AsynchExitRequestException();
       } 
@@ -6654,7 +6714,7 @@ public class Layout {
   ** do NOT limit what columns are returned!
   */
   
-  public void chooseCompressionRows(DataAccessContext irx,
+  public void chooseCompressionRows(StaticDataAccessContext irx,
                                     double fracV, double fracH, Rectangle bounds,
                                     boolean makeRegionsOpaque,
                                     OverlayKeySet fullKeysForLayout,
@@ -6784,20 +6844,20 @@ public class Layout {
   ** Compress the layout by squeezing out extra rows and columns.
   */
   
-  public void compress(DataAccessContext irx, SortedSet<Integer> emptyRows, SortedSet<Integer> emptyCols, 
+  public void compress(StaticDataAccessContext irx, SortedSet<Integer> emptyRows, SortedSet<Integer> emptyCols, 
                        Rectangle bounds, 
                        Map<String, Map<String, List<NetModuleProperties.TaggedShape>>> shapeMap, 
                        Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> fragMap, 
                        String gid, BTProgressMonitor monitor, 
                        double startFrac, double endFrac) throws AsynchExitRequestException {
-    Iterator<Node> nit = irx.getGenome().getAllNodeIterator();   
+    Iterator<Node> nit = irx.getCurrentGenome().getAllNodeIterator();   
     compressNodes(emptyRows, emptyCols, nit, bounds, monitor);
     
     //
     // Figure out progress for each link
     //
 
-    List<LinkProperties> toProcess = listOfProps(irx.getGenome(), null, null);
+    List<LinkProperties> toProcess = listOfProps(irx.getCurrentGenome(), null, null);
     int linkCount = toProcess.size();
     double perLink = (endFrac - startFrac) / linkCount;
     double currProg = startFrac;
@@ -6841,7 +6901,7 @@ public class Layout {
   ** keys arg to null.
   */
   
-  public void chooseExpansionRows(DataAccessContext rcx, 
+  public void chooseExpansionRows(StaticDataAccessContext rcx, 
                                   double fracV, double fracH, Rectangle bounds,
                                   OverlayKeySet fullKeysForLayout, 
                                   SortedSet<Integer> insertRows, SortedSet<Integer> insertCols, 
@@ -6865,7 +6925,7 @@ public class Layout {
     // Skip slices through genes that we cannot expand simply:
     //
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     SortedSet<Integer> doNotExpandCols = new TreeSet<Integer>();
     SortedSet<Integer> doNotExpandRows = new TreeSet<Integer>();
     
@@ -6990,7 +7050,7 @@ public class Layout {
   ** Don't actually expand the layout by inserting extra rows and columns
   */
   
-  public void pseudoExpand(DataAccessContext irx, SortedSet<Integer> insertRows, 
+  public void pseudoExpand(StaticDataAccessContext irx, SortedSet<Integer> insertRows, 
                            SortedSet<Integer> insertCols, int mult,
                            Map<String, Map<String, List<NetModuleProperties.TaggedShape>>> shapeMap, 
                            Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> fragMap, String gid) {
@@ -7018,7 +7078,7 @@ public class Layout {
   ** Expand the layout by inserting extra rows and columns
   */
   
-  public ExpansionReversal expand(DataAccessContext irx, SortedSet<Integer> insertRows, 
+  public ExpansionReversal expand(StaticDataAccessContext irx, SortedSet<Integer> insertRows, 
                                   SortedSet<Integer> insertCols, int mult, 
                                   boolean reversable,
                                   Map<String, Map<String, List<NetModuleProperties.TaggedShape>>> shapeMap, 
@@ -7026,9 +7086,9 @@ public class Layout {
                                   String gid, BTProgressMonitor monitor, 
                                   double startFrac, double endFrac) throws AsynchExitRequestException {
     
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
     Iterator<Node> nit = genome.getAllNodeIterator();
-    expandNodes(genome, insertRows, insertCols, nit, mult, monitor);
+    expandNodes(insertRows, insertCols, nit, mult, monitor);
 
     //
     // Figure out progress for each link
@@ -7036,7 +7096,7 @@ public class Layout {
 
     List<LinkProperties> toProcess = listOfProps(genome, null, null);
     int linkCount = toProcess.size();
-    double perLink = (endFrac - startFrac) / (double)linkCount;
+    double perLink = (endFrac - startFrac) / linkCount;
     double currProg = startFrac;
     
     //
@@ -7168,7 +7228,7 @@ public class Layout {
   ** Expand the layout by inserting extra rows and columns
   */
   
-  private void expandNodes(Genome genome, SortedSet<Integer> emptyRows, SortedSet<Integer> emptyCols, 
+  private void expandNodes(SortedSet<Integer> emptyRows, SortedSet<Integer> emptyCols, 
                            Iterator<Node> nit, int mult, BTProgressMonitor monitor) throws AsynchExitRequestException {  
     double dVal = UiUtil.GRID_SIZE * mult;
     while (nit.hasNext()) {
@@ -7235,9 +7295,9 @@ public class Layout {
   ** are present, so we skip those.
   */
   
-  public PatternGrid partialFillPatternGridWithNodes(DataAccessContext rcx, Set<String> useNodes) {
+  public PatternGrid partialFillPatternGridWithNodes(StaticDataAccessContext rcx, Set<String> useNodes) {
     PatternGrid retval = new PatternGrid();
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
     Iterator<Gene> git = genome.getGeneIterator();    
     while (git.hasNext()) {
@@ -7272,7 +7332,7 @@ public class Layout {
   ** are present, so we skip those.
   */
   
-  public PatternGrid fillPatternGridWithNodes(DataAccessContext rcx) {
+  public PatternGrid fillPatternGridWithNodes(StaticDataAccessContext rcx) {
     return (partialFillPatternGridWithNodes(rcx, null));
   }
   
@@ -7281,8 +7341,8 @@ public class Layout {
   ** Return linkID to access those trees that contain non-ortho link segments.
   */
   
-  public Set<String> discoverNonOrthoLinks(DataAccessContext icx) {
-    Iterator<Linkage> lit = icx.getGenome().getLinkageIterator();
+  public Set<String> discoverNonOrthoLinks(StaticDataAccessContext icx) {
+    Iterator<Linkage> lit = icx.getCurrentGenome().getLinkageIterator();
     HashSet<String> linkIDs = new HashSet<String>();
     HashSet<BusProperties> orthoProps = new HashSet<BusProperties>();
     HashSet<BusProperties> nonOrthoProps = new HashSet<BusProperties>();
@@ -7311,7 +7371,7 @@ public class Layout {
   ** Get the link IDs passing through non-ortho link segments.
   */
   
-  public Set<String> getLimitedNonOrthoLinks(DataAccessContext irx) {  
+  public Set<String> getLimitedNonOrthoLinks(StaticDataAccessContext irx) {  
     HashSet<String> retval = new HashSet<String>(); 
     List<Intersection> nonOrth = getNonOrthoIntersections(irx, null);
     int numNO = nonOrth.size();
@@ -7333,7 +7393,7 @@ public class Layout {
   ** Do repairs for cases where max compression on stacked layout leaves crooked links
   */
   
-  public void repairStackedCompressionErrors(DataAccessContext icx) {
+  public void repairStackedCompressionErrors(StaticDataAccessContext icx) {
     List<Intersection> needRepair = getNonOrthoIntersections(icx, null);
     int numNR = needRepair.size();
     LinkSegmentID[] segIDs = new LinkSegmentID[1];
@@ -7387,9 +7447,9 @@ public class Layout {
   ** Return the list of Intersections for non-orthogonal segments
   */
   
-  public List<Intersection> getNonOrthoIntersections(DataAccessContext icx, String overlayKey) {
+  public List<Intersection> getNonOrthoIntersections(StaticDataAccessContext icx, String overlayKey) {
     ArrayList<Intersection> retval = new ArrayList<Intersection>();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     if (overlayKey == null) {
       Iterator<Linkage> lit = genome.getLinkageIterator();
       HashSet<BusProperties> seenProps = new HashSet<BusProperties>();
@@ -7421,7 +7481,7 @@ public class Layout {
   ** helper for above
   */
   
-  private void nonOrthoIntersections(LinkProperties lp, DataAccessContext icx, List<Intersection> buildList, String aLinkID) {
+  private void nonOrthoIntersections(LinkProperties lp, StaticDataAccessContext icx, List<Intersection> buildList, String aLinkID) {
     MultiSubID retSub = null;
     Set<LinkSegmentID> segs = lp.getNonOrthoSegments(icx);
     Iterator<LinkSegmentID> sit = segs.iterator();
@@ -7445,9 +7505,9 @@ public class Layout {
   ** Return the list of Intersections for the given linkIDs
   */
   
-  public List<Intersection> getIntersectionsForLinks(DataAccessContext irx, Set<String> linkIDs, boolean uniqueBranchesOnly) {
+  public List<Intersection> getIntersectionsForLinks(StaticDataAccessContext irx, Set<String> linkIDs, boolean uniqueBranchesOnly) {
     
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
     ArrayList<Intersection> retval = new ArrayList<Intersection>();
     HashSet<String> analyzed = new HashSet<String>();
     Iterator<String> lit = linkIDs.iterator();
@@ -7535,7 +7595,7 @@ public class Layout {
                                                          throws AsynchExitRequestException {
     
   
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(genome.getID());
     NetworkOverlay nov = noo.getNetworkOverlay(overID);
     DynamicInstanceProxy dip = (noo.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)noo : null;
@@ -7548,7 +7608,7 @@ public class Layout {
     while (nmpit.hasNext()) {
       String key = nmpit.next();
       NetModule module = nov.getModule(key);
-      nmf.renderToPlacementGrid(dip, module, overID, retval, rcx);
+      nmf.renderToPlacementGrid(module, overID, retval, rcx);
       if ((monitor != null) && !monitor.keepGoing()) {
         throw new AsynchExitRequestException();
       }
@@ -7587,7 +7647,7 @@ public class Layout {
     // If there is space left over the gene because there are no inbound links, use it:
     //
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Map<String, Integer> targetCounts = new HashMap<String, Integer>(); 
     HashMap<String, Integer> minPadForGenes = new HashMap<String, Integer>();
     LinkPlacementGrid retval = new LinkPlacementGrid();
@@ -7727,7 +7787,7 @@ public class Layout {
   **
   */
   
-  public static Layout buildFromXML(BTState appState, String elemName, Attributes attrs) throws IOException {
+  public static Layout buildFromXML(String elemName, Attributes attrs) throws IOException {
     if (!elemName.equals("layout")) {
       return (null);
     }
@@ -7754,7 +7814,7 @@ public class Layout {
     if ((name == null) || (name.trim().equals(""))) {
       throw new IOException();
     }
-    return (new Layout(appState, name, targGen));
+    return (new Layout(name, targGen));
   }
 
   /***************************************************************************
@@ -8176,7 +8236,7 @@ public class Layout {
       map_ = new HashMap<NetModule.FullModuleKey, Object>(overlayMap);
     } 
     
-    Map getMap() {
+    Map<NetModule.FullModuleKey, ?> getMap() {
       return (map_);
     }
     
@@ -8274,7 +8334,6 @@ public class Layout {
   */
 
   private void copyCore(Layout other, Map<String, String> groupIDMap) {
-    this.appState_ = other.appState_;
     this.name_ = other.name_;
     this.targetGenome_ = other.targetGenome_;
     this.lmeta_ = other.lmeta_.clone();
@@ -8511,7 +8570,7 @@ public class Layout {
   ** Handle preprocessing for undo
   */
   
-  public void undoPreProcess(PropChange propchng, LinkProperties lp, String ovrKey, DataAccessContext rcx) {
+  public void undoPreProcess(PropChange propchng, LinkProperties lp, String ovrKey, StaticDataAccessContext rcx) {
     propchng.layoutKey = name_; 
     if (ovrKey == null) {    
       propchng.orig = (BusProperties)lp.clone();                           
@@ -8543,7 +8602,7 @@ public class Layout {
   ** Handle postprocessing for undo
   */
   
-  public void undoPostProcess(PropChange propchng, LinkProperties lp, String ovrKey, DataAccessContext rcx) {  
+  public void undoPostProcess(PropChange propchng, LinkProperties lp, String ovrKey, StaticDataAccessContext rcx) {  
     if (ovrKey == null) {    
       propchng.newProps = (BusProperties)lp.clone();
     } else {

@@ -2,7 +2,7 @@ package org.systemsbiology.biotapestry.nav;
 
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition.NamedStage;
 
@@ -13,10 +13,10 @@ public class XPlatTimeAxisDefinition {
 	private boolean unitIsSuffix_;
 	private List<NamedStage> namedStages_;
 	
-	public XPlatTimeAxisDefinition(TimeAxisDefinition tad, BTState appState_) {
+	public XPlatTimeAxisDefinition(TimeAxisDefinition tad, DataAccessContext dacx) {
 		boolean isCustom = tad.haveCustomUnits();
-		units_ = isCustom ? tad.getUserUnitName() : TimeAxisDefinition.displayStringForUnit(appState_, tad.getUnits());
-		unitAbbr_ = isCustom ? tad.getUserUnitAbbrev() : TimeAxisDefinition.abbrevStringForUnit(appState_, tad.getUnits());
+		units_ = isCustom ? tad.getUserUnitName() : TimeAxisDefinition.displayStringForUnit(dacx, tad.getUnits());
+		unitAbbr_ = isCustom ? tad.getUserUnitAbbrev() : TimeAxisDefinition.abbrevStringForUnit(dacx, tad.getUnits());
 		unitIsSuffix_ = tad.unitsAreASuffix();
 		if(tad.haveNamedStages()) {
 			namedStages_ = tad.getNamedStages();

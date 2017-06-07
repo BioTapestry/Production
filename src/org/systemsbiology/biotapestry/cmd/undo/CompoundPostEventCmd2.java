@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ package org.systemsbiology.biotapestry.cmd.undo;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.ChangeEvent;
@@ -32,6 +31,9 @@ import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
+import org.systemsbiology.biotapestry.event.TreeNodeChangeEvent;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+
 /****************************************************************************
 **
 ** Does eventing following Compound Editing redo
@@ -60,8 +62,8 @@ public class CompoundPostEventCmd2 extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public CompoundPostEventCmd2(BTState appState, DataAccessContext dacx, String presentation) {
-    super(appState, dacx);
+  public CompoundPostEventCmd2(DataAccessContext dacx, String presentation) {
+    super(dacx);
     presentation_ = presentation;
     ev_ = new ArrayList<ChangeEvent>();    
   }  
@@ -127,7 +129,7 @@ public class CompoundPostEventCmd2 extends BTUndoCmd {
   */ 
   
   public void execute() {
-    EventManager mgr = appState_.getEventMgr();
+    EventManager mgr = uics_.getEventMgr();
     int num = ev_.size();
     int numMCE = 0;
     for (int i = 0; i < num; i++) {
@@ -154,6 +156,10 @@ public class CompoundPostEventCmd2 extends BTUndoCmd {
         mgr.sendSelectionChangeEvent((SelectionChangeEvent)ce);
       } else if (ce instanceof OverlayDisplayChangeEvent) {
         mgr.sendOverlayDisplayChangeEvent((OverlayDisplayChangeEvent)ce);  
+      } else if (ce instanceof ModelBuilder.MBChangeEvent) {
+        mgr.sendModelBuildChangeEvent((ModelBuilder.MBChangeEvent)ce);     
+      } else if (ce instanceof TreeNodeChangeEvent) {
+        mgr.sendTreeNodeChangeEvent((TreeNodeChangeEvent)ce);   
       } else {
         throw new IllegalArgumentException();
       }

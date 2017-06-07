@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,8 +37,8 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
@@ -66,9 +66,8 @@ public class GroupDuplicationDialog extends JDialog {
   private boolean changeModel_;
   private String nameResult_;
   private String modelIDResult_;
-  
-  private BTState appState_;
-  private String sourceGenome_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -83,12 +82,12 @@ public class GroupDuplicationDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public GroupDuplicationDialog(BTState appState, String genomeID, String groupID, String defaultName) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("grpDup.title"), true);
-    appState_ = appState;
-    sourceGenome_ = genomeID;
+  public GroupDuplicationDialog(UIComponentSource uics, DataAccessContext dacx, String defaultName) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("grpDup.title"), true);
     haveResult_ = false;
-    ResourceManager rMan = appState_.getRMan();    
+    dacx_ = dacx;
+    uics_ = uics;
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 200);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -119,7 +118,7 @@ public class GroupDuplicationDialog extends JDialog {
           boolean enabled = changeModelBox_.isSelected();
           modelCombo_.setEnabled(enabled);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -132,13 +131,13 @@ public class GroupDuplicationDialog extends JDialog {
     //
     
     label = new JLabel(rMan.getString("grpDup.models"));
-    Vector<ObjChoiceContent> choices = new FullGenomeHierarchyOracle(appState_).topLevelInstanceModels();
+    Vector<ObjChoiceContent> choices = dacx_.getFGHO().topLevelInstanceModels();
     modelCombo_ = new JComboBox(choices);
     modelCombo_.setEnabled(false);
     int numCh = choices.size();
     for (int i = 0; i < numCh; i++) {
       ObjChoiceContent occ = choices.get(i);
-      if (genomeID.equals(occ.val)) {
+      if (dacx.getCurrentGenomeID().equals(occ.val)) {
         modelCombo_.setSelectedIndex(i);
         break;
       }
@@ -163,7 +162,7 @@ public class GroupDuplicationDialog extends JDialog {
             GroupDuplicationDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -175,7 +174,7 @@ public class GroupDuplicationDialog extends JDialog {
           GroupDuplicationDialog.this.setVisible(false);
           GroupDuplicationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -191,7 +190,7 @@ public class GroupDuplicationDialog extends JDialog {
     
     UiUtil.gbcSet(gbc, 0, 3, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
 
@@ -258,17 +257,17 @@ public class GroupDuplicationDialog extends JDialog {
       // Figure out if we are changing models:
       //
       
-      modelIDResult_ = sourceGenome_;
+      modelIDResult_ = dacx_.getCurrentGenomeID();
       changeModel_ = changeModelBox_.isSelected();
       if (changeModel_) {
         ObjChoiceContent modelSelection = (ObjChoiceContent)modelCombo_.getSelectedItem();
         modelIDResult_ = modelSelection.val;
-        if (modelIDResult_.equals(sourceGenome_)) {
+        if (modelIDResult_.equals(dacx_.getCurrentGenomeID())) {
           changeModel_ = false;
         }
       }
       
-      GenomeInstance gi = (GenomeInstance)appState_.getDB().getGenome(modelIDResult_);
+      GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(modelIDResult_);
 
       String newName = nameField_.getText().trim();
       
@@ -278,10 +277,10 @@ public class GroupDuplicationDialog extends JDialog {
       //
           
       if (gi.groupNameInUse(newName)) {
-        ResourceManager rMan = appState_.getRMan();    
+        ResourceManager rMan = dacx_.getRMan();    
         String desc = MessageFormat.format(rMan.getString("createGroup.NameInUse"), 
                                            new Object[] {newName});
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), desc, 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
                                       rMan.getString("createGroup.CreationErrorTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -291,7 +290,7 @@ public class GroupDuplicationDialog extends JDialog {
       haveResult_ = true;
     } else {
       nameResult_ = null;
-      modelIDResult_ = sourceGenome_;
+      modelIDResult_ = dacx_.getCurrentGenomeID();
       changeModel_ = false;
       haveResult_ = false;
     }

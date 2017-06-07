@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,14 +25,17 @@ import java.util.List;
 import java.util.Iterator;
 
 import org.systemsbiology.biotapestry.plugin.InternalLinkDataDisplayPlugIn;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.plugin.PluginCallbackWorker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -43,7 +46,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -70,8 +73,8 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
   ** Internal plugins need to have access to internal state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
 
@@ -90,7 +93,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (true);
   }
    
@@ -109,7 +112,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String nodeID) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String nodeID) {
     return (null);
   } 
   
@@ -118,37 +121,39 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
   ** Show the Time course data
   */
   
-  public String getDataAsHTML(String genomeID, String linkID) {
+  public String getDataAsHTML(String dbID, String genomeID, String linkID) {
+    StaticDataAccessContext dacx = new StaticDataAccessContext(new TabPinnedDynamicDataAccessContext(ddacx_, dbID)).getContextForRoot();
     StringBuffer buf = new StringBuffer();
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome(genomeID);
+    Genome genome = dacx.getGenomeSource().getGenome(genomeID);
     Linkage link = genome.getLinkage(linkID);
     String targID = link.getTarget();
     String sourceID = link.getSource();
     String baseTargID = GenomeItemInstance.getBaseID(targID);
     String baseSourceID = GenomeItemInstance.getBaseID(sourceID);
     
-    TimeCourseData tcd = db.getTimeCourseData();
-    if ((tcd == null) || !tcd.haveData()) {
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
+    if ((tcd == null) || !tcd.haveDataEntries()) {
       return ("");
     }
       
-    PerturbationData pd = db.getPertData();
-    ResourceManager rMan = appState_.getRMan();
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();
+    PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
+    TimeCourseDataMaps tcdm = dacx.getDataMapSrc().getTimeCourseDataMaps();
+    ResourceManager rMan = dacx.getRMan();
     buf.append("<p></p>");   
     buf.append("<center><h1>");
     buf.append(rMan.getString("dataWindow.perturbedTimeCourseDataForLink"));
     buf.append("</h1>\n");
     
-    List<String> srcPertKeys = pd.getDataSourceKeysWithDefault(baseSourceID);
+    List<String> srcPertKeys = pdms.getDataSourceKeysWithDefault(baseSourceID, pd);
       
     boolean gotData = false;
-    List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(baseTargID);
+    List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseTargID, dacx.getGenomeSource());
     int needKey = TimeCourseTableDrawer.NO_TABLE_KEY;
     if (dataKeys != null) {      
-      Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
+      Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
       while (dkit.hasNext()) {
-        TimeCourseData.TCMapping tcm = dkit.next();
+        TimeCourseDataMaps.TCMapping tcm = dkit.next();
         TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
         if (tcg == null) {  // If no table at all, still get back default name...
           continue;
@@ -170,7 +175,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
             StringWriter sw = new StringWriter();
             PrintWriter out = new PrintWriter(sw);
             PerturbedTimeCourseGene pertGene = tcg.getPerturbedState(pss);
-            int nextKey = pertGene.getExpressionTable(out, tcg, tcd);
+            int nextKey = pertGene.getExpressionTable(out, tcg, tcd, dacx);
             needKey |= nextKey;
             String tab = sw.getBuffer().toString();
             if ((tab != null) && (!tab.trim().equals(""))) {
@@ -183,7 +188,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
         }
       }
     }
-    buf.append(TimeCourseTableDrawer.buildKey(appState_, needKey, false, true));
+    buf.append(TimeCourseTableDrawer.buildKey(dacx, needKey, false, true));
     if (!gotData) {
       buf.append(rMan.getString("dataWindow.noExpressionProfile"));
     }

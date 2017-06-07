@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,6 @@ package org.systemsbiology.biotapestry.cmd.instruct;
 
 import java.io.PrintWriter;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Set;
 import java.util.Map;
 import java.util.List;
@@ -308,7 +307,7 @@ public abstract class BuildInstruction implements Cloneable {
   
   protected boolean typeChecks(String name, int type, Map<String, Integer> typeTracker) {
     String norm = DataUtil.normKey(name);
-    Integer oldType = (Integer)typeTracker.get(norm);
+    Integer oldType = typeTracker.get(norm);
     if ((oldType != null) && (oldType.intValue() != type)) {
       return (false);
     }
@@ -586,13 +585,13 @@ public abstract class BuildInstruction implements Cloneable {
       throw new IOException();
     }
     
-    String sourceTypeStr = ((String)tokens.get(startIndex)).toLowerCase();
-    String sourceName = (String)tokens.get(startIndex + 1);
+    String sourceTypeStr = tokens.get(startIndex).toLowerCase();
+    String sourceName = tokens.get(startIndex + 1);
     String targTypeStr = null;
     String targName = null;
     if (baseCount == 4) {
-      targTypeStr = ((String)tokens.get(startIndex + 2)).toLowerCase();
-      targName = (String)tokens.get(startIndex + 3);
+      targTypeStr = tokens.get(startIndex + 2).toLowerCase();
+      targName = tokens.get(startIndex + 3);
     }
         
     if ((sourceTypeStr == null) || (sourceName == null)) {
@@ -657,7 +656,7 @@ public abstract class BuildInstruction implements Cloneable {
       throw new IOException();
     }    
     
-    String srcRegion = (String)tokens.get(startIndex + baseCount + tokCount);
+    String srcRegion = tokens.get(startIndex + baseCount + tokCount);
     String targRegion = (regCount > 1) ? (String)tokens.get(startIndex + baseCount + tokCount + 1) : null;
     InstructionRegions ir = new InstructionRegions();
     InstructionRegions.RegionTuple tup = 

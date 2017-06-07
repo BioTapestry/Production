@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,14 +33,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuildSupport;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveGroupSupport;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveSupport;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -56,6 +57,7 @@ import org.systemsbiology.biotapestry.util.BTProgressMonitor;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ModelNodeIDPair;
 import org.systemsbiology.biotapestry.util.NodeRegionModelNameTuple;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 
@@ -84,7 +86,9 @@ public class BuildInstructionProcessor {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   private PIData pid_;
   private PIHData pihd_;
   private PISIFData pis_;
@@ -100,8 +104,10 @@ public class BuildInstructionProcessor {
   ** Constructor 
   */ 
   
-  public BuildInstructionProcessor(BTState appState) {
-    appState_ = appState;
+  public BuildInstructionProcessor(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+    uics_ = uics;
+    dacx_ = dacx;
+    uFac_ = uFac;
   } 
 
   ////////////////////////////////////////////////////////////////////////////
@@ -145,10 +151,10 @@ public class BuildInstructionProcessor {
   ** Get the instructions for the genome
   */
   
-  public List<BuildInstruction> getInstructions(DataAccessContext dacx) {
-    String key = dacx.getGenomeID();
+  public List<BuildInstruction> getInstructions(StaticDataAccessContext dacx) {
+    String key = dacx.getCurrentGenomeID();
     ArrayList<BuildInstruction> retval = new ArrayList<BuildInstruction>();
-    if (dacx.genomeIsRootGenome()) {
+    if (dacx.currentGenomeIsRootDBGenome()) {
       Iterator<BuildInstruction> biit = dacx.getInstructSrc().getBuildInstructions();
       while (biit.hasNext()) {
         retval.add(biit.next());
@@ -190,7 +196,7 @@ public class BuildInstructionProcessor {
   ** Export the instructions for the genome
   */
   
-  public void exportInstructions(PrintWriter out, DataAccessContext dacx) {
+  public void exportInstructions(PrintWriter out, StaticDataAccessContext dacx) {
      
     //
     // Models:
@@ -292,7 +298,7 @@ public class BuildInstructionProcessor {
         while (iit.hasNext()) {
           BuildInstructionInstance bii = iit.next();
           bii.getBaseID();
-          out.println(bii.toCSVString(appState_, buf, modelName));
+          out.println(bii.toCSVString(dacx_, buf, modelName));
         }
       }
       out.println();
@@ -305,7 +311,7 @@ public class BuildInstructionProcessor {
   ** preProcess the instructions for the genome
   */
   
-  public BuildChanges preProcess(DataAccessContext dacx, List<BuildInstruction> buildCmds) {
+  public BuildChanges preProcess(StaticDataAccessContext dacx, List<BuildInstruction> buildCmds) {
  
     //
     // If we are doing the full genome model, things are a little
@@ -313,7 +319,7 @@ public class BuildInstructionProcessor {
     // duplicates, etc.
     //
     
-    if (dacx.genomeIsRootGenome()) {      
+    if (dacx.currentGenomeIsRootDBGenome()) {      
       BuildChanges retval = new BuildChanges();        
       retval.changedParentInstances = null;
       retval.changedChildInstances = null;
@@ -343,7 +349,7 @@ public class BuildInstructionProcessor {
     
     List<InstructionHolder> held = transferToHolders(buildCmds);
     ArrayList<BuildInstruction> rootCmds = new ArrayList<BuildInstruction>();
-    InstanceInstructionSet iis = new InstanceInstructionSet(dacx.getGenomeID());
+    InstanceInstructionSet iis = new InstanceInstructionSet(dacx.getCurrentGenomeID());
     ArrayList<DuplicateInstructionTracker.CoreCount> emptyCounts = new ArrayList<DuplicateInstructionTracker.CoreCount>();
     // This is where the instructions, as abtracted into holders, are
     // resolved into the needed root instructions and instance instructions.
@@ -359,7 +365,7 @@ public class BuildInstructionProcessor {
   ** Look for newly-introduced core mismatches on instructions
   */
   
-  public List<MatchChecker> findInstanceMismatches(DataAccessContext dacx, List<BuildInstruction> buildCmds) {
+  public List<MatchChecker> findInstanceMismatches(StaticDataAccessContext dacx, List<BuildInstruction> buildCmds) {
     
     //
     // Build up data structure from original commands:
@@ -447,7 +453,7 @@ public class BuildInstructionProcessor {
   ** building from a particular genome-specific dialog....
   */
   
-  public LinkRouter.RoutingResult processInstructions(DataAccessContext rcxR) throws AsynchExitRequestException {
+  public LinkRouter.RoutingResult processInstructions(StaticDataAccessContext rcxR) throws AsynchExitRequestException {
                                                         
     //
     // Multiple copies of a base instruction can be collapsed into a single base instruction
@@ -469,10 +475,10 @@ public class BuildInstructionProcessor {
     // Figure out all module pad needs before we get started:
     //
     
-    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.fgho.getGlobalNetModuleLinkPadNeeds();
-    Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.fgho.stockUpMemberOnlyModules();
-    Map<String, Layout.OverlayKeySet> allKeys = rcxR.fgho.fullModuleKeysPerLayout();    
-    Map<String, Layout.SupplementalDataCoords> sdcCache = new BuildSupport(appState_).buildSdcCache(allKeys, rcxR);
+    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
+    Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.getFGHO().stockUpMemberOnlyModules();
+    Map<String, Layout.OverlayKeySet> allKeys = rcxR.getFGHO().fullModuleKeysPerLayout();    
+    Map<String, Layout.SupplementalDataCoords> sdcCache = new BuildSupport(uics_, rcxR, uFac_).buildSdcCache(allKeys, rcxR);
     
     boolean doRegions = !pid_.genomeID.equals(rcxR.getDBGenome().getID());
     LinkRouter.RoutingResult result = new LinkRouter.RoutingResult();
@@ -493,7 +499,7 @@ public class BuildInstructionProcessor {
                                                         pid_.options, pid_.support, pid_.monitor, startFrac, midFrac, 
                                                         createdPairs, newNodeToOldNode, newLinksToOldLinks, 
                                                         null, null, globalPadNeeds, pid_.specLayout, pid_.params);
-      BuildSupport bs = new BuildSupport(appState_, bsd);
+      BuildSupport bs = new BuildSupport(uics_, rcxR, bsd, uFac_);
       result = bs.buildRootFromInstructions(rcxR);
                              
       applyRootChanges(pid_.buildCmds, rcxR, pid_.support, createdPairs, pid_.center, pid_.size,
@@ -514,18 +520,18 @@ public class BuildInstructionProcessor {
       if (pid_.genomeID == null) { //<- old code seemed to account for this possibility, but should be illegal?
         throw new IllegalStateException();
       }
-      DataAccessContext rcxI = new DataAccessContext(rcxR, pid_.genomeID);     
+      StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, pid_.genomeID);     
       killDeadSubGroups(rcxI, pid_.support);           
       result = propagateChanges(iisOld, iis, rcxR, rcxI, rootCmds, startFrac, midFrac, maxFrac, emptyCounts, globalPadNeeds);
     }
 
-    ModificationCommands.repairEmptiedMemberOnlyModules(appState_, rcxR, emptyModNeeds, pid_.support); 
-    ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxR, globalPadNeeds, false, pid_.support);
+    ModificationCommands.repairEmptiedMemberOnlyModules(rcxR, emptyModNeeds, pid_.support); 
+    ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, pid_.support);
 
-    (new BuildSupport(appState_)).processSdcCache(sdcCache, allKeys, rcxR, pid_.support);
+    (new BuildSupport(uics_, rcxR, uFac_)).processSdcCache(sdcCache, allKeys, rcxR, pid_.support);
     
     rcxR.getGenomeSource().clearAllDynamicProxyCaches();
-    RemoveGroupSupport.cleanupDanglingGroupData(appState_, rcxR, pid_.support);
+    RemoveGroupSupport.cleanupDanglingGroupData(rcxR, pid_.support);
     
     return (result);
   }
@@ -536,7 +542,7 @@ public class BuildInstructionProcessor {
   ** via the genome-wide CSV load...
   */
   
-  public LinkRouter.RoutingResult processInstructionsForFullHierarchy(DataAccessContext rcxR) throws AsynchExitRequestException {  
+  public LinkRouter.RoutingResult processInstructionsForFullHierarchy(StaticDataAccessContext rcxR) throws AsynchExitRequestException {  
 
     LinkRouter.RoutingResult result = new LinkRouter.RoutingResult();
       
@@ -544,10 +550,10 @@ public class BuildInstructionProcessor {
     // Figure out all module pad needs before we get started:
     //
     
-    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.fgho.getGlobalNetModuleLinkPadNeeds();
-    Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.fgho.stockUpMemberOnlyModules(); 
-    Map<String, Layout.OverlayKeySet> allKeys = rcxR.fgho.fullModuleKeysPerLayout();    
-    Map<String, Layout.SupplementalDataCoords> sdcCache = (new BuildSupport(appState_)).buildSdcCache(allKeys, rcxR);
+    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
+    Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.getFGHO().stockUpMemberOnlyModules(); 
+    Map<String, Layout.OverlayKeySet> allKeys = rcxR.getFGHO().fullModuleKeysPerLayout();    
+    Map<String, Layout.SupplementalDataCoords> sdcCache = (new BuildSupport(uics_, rcxR, uFac_)).buildSdcCache(allKeys, rcxR);
   
     double perPass = (pihd_.maxFrac - pihd_.startFrac) / pihd_.processOrder.size();
     double currStart = pihd_.startFrac;
@@ -575,7 +581,7 @@ public class BuildInstructionProcessor {
       pihd_.newNodeToOldNode = new HashMap<String, String>();
     }
     HashMap<String, String> newLinksToOldLinks = new HashMap<String, String>();
-    BuildSupport bs = new BuildSupport(appState_);
+    BuildSupport bs = new BuildSupport(uics_, rcxR, uFac_);
     
     List<BuildInstruction> rootCmds = pihd_.buildCmds.get(rootID);
     BuildSupport.BSData bsd = new BuildSupport.BSData(rootCmds, pihd_.center, pihd_.size, pihd_.keepLayout, pihd_.hideMinorNames,
@@ -611,10 +617,10 @@ public class BuildInstructionProcessor {
       List<InstanceInstructionSet.RegionInfo> regionList = pihd_.regions.get(genomeID);
       iis.replaceRegions(regionList);
       DatabaseChange dc = rcxR.getInstructSrc().setInstanceInstructionSet(genomeID, iis);
-      pihd_.support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));
+      pihd_.support.addEdit(new DatabaseChangeCmd(rcxR, dc));
 
-      DataAccessContext rcxI = new DataAccessContext(rcxR, genomeID); 
-      if (rcxI.getGenomeAsInstance().getVfgParent() == null) {
+      StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, genomeID); 
+      if (rcxI.getCurrentGenomeAsInstance().getVfgParent() == null) {
         BuildSupport.LegacyInstanceIdMapper liidm = new BuildSupport.LegacyInstanceIdMapper(pihd_.newNodeToOldNode, newLinksToOldLinks); 
         liidmMap.put(genomeID, liidm);    
         BuildSupport.BSData bsd2 = new BuildSupport.BSData(createdPairs, pihd_.center,  pihd_.size, pihd_.support, pihd_.options, 
@@ -623,10 +629,10 @@ public class BuildInstructionProcessor {
         bs.resetBSD(bsd2);
         bs.propagateRootUsingInstructions(rcxR, rcxI);
       } else {
-        GenomeInstance pgi = rcxI.getGenomeAsInstance().getVfgParentRoot();
+        GenomeInstance pgi = rcxI.getCurrentGenomeAsInstance().getVfgParentRoot();
         BuildSupport.LegacyInstanceIdMapper liidm = liidmMap.get(pgi.getID());
         bs.resetBSD(null);
-        bs.populateSubsetUsingInstructions(rcxI, createdPairs, pihd_.support, liidm, pihd_.nodeIDMap,
+        bs.populateSubsetUsingInstructions(rcxI, pihd_.support, liidm, pihd_.nodeIDMap,
                                            subsetCache, subsetRegionCache);
       }
       
@@ -635,17 +641,17 @@ public class BuildInstructionProcessor {
     }
     
      
-    RemoveSupport.fixupDeletionsInNonInstructionModels(appState_, rcxR, pihd_.support);
-    ModificationCommands.repairEmptiedMemberOnlyModules(appState_, rcxR, emptyModNeeds, pihd_.support); 
-    ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxR, globalPadNeeds, false, pihd_.support);    
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, pihd_.support, uFac_);
+    ModificationCommands.repairEmptiedMemberOnlyModules(rcxR, emptyModNeeds, pihd_.support); 
+    ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, pihd_.support);    
     
     
     // All keys can be stale after possible module deletions.  Do it again:
-    allKeys = rcxR.fgho.fullModuleKeysPerLayout(); 
+    allKeys = rcxR.getFGHO().fullModuleKeysPerLayout(); 
     bs.resetBSD(null);
     bs.processSdcCache(sdcCache, allKeys, rcxR, pihd_.support);
     rcxR.getGenomeSource().clearAllDynamicProxyCaches();
-    RemoveGroupSupport.cleanupDanglingGroupData(appState_, rcxR, pihd_.support);  
+    RemoveGroupSupport.cleanupDanglingGroupData(rcxR, pihd_.support);  
 
     return (result);
   }
@@ -655,7 +661,7 @@ public class BuildInstructionProcessor {
   ** Process the instructions for the genome
   */
   
-  public LinkRouter.RoutingResult processInstructionsForSIF(DataAccessContext rcxR) throws AsynchExitRequestException {  
+  public LinkRouter.RoutingResult processInstructionsForSIF(StaticDataAccessContext rcxR) throws AsynchExitRequestException {  
                                                       
     double midFrac = (pis_.maxFrac - pis_.startFrac) / 2.0; 
     if ((pis_.monitor != null) && !pis_.monitor.keepGoing()) {
@@ -667,7 +673,7 @@ public class BuildInstructionProcessor {
                                                       pis_.createdPairs, pis_.newNodeToOldNode, pis_.newLinksToOldLinks, 
                                                       null, null, pis_.globalPadNeeds, pis_.specLayout, pis_.params);
     
-    BuildSupport bs = new BuildSupport(appState_, bsd);
+    BuildSupport bs = new BuildSupport(uics_, rcxR, bsd, uFac_);
     LinkRouter.RoutingResult result = bs.buildRootFromInstructions(rcxR);
     if ((pis_.monitor != null) && !pis_.monitor.keepGoing()) {
       throw new AsynchExitRequestException();
@@ -679,8 +685,8 @@ public class BuildInstructionProcessor {
       throw new AsynchExitRequestException();
     }
     
-    ModificationCommands.repairEmptiedMemberOnlyModules(appState_,rcxR,  pis_.emptyModNeeds, pis_.support); 
-    ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxR, pis_.globalPadNeeds, false, pis_.support);
+    ModificationCommands.repairEmptiedMemberOnlyModules(rcxR,  pis_.emptyModNeeds, pis_.support); 
+    ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, pis_.globalPadNeeds, false, pis_.support);
     
     bs.resetBSD(null);
     bs.processSdcCache(pis_.sdcCache, pis_.allKeys, rcxR, pis_.support);
@@ -791,7 +797,7 @@ public class BuildInstructionProcessor {
   */
   
   private LinkRouter.RoutingResult propagateChanges(InstanceInstructionSet iisOld, InstanceInstructionSet iisNew, 
-                                                    DataAccessContext rcxR, DataAccessContext rcxI,
+                                                    StaticDataAccessContext rcxR, StaticDataAccessContext rcxI,
                                                     List<BuildInstruction> rootCmds, 
                                                     double startFrac, double midFrac, double maxFrac, 
                                                     List<DuplicateInstructionTracker.CoreCount> emptyCounts, 
@@ -804,7 +810,7 @@ public class BuildInstructionProcessor {
     //
     
     DatabaseChange dc = rcxR.getInstructSrc().setBuildInstructions(rootCmds);
-    pid_.support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));
+    pid_.support.addEdit(new DatabaseChangeCmd(rcxR, dc));
     iisNew.replaceRegions(pid_.regions);      
     
     //
@@ -827,18 +833,18 @@ public class BuildInstructionProcessor {
       switch (itp.type) {
         case InstanceToProcess.SELF:
           dc = rcxI.getInstructSrc().setInstanceInstructionSet(itp.id, iisNew);
-          pid_.support.addEdit(new DatabaseChangeCmd(appState_, rcxI, dc));
+          pid_.support.addEdit(new DatabaseChangeCmd(rcxI, dc));
           break;
         case InstanceToProcess.PARENT:
-          DataAccessContext rcxP = new DataAccessContext(rcxI, itp.id);
+          StaticDataAccessContext rcxP = new StaticDataAccessContext(rcxI, itp.id);
           changeParent(rcxP, rootCmds, cwr, pid_.globalDelete, pid_.support);
           break;
         case InstanceToProcess.CHILD:
-          DataAccessContext rcxC = new DataAccessContext(rcxI, itp.id);
+          StaticDataAccessContext rcxC = new StaticDataAccessContext(rcxI, itp.id);
           changeChild(rcxC, cwr, pid_.support);
           break;
         case InstanceToProcess.COUSIN_OR_SIBLING:
-          DataAccessContext rcxCCS = new DataAccessContext(rcxI, itp.id);
+          StaticDataAccessContext rcxCCS = new StaticDataAccessContext(rcxI, itp.id);
           changeCousinOrSibling(rcxCCS, rootCmds, pid_.support);
           break;
         default:
@@ -850,7 +856,7 @@ public class BuildInstructionProcessor {
     // Optimize instruction lists to remove duplicates introduced:
     //
     
-    DuplicateInstructionTracker dit = new DuplicateInstructionTracker(appState_);
+    DuplicateInstructionTracker dit = new DuplicateInstructionTracker();
     List<DuplicateInstructionTracker.CoreData> analysis = dit.analyzeAllCores(rcxI, emptyCounts);  
     List<BuildInstruction> newCmds = dit.optimize(analysis, pid_.support, rcxI);
     if (newCmds != null) {
@@ -869,7 +875,7 @@ public class BuildInstructionProcessor {
                                                       pid_.support, pid_.monitor, startFrac, midFrac, 
                                                       createdPairs, newNodeToOldNode,
                                                       newLinksToOldLinks, null, null, globalPadNeeds, pid_.specLayout, pid_.params);
-    BuildSupport bs = new BuildSupport(appState_, bsd);   
+    BuildSupport bs = new BuildSupport(uics_, rcxR, bsd, uFac_);   
     LinkRouter.RoutingResult result = bs.buildRootFromInstructionsNoRootInstall(rcxR);  
       
     //
@@ -883,23 +889,23 @@ public class BuildInstructionProcessor {
     
     for (int i = 0; i < pSize; i++) {
       InstanceToProcess itp = procList.get(i);      
-      DataAccessContext rcxITP = new DataAccessContext(rcxR, itp.id);
+      StaticDataAccessContext rcxITP = new StaticDataAccessContext(rcxR, itp.id);
       InstanceInstructionSet iis = rcxITP.getInstructSrc().getInstanceInstructionSet(itp.id);
       
       if (iis != null) {
-        if (rcxITP.getGenomeAsInstance().getVfgParent() == null) {
+        if (rcxITP.getCurrentGenomeAsInstance().getVfgParent() == null) {
           BuildSupport.LegacyInstanceIdMapper liidm = new BuildSupport.LegacyInstanceIdMapper(newNodeToOldNode, newLinksToOldLinks); 
-          liidmMap.put(rcxITP.getGenomeID(), liidm);
+          liidmMap.put(rcxITP.getCurrentGenomeID(), liidm);
           BuildSupport.BSData bsd2 = new BuildSupport.BSData(createdPairs, pid_.center,  pid_.size, pid_.support, pid_.options, 
                                                              pid_.monitor, subsetCache, subsetRegionCache, liidm, null,
                                                              globalPadNeeds, pid_.keepLayout, pid_.hideNames, currStart, currFinish); 
           bs.resetBSD(bsd2);
           bs.propagateRootUsingInstructions(rcxR, rcxITP);
         } else {
-          GenomeInstance pgi =  rcxITP.getGenomeAsInstance().getVfgParentRoot();
+          GenomeInstance pgi =  rcxITP.getCurrentGenomeAsInstance().getVfgParentRoot();
           BuildSupport.LegacyInstanceIdMapper liidm = liidmMap.get(pgi.getID());
           bs.resetBSD(null);
-          bs.populateSubsetUsingInstructions(rcxITP, createdPairs, pid_.support, liidm, null,
+          bs.populateSubsetUsingInstructions(rcxITP, pid_.support, liidm, null,
                                              subsetCache, subsetRegionCache);
         }
       }
@@ -907,7 +913,7 @@ public class BuildInstructionProcessor {
       currFinish = currStart + perPass;
     }
         
-    RemoveSupport.fixupDeletionsInNonInstructionModels(appState_, rcxR, pid_.support);
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, pid_.support, uFac_);
     
     return (result);
   }    
@@ -917,7 +923,7 @@ public class BuildInstructionProcessor {
   ** Apply root changes
   */
   
-  private void applyRootChanges(List<BuildInstruction> rootCmds, DataAccessContext rcxR, 
+  private void applyRootChanges(List<BuildInstruction> rootCmds, StaticDataAccessContext rcxR, 
                                 UndoSupport support, List<DialogBuiltMotifPair> createdPairs,
                                 Point2D center, Dimension size,
                                 LayoutOptions options, BTProgressMonitor monitor,
@@ -933,7 +939,7 @@ public class BuildInstructionProcessor {
     Iterator<GenomeInstance> giit = rcxR.getGenomeSource().getInstanceIterator();
     while (giit.hasNext()) {
       GenomeInstance currGi = giit.next();
-      DataAccessContext rcxCG = new DataAccessContext(rcxR, currGi);
+      StaticDataAccessContext rcxCG = new StaticDataAccessContext(rcxR, currGi);
       applyRootDeletions(rcxCG, rootCmds, support);
       if (currGi.getVfgParent() == null) {
         rootList.add(currGi);
@@ -943,13 +949,13 @@ public class BuildInstructionProcessor {
     //
     // Go through each root instance and do a rebuild of it and kids
     //
-    BuildSupport bs = new BuildSupport(appState_);
+    BuildSupport bs = new BuildSupport(uics_, rcxR, uFac_);
 
     Map<String, BuildSupport.LegacyInstanceIdMapper> liidmMap = new HashMap<String, BuildSupport.LegacyInstanceIdMapper>();
     int numRoot = rootList.size();
     for (int j = 0; j < numRoot; j++) {
       GenomeInstance gi = rootList.get(j);
-      DataAccessContext dacxI = new DataAccessContext(rcxR, gi);
+      StaticDataAccessContext dacxI = new StaticDataAccessContext(rcxR, gi);
       List<InstanceToProcess> procList = buildProcessingList(true, dacxI);    
       HashMap<String, Map<String, Map<GenomeInstance.GroupTuple, BuildSupport.SubsetCacheValues>>> subsetCache = 
         new HashMap<String, Map<String, Map<GenomeInstance.GroupTuple, BuildSupport.SubsetCacheValues>>>();
@@ -962,7 +968,7 @@ public class BuildInstructionProcessor {
 
       for (int i = 0; i < pSize; i++) {
         InstanceToProcess itp = procList.get(i);
-        DataAccessContext rcxITP = new DataAccessContext(rcxR, itp.id);
+        StaticDataAccessContext rcxITP = new StaticDataAccessContext(rcxR, itp.id);
         InstanceInstructionSet iis = rcxITP.getInstructSrc().getInstanceInstructionSet(itp.id);
         if (iis != null) {
           switch (itp.type) {
@@ -976,10 +982,10 @@ public class BuildInstructionProcessor {
               bs.propagateRootUsingInstructions(rcxR, rcxITP);
               break;
             case InstanceToProcess.CHILD:
-              GenomeInstance pgi = rcxITP.getGenomeAsInstance().getVfgParentRoot();
+              GenomeInstance pgi = rcxITP.getCurrentGenomeAsInstance().getVfgParentRoot();
               liidm = liidmMap.get(pgi.getID());
               bs.resetBSD(null);
-              bs.populateSubsetUsingInstructions(rcxITP, createdPairs, support, liidm, null, subsetCache, subsetRegionCache);
+              bs.populateSubsetUsingInstructions(rcxITP, support, liidm, null, subsetCache, subsetRegionCache);
               break;
             case InstanceToProcess.PARENT:  
             case InstanceToProcess.COUSIN_OR_SIBLING:
@@ -999,7 +1005,7 @@ public class BuildInstructionProcessor {
     // instructions may have rebuilt above and introduced new changes?  Let's be safe:
     //
      
-    RemoveSupport.fixupDeletionsInNonInstructionModels(appState_, rcxR, support);    
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, support, uFac_);    
     
     return;
   }  
@@ -1009,13 +1015,13 @@ public class BuildInstructionProcessor {
   ** Apply changes to a child
   */
   
-  private void changeChild(DataAccessContext dacx, ChangesWithRegions cwr, UndoSupport support) {
+  private void changeChild(StaticDataAccessContext dacx, ChangesWithRegions cwr, UndoSupport support) {
 
     //
     // Don't care about additions, but deleted instructions and
     // regions must be deleted
     //
-    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getGenomeID());
+    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getCurrentGenomeID());
     if (iis == null) {
       return;
     } else {
@@ -1033,8 +1039,8 @@ public class BuildInstructionProcessor {
       iis.deleteInstruction(bii);
     }
     
-    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getGenomeID(), iis);
-    support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getCurrentGenomeID(), iis);
+    support.addEdit(new DatabaseChangeCmd(dacx, dc));
     
     return;
   }  
@@ -1044,7 +1050,7 @@ public class BuildInstructionProcessor {
   ** Apply changes to a parent
   */
   
-  private void changeParent(DataAccessContext dacx, List<BuildInstruction> rootCmds, ChangesWithRegions cwr, 
+  private void changeParent(StaticDataAccessContext dacx, List<BuildInstruction> rootCmds, ChangesWithRegions cwr, 
                             boolean forceDelete, UndoSupport support) {
 
     //
@@ -1069,9 +1075,9 @@ public class BuildInstructionProcessor {
     // Record my regions and instructions:
     //
     
-    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getGenomeID());
+    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getCurrentGenomeID());
     if (iis == null) {
-      iis = new InstanceInstructionSet(dacx.getGenomeID());
+      iis = new InstanceInstructionSet(dacx.getCurrentGenomeID());
     } else {
       iis = new InstanceInstructionSet(iis);      
     }
@@ -1146,8 +1152,8 @@ public class BuildInstructionProcessor {
       iis.deleteInstructions(bid);
     }
     
-    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getGenomeID(), iis);
-    support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));    
+    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getCurrentGenomeID(), iis);
+    support.addEdit(new DatabaseChangeCmd(dacx, dc));    
     
     return;
   }  
@@ -1157,9 +1163,9 @@ public class BuildInstructionProcessor {
   ** Change a cousin
   */
   
-  private void changeCousinOrSibling(DataAccessContext dacx, List<BuildInstruction> rootCmds, UndoSupport support) {
+  private void changeCousinOrSibling(StaticDataAccessContext dacx, List<BuildInstruction> rootCmds, UndoSupport support) {
     
-    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getGenomeID());
+    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getCurrentGenomeID());
     if (iis == null) {
       return;
     }
@@ -1172,7 +1178,7 @@ public class BuildInstructionProcessor {
   ** Apply root deletions to instances
   */
   
-  private void applyRootDeletions(DataAccessContext dacx, List<BuildInstruction> rootCmds, UndoSupport support) {
+  private void applyRootDeletions(StaticDataAccessContext dacx, List<BuildInstruction> rootCmds, UndoSupport support) {
     
     //
     // Find existing base instructions:
@@ -1189,7 +1195,7 @@ public class BuildInstructionProcessor {
     // Record dead instructions:
     //
     
-    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getGenomeID());
+    InstanceInstructionSet iis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getCurrentGenomeID());
     if (iis == null) {
       return;
     } else {
@@ -1211,8 +1217,8 @@ public class BuildInstructionProcessor {
       iis.deleteInstruction(bii);
     }
     
-    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getGenomeID(), iis);
-    support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+    DatabaseChange dc = dacx.getInstructSrc().setInstanceInstructionSet(dacx.getCurrentGenomeID(), iis);
+    support.addEdit(new DatabaseChangeCmd(dacx, dc));
     
     return;
   }  
@@ -1367,7 +1373,7 @@ D D D -> D S D
   
   private void resolveHolders(List<InstructionHolder> holders, List<BuildInstruction> rootCmds, 
                               InstanceInstructionSet iis, List<DuplicateInstructionTracker.CoreCount> emptyCounts,
-                              DataAccessContext dacx) {
+                              StaticDataAccessContext dacx) {
     //
     // For unassigned region tuples, see if we can add them into existing root
     // instructions.  If not, create a new root instruction.  If we have dups,
@@ -1477,7 +1483,7 @@ D D D -> D S D
   ** Assign an unassigned tuple
   */
   
-  private void pushToAssigned(InstructionHolder ihold, InstructionRegions.RegionTuple tup, DataAccessContext dacx) {
+  private void pushToAssigned(InstructionHolder ihold, InstructionRegions.RegionTuple tup, StaticDataAccessContext dacx) {
     //
     // Drop it in the first IR that accommodates it.  If none accommodate it, make a new
     // entry.
@@ -1587,7 +1593,7 @@ D D D -> D S D
   ** Scan for changes
   */
   
-  private BuildChanges scanForChanges(DataAccessContext dacx, List<BuildInstruction> newList, 
+  private BuildChanges scanForChanges(StaticDataAccessContext dacx, List<BuildInstruction> newList, 
                                       InstanceInstructionSet newIis) {
 
     BuildChanges retval = new BuildChanges();        
@@ -1629,8 +1635,8 @@ D D D -> D S D
 
     
     retval.needDeletionType = false;
-    if (dacx.getGenomeAsInstance().getVfgParent() != null) {
-      InstanceInstructionSet oldIis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getGenomeID());
+    if (dacx.getCurrentGenomeAsInstance().getVfgParent() != null) {
+      InstanceInstructionSet oldIis = dacx.getInstructSrc().getInstanceInstructionSet(dacx.getCurrentGenomeID());
       if (regionLost(oldIis, newIis, newList)) {
         retval.needDeletionType = true;
       }
@@ -1998,13 +2004,13 @@ D D D -> D S D
   ** Build an ordered list, so parents come before children
   */
   
-  private List<InstanceToProcess> buildProcessingList(boolean onlySelfAndKids, DataAccessContext dacx) {
+  private List<InstanceToProcess> buildProcessingList(boolean onlySelfAndKids, StaticDataAccessContext dacx) {
     ArrayList<InstanceToProcess> retval = new ArrayList<InstanceToProcess>();
 
     Iterator<GenomeInstance> giit = dacx.getGenomeSource().getInstanceIterator();
     while (giit.hasNext()) {
       GenomeInstance currGi = giit.next();
-      buildProcessingListCore(dacx.getGenomeAsInstance(), currGi, retval, onlySelfAndKids);
+      buildProcessingListCore(dacx.getCurrentGenomeAsInstance(), currGi, retval, onlySelfAndKids);
     }
     return (retval);
   }
@@ -2047,7 +2053,7 @@ D D D -> D S D
   ** to have subgroups killed off before applying instructions.
   */
   
-  private void killDeadSubGroups(DataAccessContext rcxC, UndoSupport support) {
+  private void killDeadSubGroups(StaticDataAccessContext rcxC, UndoSupport support) {
     Set<String> models = getInstructionDependentRootInstances(rcxC);
     //
     // Handle case where we are newly installing instructions in a model:
@@ -2055,9 +2061,9 @@ D D D -> D S D
     
    // if (rcxC.getGenome() != null) { // <- Based on direct read of legacy code, but should never happen!
       
-    GenomeInstance rootGI = rcxC.getGenomeAsInstance().getVfgParentRoot();
+    GenomeInstance rootGI = rcxC.getCurrentGenomeAsInstance().getVfgParentRoot();
     if (rootGI == null) {
-      models.add(rcxC.getGenomeID());
+      models.add(rcxC.getCurrentGenomeID());
     } else {
       models.add(rootGI.getID());
     }  
@@ -2066,12 +2072,12 @@ D D D -> D S D
     while (mit.hasNext()) {
       String id = mit.next();
       GenomeInstance gi = (GenomeInstance)rcxC.getGenomeSource().getGenome(id);
-      DataAccessContext rcxS = new DataAccessContext(rcxC, gi);
+      StaticDataAccessContext rcxS = new StaticDataAccessContext(rcxC, gi);
       Set<String> subs = gi.getAllSubsets();
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(appState_, subID, rcxS, support);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
       }
     }
     return;
@@ -2083,7 +2089,7 @@ D D D -> D S D
   ** Note that UndoManager argument is probably superfluous given non-null support
   */
   
-  private void killAllSubGroups(DataAccessContext rcxC, UndoSupport support) {
+  private void killAllSubGroups(StaticDataAccessContext rcxC, UndoSupport support) {
 
     HashSet<String> models = new HashSet<String>();
     
@@ -2104,12 +2110,12 @@ D D D -> D S D
     while (mit.hasNext()) {
       String id = mit.next();
       GenomeInstance gi = (GenomeInstance)rcxC.getGenomeSource().getGenome(id);
-      DataAccessContext rcxS = new DataAccessContext(rcxC, gi);
+      StaticDataAccessContext rcxS = new StaticDataAccessContext(rcxC, gi);
       Set<String> subs = gi.getAllSubsets();
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(appState_, subID, rcxS, support);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
       }
     }
     return;
@@ -2121,7 +2127,7 @@ D D D -> D S D
   ** or which inherit from models that are driven by instructions.
   */
   
-  private Set<String> getInstructionDependentRootInstances(DataAccessContext dacx) {
+  private Set<String> getInstructionDependentRootInstances(StaticDataAccessContext dacx) {
                                                     
     HashSet<String> models = new HashSet<String>();
     
@@ -2152,7 +2158,7 @@ D D D -> D S D
   */
   
   @SuppressWarnings("unused")
-  private void getInstructionDependentModelsAndProxies(Set<String> models, Set<String> proxies, DataAccessContext dacx) {
+  private void getInstructionDependentModelsAndProxies(Set<String> models, Set<String> proxies, StaticDataAccessContext dacx) {
                                                     
     
     //
@@ -2296,7 +2302,9 @@ D D D -> D S D
     Map<String, Layout.OverlayKeySet> allKeys;    
     Map<String, Layout.SupplementalDataCoords> sdcCache;
 
-    public PISIFData(BTState appState, DataAccessContext dacx, 
+    public PISIFData(UIComponentSource uics, 
+                     StaticDataAccessContext dacx,
+                     UndoFactory uFac,
                      List<BuildInstruction> buildCmds, 
                      Point2D center, 
                      Dimension size,  
@@ -2326,10 +2334,10 @@ D D D -> D S D
       // Figure out all module pad needs before we get started:
       //
 
-      globalPadNeeds = dacx.fgho.getGlobalNetModuleLinkPadNeeds();
-      emptyModNeeds = dacx.fgho.stockUpMemberOnlyModules();
-      allKeys = dacx.fgho.fullModuleKeysPerLayout();    
-      sdcCache = (new BuildSupport(appState)).buildSdcCache(allKeys, dacx);
+      globalPadNeeds = dacx.getFGHO().getGlobalNetModuleLinkPadNeeds();
+      emptyModNeeds = dacx.getFGHO().stockUpMemberOnlyModules();
+      allKeys = dacx.getFGHO().fullModuleKeysPerLayout();    
+      sdcCache = (new BuildSupport(uics, dacx, uFac)).buildSdcCache(allKeys, dacx);
       
     }
   }
@@ -2434,6 +2442,7 @@ D D D -> D S D
       coreInstruct.setRegions(null);
     }
     
+    @Override
     public String toString() {
       StringBuffer retval = new StringBuffer();
       retval.append("InstructionHolder: instruction = ");
@@ -2511,7 +2520,4 @@ D D D -> D S D
       deletedInstruct = new HashSet<BuildInstructionInstance>();    
     }
   }
-  
-
- 
 }

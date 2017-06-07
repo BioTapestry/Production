@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.HashMap;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
 
@@ -56,7 +56,7 @@ public class CSVData {
   private String condition_;
   private ArrayList<String> investigators_;
   private HashMap<String, List<DataPoint>> measurements_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -70,8 +70,8 @@ public class CSVData {
   **    RepeatID PerturbationAgent MeasuredGene  Time  DeltaDeltaCt  ExpControl Significancy Comment
   */
 
-  public CSVData(BTState appState, List<ExperimentTokens> expToks, String date, List<String> investigators, String time, String condition, String key) {
-    appState_ = appState;
+  public CSVData(DataAccessContext dacx, List<ExperimentTokens> expToks, String date, List<String> investigators, String time, String condition, String key) {
+    dacx_ = dacx;
     perturbs_ = new ArrayList<ExperimentTokens>();
     int numEt = expToks.size();
     for (int i = 0; i < numEt; i++) {
@@ -80,7 +80,7 @@ public class CSVData {
     }  
     time_ = time;
     date_ = date;   
-    ConditionDictionary cDict = appState_.getDB().getPertData().getConditionDictionary();
+    ConditionDictionary cDict = dacx_.getExpDataSrc().getPertData().getConditionDictionary();
     String stdName = cDict.getExprConditions(cDict.getStandardConditionKey()).getDescription();   
     if ((condition == null) || condition.trim().equals("") || condition.equalsIgnoreCase(stdName)) {
       condition_ = stdName;

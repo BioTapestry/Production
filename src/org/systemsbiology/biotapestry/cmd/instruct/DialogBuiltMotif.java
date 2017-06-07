@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -303,7 +303,8 @@ public abstract class DialogBuiltMotif {
   **
   ** Get row info; null for unplaced nodes
   */
-  
+
+  @SuppressWarnings("unused")
   protected Integer[] getRows(PatternGrid grid, Set<String> placed, Set<String> needToPlace) {
     
     Integer[] retval = new Integer[2];
@@ -323,6 +324,7 @@ public abstract class DialogBuiltMotif {
   ** Find out what nodes and links exist in the motif
   */
 
+  @SuppressWarnings("unused")
   public void getExistingNodesAndLinks(Set<String> nodes, Set<String> links) {
     if (sourceId_ != null) {
       nodes.add(sourceId_);
@@ -338,6 +340,7 @@ public abstract class DialogBuiltMotif {
   ** Assign the nodes to source and target regions
   */
 
+  @SuppressWarnings("unused")
   public void getRegionAssignments(Set<String> srcRegionNodes, Set<String> targRegionNodes, Map<String, Integer> linkTupleMap) {
     if (sourceId_ != null) {
       srcRegionNodes.add(sourceId_);
@@ -353,6 +356,7 @@ public abstract class DialogBuiltMotif {
   ** toString override
   */
   
+  @Override
   public String toString() {
     return ("DialogBuiltMotif:"
             + "sourceId = " + sourceId_

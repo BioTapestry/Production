@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,6 +28,7 @@ import java.awt.event.ActionListener;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.Vector;
@@ -40,10 +41,11 @@ import javax.swing.JScrollPane;
 import javax.swing.ListModel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy.AddedNode;
@@ -61,6 +63,7 @@ import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -77,10 +80,11 @@ public class EditModuleMemberDialog extends JDialog {
   ////////////////////////////////////////////////////////////////////////////  
 
   private CheckBoxList nodesToChoose_;
-  private String genomeKey_; 
   private String ovrID_; 
   private String moduleID_;
-  private BTState appState_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -95,13 +99,15 @@ public class EditModuleMemberDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public EditModuleMemberDialog(BTState appState, String genomeID, String sourceGenomeID, String ovrID, String moduleID) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("editModMemb.title"), true);
-    appState_ = appState;
+  public EditModuleMemberDialog(UIComponentSource uics, StaticDataAccessContext dacx, 
+                                String genomeID, String sourceGenomeID, String ovrID, String moduleID, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("editModMemb.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     ovrID_ = ovrID;
+    uFac_ = uFac;
     moduleID_ = moduleID;
-    genomeKey_ = genomeID;
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -112,15 +118,15 @@ public class EditModuleMemberDialog extends JDialog {
     // Figure out current members
     //
     
-    Database db = appState_.getDB(); 
+    GenomeSource db = dacx_.getGenomeSource(); 
        
-    HashSet currentMembers = new HashSet();
+    HashSet<String> currentMembers = new HashSet<String>();
     NetworkOverlay nov = db.getOverlayOwnerFromGenomeKey(genomeID).getNetworkOverlay(ovrID);     
     NetModule nmod = nov.getModule(moduleID);
 
-    Iterator memit = nmod.getMemberIterator();
+    Iterator<NetModuleMember> memit = nmod.getMemberIterator();
     while (memit.hasNext()) {
-      NetModuleMember nmm = (NetModuleMember)memit.next();
+      NetModuleMember nmm = memit.next();
       String nodeID = nmm.getID();
       currentMembers.add(nodeID);
     }
@@ -135,8 +141,8 @@ public class EditModuleMemberDialog extends JDialog {
     DynamicInstanceProxy dip = db.getDynamicProxy(gi.getProxyID());
     
       
-    HashSet allowedMainGroups = new HashSet();
-    HashSet allowedActiveSubGroups = new HashSet();    
+    HashSet<String> allowedMainGroups = new HashSet<String>();
+    HashSet<String> allowedActiveSubGroups = new HashSet<String>();    
     String grpAttach = nmod.getGroupAttachment();
     if (grpAttach != null) {
       Group grp = gi.getGroup(grpAttach);
@@ -149,9 +155,9 @@ public class EditModuleMemberDialog extends JDialog {
         allowedMainGroups.add(baseAttach);
       }
     } else {
-      Iterator git = gi.getGroupIterator();
+      Iterator<Group> git = gi.getGroupIterator();
       while (git.hasNext()) {
-        Group grp = (Group)git.next();
+        Group grp = git.next();
         if (grp.isASubset(srcGen)) {
           continue;
         }
@@ -180,7 +186,8 @@ public class EditModuleMemberDialog extends JDialog {
     //
 
     JLabel label = new JLabel(rMan.getString("editModMemb.selectMembers"));
-    nodesToChoose_ = new CheckBoxList(buildMemberChoices(sourceGenomeID, currentMembers, allowedMainGroups, allowedActiveSubGroups, added), appState_);
+    nodesToChoose_ = new CheckBoxList(buildMemberChoices(sourceGenomeID, currentMembers, allowedMainGroups, allowedActiveSubGroups, added), 
+                                      uics_.getHandlerAndManagerSource());
     UiUtil.gbcSet(gbc, 0, 0, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(label, gbc);
 
@@ -198,7 +205,7 @@ public class EditModuleMemberDialog extends JDialog {
         try {
           applyProperties();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -213,7 +220,7 @@ public class EditModuleMemberDialog extends JDialog {
             EditModuleMemberDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -224,7 +231,7 @@ public class EditModuleMemberDialog extends JDialog {
           EditModuleMemberDialog.this.setVisible(false);
           EditModuleMemberDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -243,7 +250,7 @@ public class EditModuleMemberDialog extends JDialog {
     
     UiUtil.gbcSet(gbc, 0, 7, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -263,16 +270,19 @@ public class EditModuleMemberDialog extends JDialog {
   ** Get the list of nodes to choose from: 
   */
   
-  private Vector<CheckBoxList.ListChoice> buildMemberChoices(String genomeID, Set modMembers, Set mainGroupsToShow, Set activeSubGroupsToShow, Set added) {
+  private Vector<CheckBoxList.ListChoice> buildMemberChoices(String genomeID, Set<String> modMembers, 
+                                                             Set<String> mainGroupsToShow, Set<String> activeSubGroupsToShow, 
+                                                             Set<String> added) {
        
-    Database db = appState_.getDB();
+    GenomeSource db = dacx_.getGenomeSource();
+    ColorResolver cres = dacx_.getColorResolver();
     GenomeInstance gi = (GenomeInstance)db.getGenome(genomeID);
-    Layout lo = appState_.getLayoutForGenomeKey(genomeID);
-    ArrayList nodeChoices = buildCombo(gi);
+    Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(genomeID);
+    ArrayList<ObjChoiceContent> nodeChoices = buildCombo(gi);
     int count = nodeChoices.size();      
     Vector<CheckBoxList.ListChoice> retval = new Vector<CheckBoxList.ListChoice>();
     for (int i = 0; i < count; i++) {
-      ObjChoiceContent occ = (ObjChoiceContent)nodeChoices.get(i);
+      ObjChoiceContent occ = nodeChoices.get(i);
       GroupMembership gm = gi.getNodeGroupMembership(gi.getNode(occ.val));    
       Color gCol = Color.white;
       if (added.contains(occ.val)) {
@@ -283,7 +293,7 @@ public class EditModuleMemberDialog extends JDialog {
         String grpMatch = gm.gotAGroupMatch(mainGroupsToShow, activeSubGroupsToShow);
         if (grpMatch != null) {
           GroupProperties gp = lo.getGroupProperties(grpMatch);
-          gCol = gp.getColor(true, db);
+          gCol = gp.getColor(true, cres);
           boolean isAMem = modMembers.contains(occ.val);
           retval.add(new CheckBoxList.ListChoice(occ.val, occ.name, gCol, isAMem));
         }
@@ -299,30 +309,30 @@ public class EditModuleMemberDialog extends JDialog {
   ** 
   */
   
-  private ArrayList buildCombo(GenomeInstance tgi) {
-    TreeMap tm = new TreeMap();
+  private ArrayList<ObjChoiceContent> buildCombo(GenomeInstance tgi) {
+    TreeMap<String, List<String>> tm = new TreeMap<String, List<String>>();
     
-    Iterator nit = tgi.getAllNodeIterator();
+    Iterator<Node> nit = tgi.getAllNodeIterator();
     while (nit.hasNext()) {
-      Node node = (Node)nit.next();
+      Node node = nit.next();
       String nodeMsg = node.getDisplayString(tgi, true);
       String nodeID = node.getID();
-      ArrayList perMsg = (ArrayList)tm.get(nodeMsg);
+      List<String> perMsg = tm.get(nodeMsg);
       if (perMsg == null) {
-        perMsg = new ArrayList();
+        perMsg = new ArrayList<String>();
         tm.put(nodeMsg, perMsg);
       }
       perMsg.add(nodeID);
     }    
    
-    ArrayList retval = new ArrayList();
-    Iterator tmkit = tm.keySet().iterator();
+    ArrayList<ObjChoiceContent> retval = new ArrayList<ObjChoiceContent>();
+    Iterator<String> tmkit = tm.keySet().iterator();
     while (tmkit.hasNext()) {
-      String nodeMsg = (String)tmkit.next();
-      ArrayList perMsg = (ArrayList)tm.get(nodeMsg);
+      String nodeMsg = tmkit.next();
+      List<String> perMsg = tm.get(nodeMsg);
       int pmNum = perMsg.size();
       for (int i = 0; i < pmNum; i++) {
-        String nodeID = (String)perMsg.get(i);
+        String nodeID = perMsg.get(i);
         retval.add(new ObjChoiceContent(nodeMsg, nodeID)); 
       }
     }   
@@ -337,18 +347,15 @@ public class EditModuleMemberDialog extends JDialog {
   
   private boolean applyProperties() {
     
-    HashSet modMembers = new HashSet();
+    HashSet<String> modMembers = new HashSet<String>();
     ListModel myModel = nodesToChoose_.getModel();
     int numElem = myModel.getSize();
     for (int i = 0; i < numElem; i++) {
       CheckBoxList.ListChoice choice = (CheckBoxList.ListChoice)myModel.getElementAt(i);
       if (choice.isSelected) {
-        modMembers.add(choice.getObject());
+        modMembers.add((String)choice.getObject());
       }
     } 
-    
-    Layout glo = appState_.getLayoutForGenomeKey(genomeKey_);
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getDB().getGenome(genomeKey_), glo);
-    return (ModificationCommands.resetModuleMembers(appState_, modMembers, rcx, moduleID_, ovrID_));
+    return (ModificationCommands.resetModuleMembers(uics_, modMembers, dacx_, moduleID_, ovrID_, uFac_));
   }  
 }

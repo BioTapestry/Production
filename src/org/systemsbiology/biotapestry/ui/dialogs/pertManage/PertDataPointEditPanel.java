@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.LegacyPert;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
@@ -77,7 +77,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   private List userValsResult_;
   private PerturbationData pd_;
   private String currKey_;
-  private List currAnnots_;
+  private List<String> currAnnots_;
   private PerturbationData.RegionRestrict currRegRes_;
   
   private JLabel idLabel_;
@@ -109,11 +109,11 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertDataPointEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, 
+  public PertDataPointEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, 
                                 PendingEditTracker pet, String myKey, int legacyModes) { 
-    super(appState, dacx, parent, pet, myKey, 6);
+    super(uics, dacx, parent, pet, myKey, 6);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);
   
     int colNum = 0;
     // -----------------------------------------------
@@ -145,7 +145,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertExperimentManagePanel.MANAGER_KEY,
                                 PertExperimentManagePanel.SOURCES_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -173,7 +173,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertSrcsAndTargsManagePanel.MANAGER_KEY,
                                 PertSrcsAndTargsManagePanel.TRG_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -203,7 +203,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertMeasurementManagePanel.MANAGER_KEY,
                                 PertMeasurementManagePanel.MEAS_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -214,7 +214,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     UiUtil.gbcSet(gbc_, colNum++, rowNum_, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     add(mtCombo, gbc_);
        
-    Vector sigOps = PertDataPoint.getSignificanceOptions(appState_);
+    Vector sigOps = PertDataPoint.getSignificanceOptions(dacx_);
     JLabel forceLabel = new JLabel(rMan_.getString("pertDataPointEdit.forceSig"));
     forceCombo_ = new JComboBox(sigOps);
     UiUtil.gbcSet(gbc_, colNum++, rowNum_, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -266,7 +266,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertExpSetupManagePanel.MANAGER_KEY,
                                 PertExpSetupManagePanel.CONTROL_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -293,7 +293,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
         try {
           pet_.editIsPushed(PertDataPointManagePanel.DATA_ANNOT_KEY);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -317,7 +317,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
         try {
           pet_.editIsPushed(PertDataPointManagePanel.REG_RESTRICT_KEY);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -338,7 +338,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     //
 
     userCols_ = buildUserColumns(pd);
-    etudf_ = new EditableTable(appState_, new UserFieldsTableModel(appState_, userCols_, pd.getUserFieldCount() > 0), parent_);
+    etudf_ = new EditableTable(uics, dacx, new UserFieldsTableModel(uics, dacx, userCols_, pd.getUserFieldCount() > 0), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.tableIsUnselectable = true;
     etp.buttons = EditableTable.NO_BUTTONS;
@@ -349,7 +349,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
         try {
           pet_.jumpToRemoteEdit(PertMiscSetupManagePanel.MANAGER_KEY, PertMiscSetupManagePanel.UDF_KEY, null);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -420,7 +420,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   */
   
   public void updateAnnotations(List annotations) {
-    currAnnots_ = (annotations == null) ? null : new ArrayList(annotations);
+    currAnnots_ = (annotations == null) ? null : new ArrayList<String>(annotations);
     //
     // Doing a full-blown displayProperties loses pending data!
     //
@@ -516,7 +516,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     Vector measureTypes = pd_.getMeasureDictionary().getMeasurementOptions();
     UiUtil.replaceComboItems(measureTypeCombo_, measureTypes);
        
-    Vector sigOps = PertDataPoint.getSignificanceOptions(appState_);
+    Vector sigOps = PertDataPoint.getSignificanceOptions(dacx_);
     UiUtil.replaceComboItems(forceCombo_, sigOps);
     
     Vector ctrlOps = pd_.getConditionDictionary().getExprControlOptions();
@@ -839,7 +839,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     TrueObjChoiceContent toccM = pd_.getMeasureDictionary().getMeasurementChoice(pdp.getMeasurementTypeKey());
     measureTypeCombo_.setSelectedItem(toccM);
       
-    TrueObjChoiceContent toccf = pdp.getForcedSignificanceChoice(appState_);
+    TrueObjChoiceContent toccf = pdp.getForcedSignificanceChoice(dacx_);
     forceCombo_.setSelectedItem(toccf);
    
     String curr = pdp.getControl();
@@ -887,7 +887,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
       }
     }
     if (badNum) {   
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       JOptionPane.showMessageDialog(parent_, 
                                     rMan.getString("pdpe.badValueNumber"), 
                                     rMan.getString("pdpe.badValueNumberTitle"),
@@ -941,8 +941,8 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
       }
     }
  
-    public UserFieldsTableModel(BTState appState, List columns, boolean haveFields) {
-      super(appState, columns.size());
+    public UserFieldsTableModel(UIComponentSource uics, DataAccessContext dacx, List columns, boolean haveFields) {
+      super(uics, dacx, columns.size());
       int numCol = columns_.length;
       colNames_ = new String[numCol];
       colClasses_ = new Class[numCol];

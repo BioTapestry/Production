@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@ package org.systemsbiology.biotapestry.ui;
 
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.LinkPlacementGrid;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -140,10 +140,10 @@ public class LayoutOptions {
   ** Useful for JComboBoxes
   */
 
-  public static Vector<ChoiceContent> layerOptions(BTState appState) {
+  public static Vector<ChoiceContent> layerOptions(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_LAYER_OPTIONS_; i++) {
-      retval.add(mapLayerOptions(appState, i));
+      retval.add(mapLayerOptions(dacx, i));
     }
     return (retval);
   }
@@ -153,8 +153,8 @@ public class LayoutOptions {
   ** Useful for JComboBoxes
   */
 
-  public static ChoiceContent mapLayerOptions(BTState appState, int val) {
-    ResourceManager rMan = appState.getRMan();
+  public static ChoiceContent mapLayerOptions(DataAccessContext dacx, int val) {
+    ResourceManager rMan = dacx.getRMan();
     switch (val) {
       case COFFMAN_GRAHAM:
         return (new ChoiceContent(rMan.getString("layoutOption.COFFMAN_GRAHAM"), COFFMAN_GRAHAM));

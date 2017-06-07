@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -258,8 +258,8 @@ public class LinkSegStrategy implements Cloneable {
     double split2Y = pt2.getY();
     
     FixOrthoPlan fop = new FixOrthoPlan();
-    double midRawX = pt1.getX() + (((double)useVar * UiUtil.GRID_SIZE) * ((pt2.getX() > pt1.getX()) ? 1.0 : -1.0)); 
-    double midRawY = pt1.getY() + (((double)useVar * UiUtil.GRID_SIZE) * ((pt2.getY() > pt1.getY()) ? 1.0 : -1.0)); 
+    double midRawX = pt1.getX() + ((useVar * UiUtil.GRID_SIZE) * ((pt2.getX() > pt1.getX()) ? 1.0 : -1.0)); 
+    double midRawY = pt1.getY() + ((useVar * UiUtil.GRID_SIZE) * ((pt2.getY() > pt1.getY()) ? 1.0 : -1.0)); 
     double midX = UiUtil.forceToGridValue(midRawX, UiUtil.GRID_SIZE);
     double midY = UiUtil.forceToGridValue(midRawY, UiUtil.GRID_SIZE);
     Iterator<Requirement> rit = suchThat_.iterator();
@@ -411,7 +411,7 @@ public class LinkSegStrategy implements Cloneable {
       throw new IllegalStateException();
     }
     
-    Requirement req = (Requirement)suchThat_.get(0);
+    Requirement req = suchThat_.get(0);
     if (req.op != Requirement.ReqType.EQUALS) {
       throw new IllegalStateException();
     }

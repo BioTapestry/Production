@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.awt.image.BufferedImage;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -37,6 +37,7 @@ import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.freerender.GroupFree;
@@ -92,9 +93,9 @@ public class OverviewPresentation {
   ** Present the given genome with the given layout
   */
   
-  public void presentOverview(Graphics2D g2, DataAccessContext rcx) { //String genomeKey, String layoutKey) {
+  public void presentOverview(Graphics2D g2, StaticDataAccessContext rcx) {
 
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     if (!(genome instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
@@ -121,7 +122,7 @@ public class OverviewPresentation {
   ** Return the required size of the layout
   */
   
-  public Rectangle getRequiredSize(DataAccessContext rcx) {
+  public Rectangle getRequiredSize(StaticDataAccessContext rcx) {
                                    
     if (cachedBounds_ != null) {
       return (cachedBounds_);
@@ -137,7 +138,7 @@ public class OverviewPresentation {
     }
     
     Rectangle retval = null;
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     genome = Layout.determineLayoutTarget(genome);
     boolean haveInstance = (genome instanceof GenomeInstance);
     boolean haveNode = false;
@@ -145,7 +146,7 @@ public class OverviewPresentation {
     Iterator<Gene> git = genome.getGeneIterator();
     while (git.hasNext()) {
       Gene gene = git.next();
-      NodeProperties np = rcx.getLayout().getNodeProperties(gene.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(gene.getID());
       INodeRenderer rend = np.getRenderer();
       Rectangle bounds = rend.getBounds(gene, rcx, null);
       if (retval == null) {
@@ -163,7 +164,7 @@ public class OverviewPresentation {
     Iterator<Node> nit = genome.getNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
-      NodeProperties np = rcx.getLayout().getNodeProperties(node.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(node.getID());
       INodeRenderer rend = np.getRenderer();
       Rectangle bounds = rend.getBounds(node, rcx, null);
       if (retval == null) {
@@ -183,7 +184,7 @@ public class OverviewPresentation {
       Iterator<Group> grit = ((GenomeInstance)genome).getGroupIterator();
       while (grit.hasNext()) {
         Group gp = grit.next();
-        GroupProperties grpr = rcx.getLayout().getGroupProperties(gp.getID());
+        GroupProperties grpr = rcx.getCurrentLayout().getGroupProperties(gp.getID());
         Point2D labelLoc = grpr.getLabelLocation();
         if (retval == null) {
           retval = new Rectangle((int)labelLoc.getX() - 50, (int)labelLoc.getY() - 50, 100, 100);
@@ -233,7 +234,6 @@ public class OverviewPresentation {
   */
   
   public void setTransform(AffineTransform transform) {
-
     return;
   }  
   
@@ -249,7 +249,7 @@ public class OverviewPresentation {
   ** Guts of presentation
   */
   
-  private void renderBackground(DataAccessContext rcx) { //GenomeInstance genome, Layout layout) {
+  private void renderBackground(StaticDataAccessContext rcx) {
     if (bi_ == null) {
       bi_ = new BufferedImage(width_, height_, BufferedImage.TYPE_INT_RGB);
     }    
@@ -271,25 +271,25 @@ public class OverviewPresentation {
   ** Guts of presentation
   */
   
-  private void renderGroups(ModelObjectCache moc, DataAccessContext rcx) { //GenomeInstance genome, Layout layout) { 
+  private void renderGroups(ModelObjectCache moc, StaticDataAccessContext rcx) {
     
     //
     // Note how we are tied to database and the other usual suspects here:
     //
      
-    List<String> order = rcx.getLayout().getGroupDrawingOrder();
-    Iterator<Group> grit = ((GenomeInstance)rcx.getGenome()).getGroupIteratorFromList(order);
+    List<String> order = rcx.getCurrentLayout().getGroupDrawingOrder();
+    Iterator<Group> grit = ((GenomeInstance)rcx.getCurrentGenome()).getGroupIteratorFromList(order);
 
     
     while (grit.hasNext()) {
       Group group = grit.next();
       String groupRef = group.getID();
-      GroupProperties gp = rcx.getLayout().getGroupProperties(groupRef);
+      GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(groupRef);
       GroupFree renderer = gp.getRenderer();
       if (gp.getLayer() != 0) {
         continue;
       }
-      renderer.render(moc, group, null, rcx, null);
+      renderer.render(moc, group, null, rcx, null, IRenderer.Mode.NORMAL);
     }
     return;
   }

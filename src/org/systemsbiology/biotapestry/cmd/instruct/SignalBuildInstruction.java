@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -479,9 +479,9 @@ public class SignalBuildInstruction extends BuildInstruction {
       throw new IOException();
     }                                                                                           
 
-    String signalFactorTypeStr = ((String)tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 3)).trim().toLowerCase();    
-    String signalFactorName = (String)tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 2);
-    String signalTypeStr = ((String)tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 1)).trim().toLowerCase();  
+    String signalFactorTypeStr = tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 3).trim().toLowerCase();    
+    String signalFactorName = tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 2);
+    String signalTypeStr = tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 1).trim().toLowerCase();  
     
     if ((signalFactorTypeStr == null) || (signalFactorTypeStr.trim().equals(""))) {
       throw new IOException();

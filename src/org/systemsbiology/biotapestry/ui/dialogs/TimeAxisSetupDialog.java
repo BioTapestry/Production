@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,11 +39,12 @@ import javax.swing.JComboBox;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.UndoSupport;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
@@ -68,8 +69,9 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
 
   private EditableTable est_;
   private TimeAxisDefinition workingCopy_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   private JComboBox unitCombo_;
   private JTextField customUnitsField_;
   private JTextField customUnitsAbbrevField_;
@@ -93,17 +95,17 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** topo structure.
   */ 
   
-  public static boolean timeAxisSetupDialogWrapperWrapper(BTState appState, DataAccessContext dacx) {
+  public static boolean timeAxisSetupDialogWrapperWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState, dacx);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
       tasd.setVisible(true);
     }
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -117,7 +119,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** Wrapper on constructor.  Have to see if guts are editable first
   */ 
   
-  public static TimeAxisSetupDialog timeAxisSetupDialogWrapper(BTState appState, DataAccessContext dacx) {
+  public static TimeAxisSetupDialog timeAxisSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
     
     //
     // Figure out if we can change the time units anymore:
@@ -125,23 +127,23 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     
     boolean canChange = true;
     PerturbationData pd = dacx.getExpDataSrc().getPertData();    
-    DisplayOptions dopt = appState.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dopt = dacx.getDisplayOptsSource().getDisplayOptions();
     TimeCourseData tcdat = dacx.getExpDataSrc().getTimeCourseData();
-    TemporalInputRangeData tirdat = dacx.getExpDataSrc().getTemporalInputRangeData(); 
+    TemporalInputRangeData tirdat = dacx.getTemporalRangeSrc().getTemporalInputRangeData(); 
     if (pd.haveData() || dopt.hasColumns() || dopt.hasDefaultTimeSpan() ||
-        tcdat.hasGeneTemplate() || tirdat.haveData() || dacx.getGenomeSource().modelsHaveTimeBounds()) {
+        ((tcdat != null) && tcdat.hasGeneTemplate()) || tirdat.haveData() || dacx.getGenomeSource().modelsHaveTimeBounds()) {
       canChange = false;
     }    
     
     if (!canChange) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("timeAxisDialog.cannotChange"), 
                                     rMan.getString("timeAxisDialog.cannotChangeTitle"),
                                     JOptionPane.WARNING_MESSAGE);
     }
     
-    TimeAxisSetupDialog qsd = new TimeAxisSetupDialog(appState, dacx, canChange);
+    TimeAxisSetupDialog qsd = new TimeAxisSetupDialog(uics, dacx, uFac, canChange);
     return (qsd);
   }  
   
@@ -156,12 +158,13 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** Constructor 
   */ 
 
-  private TimeAxisSetupDialog(BTState appState, DataAccessContext dacx, boolean canChange) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("timeAxisDialog.title"), true);
+  private TimeAxisSetupDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, boolean canChange) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("timeAxisDialog.title"), true);
     canChange_ = canChange;
-    appState_ = appState;
     dacx_ = dacx;
-    ResourceManager rMan = appState_.getRMan();
+    uics_ = uics;
+    uFac_ = uFac;
+    ResourceManager rMan = dacx_.getRMan();
     setSize(600, 400);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -174,7 +177,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     }
     
     JLabel unitsLabel = new JLabel(rMan.getString("timeAxisDialog.units"));
-    unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(appState_));
+    unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(dacx_));
     unitCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
@@ -183,7 +186,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
             enableCustomAndNamed(units);
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -225,7 +228,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     // Build the stages table.
     //
     
-    est_ = new EditableTable(appState_, new TimeAxisSetupTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new TimeAxisSetupTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
@@ -235,11 +238,11 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     UiUtil.gbcSet(gbc, 0, 4, 3, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 12, 3, false, false);
     
     displayProperties();
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -337,8 +340,8 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     private final static int ABBREV_  = 1; 
     private final static int NUM_COL_ = 2;   
     
-    TimeAxisSetupTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    TimeAxisSetupTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"timeAxisDialog.stage",
                                 "timeAxisDialog.abbrev"};
       colClasses_ = new Class[] {String.class,
@@ -346,7 +349,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     }
     
     public List getValuesFromTable() {
-      ArrayList retval = new ArrayList();
+      ArrayList<TimeAxisDefinition.NamedStage> retval = new ArrayList<TimeAxisDefinition.NamedStage>();
       for (int i = 0; i < this.rowCount_; i++) {
         TimeAxisDefinition.NamedStage ns  = 
           new TimeAxisDefinition.NamedStage((String)columns_[STAGE_].get(i), 
@@ -356,6 +359,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
       return (retval);
     }
      
+    @Override
     public void extractValues(List prsList) {
       super.extractValues(prsList);
       Iterator rit = prsList.iterator();
@@ -367,8 +371,8 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
       return;
     }
     
-    List applyValues() {
-      List vals = getValuesFromTable();
+    List<TimeAxisDefinition.NamedStage> applyValues() {
+      List<TimeAxisDefinition.NamedStage> vals = getValuesFromTable();
       if (vals.isEmpty()) {
         return (null);
       }
@@ -378,23 +382,23 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
       // abbreviations, which must be short (<= 3 chars)
       //
       
-      ResourceManager rMan = appState_.getRMan();
-      ArrayList seenStages = new ArrayList();
-      ArrayList seenNames = new ArrayList();
-      ArrayList seenAbbrevs = new ArrayList();      
+      ResourceManager rMan = dacx_.getRMan();
+      ArrayList<TimeAxisDefinition.NamedStage> seenStages = new ArrayList<TimeAxisDefinition.NamedStage>();
+      ArrayList<String> seenNames = new ArrayList<String>();
+      ArrayList<String> seenAbbrevs = new ArrayList<String>();      
       int size = rowCount_;
       if (size == 0) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.mustHaveStage"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.mustHaveStage"),
                                       rMan.getString("timeAxisDialog.badStageTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (null);
       }
       
       for (int i = 0; i < size; i++) {
-        TimeAxisDefinition.NamedStage ns = (TimeAxisDefinition.NamedStage)vals.get(i);
+        TimeAxisDefinition.NamedStage ns = vals.get(i);
         String name = ns.name;        
         if ((name == null) || (name.trim().equals(""))) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.badStage"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.badStage"),
                                         rMan.getString("timeAxisDialog.badStageTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (null);
@@ -403,7 +407,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
         name = name.trim();
         
         if (DataUtil.containsKey(seenNames, name)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.dupStage"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.dupStage"),
                                         rMan.getString("timeAxisDialog.badStageTitle"),
                                         JOptionPane.ERROR_MESSAGE);           
             
@@ -414,7 +418,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
                 
         String abbrev = ns.abbrev;   
         if ((abbrev == null) || (abbrev.trim().equals(""))) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.badAbbrev"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.badAbbrev"),
                                         rMan.getString("timeAxisDialog.badStageTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (null);
@@ -423,14 +427,14 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
         abbrev = abbrev.trim();
         
         if (abbrev.length() > 3) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.longAbbrev"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.longAbbrev"),
                                         rMan.getString("timeAxisDialog.badStageTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (null);
         }        
 
         if (DataUtil.containsKey(seenAbbrevs, abbrev)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.dupAbbrev"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.dupAbbrev"),
                                         rMan.getString("timeAxisDialog.badStageTitle"),
                                         JOptionPane.ERROR_MESSAGE);           
             
@@ -459,7 +463,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   private void displayProperties() {
 
     int units = workingCopy_.getUnits();
-    unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(appState_, workingCopy_.getUnits()));
+    unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(dacx_, workingCopy_.getUnits()));
     
     if (workingCopy_.haveCustomUnits()) {
       String customUnits = workingCopy_.getUserUnitName();
@@ -492,13 +496,13 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     if (!canChange_) {
       return (true);
     }
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     //
     // Undo/Redo support
     //
    
-    UndoSupport support = new UndoSupport(appState_, "undo.timeAxisSpec"); 
+    UndoSupport support = uFac_.provideUndoSupport("undo.timeAxisSpec", dacx_); 
 
     int units = ((ChoiceContent)unitCombo_.getSelectedItem()).val;
     
@@ -510,13 +514,13 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
       customUnitAbbrev = customUnitsAbbrevField_.getText();
       isSuffix = isSuffixCheckBox_.isSelected();
       if (customUnits.trim().equals("")) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisDialog.blankUnits"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.blankUnits"),
                                       rMan.getString("timeAxisDialog.blankUnitsTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
       }
       if (customUnitAbbrev.trim().equals("")) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("timeAxisResourceManager.getManager();Dialog.blankUnitAbbrev"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisResourceManager.getManager();Dialog.blankUnitAbbrev"),
                                       rMan.getString("timeAxisDialog.blankUnitsAbbrevTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -527,7 +531,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     // May bounce if the user specifies bad stage definitions
     //
     
-    List stageResults = null;
+    List<TimeAxisDefinition.NamedStage> stageResults = null;
     if (TimeAxisDefinition.wantsNamedStages(units)) {
       stageResults = ((TimeAxisSetupTableModel)est_.getModel()).applyValues();
       if (stageResults == null) {
@@ -539,11 +543,11 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     // Submit the changes:
     //
      
-    TimeAxisDefinition tad = new TimeAxisDefinition(appState_);
+    TimeAxisDefinition tad = new TimeAxisDefinition(dacx_);
     tad.setDefinition(units, customUnits, customUnitAbbrev, isSuffix, stageResults);
     DatabaseChange dc = dacx_.getExpDataSrc().setTimeAxisDefinition(tad);
     if (dc != null) {
-      DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+      DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
       support.addEdit(dcc);
     }
     

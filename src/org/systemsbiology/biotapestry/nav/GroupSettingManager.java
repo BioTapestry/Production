@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,6 @@ import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Group;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.undo.GroupSettingChangeCmd;
 
 /****************************************************************************
@@ -48,7 +47,6 @@ public class GroupSettingManager implements GroupSettingSource {
   ////////////////////////////////////////////////////////////////////////////
 
   private HashMap<String, GroupSettings> settings_;
-  private BTState appState_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -61,8 +59,7 @@ public class GroupSettingManager implements GroupSettingSource {
   ** Null constructor
   */
 
-  public GroupSettingManager(BTState appState) {
-    appState_ = appState;
+  public GroupSettingManager() {
     settings_ = new HashMap<String, GroupSettings>();
   }
    
@@ -244,7 +241,7 @@ public class GroupSettingManager implements GroupSettingSource {
     if (liveGroups.isEmpty()) {
       GroupSettingChange gsc = dropGroupVisibilities(genomeID);
       if (gsc != null) {
-        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_, dacx, gsc);
+        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(dacx, gsc);
         support.addEdit(gscc);
         retval = true;
       }
@@ -278,7 +275,7 @@ public class GroupSettingManager implements GroupSettingSource {
     }
       
     gsc.newSetting = new GroupSettings(gs);      
-    GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_, dacx, gsc);
+    GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(dacx, gsc);
     support.addEdit(gscc);
     return (true);
   }  

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ import java.awt.geom.Point2D;
 import java.util.List;
 import java.util.ArrayList;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
 /***************************************************************************
@@ -186,7 +186,7 @@ public class MetaClusterPointSource {
   public void buildPrePath(SpecialtyLayoutLinkData sin, String linkID, 
                            Point2D lastPoint, boolean firstForClust, 
                            SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                           DataAccessContext rcx,
+                           StaticDataAccessContext rcx,
                            boolean extendingVertically, boolean firstFromTop) {
     switch (type_) {
       case FOR_PURE_TARG:
@@ -209,7 +209,7 @@ public class MetaClusterPointSource {
   
   public void fanBlockBuildPrePath(SpecialtyLayoutLinkData sin, String linkID, 
                                    Point2D lastPoint, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                   DataAccessContext rcx) {
+                                   StaticDataAccessContext rcx) {
     switch (type_) {
       case FOR_PURE_TARG:       
         doPureTargetTipAccounting(sin, linkID, lastPoint.getX(), nps, rcx);
@@ -229,7 +229,7 @@ public class MetaClusterPointSource {
   ** A function
   */
   
-  public double getVerticalDropX(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {
+  public double getVerticalDropX(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {
     switch (type_) {
       case FOR_INBOUND_SRC:
         Point2D icDrop = getFirstDropFromTraces();
@@ -462,7 +462,7 @@ public class MetaClusterPointSource {
   */
   
   private void doPureTargetTipAccounting(SpecialtyLayoutLinkData sin, String linkID, double lastX, 
-                                         SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {  
+                                         SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {  
     Point2D hotTip = lmp_.getMainHotTip();
     if (hotTip == null) {
       lmp_.startOutboundBranch(sin, linkID, nps, rcx);
@@ -524,7 +524,7 @@ public class MetaClusterPointSource {
   
   private void establishTopDrop(SpecialtyLayoutLinkData sin, String linkID, Point2D lastCoord, 
                                 SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                DataAccessContext rcx, boolean extendingVertically) {
+                                StaticDataAccessContext rcx, boolean extendingVertically) {
     Point2D hotTip = lmp_.getMainHotTip();
     if (hotTip == null) {
       lmp_.startOutboundBranch(sin, linkID, nps, rcx);
@@ -562,7 +562,7 @@ public class MetaClusterPointSource {
  
   private void establishInternalBranch(SpecialtyLayoutLinkData sin, String linkID, Point2D lastCoord, 
                                        SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                       DataAccessContext rcx, boolean extendingVertically) {
+                                       StaticDataAccessContext rcx, boolean extendingVertically) {
     lmp_.startInternalBranch(sin, linkID, nps, rcx);
     Point2D internalBranch = lmp_.getInternalBranch(nps, rcx);
     sin.addPositionToLink(linkID, new SpecialtyLayoutLinkData.TrackPos((Point2D)internalBranch.clone()));
@@ -586,7 +586,7 @@ public class MetaClusterPointSource {
   private void establishInboundTipForAddedCluster(SpecialtyLayoutLinkData sin, String linkID, 
                                                   Point2D newTipPt,
                                                   SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                                  DataAccessContext rcx, 
+                                                  StaticDataAccessContext rcx, 
                                                   boolean extendingVertically, boolean firstFromTop) {
     sin.addPositionToLink(linkID, new SpecialtyLayoutLinkData.TrackPos((Point2D)dropForRow_.clone()));
     Point2D internalBranch = lmp_.getInternalBranch(nps, rcx);
@@ -646,7 +646,7 @@ public class MetaClusterPointSource {
   private void doInboundTipAccounting(SpecialtyLayoutLinkData sin, String linkID, 
                                       Point2D lastPoint, boolean firstForClust, 
                                       SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                      DataAccessContext rcx,
+                                      StaticDataAccessContext rcx,
                                       boolean extendingVertically, boolean firstFromTop) { 
     
     if (type_ == FOR_PURE_TARG) {
@@ -689,7 +689,7 @@ public class MetaClusterPointSource {
   private void doInboundTipAccountingForBlock(SpecialtyLayoutLinkData sin, String linkID, 
                                               Point2D lastPoint, 
                                               SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                              DataAccessContext rcx) { 
+                                              StaticDataAccessContext rcx) { 
     
     if (type_ == FOR_PURE_TARG) {
       throw new IllegalStateException();

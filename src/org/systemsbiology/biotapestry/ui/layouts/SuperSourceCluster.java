@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@ import java.util.Iterator;
 import org.systemsbiology.biotapestry.analysis.Link;
 import org.systemsbiology.biotapestry.analysis.CycleFinder;    
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -136,7 +136,7 @@ public class SuperSourceCluster {
   ** Get the bounds of JUST the nodes:
   */
   
-  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     Rectangle retval = null;
     int numStack = stackOrder_.size();
     for (int i = 0; i < numStack; i++) {
@@ -822,8 +822,9 @@ public class SuperSourceCluster {
   ** 
   ** Get height
   */
-  
-  public double getHeight(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, double traceDistance) {
+
+  @SuppressWarnings("unused")
+  public double getHeight(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, double traceDistance) {
  
     int numOrd = stackOrder_.size();    
     double rowY = 0.0;
@@ -841,7 +842,7 @@ public class SuperSourceCluster {
   */
   
   public Point2D locate(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                        DataAccessContext irx, 
+                        StaticDataAccessContext irx, 
                         boolean baseAtTop, Map<String, Boolean> isOnTop, double traceDistance,
                         LinkAnnotatedSuper las, Map<String, Double> lastOutboundTraces, 
                         LinkAnnotatedSuper nextLas, double minSeparation, 
@@ -1235,9 +1236,10 @@ public class SuperSourceCluster {
   ** 
   ** Handle outbound link routing preparation, *****and all internal links******
   */
-  
+
+  @SuppressWarnings("unused")
   public void startOutboundLinks(SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                 DataAccessContext irx, 
+                                 StaticDataAccessContext irx, 
                                  SpecialtyInstructions si, 
                                  Map<Integer, Double> trackToY, 
                                  Map<String, Integer> srcToTrack,
@@ -1368,7 +1370,7 @@ public class SuperSourceCluster {
   */
   
   public void finishClusterPrep(SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                DataAccessContext irx, 
+                                StaticDataAccessContext irx, 
                                 boolean baseAtTop, Map<String, Boolean> isOnTop, 
                                 Map<String, Integer> srcToCol, int myColumn) {
 
@@ -1394,10 +1396,11 @@ public class SuperSourceCluster {
   ** Handle inbound link routing for all the gasclusters.  THIS IS WHERE PAD CHANGES TO THE
   ** CORE ARE HAPPENING!!!!
   */
-  
+ 
+  @SuppressWarnings("unused")
   public void routeInboundLinks(GenomeSubset subset, 
                                 SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                DataAccessContext irx, 
+                                StaticDataAccessContext irx, 
                                 Map<String, Integer> lengthChanges, 
                                 Map<String, Integer> extraGrowthChanges,  
                                 SpecialtyInstructions si, 
@@ -1535,9 +1538,10 @@ public class SuperSourceCluster {
   ** 
   ** Finish building inbound deferred links
   */
-  
+
+  @SuppressWarnings("unused")
   public void finishInboundDeferredLinks(SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                         DataAccessContext rcx,
+                                         StaticDataAccessContext rcx,
                                          SpecialtyInstructions si, 
                                          Map<String, List<GeneAndSatelliteCluster.TagAnnotatedList<GeneAndSatelliteCluster.InboundCorners>>> inboundsPerSrc,
                                          Map<String, SuperSrcRouterPointSource> allOutsPerSource,

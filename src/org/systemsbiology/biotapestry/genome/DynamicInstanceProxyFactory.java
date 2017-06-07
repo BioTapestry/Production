@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,9 +24,10 @@ import java.util.List;
 import java.util.Iterator;
 import java.io.IOException;
 
+import javax.swing.tree.TreeNode;
+
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -63,8 +64,8 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
   private DynamicInstanceProxy currDip_;
   private Note currNote_;
   private int charTarget_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private NetworkOverlay.NetOverlayWorker now_;
       
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -77,10 +78,9 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
   ** Constructor for a Dynamic Instance Proxy Factory 
   */
 
-  public DynamicInstanceProxyFactory(BTState appState, DataAccessContext dacx) {
+  public DynamicInstanceProxyFactory() {
     super(new FactoryWhiteboard());
-    appState_ = appState;
-    dacx_ = dacx;
+    dacx_ = null;
     proxyKeys_ = DynamicInstanceProxy.keywordsOfInterest();
     groupKeys_ = Group.keywordsOfInterest(true);
     noteKeys_ = Note.keywordsOfInterest(true);    
@@ -89,7 +89,8 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
     
     FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
     whiteboard.genomeType = NetworkOverlay.DB_GENOME;
-    installWorker(new NetworkOverlay.NetOverlayWorker(appState_, whiteboard), new MyGlue());
+    now_ = new NetworkOverlay.NetOverlayWorker(whiteboard);
+    installWorker(now_, new MyGlue());
     myKeys_.addAll(proxyKeys_);    
   }
 
@@ -101,10 +102,22 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
   
   /***************************************************************************
   **
+  ** Set the current context
+  */
+  
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    now_.installContext(dacx);
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Callback for completion of the element
   **
   */
   
+  @Override
   protected void localFinishElement(String elemName) {
     if (currNote_ != null) {
       currNote_ = null;
@@ -118,6 +131,7 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
   ** Handle incoming characters
   */
 
+  @Override
   protected void localProcessCharacters(char[] chars, int start, int length) {
     String nextString = new String(chars, start, length);
     switch (charTarget_) {
@@ -143,31 +157,34 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
   protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
 
     if (proxyKeys_.contains(elemName)) {
-      DynamicInstanceProxy dip = DynamicInstanceProxy.buildFromXML(appState_, elemName, attrs);
+      DynamicInstanceProxy dip = DynamicInstanceProxy.buildFromXML(dacx_, elemName, attrs);
       if (dip != null) {
         dacx_.getGenomeSource().addDynamicProxy(dip.getID(), dip);
         NavTree tree = dacx_.getGenomeSource().getModelHierarchy();
-        GenomeInstance parent = dip.getVfgParent();
-        String parentID = parent.getID();
-        // Summed dynamic proxies are being represented by the single
-        // instance as a regular tree node, not as a proxy node.  YUK.
-        // FIX ME???
-        if (dip.isSingle()) {
-          List<String> newNodes = dip.getProxiedKeys();
-          Iterator<String> nnit = newNodes.iterator();
-          while (nnit.hasNext()) {
-            String key = nnit.next();
-            tree.addNode(dip.getProxiedInstanceName(key), parentID, key);
+        if (tree.needLegacyGlue()) {
+          GenomeInstance parent = dip.getVfgParent();
+          String parentID = parent.getID();
+          // Summed dynamic proxies are being represented by the single
+          // instance as a regular tree node, not as a proxy node.  YUK.
+          // FIX ME???
+          TreeNode parNode = tree.nodeForModel(parentID);
+          if (dip.isSingle()) {
+            List<String> newNodes = dip.getProxiedKeys();
+            Iterator<String> nnit = newNodes.iterator();
+            while (nnit.hasNext()) {
+              String key = nnit.next();
+              tree.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, dacx_); 
+            }
+          } else {
+            tree.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), parNode, null, dip.getID(), null, dacx_);
           }
-        } else {
-          tree.addProxyNode(dip.getName(), parentID, dip.getID());
         }
         currDip_ = dip;
         ((FactoryWhiteboard)sharedWhiteboard_).prox = dip;
         return (dip);
       }
     } else if (groupKeys_.contains(elemName)) {
-      Group newGroup = Group.buildFromXML(appState_.getRMan(), elemName, attrs);
+      Group newGroup = Group.buildFromXML(dacx_.getRMan(), elemName, attrs);
       if (newGroup != null) {        
         currDip_.addGroup(newGroup);
       }

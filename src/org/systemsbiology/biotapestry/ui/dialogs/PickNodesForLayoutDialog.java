@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
-import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
@@ -38,8 +37,8 @@ import javax.swing.ListSelectionModel;
 import javax.swing.event.ListSelectionListener;
 import javax.swing.event.ListSelectionEvent;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -47,10 +46,8 @@ import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.GroupMember;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
-import org.systemsbiology.biotapestry.nav.LayoutManager;
 import org.systemsbiology.biotapestry.ui.LayoutDataSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.ExceptionHandler;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 
 /****************************************************************************
@@ -71,8 +68,7 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   private LayoutDataSource masterLds_;
   private LayoutDataSource nodedLds_;
   private ModelViewPanel msp_;
-  private BTState appState_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext sdacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -87,17 +83,17 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   ** Constructor 
   */ 
   
-  public PickNodesForLayoutDialog(BTState appState, LayoutDataSource lds, DataAccessContext rcx) {
-    super(appState, "pnfl.title", new Dimension(600, 500), 1);
-    appState_ = appState;
+  public PickNodesForLayoutDialog(UIComponentSource uics, LayoutDataSource lds, DataAccessContext dacx) {
+    super(uics, dacx, "pnfl.title", new Dimension(600, 500), 1);
     selected_ = new ArrayList<ObjChoiceContent>();
     nodedLds_ = null;
     masterLds_ = lds;
+    sdacx_ = new StaticDataAccessContext(dacx).getContextForRoot();
   
     JLabel lab = new JLabel(rMan_.getString("pnfl.pick"));
     addWidgetFullRow(lab, true, true);
  
-    ArrayList<ObjChoiceContent> selection = buildSelections(lds);
+    ArrayList<ObjChoiceContent> selection = buildSelections(lds, sdacx_);
     jlist_ = new JList(selection.toArray());
     jlist_.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
     jlist_.addListSelectionListener(this);
@@ -108,8 +104,7 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
     // Build the selection panel:
     //
 
-    rcx_ = new DataAccessContext(rcx);
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState, null, rcx_);
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, sdacx_);
     msp_ = mvpwz.getModelView();
     addTable(mvpwz, 10);
     
@@ -117,7 +112,7 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
     
     addWindowListener(new WindowAdapter() {
       public void windowOpened(WindowEvent e) {
-        initSelections(masterLds_, buildSelections(masterLds_));
+        initSelections(masterLds_, buildSelections(masterLds_, sdacx_));
       }
     });
     
@@ -162,7 +157,7 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
         updateNodeDisplay(false);
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;             
   } 
@@ -179,11 +174,10 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   ** 
   */
   
-  private ArrayList<ObjChoiceContent> buildSelections(LayoutDataSource lds) {
+  private ArrayList<ObjChoiceContent> buildSelections(LayoutDataSource lds, DataAccessContext rcx) {
     ArrayList<ObjChoiceContent> retval = new ArrayList<ObjChoiceContent>();
-    Database db = appState_.getDB();
-    Genome rootGenome = db.getGenome();
-    GenomeInstance gi = (GenomeInstance)db.getGenome(lds.getModelID());
+    Genome rootGenome = rcx.getGenomeSource().getRootDBGenome();
+    GenomeInstance gi = (GenomeInstance)rcx.getGenomeSource().getGenome(lds.getModelID());
     Group useGroup = gi.getGroup(lds.getGroupID());
     Iterator<GroupMember> mit = useGroup.getMemberIterator();
     while (mit.hasNext()) {
@@ -239,15 +233,15 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   private void updateNodeDisplay(boolean doClear) { 
     
     if (doClear) {
-      rcx_.setGenome(null);
-      rcx_.setLayout(null);
+      sdacx_.setGenome(null);
+      sdacx_.setLayout(null);
       msp_.repaint();
       return;
     }
     
     String gid = masterLds_.getModelID();
-    rcx_.setGenome(rcx_.getGenomeSource().getGenome(gid));
-    rcx_.setLayout(rcx_.lSrc.getLayoutForGenomeKey(gid));
+    sdacx_.setGenome(sdacx_.getGenomeSource().getGenome(gid));
+    sdacx_.setLayout(sdacx_.getLayoutSource().getLayoutForGenomeKey(gid));
 
     HashSet<String> nodes = new HashSet<String>();
     int numNodes = selected_.size();
@@ -269,8 +263,8 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   protected boolean stashForOK() {
     int numSel = selected_.size();
     if (numSel == 0) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = sdacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("pnfl.noSelection"), 
                                     rMan.getString("pnfl.noSelectionTitle"),
                                     JOptionPane.ERROR_MESSAGE);

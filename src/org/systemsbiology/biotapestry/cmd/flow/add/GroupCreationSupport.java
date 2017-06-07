@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,14 +29,14 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveNode;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GroupSettingChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.ProxyChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
@@ -57,7 +57,9 @@ import org.systemsbiology.biotapestry.ui.dialogs.GroupDuplicationDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.GroupPositionDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.MultiGroupDuplicationDialog;
 import org.systemsbiology.biotapestry.util.Bounds;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
@@ -81,9 +83,10 @@ public class GroupCreationSupport {
   private boolean wasForcedDirect_;
   private Set<String> allGroupIDs_;
   private String srcGroupID_;
-  private BTState appState_;
-  private DataAccessContext rcxSrc_;
-  private DataAccessContext rcxTrg_;
+  private StaticDataAccessContext rcxSrc_;
+  private StaticDataAccessContext rcxTrg_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -96,11 +99,10 @@ public class GroupCreationSupport {
   ** Constructor 
   */ 
   
-  public GroupCreationSupport(BTState appState, DataAccessContext rcx,
+  public GroupCreationSupport(UIComponentSource uics, StaticDataAccessContext rcx,
                               boolean forAssignment,
                               Rectangle approxBounds, Point2D defaultCenter,
-                              Point2D directCenter) {
-    appState_ = appState;
+                              Point2D directCenter, UndoFactory uFac) {
     forAssignment_ = forAssignment;
     approxBounds_ = approxBounds;
     defaultCenter_ = defaultCenter;
@@ -110,6 +112,8 @@ public class GroupCreationSupport {
     allGroupIDs_ = null;
     rcxSrc_ = rcx;  
     rcxTrg_ = rcx;
+    uics_ = uics;
+    uFac_ = uFac;
   }
   
   /***************************************************************************
@@ -117,8 +121,7 @@ public class GroupCreationSupport {
   ** Constructor for group duplication
   */ 
   
-  public GroupCreationSupport(BTState appState, DataAccessContext rcxSrc, Set<String> allGroups) {
-    appState_ = appState;
+  public GroupCreationSupport(UIComponentSource uics, StaticDataAccessContext rcxSrc, Set<String> allGroups, UndoFactory uFac) {
     forAssignment_ = true;
     approxBounds_ = null;
     defaultCenter_ = null;
@@ -129,7 +132,9 @@ public class GroupCreationSupport {
       srcGroupID_ = allGroups.iterator().next();
     }
     rcxSrc_ = rcxSrc;
-    rcxTrg_ = null;  
+    rcxTrg_ = null;
+    uics_ = uics;
+    uFac_ = uFac;
   }  
 
   /***************************************************************************
@@ -137,8 +142,7 @@ public class GroupCreationSupport {
   ** Constructor for non-interactive placement:
   */ 
   
-  public GroupCreationSupport(BTState appState, DataAccessContext rcx, boolean forAssignment) {
-    appState_ = appState;
+  public GroupCreationSupport(UIComponentSource uics, StaticDataAccessContext rcx, boolean forAssignment, UndoFactory uFac) {
     forAssignment_ = forAssignment;
     approxBounds_ = null;
     defaultCenter_ = null;
@@ -147,6 +151,8 @@ public class GroupCreationSupport {
     srcGroupID_ = null;
     rcxSrc_ = rcx;
     rcxTrg_ = rcx;
+    uics_ = uics;
+    uFac_ = uFac;
   }  
   
   /***************************************************************************
@@ -154,8 +160,9 @@ public class GroupCreationSupport {
   ** Constructor for non-interactive subset placement:
   */ 
   
-  public GroupCreationSupport(BTState appState) {
-    appState_ = appState;
+  public GroupCreationSupport(UIComponentSource uics, UndoFactory uFac) {
+    uics_ = uics;
+    uFac_ = uFac;
   }   
  
   ////////////////////////////////////////////////////////////////////////////
@@ -191,8 +198,8 @@ public class GroupCreationSupport {
       return (null);
     }   
     String groupKey = rcxSrc_.getNextKey();
-    Group newGroup = new Group(rcxSrc_.rMan, groupKey, newName);
-    handleCreationPartThreeCore(support, newGroup, groupKey, groupCenter, rcxTrg_.getGenomeAsInstance(), null);
+    Group newGroup = new Group(rcxSrc_.getRMan(), groupKey, newName);
+    handleCreationPartThreeCore(support, newGroup, groupKey, groupCenter, rcxTrg_.getCurrentGenomeAsInstance(), null);
     return (newGroup);
   }
   
@@ -232,13 +239,13 @@ public class GroupCreationSupport {
     int numRet = retval.size();
     for (int i = 0; i < numRet; i++) {
       GroupDuplicationInfo gdi = retval.get(i);
-      String groupKey = ((DBGenome)rcxSrc_.getGenomeSource().getGenome()).getNextKey();
-      Group newGroup = new Group(rcxSrc_.rMan, groupKey, gdi.groupName);      
+      String groupKey = ((DBGenome)rcxSrc_.getGenomeSource().getRootDBGenome()).getNextKey();
+      Group newGroup = new Group(rcxSrc_.getRMan(), groupKey, gdi.groupName);      
       gdi.bifg.myOffset = commonOffset.clone();
       Point2D myCenter = commonOffset.add(gdi.bifg.defaultCenter);
       UiUtil.forceToGrid(myCenter, UiUtil.GRID_SIZE);
-      handleCreationPartThreeCore(support, newGroup, groupKey, myCenter, rcxTrg_.getGenomeAsInstance(), gdi);
-      gdi.setGroupAndTargetGroupDuplicationInfo(newGroup, rcxTrg_.getGenomeID());
+      handleCreationPartThreeCore(support, newGroup, groupKey, myCenter, rcxTrg_.getCurrentGenomeAsInstance(), gdi);
+      gdi.setGroupAndTargetGroupDuplicationInfo(newGroup, rcxTrg_.getCurrentGenomeID());
     }
     return (retval);
   }  
@@ -254,27 +261,29 @@ public class GroupCreationSupport {
     String messageKey = (forAssignment_) ? "createGroup.AssignMsg" : "createGroup.FreeMsg";
     String titleKey = (forAssignment_) ? "createGroup.AssignTitle" : "createGroup.FreeTitle";
     
-    if (rcxTrg_.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcxTrg_.getCurrentGenomeAsInstance().getVfgParent() != null) {
       throw new IllegalStateException();
     }
     
+    ResourceManager rMan = rcxSrc_.getRMan();
+    
     while (true) {
-      newName = (String)JOptionPane.showInputDialog(appState_.getTopFrame(), 
-                                                    rcxSrc_.rMan.getString(messageKey), 
-                                                    rcxSrc_.rMan.getString(titleKey),
+      newName = (String)JOptionPane.showInputDialog(uics_.getTopFrame(), 
+                                                    rMan.getString(messageKey), 
+                                                    rMan.getString(titleKey),
                                                     JOptionPane.QUESTION_MESSAGE, 
-                                                    null, null, rcxTrg_.getGenomeAsInstance().getUniqueGroupName()); 
+                                                    null, null, rcxTrg_.getCurrentGenomeAsInstance().getUniqueGroupName()); 
       if (newName == null) {
         return (null);
       }
       
       newName = newName.trim();
       
-      if (rcxTrg_.getGenomeAsInstance().groupNameInUse(newName)) {
-        String desc = MessageFormat.format(rcxSrc_.rMan.getString("createGroup.NameInUse"), 
+      if (rcxTrg_.getCurrentGenomeAsInstance().groupNameInUse(newName)) {
+        String desc = MessageFormat.format(rMan.getString("createGroup.NameInUse"), 
                                            new Object[] {newName});
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), desc, 
-                                      rcxSrc_.rMan.getString("createGroup.CreationErrorTitle"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
+                                      rMan.getString("createGroup.CreationErrorTitle"),
                                       JOptionPane.ERROR_MESSAGE);         
       } else {
         break;
@@ -292,18 +301,18 @@ public class GroupCreationSupport {
   
   public List<GroupDuplicationInfo> handleMultiGroupCopyCreationPartOne() {    
     
-    if (rcxSrc_.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcxSrc_.getCurrentGenomeAsInstance().getVfgParent() != null) {
       throw new IllegalStateException();
     }
     
-    MultiGroupDuplicationDialog mgdd = new MultiGroupDuplicationDialog(appState_, rcxSrc_.getGenomeID(), allGroupIDs_);
+    MultiGroupDuplicationDialog mgdd = new MultiGroupDuplicationDialog(uics_, allGroupIDs_, rcxSrc_);
     mgdd.setVisible(true);
     if (!mgdd.haveResult()) {
       return (null);
     }
     
     if (mgdd.doModelChange()) {
-      rcxTrg_ = new DataAccessContext(rcxSrc_, mgdd.getTargetModel()); 
+      rcxTrg_ = new StaticDataAccessContext(rcxSrc_, mgdd.getTargetModel()); 
     } else {
       rcxTrg_ = rcxSrc_;
     }
@@ -313,24 +322,24 @@ public class GroupCreationSupport {
     Iterator<String> cgit = chosenGroups.iterator();
     while (cgit.hasNext()) {
       String dupID = cgit.next();
-      Group toCopy = rcxSrc_.getGenomeAsInstance().getGroup(dupID);
+      Group toCopy = rcxSrc_.getCurrentGenomeAsInstance().getGroup(dupID);
       int lastCopyNum = 0;
       String copyName;
       while (true) {
-        String origName = toCopy.getInheritedTrueName(rcxSrc_.getGenomeAsInstance());
-        String testName = UiUtil.createCopyName(rcxSrc_.rMan, origName, lastCopyNum++);
-        if (!rcxSrc_.getGenomeAsInstance().groupNameInUse(testName)) {
+        String origName = toCopy.getInheritedTrueName(rcxSrc_.getCurrentGenomeAsInstance());
+        String testName = UiUtil.createCopyName(rcxSrc_.getRMan(), origName, lastCopyNum++);
+        if (!rcxSrc_.getCurrentGenomeAsInstance().groupNameInUse(testName)) {
           copyName = testName;
           break;
         }
       }    
       
       GroupDuplicationInfo gdi = new GroupDuplicationInfo(toCopy, copyName);
-      getNodesToDuplicate(rcxSrc_.getGenomeAsInstance(), toCopy, gdi.genesToCopy, gdi.nodesToCopy);
+      getNodesToDuplicate(rcxSrc_.getCurrentGenomeAsInstance(), toCopy, gdi.genesToCopy, gdi.nodesToCopy);
       
       // Copy the colors across:
     
-      GroupProperties srcProp = rcxSrc_.getLayout().getGroupProperties(dupID);
+      GroupProperties srcProp = rcxSrc_.getCurrentLayout().getGroupProperties(dupID);
       gdi.activeColor = srcProp.getColorTag(true);
       gdi.inactiveColor = srcProp.getColorTag(false);
       
@@ -338,7 +347,7 @@ public class GroupCreationSupport {
       // Get the list of all the links in the source region that we are going to copy
       //
 
-      getLinksToDuplicate(rcxSrc_.getGenomeAsInstance(), toCopy, gdi.internalLinks, gdi.inboundLinks, gdi.outboundLinks, dupID);        
+      getLinksToDuplicate(rcxSrc_.getCurrentGenomeAsInstance(), gdi.internalLinks, gdi.inboundLinks, gdi.outboundLinks, dupID);        
       BoundInfoForGroup bifg = getApproxBounds(gdi.genesToCopy, gdi.nodesToCopy, rcxSrc_, dupID);
       gdi.setBoundInfoForGroup(bifg);
       if (approxBounds_ == null) {
@@ -363,29 +372,29 @@ public class GroupCreationSupport {
   
   public GroupDuplicationInfo handleSingleGroupCopyCreationPartOne() {    
 
-    if (rcxSrc_.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcxSrc_.getCurrentGenomeAsInstance().getVfgParent() != null) {
       throw new IllegalStateException();
     }
      
-    String origName = rcxSrc_.getGenomeAsInstance().getGroup(srcGroupID_).getInheritedTrueName(rcxSrc_.getGenomeAsInstance());
+    String origName = rcxSrc_.getCurrentGenomeAsInstance().getGroup(srcGroupID_).getInheritedTrueName(rcxSrc_.getCurrentGenomeAsInstance());
     String defaultName = null;
     int lastCopyNum = 0;
     while (true) {
-      String testName = UiUtil.createCopyName(rcxSrc_.rMan, origName, lastCopyNum++);
-      if (!rcxSrc_.getGenomeAsInstance().groupNameInUse(testName)) {
+      String testName = UiUtil.createCopyName(rcxSrc_.getRMan(), origName, lastCopyNum++);
+      if (!rcxSrc_.getCurrentGenomeAsInstance().groupNameInUse(testName)) {
         defaultName = testName;
         break;
       }
     }
     
-    GroupDuplicationDialog gdd = new GroupDuplicationDialog(appState_, rcxSrc_.getGenomeID(), srcGroupID_, defaultName);
+    GroupDuplicationDialog gdd = new GroupDuplicationDialog(uics_, rcxSrc_,  defaultName);
     gdd.setVisible(true);
     if (!gdd.haveResult()) {
       return (null);
     }
     
     if (gdd.doModelChange()) {
-      rcxTrg_ = new DataAccessContext(rcxSrc_, gdd.getTargetModel()); 
+      rcxTrg_ = new StaticDataAccessContext(rcxSrc_, gdd.getTargetModel()); 
     } else {
       rcxTrg_ = rcxSrc_;
     }
@@ -394,13 +403,13 @@ public class GroupCreationSupport {
     // Get the bounds figured out for the new single group:
     //
  
-    Group toCopy = rcxSrc_.getGenomeAsInstance().getGroup(srcGroupID_);
+    Group toCopy = rcxSrc_.getCurrentGenomeAsInstance().getGroup(srcGroupID_);
     GroupDuplicationInfo gdi = new GroupDuplicationInfo(toCopy, gdd.getName());
-    getNodesToDuplicate(rcxSrc_.getGenomeAsInstance(), toCopy, gdi.genesToCopy, gdi.nodesToCopy);
+    getNodesToDuplicate(rcxSrc_.getCurrentGenomeAsInstance(), toCopy, gdi.genesToCopy, gdi.nodesToCopy);
     
     // Copy the colors across:
     
-    GroupProperties srcProp = rcxSrc_.getLayout().getGroupProperties(srcGroupID_);
+    GroupProperties srcProp = rcxSrc_.getCurrentLayout().getGroupProperties(srcGroupID_);
     gdi.activeColor = srcProp.getColorTag(true);
     gdi.inactiveColor = srcProp.getColorTag(false);
        
@@ -408,7 +417,7 @@ public class GroupCreationSupport {
     // Get the list of all the links in the source region that we are going to copy
     //
     
-    getLinksToDuplicate(rcxSrc_.getGenomeAsInstance(), toCopy, gdi.internalLinks, gdi.inboundLinks, gdi.outboundLinks, srcGroupID_);        
+    getLinksToDuplicate(rcxSrc_.getCurrentGenomeAsInstance(), gdi.internalLinks, gdi.inboundLinks, gdi.outboundLinks, srcGroupID_);        
     BoundInfoForGroup bifg = getApproxBounds(gdi.genesToCopy, gdi.nodesToCopy, rcxSrc_, srcGroupID_);
     gdi.setBoundInfoForGroup(bifg);
     defaultCenter_ = bifg.defaultCenter;
@@ -439,8 +448,8 @@ public class GroupCreationSupport {
     //
 
     Point2D groupCenter = null;
-    if (rcxTrg_.getGenomeAsInstance().hasAGroup() || (defaultCenter_ == null)) {
-      GroupPositionDialog gpd = new GroupPositionDialog(appState_, rcxTrg_, approxBounds_, directCenter_);     
+    if (rcxTrg_.getCurrentGenomeAsInstance().hasAGroup() || (defaultCenter_ == null)) {
+      GroupPositionDialog gpd = new GroupPositionDialog(uics_, rcxTrg_, approxBounds_, directCenter_);     
       gpd.setVisible(true);
       groupCenter = gpd.getGroupLocation();
       if (groupCenter == null) {
@@ -468,33 +477,33 @@ public class GroupCreationSupport {
     
     GenomeChange gc = gi.addGroupWithExistingLabel(newGroup); 
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxTrg_, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxTrg_, gc);
       support.addEdit(gcc);
     }
     
     int groupCount = gi.groupCount();
-    int order = rcxTrg_.getLayout().getTopGroupOrder() + 1;
+    int order = rcxTrg_.getCurrentLayout().getTopGroupOrder() + 1;
     
     GroupProperties newProps;
     if (gdi != null) {
       newProps = new GroupProperties(groupKey, groupCenter, order, gdi.activeColor, gdi.inactiveColor);
     } else {
-      newProps = new GroupProperties(groupCount, groupKey, rcxTrg_.getLayout(), groupCenter, order, rcxTrg_.cRes);
+      newProps = new GroupProperties(groupCount, groupKey, groupCenter, order, rcxTrg_.getColorResolver());
     }
     
-    Layout.PropChange lpc = rcxTrg_.getLayout().setGroupProperties(groupKey, newProps);
+    Layout.PropChange lpc = rcxTrg_.getCurrentLayout().setGroupProperties(groupKey, newProps);
     if (lpc != null) {
-      PropChangeCmd pcc = new PropChangeCmd(appState_, rcxTrg_, new Layout.PropChange[] {lpc});
+      PropChangeCmd pcc = new PropChangeCmd(rcxTrg_, new Layout.PropChange[] {lpc});
       support.addEdit(pcc);
     }
         
-    GroupSettingChange gsc = rcxTrg_.gsm.setGroupVisibility(gi.getID(), groupKey, GroupSettings.Setting.ACTIVE);  
+    GroupSettingChange gsc = rcxTrg_.getGSM().setGroupVisibility(gi.getID(), groupKey, GroupSettings.Setting.ACTIVE);  
     if (gsc != null) {
-      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_, rcxTrg_, gsc);
+      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(rcxTrg_, gsc);
       support.addEdit(gscc);
     }
     
-    support.addEvent(new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
+    support.addEvent(new ModelChangeEvent(rcxTrg_.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
     return;
   }  
   
@@ -503,7 +512,7 @@ public class GroupCreationSupport {
   ** Add a new group to a VFN model by inheritance.
   */  
  
-  public boolean addNewGroupToSubsetInstance(DataAccessContext rcx,
+  public boolean addNewGroupToSubsetInstance(StaticDataAccessContext rcx,
                                              Group useGroup,
                                              UndoSupport support) {
     //
@@ -511,23 +520,23 @@ public class GroupCreationSupport {
     //
     boolean doLocal = false;                                               
     if (support == null) {
-      support = new UndoSupport(appState_, "undo.addGroup");
+      support = uFac_.provideUndoSupport("undo.addGroup", rcx);
       doLocal = true;
     }
  
-    if (!(rcx.getGenome() instanceof GenomeInstance)) {   
+    if (!rcx.currentGenomeIsAnInstance()) {   
       throw new IllegalArgumentException();    
     }
     
-    GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
     if (parent == null) {
       throw new IllegalArgumentException();
     }
 
-    Group newGroup = new Group(rcx.rMan, useGroup.getID(), false, null);
-    GenomeChange gc = rcx.getGenomeAsInstance().addGroupWithExistingLabel(newGroup);
+    Group newGroup = new Group(rcx.getRMan(), useGroup.getID(), false, null);
+    GenomeChange gc = rcx.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
       support.addEdit(gcc);
     }
     
@@ -543,10 +552,10 @@ public class GroupCreationSupport {
     }
  
     // This is done dynamically for proxies
-    if (!(rcx.getGenome() instanceof DynamicGenomeInstance)) {      
-      GroupSettingChange gsc = rcx.gsm.setGroupVisibility(rcx.getGenomeID(), newGroup.getID(), GroupSettings.Setting.ACTIVE);  
+    if (!rcx.currentGenomeIsADynamicInstance()) {      
+      GroupSettingChange gsc = rcx.getGSM().setGroupVisibility(rcx.getCurrentGenomeID(), newGroup.getID(), GroupSettings.Setting.ACTIVE);  
       if (gsc != null) {
-        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_,rcx,  gsc);
+        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(rcx,  gsc);
         support.addEdit(gscc);
       }
     }
@@ -562,7 +571,7 @@ public class GroupCreationSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteIllegalExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState_, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         lostExtra = true;
       }
     }
@@ -571,17 +580,17 @@ public class GroupCreationSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteOrphanedExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState_, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         lostExtra = true;
       }
     }
     
     // loss of extra nodes may create empty modules!
     if (lostExtra) {
-      RemoveNode.proxyPostExtraNodeDeletionSupport(appState_, rcx, support);
+      RemoveNode.proxyPostExtraNodeDeletionSupport(uics_, rcx, support);
     }
     
-    support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE)); 
+    support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE)); 
   
     if (doLocal) {
       support.finish();
@@ -594,7 +603,7 @@ public class GroupCreationSupport {
   ** Make a subgroup the active group in a subset instance
   */  
  
-  public boolean makeSubGroupActive(DataAccessContext rcx,
+  public boolean makeSubGroupActive(StaticDataAccessContext rcx,
                                     String parentKey, 
                                     String activeSubset,
                                     UndoSupport support) {
@@ -605,19 +614,19 @@ public class GroupCreationSupport {
     boolean doLocal = false;
     if (support == null) {
       doLocal = true;
-      support = new UndoSupport(appState_, "undo.makeSubGroupActive");
+      support = uFac_.provideUndoSupport("undo.makeSubGroupActive", rcx);
     }
 
-    if (!(rcx.getGenome() instanceof GenomeInstance)) {   
+    if (!rcx.currentGenomeIsAnInstance()) {   
       throw new IllegalArgumentException();    
     }
     
-    GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
     if (parent == null) {
       throw new IllegalArgumentException();
     }
     
-    if (activateSubGroupDetails(rcx, rcx.getGenomeAsInstance(), parentKey, activeSubset, support)) {
+    if (activateSubGroupDetails(rcx, rcx.getCurrentGenomeAsInstance(), parentKey, activeSubset, support)) {
  
       //
       // Find child models, and if they include the parent group, we need to add the
@@ -625,14 +634,14 @@ public class GroupCreationSupport {
       //
       
       String pxid = null;
-      if (rcx.getGenomeAsInstance() instanceof DynamicGenomeInstance) {
-        pxid = ((DynamicGenomeInstance)rcx.getGenomeAsInstance()).getProxyID();
+      if (rcx.currentGenomeIsADynamicInstance()) {
+        pxid = rcx.getCurrentGenomeAsDynamicInstance().getProxyID();
       }
       
       Iterator<DynamicInstanceProxy> dpit = rcx.getGenomeSource().getDynamicProxyIterator();
       while (dpit.hasNext()) {
         DynamicInstanceProxy dip = dpit.next();
-        if ((pxid != null) ? (!pxid.equals(dip.getID()) && dip.proxyIsAncestor(pxid)) : dip.instanceIsAncestor(rcx.getGenomeAsInstance())) {
+        if ((pxid != null) ? (!pxid.equals(dip.getID()) && dip.proxyIsAncestor(pxid)) : dip.instanceIsAncestor(rcx.getCurrentGenomeAsInstance())) {
           // Kinda a hack, going through a proxied dynamic instance!  FIX ME!
           DynamicGenomeInstance kid = dip.getAnInstance();
           String inherit = Group.buildInheritedID(parentKey, kid.getGeneration());
@@ -645,7 +654,7 @@ public class GroupCreationSupport {
       Iterator<GenomeInstance> dit = rcx.getGenomeSource().getInstanceIterator();
       while (dit.hasNext()) {
         GenomeInstance kid = dit.next();
-        if ((kid != rcx.getGenomeAsInstance()) && rcx.getGenomeAsInstance().isAncestor(kid)) {        
+        if ((kid != rcx.getCurrentGenomeAsInstance()) && rcx.getCurrentGenomeAsInstance().isAncestor(kid)) {        
           String inherit = Group.buildInheritedID(parentKey, kid.getGeneration());
           if (kid.getGroup(inherit) != null) {
             String activeInherit = Group.buildInheritedID(activeSubset, kid.getGeneration());
@@ -656,12 +665,12 @@ public class GroupCreationSupport {
     } 
       
       // This is done dynamically for proxies
-    if (!(rcx.getGenomeAsInstance() instanceof DynamicGenomeInstance)) {
-      Group parentGroup = rcx.getGenomeAsInstance().getGroup(parentKey);
+    if (!rcx.currentGenomeIsADynamicInstance()) {
+      Group parentGroup = rcx.getCurrentGenomeAsInstance().getGroup(parentKey);
       String subset = parentGroup.getActiveSubset();
-      GroupSettingChange gsc = rcx.gsm.setGroupVisibility(rcx.getGenomeID(), subset, GroupSettings.Setting.ACTIVE);  
+      GroupSettingChange gsc = rcx.getGSM().setGroupVisibility(rcx.getCurrentGenomeID(), subset, GroupSettings.Setting.ACTIVE);  
       if (gsc != null) {
-        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_, rcx, gsc);
+        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(rcx, gsc);
         support.addEdit(gscc);
       }
     }
@@ -677,7 +686,7 @@ public class GroupCreationSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteIllegalExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState_, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         checkForEmpty = true;
       }
     }
@@ -686,7 +695,7 @@ public class GroupCreationSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteOrphanedExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState_, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         checkForEmpty = true;
       }
     }    
@@ -698,7 +707,7 @@ public class GroupCreationSupport {
       NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers(kid);
       if (nmca != null) {
         for (int i = 0; i < nmca.length; i++) {
-          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, rcx, nmca[i]);
+          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmca[i]);
           support.addEdit(gcc);
           checkForEmpty = true;
         }
@@ -707,7 +716,7 @@ public class GroupCreationSupport {
     
     // loss of extra nodes may create empty modules!
     if (checkForEmpty) {
-      RemoveNode.proxyPostExtraNodeDeletionSupport(appState_, rcx, support);
+      RemoveNode.proxyPostExtraNodeDeletionSupport(uics_, rcx, support);
     }
        
     if (doLocal) {
@@ -721,7 +730,7 @@ public class GroupCreationSupport {
   ** INclude a subgroup in a subset instance
   */  
  
-  private boolean activateSubGroupDetails(DataAccessContext rcx, GenomeInstance gi,
+  private boolean activateSubGroupDetails(StaticDataAccessContext rcx, GenomeInstance gi,
                                           String parentKey, 
                                           String activeSubset,
                                           UndoSupport support) {
@@ -730,14 +739,14 @@ public class GroupCreationSupport {
     if (gc != null) {
       for (int i = 0; i < gc.length; i++) {
         if (gc[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcx, gc[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc[i]);
           support.addEdit(gcc);
           retval = true;
         }              
       }
     }
     if (retval) {
-      ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);
     }
     return (retval);
@@ -745,32 +754,30 @@ public class GroupCreationSupport {
   
   /***************************************************************************
   **
-  ** INclude a subgroup in a subset instance
+  ** Include a subgroup in a subset instance
   */  
  
-  public boolean includeSubGroup(DataAccessContext rcx,
-                                 String parentKey, 
-                                 String newSubgroup) {
+  public boolean includeSubGroup(StaticDataAccessContext rcx, String newSubgroup) {
     //
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.includeSubGroup"); 
+    UndoSupport support = uFac_.provideUndoSupport("undo.includeSubGroup", rcx); 
     
-    if (!(rcx.getGenome() instanceof GenomeInstance)) {   
+    if (!rcx.currentGenomeIsAnInstance()) {   
       throw new IllegalArgumentException();    
     }
     
-    GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
     if (parent == null) {
       throw new IllegalArgumentException();
     }
     
-    Group newGroup = new Group(rcx.rMan, newSubgroup, false, null);
-    GenomeChange gc = rcx.getGenomeAsInstance().addGroupWithExistingLabel(newGroup);
+    Group newGroup = new Group(rcx.getRMan(), newSubgroup, false, null);
+    GenomeChange gc = rcx.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup);
     if (gc != null) {
-      support.addEdit(new GenomeChangeCmd(appState_, rcx, gc));
-      support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEdit(new GenomeChangeCmd(rcx, gc));
+      support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
     }     
     
     support.finish();        
@@ -805,7 +812,7 @@ public class GroupCreationSupport {
   ** Get the list of all the links in the source region that we are going to copy
   */  
  
-  private void getLinksToDuplicate(GenomeInstance srcGI, Group toCopy,
+  private void getLinksToDuplicate(GenomeInstance srcGI,
                                    ArrayList<String> internalLinks,           
                                    ArrayList<String> inboundLinks, 
                                    ArrayList<String> outboundLinks, String regionID) {
@@ -837,17 +844,17 @@ public class GroupCreationSupport {
  
   private BoundInfoForGroup getApproxBounds(ArrayList<Node> genesToCopy, 
                                             ArrayList<Node> nodesToCopy,
-                                            DataAccessContext rcx,
+                                            StaticDataAccessContext rcx,
                                             String regionID) {
   
     Iterator<Node> git = genesToCopy.iterator();
     Iterator<Node> nit = nodesToCopy.iterator();
-    Rectangle approxBounds = rcx.getLayout().getApproxBounds(nit, git, rcx);
+    Rectangle approxBounds = rcx.getCurrentLayout().getApproxBounds(nit, git, rcx);
     git = genesToCopy.iterator();
     nit = nodesToCopy.iterator();      
-    Point2D defaultCenter = rcx.getLayout().getApproxCenter(nit, git);
+    Point2D defaultCenter = rcx.getCurrentLayout().getApproxCenter(nit, git);
     if (defaultCenter == null) {  // i.e. no nodes or genes
-      GroupProperties gp = rcx.getLayout().getGroupProperties(regionID);
+      GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(regionID);
       defaultCenter = gp.getLabelLocation();
       approxBounds.setLocation((int)(approxBounds.getX() + defaultCenter.getX()),
                                (int)(approxBounds.getY() + defaultCenter.getY()));

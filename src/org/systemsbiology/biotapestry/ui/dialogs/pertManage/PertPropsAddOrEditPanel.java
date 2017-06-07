@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertDictionary;
@@ -110,10 +110,10 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertPropsAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 6);
+  public PertPropsAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
+    super(uics, dacx, parent, pet, myKey, 6);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
   
     //
     // Edit panel
@@ -140,8 +140,8 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
     editPanel.add(nvLabel, gbc_);
     
     // Empty values work for the moment:
-    nvptpEdit_ = new NameValuePairTablePanel(appState_, parent_, new NameValuePairList(), 
-                                             new HashSet(), new HashSet(), new HashMap(), true);
+    nvptpEdit_ = new NameValuePairTablePanel(uics_, dacx_, parent_, new NameValuePairList(), 
+                                             new HashSet<String>(), new HashSet<String>(), new HashMap(), true);
     nvHolderEdit_ = new JPanel();
     nvHolderEdit_.setLayout(new GridLayout(1, 1));
     nvHolderEdit_.setMinimumSize(new Dimension(200, 100));
@@ -178,8 +178,8 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
     mergePanel.add(nvLabelToo, gbc_);
     
     // Empty values work for the moment:
-    nvptpMerge_ = new NameValuePairTablePanel(appState_, parent_, new NameValuePairList(), 
-                                              new HashSet(), new HashSet(), new HashMap(), true);
+    nvptpMerge_ = new NameValuePairTablePanel(uics_, dacx_, parent_, new NameValuePairList(), 
+                                              new HashSet<String>(), new HashSet<String>(), new HashMap(), true);
     nvHolderMerge_ = new JPanel();
     nvHolderMerge_.setLayout(new GridLayout(1, 1));
     nvHolderMerge_.setMinimumSize(new Dimension(200, 100));
@@ -283,7 +283,7 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
     NameValuePairList currList = new NameValuePairList();
     currList.addNameValuePair(new NameValuePair("Iam", "bogus"));
     
-    NameValuePairTablePanel nvpNew = new NameValuePairTablePanel(appState_, parent_, currList, allNames, allVals, nvPairs, true);
+    NameValuePairTablePanel nvpNew = new NameValuePairTablePanel(uics_, dacx_, parent_, currList, allNames, allVals, nvPairs, true);
     JPanel useHolder;
     if (mode_ == MERGE_MODE) {
       nvptpMerge_ = nvpNew;
@@ -332,7 +332,7 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
   */
   
   protected void updateOptions() {   
-    Vector<EnumChoiceContent<PertDictionary.PertLinkRelation>> vec = PertDictionary.PertLinkRelation.getLinkRelationshipOptions(appState_);    
+    Vector<EnumChoiceContent<PertDictionary.PertLinkRelation>> vec = PertDictionary.PertLinkRelation.getLinkRelationshipOptions(dacx_);    
     if (mode_ == MERGE_MODE) {
       UiUtil.replaceComboItems(typeCombo_, new Vector(nameOptions_));
       UiUtil.replaceComboItems(abbrevCombo_, new Vector(abbrevOptions_));
@@ -559,7 +559,7 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
         legFieldEdit_.setText((useLeg == null) ? "" : useLeg);       
         legLabelEdit_.setEnabled(useLeg != null);
         legFieldEdit_.setEditable(useLeg != null);
-        relationComboEdit_.setSelectedItem(lsr.generateCombo(appState_));
+        relationComboEdit_.setSelectedItem(lsr.generateCombo(dacx_));
         cardLayout_.show(myCard_, EDIT_CARD);
         break;
       case MERGE_MODE:
@@ -573,7 +573,7 @@ public class PertPropsAddOrEditPanel extends AnimatedSplitEditPanel {
         boolean legEnable = (altAbbrevOptions_.size() > 1) || (legacy != null);
         legLabelMerge_.setEnabled(legEnable);
         legCombo_.setEnabled(legEnable);
-        relationComboMerge_.setSelectedItem(lsr.generateCombo(appState_));
+        relationComboMerge_.setSelectedItem(lsr.generateCombo(dacx_));
         cardLayout_.show(myCard_, MERGE_CARD);
         break;
       default:

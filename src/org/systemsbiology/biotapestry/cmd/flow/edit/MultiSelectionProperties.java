@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,11 +21,11 @@ package org.systemsbiology.biotapestry.cmd.flow.edit;
 
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.MultiSelectionPropertiesDialog;
 
 /****************************************************************************
@@ -52,8 +52,7 @@ public class MultiSelectionProperties extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public MultiSelectionProperties(BTState appState) {
-    super(appState);   
+  public MultiSelectionProperties() {   
     name = "multiSel.editMultiSelections";
     desc = "multiSel.editMultiSelections";
     mnem =  "multiSel.editMultiSelectionsMnem";
@@ -72,8 +71,8 @@ public class MultiSelectionProperties extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
 
   /***************************************************************************
@@ -87,10 +86,11 @@ public class MultiSelectionProperties extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -109,29 +109,31 @@ public class MultiSelectionProperties extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.MultiSelectCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.MultiSelectCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
     private Set<String> genes_;
     private Set<String> nodes_;
     private Set<String> links_;
-    private DataAccessContext dacx_;
-        
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
-    }
+    } 
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepDoIt";
+    } 
     
     /***************************************************************************
     **
@@ -152,7 +154,7 @@ public class MultiSelectionProperties extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepDoIt() { 
       MultiSelectionPropertiesDialog mspd = 
-          new MultiSelectionPropertiesDialog(appState_, dacx_, appState_.getSUPanel(), genes_, nodes_, links_);
+          new MultiSelectionPropertiesDialog(uics_, dacx_, hBld_, genes_, nodes_, links_, uFac_);
        mspd.setVisible(true);     
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }

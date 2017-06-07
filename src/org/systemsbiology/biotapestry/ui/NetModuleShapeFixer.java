@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -17,7 +17,6 @@
 **    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-
 package org.systemsbiology.biotapestry.ui;
 
 import java.awt.Rectangle;
@@ -32,8 +31,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.List;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.genome.NetModuleMember;
@@ -43,7 +42,6 @@ import org.systemsbiology.biotapestry.ui.freerender.NodeBounder;
 import org.systemsbiology.biotapestry.util.AffineCombination;
 import org.systemsbiology.biotapestry.util.RectDefinedByRects;
 import org.systemsbiology.biotapestry.util.Vector2D;
-
 
 /****************************************************************************
 **
@@ -58,8 +56,6 @@ public class NetModuleShapeFixer {
   // PRIVATE VARIABLES
   //
   ////////////////////////////////////////////////////////////////////////////    
-  
-//  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -88,12 +84,12 @@ public class NetModuleShapeFixer {
   ** 
   */  
   
-  public ModuleRelocateInfo getModuleRelocInfo(NetModule.FullModuleKey fullKey, Point2D center, DataAccessContext irx) {
+  public ModuleRelocateInfo getModuleRelocInfo(NetModule.FullModuleKey fullKey, Point2D center, StaticDataAccessContext irx) {
 
     NetOverlayOwner noo = irx.getGenomeSource().getOverlayOwnerWithOwnerKey(fullKey.ownerKey);
     NetworkOverlay no = noo.getNetworkOverlay(fullKey.ovrKey);
     NetModule nmod = no.getModule(fullKey.modKey);   
-    NetOverlayProperties nop = irx.getLayout().getNetOverlayProperties(fullKey.ovrKey);
+    NetOverlayProperties nop = irx.getCurrentLayout().getNetOverlayProperties(fullKey.ovrKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(fullKey.modKey);
     
     Rectangle2D nameBounds = nmp.getRenderer().getNameBounds(nmp, nmod, irx);    
@@ -110,7 +106,7 @@ public class NetModuleShapeFixer {
       NetModuleMember nmm = memit.next();
       String nodeID = nmm.getID();
       nodeSet.add(nodeID);
-      NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
       Point2D nodeLoc = np.getLocation();
       mri.memberLocs.put(nodeID, (Point2D)nodeLoc.clone());
     }
@@ -271,15 +267,15 @@ public class NetModuleShapeFixer {
   */  
   
   public NetModuleProperties shiftModuleShapesPerParams(NetModule.FullModuleKey fullKey, ModuleRelocateInfo mri, Point2D center,
-                                                        DataAccessContext irx) {
+                                                        StaticDataAccessContext irx) {
 
     //
     // Define the old shapes in terms of the surviving node members:
     //
 
-    Set<String> nodeSet = parameterizeOldShapes(irx.getGenomeSource(), mri, irx.getLayout(), fullKey);
+    Set<String> nodeSet = parameterizeOldShapes(irx.getGenomeSource(), mri, irx.getCurrentLayout(), fullKey);
         
-    NetOverlayProperties nop = irx.getLayout().getNetOverlayProperties(fullKey.ovrKey);
+    NetOverlayProperties nop = irx.getCurrentLayout().getNetOverlayProperties(fullKey.ovrKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(fullKey.modKey);
 
     //
@@ -325,7 +321,7 @@ public class NetModuleShapeFixer {
     Point2D newNameLoc = null;
     int numRes = mri.resolutionList.size();
     for (int i = 0; i < numRes; i++) {
-      RectResolution rectRes = (RectResolution)mri.resolutionList.get(i); 
+      RectResolution rectRes = mri.resolutionList.get(i); 
       boolean isName = ((mri.nameTag != null) && rectRes.tag.equals(mri.nameTag));  
       switch (rectRes.type) {
         case RectResolution.BY_MEMBERS:
@@ -492,31 +488,33 @@ public class NetModuleShapeFixer {
   ** 
   */
   
-  private void fillInUndefined(Map unclaimedSlices, Map deltas, Map fixupMap) {
-    Iterator uskit = unclaimedSlices.keySet().iterator();
+  private void fillInUndefined(Map<NetModule.FullModuleKey, Layout.DicedModuleInfo> unclaimedSlices, 
+                               Map<Object, Vector2D> deltas, 
+                               Map<RectDefinedByRects.TaggedRect, Rectangle2D> fixupMap) {
+    Iterator<NetModule.FullModuleKey> uskit = unclaimedSlices.keySet().iterator();
     while (uskit.hasNext()) {
-      NetModule.FullModuleKey fullKey = (NetModule.FullModuleKey)uskit.next();
-      Layout.DicedModuleInfo dmi = (Layout.DicedModuleInfo)unclaimedSlices.get(fullKey);
+      NetModule.FullModuleKey fullKey = uskit.next();
+      Layout.DicedModuleInfo dmi = unclaimedSlices.get(fullKey);
       int numRes = dmi.dicedRectByRects.size();          
       for (int i = 0; i < numRes; i++) {
-        RectResolution rectRes = (RectResolution)dmi.dicedRectByRects.get(i); 
+        RectResolution rectRes = dmi.dicedRectByRects.get(i); 
         if (rectRes.type == RectResolution.BY_DEFINED_RECTS) {  
-          Set needKeys = rectRes.rdbr.definedByKeys();
-          Iterator nkit = needKeys.iterator();
+          Set<RectDefinedByRects.TaggedRect> needKeys = rectRes.rdbr.definedByKeys();
+          Iterator<RectDefinedByRects.TaggedRect> nkit = needKeys.iterator();
           while (nkit.hasNext()) {
-            RectDefinedByRects.TaggedRect tr = (RectDefinedByRects.TaggedRect)nkit.next();
+            RectDefinedByRects.TaggedRect tr = nkit.next();
             if (fixupMap.get(tr) != null) {  // have the definition
               continue;
             }
             GroupTRKey gkey = (GroupTRKey)tr.tag;
             String grpID = gkey.getGroupID(); 
             if (grpID != null) {
-              Vector2D delta = (Vector2D)deltas.get(grpID);
+              Vector2D delta = deltas.get(grpID);
               Rectangle2D useShape = (Rectangle2D)tr.rect.clone();
               if (delta != null)  {
                 useShape.setRect(useShape.getX() + delta.getX(), useShape.getY() + delta.getY(), useShape.getWidth(), useShape.getHeight());             
               }
-              RectDefinedByRects.TaggedRect tr1 = (RectDefinedByRects.TaggedRect)tr.clone();
+              RectDefinedByRects.TaggedRect tr1 = tr.clone();
               fixupMap.put(tr1, useShape);
             }
           }
@@ -554,16 +552,16 @@ public class NetModuleShapeFixer {
       Iterator<String> oit = claimedSlices.keySet().iterator();
       while (oit.hasNext()) {
         String ownerGrpID = oit.next();    
-        HashMap perGroup = (HashMap)claimedSlices.get(ownerGrpID);
-        Layout.DicedModuleInfo shapesPerKey = (Layout.DicedModuleInfo)perGroup.get(fullKey);
+        Map<NetModule.FullModuleKey, Layout.DicedModuleInfo> perGroup = claimedSlices.get(ownerGrpID);
+        Layout.DicedModuleInfo shapesPerKey = perGroup.get(fullKey);
         if (shapesPerKey == null) {
           continue;
         }
         int numShape = shapesPerKey.dicedShapes.size();
         for (int i = 0; i < numShape; i++) {
-          NetModuleProperties.TaggedShape tShape = (NetModuleProperties.TaggedShape)shapesPerKey.dicedShapes.get(i);
+          NetModuleProperties.TaggedShape tShape = shapesPerKey.dicedShapes.get(i);
           Rectangle2D useShape = (Rectangle2D)tShape.shape.clone();
-          Vector2D delta = (Vector2D)deltas.get(ownerGrpID);
+          Vector2D delta = deltas.get(ownerGrpID);
           if (delta != null)  {
             useShape.setRect(useShape.getX() + delta.getX(), useShape.getY() + delta.getY(), useShape.getWidth(), useShape.getHeight());             
           }
@@ -571,11 +569,11 @@ public class NetModuleShapeFixer {
         }
       }
          
-      Layout.DicedModuleInfo dmi = (Layout.DicedModuleInfo)unclaimedSlices.get(fullKey); 
-      dmi.dicedShapes = new ArrayList();
+      Layout.DicedModuleInfo dmi = unclaimedSlices.get(fullKey); 
+      dmi.dicedShapes = new ArrayList<NetModuleProperties.TaggedShape>();
       int numRes = dmi.dicedRectByRects.size();
       for (int i = 0; i < numRes; i++) {
-        RectResolution rectRes = (RectResolution)dmi.dicedRectByRects.get(i);
+        RectResolution rectRes = dmi.dicedRectByRects.get(i);
         Rectangle2D oldShape = (Rectangle2D)rectRes.rect.clone();
         GroupTRKey gkey = (GroupTRKey)rectRes.tag;
         switch (rectRes.type) {          
@@ -647,9 +645,9 @@ public class NetModuleShapeFixer {
       String nodeID = nmm.getID();
       nodeSet.add(nodeID);
       if (modType != NetModuleProperties.MEMBERS_ONLY) {
-        mri.survivingRects.add(new RectDefinedByRects.TaggedRect((Rectangle)mri.memberRects.get(nodeID), nodeID));
+        mri.survivingRects.add(new RectDefinedByRects.TaggedRect(mri.memberRects.get(nodeID), nodeID));
       } else {
-        Point2D memberLoc = (Point2D)mri.memberLocs.get(nodeID);
+        Point2D memberLoc = mri.memberLocs.get(nodeID);
         oldPointSet.add(memberLoc);
         NodeProperties np = layout.getNodeProperties(nodeID);
         Point2D nodeLoc = np.getLocation();
@@ -688,9 +686,9 @@ public class NetModuleShapeFixer {
     // rects in contains.  Some rects may not qualify on the first pass:
     //
     
-    HashSet defined = new HashSet();
-    ArrayList definedRects = new ArrayList();
-    ArrayList remaining = new ArrayList();
+    HashSet<RectDefinedByRects.TaggedRect> defined = new HashSet<RectDefinedByRects.TaggedRect>();
+    ArrayList<Rectangle2D> definedRects = new ArrayList<Rectangle2D>();
+    ArrayList<RectDefinedByRects.TaggedRect> remaining = new ArrayList<RectDefinedByRects.TaggedRect>();
     mri.nameTag = null;
     
     // Glue the name bounds on as the last rectangle:
@@ -727,7 +725,7 @@ public class NetModuleShapeFixer {
         // Make a pass that uses defined rects (if there are any):
         if (!defined.isEmpty()) {
           while (index < remaining.size()) {
-            RectDefinedByRects.TaggedRect tr = (RectDefinedByRects.TaggedRect)remaining.get(index);
+            RectDefinedByRects.TaggedRect tr = remaining.get(index);
             RectDefinedByRects rdbr = new RectDefinedByRects(tr.rect, defined);
             boolean isName = ((mri.nameTag != null) && tr.tag.equals(mri.nameTag));  
             if (rdbr.isDefined()) {
@@ -762,7 +760,7 @@ public class NetModuleShapeFixer {
           usePoint = (Point2D)mri.center.clone();
           savePoint = usePoint;
         }         
-        RectDefinedByRects.TaggedRect tr = (RectDefinedByRects.TaggedRect)remaining.get(0);
+        RectDefinedByRects.TaggedRect tr = remaining.get(0);
         Point2D rectCenter = new Point2D.Double(tr.rect.getCenterX(), tr.rect.getCenterY());
         UiUtil.forceToGrid(rectCenter, UiUtil.GRID_SIZE);
         Vector2D centroidDelta = new Vector2D(usePoint, rectCenter);
@@ -784,13 +782,13 @@ public class NetModuleShapeFixer {
   ** 
   */  
   
-  private Point2D calcCentroidFromShapes(List definedRects) {
+  private Point2D calcCentroidFromShapes(List<Rectangle2D> definedRects) {
  
-    ArrayList pointList = new ArrayList();
+    ArrayList<Point2D> pointList = new ArrayList<Point2D>();
     int numRes = definedRects.size();
     double[] weights = new double[numRes];
     for (int i = 0; i < numRes; i++) {
-      Rectangle2D calcRect = (Rectangle2D)definedRects.get(i);
+      Rectangle2D calcRect = definedRects.get(i);
       Point2D rectCenter = new Point2D.Double(calcRect.getCenterX(), calcRect.getCenterY());
       pointList.add(rectCenter);
       weights[i] = calcRect.getHeight() * calcRect.getWidth();
@@ -819,10 +817,10 @@ public class NetModuleShapeFixer {
   
   public static class ModuleRelocateInfo {
     String modKey;
-    Map memberRects;
+    Map<String, Rectangle> memberRects;
     ArrayList<Rectangle2D> oldShapes;
     HashSet<RectDefinedByRects.TaggedRect> survivingRects;
-    ArrayList resolutionList;
+    ArrayList<RectResolution> resolutionList;
     Point2D center;
     Point2D newNameLoc;
     Rectangle2D nameBounds;
@@ -833,9 +831,9 @@ public class NetModuleShapeFixer {
       this.modKey = modKey;
       this.center = center;
       this.nameBounds = nameBounds;
-      oldShapes = new ArrayList();
-      resolutionList = new ArrayList();
-      survivingRects = new HashSet();
+      oldShapes = new ArrayList<Rectangle2D>();
+      resolutionList = new ArrayList<RectResolution>();
+      survivingRects = new HashSet<RectDefinedByRects.TaggedRect>();
       memberLocs = new HashMap<String, Point2D>();
     }
   }   

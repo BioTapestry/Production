@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -100,11 +100,11 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   ** web application.
   */
   public void setGroupBounds(BoundShapeContainer group, GenomeItem item, DataAccessContext rcx) {
-  	if (!rcx.forWeb) {
+  	if (!rcx.isForWeb()) {
   		return;
   	}
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
 
     // TODO getX was used here originally instead of getMinX
@@ -127,7 +127,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   
   public Intersection intersects(GenomeItem item, Point2D pt, DataAccessContext rcx, Object miscInfo) {
                               
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
     double width = bounds.getWidth();
@@ -157,7 +157,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   */
 
   public Intersection intersects(GenomeItem item, Rectangle rect, boolean countPartial, DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
     double width = bounds.getWidth();
@@ -201,7 +201,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   public Vector2D getLandingPadOffset(int padNum, GenomeItem item, int sign, 
                                       DataAccessContext icx) {
     
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     Node theBox = (Node)item;
     int totalPads = theBox.getPadCount();  
@@ -245,6 +245,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   ** Get tweaks for  pads
   */
   
+  @SuppressWarnings("unused")
   protected double padTweak(int sign) {
     return (0.0);
   }
@@ -255,7 +256,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   */
   
   public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, 
-                                                        Point2D pt, DataAccessContext icx) {     
+                                                     Point2D pt, DataAccessContext icx) {     
     return (calcSharedNamespacePadIntersectSupport(item, pt, MAX_PADS_, PAD_WIDTH_, icx));  
   }
   
@@ -322,7 +323,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
     int defaultPads = DBNode.getDefaultPadCount(theBox.getNodeType());
     if (numPads > defaultPads) {
       int extraPerSide = (numPads - MAX_PADS_) / 2;
-      double minWidth = (double)(extraPerSide + 2) * PAD_SPACING_;
+      double minWidth = (extraPerSide + 2) * PAD_SPACING_;
       if (minWidth > width) {
         return (true);
       }
@@ -364,7 +365,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
                                              Rectangle2D textBounds, Point2D origin,
                                              int totalPads, NodeProperties np, DataAccessContext icx) {
 
-    AnnotatedFont mFont = icx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+    AnnotatedFont mFont = icx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
     String name = item.getName();
     Rectangle2D bounds = mFont.getFont().getStringBounds(name, icx.getFrc());
     if (textBounds != null) {
@@ -376,7 +377,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
     int defaultPads = DBNode.getDefaultPadCount(theBox.getNodeType());
     if (totalPads > defaultPads) {
       int extraPerSide = (totalPads - MAX_PADS_) / 2;
-      double minWidth = (double)(extraPerSide + 2) * PAD_SPACING_;
+      double minWidth = (extraPerSide + 2) * PAD_SPACING_;
       if (minWidth > width) {
         width = minWidth;
       }
@@ -395,7 +396,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   
   public Rectangle getBounds(GenomeItem item, DataAccessContext rcx, Object miscInfo) {
     
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
        
     return (new Rectangle((int)bounds.getX(), (int)bounds.getY(), 
@@ -411,7 +412,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   
   public Rectangle2D getBoundsForLayout(GenomeItem item, DataAccessContext rcx, 
                                         int orientation, boolean labelToo, Integer topPadCount) {
-     NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+     NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
  
      Point2D origin = new Point2D.Double(0.0, 0.0);
      Node theBox = (Node)item;
@@ -426,7 +427,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   
   public Vector2D getLaunchPadOffsetForLayout(GenomeItem item, DataAccessContext rcx, 
                                               int orientation, Integer topPadCount) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = new Point2D.Double(0.0, 0.0);
     Node theBox = (Node)item;
     int totalPads = (topPadCount == null) ? theBox.getPadCount() : (topPadCount.intValue() * 2) + 2;
@@ -449,7 +450,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   */
   
   public double getGlyphHeightForLayout(GenomeItem item, DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
     return (bounds.getHeight());
   }  
@@ -460,7 +461,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   */
   
   public double getWidth(GenomeItem item, DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Rectangle2D bounds = boundsWithXtraPads(item, null, np, rcx);
     return (bounds.getWidth());
   }   
@@ -525,28 +526,13 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   protected Rectangle2D renderSupportA(SelectedModalShapeContainer group, GenomeItem item, 
                                        Intersection selected, Rectangle2D textBounds, DataAccessContext rcx) {
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Rectangle2D bounds = boundsWithXtraPads(item, textBounds, np, rcx);
 
     selectionSupport(group, selected, (int)bounds.getX(), (int)bounds.getY(), 
-                     (int)bounds.getWidth(), (int)bounds.getHeight(), rcx.forWeb);
+                     (int)bounds.getWidth(), (int)bounds.getHeight(), rcx.isForWeb());
     return (bounds);
   }
-  
-  /*
-  protected Rectangle2D renderSupportAOld(Graphics2D g2, RenderObjectCache cache, GenomeItem item, 
-                                       Layout layout, Intersection selected, 
-                                       Rectangle2D textBounds) {
-
-    FontRenderContext frc = g2.getFontRenderContext();
-    NodeProperties np = layout.getNodeProperties(item.getID());
-    Rectangle2D bounds = boundsWithXtraPads(item, layout, frc, textBounds, np);
-
-    selectionSupport(g2, cache, selected, (int)bounds.getX(), (int)bounds.getY(), 
-                     (int)bounds.getWidth(), (int)bounds.getHeight());
-    return (bounds);
-  }
-  */ 
   
   /***************************************************************************
   **
@@ -564,7 +550,7 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
   	
-    if (rcx.showBubbles) {
+    if (rcx.getShowBubbles()) {
       renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
     }
     
@@ -581,35 +567,4 @@ public abstract class AbstractRectangleNodeFree extends NodeRenderBase {
     Point2D pieCenter = new Point2D.Double(origin.getX() + lpo.getX() + 15.0, origin.getY() + lpo.getY() - 15.0);
     drawVariableActivityPie(group, item, nodeColor, pieCenter, rcx.getDisplayOptsSource().getDisplayOptions());
   }
-  
-  /*
-  protected void renderSupportBOld(Graphics2D g2, RenderObjectCache roc, GenomeItem item, Layout layout,
-                                boolean isGhosted, boolean textGhosted, 
-                                boolean showBubbles, Font mFont, 
-                                Point2D origin, Rectangle2D textBounds, 
-                                Color nodeColor, Color textCol, DisplayOptions dopt) {
-    
-    FontRenderContext frc = g2.getFontRenderContext();    
-    if (showBubbles) {
-      renderPads(null, (isGhosted) ?  dopt.getInactiveGray() : Color.BLACK, item, layout, MAX_PADS_, PAD_WIDTH_);
-    }
-
-    String name = item.getName();    
-    g2.setPaint((textGhosted) ?  dopt.getInactiveGray() : textCol);    
-    g2.setFont(mFont);
-    float textX = (float)(origin.getX() - textBounds.getWidth() / 2.0);
-    float textY = (float)(origin.getY() + ((textBounds.getHeight() * HEIGHT_HACK_) / 2.0));
-    g2.drawString(name, textX, textY);
-    
-    //
-    // Draw activity pie:
-    //
-    
-    Vector2D lpo = getLaunchPadOffset(1, item, layout, frc);
-    Point2D pieCenter = new Point2D.Double(origin.getX() + lpo.getX() + 15.0, origin.getY() + lpo.getY() - 15.0);
-    drawVariableActivityPie(g2, roc, item, nodeColor, pieCenter, dopt);
-        
-    return;
-  }
-  */
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -50,6 +50,7 @@ import org.systemsbiology.biotapestry.util.ListWidget;
 import org.systemsbiology.biotapestry.util.ListWidgetClient;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -70,12 +71,13 @@ public class TemporalInputMappingDialog extends JDialog {
   private String nodeID_;
   private boolean cancelled_;
   private TemporalInputRangeData tird_;
-  private ArrayList newEntries_;
-  private ArrayList newSources_;
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private ArrayList<String> newEntries_;
+  private ArrayList<String> newSources_;
   private ArrayList<String> srcs_;
-  private ArrayList ntsrcs_; 
+  private ArrayList<String> ntsrcs_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -90,19 +92,20 @@ public class TemporalInputMappingDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public TemporalInputMappingDialog(BTState appState, DataAccessContext dacx, String nodeName, String nodeID) {     
-    super(appState.getTopFrame(), "", true);
-    appState_ = appState;
+  public TemporalInputMappingDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, String nodeName, String nodeID) {     
+    super(uics.getTopFrame(), "", true);
     dacx_ = dacx;
-    ResourceManager rMan = appState_.getRMan();
+    uics_ = uics;
+    uFac_ = uFac;
+    ResourceManager rMan = dacx_.getRMan();
     String format = rMan.getString("timd.title");
     String desc = MessageFormat.format(format, new Object[] {nodeName});    
     this.setTitle(desc);    
     
     nodeID_ = nodeID;
     cancelled_ = false;
-    newEntries_ = new ArrayList();
-    newSources_ = new ArrayList();
+    newEntries_ = new ArrayList<String>();
+    newSources_ = new ArrayList<String>();
      
     setSize(500, 400);
     JPanel cp = (JPanel)getContentPane();
@@ -110,7 +113,7 @@ public class TemporalInputMappingDialog extends JDialog {
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
 
-    tird_ = appState_.getDB().getTemporalInputRangeData();
+    tird_ = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     List<String> mappedEnt = tird_.getCustomTemporalInputRangeEntryKeys(nodeID);
     if (mappedEnt == null) {
       mappedEnt = new ArrayList<String>();
@@ -142,31 +145,31 @@ public class TemporalInputMappingDialog extends JDialog {
     UiUtil.gbcSet(gbc, 0, 0, 6, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
     cp.add(lab, gbc);
 
-    lw_ = new ListWidget(appState_, srcs_, new ListWidgetWrapper(true), ListWidget.ADD_ONLY_HOLD_SELECT);    
+    lw_ = new ListWidget(uics_.getHandlerAndManagerSource(), srcs_, new ListWidgetWrapper(true), ListWidget.ADD_ONLY_HOLD_SELECT);    
     UiUtil.gbcSet(gbc, 0, 1, 6, 5, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
     cp.add(lw_, gbc);
 
-    List mappedSrc = tird_.getCustomTemporalInputRangeSourceKeys(nodeID);
+    List<String> mappedSrc = tird_.getCustomTemporalInputRangeSourceKeys(nodeID);
     if (mappedSrc == null) {
-      mappedSrc = new ArrayList();
+      mappedSrc = new ArrayList<String>();
     }
     mappedSrc = DataUtil.normalizeList(mappedSrc);
-    ArrayList sSelections = new ArrayList();    
+    ArrayList<Integer> sSelections = new ArrayList<Integer>();    
     
     //
     // Create the list of all sources
     //  
     
-    Set nonTarg = tird_.getAllSources();
-    ntsrcs_ = new ArrayList();
-    Iterator ntit = nonTarg.iterator();
+    Set<String> nonTarg = tird_.getAllSources();
+    ntsrcs_ = new ArrayList<String>();
+    Iterator<String> ntit = nonTarg.iterator();
     count = 0;
     while (ntit.hasNext()) {
-      String src = (String)ntit.next();
+      String src = ntit.next();
       ntsrcs_.add(src);
       String name = DataUtil.normKey(src);
       if (mappedSrc.contains(name)) {
-        sSelections.add(new Integer(count));
+        sSelections.add(Integer.valueOf(count));
         mappedSrc.remove(name);
       }
       count++;
@@ -176,11 +179,11 @@ public class TemporalInputMappingDialog extends JDialog {
     // Add mapped strings not showing up elsewhere here
     //
     
-    Iterator mit = mappedSrc.iterator();
+    Iterator<String> mit = mappedSrc.iterator();
     while (mit.hasNext()) {
-      String name = (String)mit.next();
+      String name = mit.next();
       ntsrcs_.add(name);
-      sSelections.add(new Integer(count));
+      sSelections.add(Integer.valueOf(count));
       count++;
     }    
     
@@ -194,7 +197,7 @@ public class TemporalInputMappingDialog extends JDialog {
     UiUtil.gbcSet(gbc, 0, 6, 6, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
     cp.add(lab, gbc);
 
-    lwnt_ = new ListWidget(appState_, ntsrcs_, new ListWidgetWrapper(false), ListWidget.ADD_ONLY_HOLD_SELECT);    
+    lwnt_ = new ListWidget(uics_.getHandlerAndManagerSource(), ntsrcs_, new ListWidgetWrapper(false), ListWidget.ADD_ONLY_HOLD_SELECT);    
     UiUtil.gbcSet(gbc, 0, 7, 6, 5, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
     cp.add(lwnt_, gbc);      
 
@@ -204,13 +207,13 @@ public class TemporalInputMappingDialog extends JDialog {
    
     int[] select = new int[tSelections.size()];
     for (int i = 0; i < select.length; i++) {
-      select[i] = ((Integer)(tSelections.get(i))).intValue();
+      select[i] = tSelections.get(i).intValue();
     }
     lw_.setSelectedIndices(select);    
 
     select = new int[sSelections.size()];
     for (int i = 0; i < select.length; i++) {
-      select[i] = ((Integer)(sSelections.get(i))).intValue();
+      select[i] = sSelections.get(i).intValue();
     }
     lwnt_.setSelectedIndices(select);    
     
@@ -227,7 +230,7 @@ public class TemporalInputMappingDialog extends JDialog {
           TemporalInputMappingDialog.this.setVisible(false);
           TemporalInputMappingDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -239,7 +242,7 @@ public class TemporalInputMappingDialog extends JDialog {
           TemporalInputMappingDialog.this.setVisible(false);
           TemporalInputMappingDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -254,7 +257,7 @@ public class TemporalInputMappingDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 13, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -277,10 +280,11 @@ public class TemporalInputMappingDialog extends JDialog {
   ** Add a row to the list
   */
   
+  @SuppressWarnings("unused") 
   public List addTargetRow(ListWidget widget) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String newGene = 
-      (String)JOptionPane.showInputDialog(appState_.getTopFrame(), 
+      (String)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                           rMan.getString("timd.newGene"), 
                                           rMan.getString("timd.newGeneTitle"),     
                                           JOptionPane.QUESTION_MESSAGE, null, 
@@ -297,7 +301,7 @@ public class TemporalInputMappingDialog extends JDialog {
     }
 
     if (DataUtil.containsKey(srcs_, newGene)) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("timd.nameNotUnique"), 
                                     rMan.getString("timd.nameNotUniqueTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -308,7 +312,7 @@ public class TemporalInputMappingDialog extends JDialog {
     if (ngCrush.equals("UBQ") || 
         ngCrush.equals("UBIQ") || 
         ngCrush.equals("UBIQUITOUS")) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("timd.nameReserved"), 
                                     rMan.getString("timd.nameReservedTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -325,11 +329,12 @@ public class TemporalInputMappingDialog extends JDialog {
   **
   ** Add a source row to the list
   */
-  
+ 
+  @SuppressWarnings("unused")
   public List addSourceRow(ListWidget widget) {
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = dacx_.getRMan(); 
     String newSource = 
-      (String)JOptionPane.showInputDialog(appState_.getTopFrame(), 
+      (String)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                           rMan.getString("timd.newSource"), 
                                           rMan.getString("timd.newSourceTitle"),
                                           JOptionPane.QUESTION_MESSAGE, null, 
@@ -344,15 +349,15 @@ public class TemporalInputMappingDialog extends JDialog {
     }
 
     if (DataUtil.containsKey(ntsrcs_, newSource)) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("timd.nameNotUnique"), 
                                     rMan.getString("timd.nameNotUniqueTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }    
     
-    newSources_.add(newSource);
-    ntsrcs_.add(newSource);
+    newSources_.add(newSource.trim());
+    ntsrcs_.add(newSource.trim());
     
     return (ntsrcs_);
   }
@@ -434,30 +439,30 @@ public class TemporalInputMappingDialog extends JDialog {
 
   private void applyProperties() {
     
-    UndoSupport support = new UndoSupport(appState_, "undo.timd");
+    UndoSupport support = uFac_.provideUndoSupport("undo.timd", dacx_);
 
     //
     // Add all selected objects to new map list:
     //
 
     Object[] values = lw_.getSelectedObjects();
-    ArrayList elist = new ArrayList();
-    ArrayList slist = new ArrayList();
+    ArrayList<String> elist = new ArrayList<String>();
+    ArrayList<String> slist = new ArrayList<String>();
     for (int i = 0; i < values.length; i++) {
-      elist.add(values[i]);
+      elist.add((String)values[i]);
     }  
    
     //
     // Create new ranges for new objects:
     //
     
-    Iterator newit = newEntries_.iterator();
+    Iterator<String> newit = newEntries_.iterator();
     while (newit.hasNext()) {
-      String newEnt = (String)newit.next();
+      String newEnt = newit.next();
       if (DataUtil.containsKey(elist, newEnt)) {      
         TemporalRange tr = new TemporalRange(newEnt, null, false);
         TemporalInputChange tic = tird_.addEntry(tr);
-        support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));          
+        support.addEdit(new TemporalInputChangeCmd(dacx_, tic));          
       }
     }
 
@@ -467,7 +472,7 @@ public class TemporalInputMappingDialog extends JDialog {
     
     values = lwnt_.getSelectedObjects();
     for (int i = 0; i < values.length; i++) {
-      slist.add(values[i]);
+      slist.add((String)values[i]);
     }
         
     //
@@ -477,18 +482,18 @@ public class TemporalInputMappingDialog extends JDialog {
     if ((elist.size() > 0) || (slist.size() > 0)) {
       TemporalInputChange[] tic = tird_.addTemporalInputRangeMaps(nodeID_, elist, slist);
       for (int i = 0; i < tic.length; i++) {
-        support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic[i])); 
+        support.addEdit(new TemporalInputChangeCmd(dacx_, tic[i])); 
       }
     }
     
     if (elist.size() == 0) {
       TemporalInputChange tic = tird_.dropDataEntryKeys(nodeID_);
-      support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic, false));
+      support.addEdit(new TemporalInputChangeCmd(dacx_, tic, false));
     }
     
     if (slist.size() == 0) {
       TemporalInputChange tic = tird_.dropDataSourceKeys(nodeID_);
-      support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic, false));
+      support.addEdit(new TemporalInputChangeCmd(dacx_, tic, false));
     }    
 
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));

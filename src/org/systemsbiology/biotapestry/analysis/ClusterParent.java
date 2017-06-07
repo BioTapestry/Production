@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2006 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -117,7 +117,7 @@ public class ClusterParent extends ClusterNode {
         vector_[j] += kidVector[j];
       }
     }
-    double den = (double)vecSize;
+    double den = vecSize;
     for (int j = 0; j < vecSize; j++) {
       vector_[j] /= den;
     }

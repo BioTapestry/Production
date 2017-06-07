@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,23 +30,25 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.app.CommonView;
-import org.systemsbiology.biotapestry.cmd.flow.BatchJobControlFlowHarness;
-import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveOps;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeListener;
 import org.systemsbiology.biotapestry.gaggle.DeadGoose;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.SUPanel;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.util.ExceptionHandler;
 
 /****************************************************************************
@@ -69,6 +71,12 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   private JFrame topFrame_;
   private BTState appState_;
   
+  private UIComponentSource uics_;
+  private DynamicDataAccessContext ddacx_; 
+  private HarnessBuilder hBld_;
+  private TabSource tSrc_;
+  private CmdSource cSrc_;
+ 
   private static final long serialVersionUID = 1L;
  
   ////////////////////////////////////////////////////////////////////////////
@@ -82,26 +90,38 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   ** Constructor 
   */ 
   
-  public EmbeddedViewerPanel(JFrame topFrame, BTState appState)  {
+  public EmbeddedViewerPanel(JFrame topFrame, BTState appState, UIComponentSource uics, 
+                             DynamicDataAccessContext ddacx, HarnessBuilder hBld, CmdSource cSrc, TabSource tSrc)  {
     appState_ = appState;
-    appState_.getDB().newModelViaDACX(); // Bogus, but no DACX yet
-    appState_.setIsEditor(false);
-    appState_.setTopFrame(topFrame, this);
-    appState_.setExceptionHandler(new ExceptionHandler(appState_, appState_.getRMan(), topFrame));
+    uics_ = uics;
+    ddacx_ = ddacx;
+    hBld_ = hBld;
+    tSrc_ = tSrc;
+    cSrc_ = cSrc;
+    
+    Metabase mb =  ddacx_.getMetabase(); 
+    mb.newModelViaDACX();
+    String tabID = tSrc_.getDbIdForIndex(tSrc_.getCurrentTabIndex());
+    Database newDB = mb.getDB(tabID);
+    newDB.newModelViaDACX(ddacx_.getTabContext(tabID));
+    uics_.setIsEditor(false);
+    uics_.setTopFrame(topFrame, this);
+    uics_.setExceptionHandler(new ExceptionHandler(uics_, uics_.getRMan(), topFrame));
     
     topFrame_ = topFrame;
     amListening_ = false;
     selectionListeners_ = new ArrayList<ExternalSelectionChangeListener>();
-    CommonView cview = new CommonView(appState_);
+    CommonView cview = new CommonView(appState_, uics_, cSrc_, tSrc_);
+    uics_.setCommonView(cview);
     cview.buildTheView();
     cview.embeddedPanelInit();
     
     HashMap<String, Object> args = new HashMap<String, Object>();
-    boolean ok = appState_.getPlugInMgr().loadDataDisplayPlugIns(args);   
+    boolean ok = uics_.getPlugInMgr().loadDataDisplayPlugIns(args);   
     if (!ok) {
       System.err.println("Problems loading plugins");
     }   
-    appState_.getGooseMgr().setGoose(new DeadGoose());  
+    uics_.getGooseMgr().setGoose(new DeadGoose());  
   } 
   
   ////////////////////////////////////////////////////////////////////////////
@@ -118,18 +138,19 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   public void loadBtp(InputStream is) throws EmbeddedException {
     synchronized (this) {    
       try {
-        Database db = appState_.getDB();
-        db.newModelViaDACX(); // Bogus, but no DACX yet
+        Metabase mb =  ddacx_.getMetabase(); 
+        mb.newModelViaDACX();
+        String tabID = tSrc_.getDbIdForIndex(tSrc_.getCurrentTabIndex());
+        Database newDB = mb.getDB(tabID);
+        newDB.newModelViaDACX(ddacx_.getTabContext(tabID));
         Object[] osArgs = new Object[2];
         osArgs[0] = new Boolean(false);
         osArgs[1] = is;
-        BatchJobControlFlowHarness dcf0 = new BatchJobControlFlowHarness(appState_, null); 
-        ControlFlow myFlow0 = appState_.getFloM().getControlFlow(FlowMeister.MainFlow.LOAD, null);
-        DataAccessContext dacx = new DataAccessContext(appState_, (String)null, (Layout)null);
-        LoadSaveOps.StepState pre0 = (LoadSaveOps.StepState)myFlow0.getEmptyStateForPreload(dacx);
-        pre0.setParams(osArgs);     
-        dcf0.initFlow(myFlow0, dacx);
-        DialogAndInProcessCmd daipc0 = dcf0.stepTheFlow(pre0);          
+        StaticDataAccessContext dacx = new StaticDataAccessContext(appState_, (String)null, (Layout)null);
+        HarnessBuilder.PreHarness pH = hBld_.buildBatchHarness(FlowMeister.MainFlow.LOAD, dacx);
+        LoadSaveOps.StepState pre0 = (LoadSaveOps.StepState)pH.getCmdState();
+        pre0.setParams(osArgs);
+        DialogAndInProcessCmd daipc0 = hBld_.stepBatchFlow(pH);
         if (daipc0.state != DialogAndInProcessCmd.Progress.DONE) {
           throw new EmbeddedException("Embedded BioTapestry Input Exception");
         }
@@ -150,7 +171,7 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
     synchronized (this) {
       selectionListeners_.add(escl);
       if (!amListening_) {
-        EventManager em = appState_.getEventMgr();   
+        EventManager em = uics_.getEventMgr();   
         em.addSelectionChangeListener(this);
         amListening_ = true;
       }
@@ -165,7 +186,7 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   
   public EmbeddedViewerInventory getElementInventory()  {
     synchronized (this) {
-      return (new EmbeddedViewerInventory(appState_));
+      return (new EmbeddedViewerInventory(ddacx_));
     }
   }
   
@@ -174,16 +195,12 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   ** Go and select the links and nodes
   */ 
   
-  public boolean goToModelAndSelect(String modelID, Set nodeIDs, Set linkIDs) {
+  public boolean goToModelAndSelect(String modelID, Set<String> nodeIDs, Set<String> linkIDs) {
     synchronized (this) {
-      DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(topFrame_));
-      ControlFlow myControlFlow = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.MODEL_AND_NODE_LINK_SELECTION, null);
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-      SetCurrentModel.StepState agis = (SetCurrentModel.StepState)myControlFlow.getEmptyStateForPreload(dacx);
+      HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.MODEL_AND_NODE_LINK_SELECTION);
+      SetCurrentModel.StepState agis = (SetCurrentModel.StepState)pH.getCmdState();
       agis.setPreload(modelID, nodeIDs, linkIDs);
-      dcf.initFlow(myControlFlow, dacx);
-      dcf.runFlow(agis);
-      return (dcf.getOOBResult());
+      return (hBld_.runHarnessForOOB(pH));
     }
   }
 
@@ -211,7 +228,7 @@ public class EmbeddedViewerPanel extends JPanel implements EmbeddedBioTapestryVi
   
   public void selectionHasChanged(SelectionChangeEvent scev) {
     int change = scev.getChangeType();
-    SUPanel sup = appState_.getSUPanel();
+    SUPanel sup = uics_.getSUPanel();
     ExternalSelectionChangeEvent ce;
     if (change == SelectionChangeEvent.SELECTED_MODEL) {
       ce = new ExternalSelectionChangeEvent(scev.getGenomeKey(), new HashSet(), new HashSet()); 

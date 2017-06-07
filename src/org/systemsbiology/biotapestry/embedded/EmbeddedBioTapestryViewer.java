@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -64,7 +64,7 @@ public interface EmbeddedBioTapestryViewer {
   ** operation is not successful, return false.
   */
   
-  public boolean goToModelAndSelect(String modelID, Set nodeIDs, Set linkIDs);
+  public boolean goToModelAndSelect(String modelID, Set<String> nodeIDs, Set<String> linkIDs);
 
   /***************************************************************************
   **

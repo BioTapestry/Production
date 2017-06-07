@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,12 +23,12 @@ package org.systemsbiology.biotapestry.cmd.flow.remove;
 import java.io.IOException;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -61,8 +61,7 @@ public class RemoveSubGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveSubGroup(BTState appState, SubGroupArgs sga) {  
-    super(appState);
+  public RemoveSubGroup(SubGroupArgs sga) {  
     forDeactivation_ = sga.getForDeactivation();
     name = (forDeactivation_) ? "groupPopup.Deactivate" : "groupPopup.DeleteSubGroup";
     desc = (forDeactivation_) ? "groupPopup.Deactivate" : "groupPopup.DeleteSubGroup";
@@ -84,8 +83,8 @@ public class RemoveSubGroup extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, forDeactivation_, groupID_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(forDeactivation_, groupID_, dacx);
     return (retval);
   }
  
@@ -103,6 +102,7 @@ public class RemoveSubGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();      
         } else {
@@ -121,29 +121,21 @@ public class RemoveSubGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private boolean myDeactive_;
     private String myGroupID_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean deactive, String groupID, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean deactive, String groupID, StaticDataAccessContext dacx) {
+      super(dacx);
       myDeactive_ = deactive;
       myGroupID_ = groupID;
       nextStep_ = "stepToRemove";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -164,26 +156,26 @@ public class RemoveSubGroup extends AbstractControlFlow {
       GenomeInstance parentGi = null;     
       Group parentGroup = null;
       if (myDeactive_) {
-        parentGi = dacx_.getGenomeAsInstance().getVfgParent();
+        parentGi = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         Group parentModelGroup = parentGi.getGroup(Group.removeGeneration(myGroupID_));
         if (parentModelGroup.isUsingParent()) {
-          Group group = dacx_.getGenomeAsInstance().getGroup(myGroupID_);
-          String parentGroupID = group.getParentGroup(dacx_.getGenomeAsInstance());
-          parentGroup = dacx_.getGenomeAsInstance().getGroup(parentGroupID);
+          Group group = dacx_.getCurrentGenomeAsInstance().getGroup(myGroupID_);
+          String parentGroupID = group.getParentGroup(dacx_.getCurrentGenomeAsInstance());
+          parentGroup = dacx_.getCurrentGenomeAsInstance().getGroup(parentGroupID);
         }
       }
 
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteSubgroup");
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteSubgroup", dacx_);
 
       //
       // If parent model has activated subgroup, then deactivating this
       // subgroup must also remove the parent group from this model.
       //
-      if (!RemoveGroupSupport.deleteSubGroupFromModel(appState_, myGroupID_, dacx_, support)) {
+      if (!RemoveGroupSupport.deleteSubGroupFromModel(uics_, myGroupID_, dacx_, support, uFac_)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
       if (parentGroup != null) {
-        RemoveGroupSupport.deleteGroupFromModel(appState_, parentGroup.getID(), dacx_, support, false);        
+        RemoveGroupSupport.deleteGroupFromModel(parentGroup.getID(), uics_, dacx_, support, false, uFac_);        
       }
       support.finish();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2008 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -102,8 +102,8 @@ public class LayoutChangeEvent implements ChangeEvent {
     }
     LayoutChangeEvent otherLCE = (LayoutChangeEvent)other;
     // Actually ran into a null layout key 06/11/08:
-    if ((this.layoutKey_ == null) && (otherLCE.layoutKey_ != null)) {
-      return (false);
+    if (this.layoutKey_ == null) {
+      return (otherLCE.layoutKey_ == null);
     }
     if (!this.layoutKey_.equals(otherLCE.layoutKey_)) {
       return (false);

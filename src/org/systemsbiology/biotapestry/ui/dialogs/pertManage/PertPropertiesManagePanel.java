@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -47,6 +47,7 @@ import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
@@ -78,9 +79,10 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   private PerturbationData pd_; 
   private PertPropsAddOrEditPanel ppaep_;
   private String pendingKey_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertManageHelper pmh_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -95,15 +97,16 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertPropertiesManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw,
+  public PertPropertiesManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
                                    PerturbationData pd, PendingEditTracker pet, 
                                    PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
            
-    rtdp_ = new ReadOnlyTable(appState_, new PertPropsModel(appState_), new ReadOnlyTable.EmptySelector());
+    rtdp_ = new ReadOnlyTable(uics_, dacx_, new PertPropsModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());
   
     //
     // Build the perturbation properties panel:
@@ -113,7 +116,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 6, 1, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 1.0);    
     topPanel_.add(ppPanel, gbc_);      
       
-    ppaep_ = new PertPropsAddOrEditPanel(appState_, dacx_, parent_, pd_, this, PERT_KEY);
+    ppaep_ = new PertPropsAddOrEditPanel(uics_, dacx_, parent_, pd_, this, PERT_KEY);
     addEditPanel(ppaep_, PERT_KEY);
         
     finishConstruction();
@@ -218,12 +221,12 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
       String useKey = ((PertPropsModel)rtdp_.getModel()).getSelectedKey(rtdp_.selectedRows); 
       pendingKey_ = null;
       PertDictionary pDict = pd_.getPertDictionary();
-      HashSet allTypes = new HashSet();
-      HashSet allAbbrev = new HashSet();
-      HashSet allLegAlt = new HashSet();
-      Iterator kit = pDict.getKeys();
+      HashSet<String> allTypes = new HashSet<String>();
+      HashSet<String> allAbbrev = new HashSet<String>();
+      HashSet<String> allLegAlt = new HashSet<String>();
+      Iterator<String> kit = pDict.getKeys();
       while (kit.hasNext()) {
-        String pkey = (String)kit.next();
+        String pkey = kit.next();
         PertProperties pp = pDict.getPerturbProps(pkey);
         String type = pp.getType();
         String abbrev = pp.getAbbrev();
@@ -271,7 +274,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   public void doAFilterJump(String key) {
     if (key.equals(PERT_KEY)) {
       String filterKey = ((PertPropsModel)rtdp_.getModel()).getSelectedKey(rtdp_.selectedRows);    
-      PertFilter pertFilter = new PertFilter(PertFilter.PERT, PertFilter.STR_EQUALS, filterKey);
+      PertFilter pertFilter = new PertFilter(PertFilter.Cat.PERT, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(pertFilter);
       pfet_.jumpWithNewFilter(pfe); 
     } else {
@@ -304,20 +307,20 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   
   protected void displayProperties(boolean fireChange) {  
     
-    List selKeys = (rtdp_.selectedRows == null) ? null :
-                     ((PertPropsModel)rtdp_.getModel()).getSelectedKeys(rtdp_.selectedRows);
+    List<String> selKeys = (rtdp_.selectedRows == null) ? null :
+                              ((PertPropsModel)rtdp_.getModel()).getSelectedKeys(rtdp_.selectedRows);
       
     rtdp_.rowElements.clear();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map pprefs = da.getAllPertPropReferenceCounts();   
+    Map<String, Integer> pprefs = da.getAllPertPropReferenceCounts();   
     Integer noCount = new Integer(0);
        
     PertDictionary pDict = pd_.getPertDictionary();
-    Iterator etit = pDict.getKeys();
+    Iterator<String> etit = pDict.getKeys();
     while (etit.hasNext()) {
-      String key = (String)etit.next();
+      String key = etit.next();
       PertProperties pp = pDict.getPerturbProps(key);
-      Integer count = (Integer)pprefs.get(key);
+      Integer count = pprefs.get(key);
       if (count == null) {
         count = noCount;
       }   
@@ -396,12 +399,12 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   
   private void editPertProp(String key, int what) {
     PertProperties pp = ppaep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createPertProp" 
-                                                                        : "undo.editPertProp");
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createPertProp" 
+                                                                        : "undo.editPertProp", dacx_);
     PertDataChange pdc = pd_.setPerturbationProp(pp);
     String resultKey = pp.getID();
     pendingKey_ = null;
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -419,14 +422,14 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   private boolean joinPertProps(String key, int what) {  
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();  
     PertProperties pp = ppaep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, "undo.mergePertProps");   
-    DependencyAnalyzer.Dependencies refs = da.getPertPropMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertProps", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getPertPropMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }          
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergePertProps(joinKeys_, pendingKey_, pp);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -437,16 +440,16 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     super.editIsComplete(key, what);
     setTableSelection(key, resultKey);
     
-    Iterator sdkit = pd_.getSourceDefKeys();
+    Iterator<String> sdkit = pd_.getSourceDefKeys();
     while (sdkit.hasNext()) {
-      String sdkey = (String)sdkit.next();
+      String sdkey = sdkit.next();
       PertSource pschk =  pd_.getSourceDef(sdkey);
       if (!pschk.getExpTypeKey().equals(resultKey)) {
         continue;
       }
-      Iterator sdkit2 = pd_.getSourceDefKeys();
+      Iterator<String> sdkit2 = pd_.getSourceDefKeys();
       while (sdkit2.hasNext()) {
-        String sdkey2 = (String)sdkit2.next();
+        String sdkey2 = sdkit2.next();
         if (sdkey.equals(sdkey2)) {
           continue;
         }   
@@ -470,9 +473,9 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** Build the perturbation properties panel 
   */ 
   
-  private JPanel buildPertPropertiesPanel(List allTabs) {
+  private JPanel buildPertPropertiesPanel(List<ReadOnlyTable> allTabs) {
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
  
     //
     // Table:
@@ -492,7 +495,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     tp.canMultiSelect = true;
     tp.tableTitle = rMan.getString("pertSetupManage.perturbationTypes");
     tp.titleFont = null;
-    tp.colWidths = new ArrayList();   
+    tp.colWidths = new ArrayList<ReadOnlyTable.ColumnWidths>();   
     tp.colWidths.add(new ReadOnlyTable.ColumnWidths(PertPropsModel.TYPE, 50, 100, 150));
     tp.colWidths.add(new ReadOnlyTable.ColumnWidths(PertPropsModel.ABBREV, 50, 100, 150));
     tp.colWidths.add(new ReadOnlyTable.ColumnWidths(PertPropsModel.SIGN, 50, 300, Integer.MAX_VALUE));
@@ -519,10 +522,10 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
       return (false);
     }
        
-    UndoSupport support = new UndoSupport(appState_, "undo.deletePertProp");  
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertProp", dacx_);  
     da.killOffDependencies(refs, dacx_, support);
     PertDataChange pdc2 = pd_.deletePerturbationProp(key);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc2));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -555,8 +558,8 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     
     private static final long serialVersionUID = 1L;
     
-    PertPropsModel(BTState appState) {
-      super(appState, NUM_COL_);
+    PertPropsModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"pertProp.type",
                                 "pertProp.abbrev",
                                 "pertProp.sign",
@@ -595,8 +598,8 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
       return ((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[0])));
     }
     
-    List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[i])));
       }
@@ -635,7 +638,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
         String format = rMan_.getString("ptmp.legacyAltFormat");
         expAbbrev = MessageFormat.format(format, new Object[] {expAbbrev, legacyAltTag}); 
       }
-      sign = pp.getLinkSignRelationship().getDisplayTag(appState_);
+      sign = pp.getLinkSignRelationship().getDisplayTag(dacx_);
       
       Iterator<String> nvpkit = pp.getNvpKeys();
       if (nvpkit.hasNext()) {   
@@ -644,7 +647,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
           String name = nvpkit.next();
           buf.append(name);
           buf.append("=");
-          String value = (String)pp.getValue(name);
+          String value = pp.getValue(name);
           buf.append(value);
           if (nvpkit.hasNext()) {
             buf.append("; ");

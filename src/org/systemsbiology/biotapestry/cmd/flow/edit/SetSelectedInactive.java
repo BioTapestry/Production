@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,14 +25,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveLinkage;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
@@ -75,8 +74,7 @@ public class SetSelectedInactive extends AbstractControlFlow {
   ** Constructor
   */ 
   
-  public SetSelectedInactive(BTState appState) {
-    super(appState);
+  public SetSelectedInactive() {
     name =  "command.SetSelectedInactive";
     desc = "command.SetSelectedInactive";
     mnem =  "command.SetSelectedInactiveMnem";
@@ -111,9 +109,10 @@ public class SetSelectedInactive extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToInactivate")) {
         next = ans.stepToInactivate();
@@ -134,38 +133,28 @@ public class SetSelectedInactive extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState  {
     
-    private DataAccessContext rcx_;
-    private String nextStep_;    
-    private BTState appState_;
     private HashMap<String, Intersection> linkInter_;
-   
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToInactivate";
-      rcx_ = dacx;
     }
-    
-     
+
     /***************************************************************************
     **
     ** Do the step
     */ 
        
-    private DialogAndInProcessCmd stepToInactivate() {
-      
+    private DialogAndInProcessCmd stepToInactivate() {  
         
-      Map<String, Intersection> selmap = appState_.getGenomePresentation().getSelections();
+      Map<String, Intersection> selmap = uics_.getGenomePresentation().getSelections();
 
       //
       // Crank through the selections.  For selections that are linkages, 
@@ -181,14 +170,14 @@ public class SetSelectedInactive extends AbstractControlFlow {
       while (selKeys.hasNext()) {
         String key = selKeys.next();
         Intersection inter = selmap.get(key);
-        Linkage link = rcx_.getGenome().getLinkage(key);
+        Linkage link = dacx_.getCurrentGenome().getLinkage(key);
         if (link != null) {
           if (inter.getSubID() == null) {
-            inter = Intersection.fullIntersection(link, rcx_, true);
+            inter = Intersection.fullIntersection(link, dacx_, true);
           }
           linkInter_.put(key, inter);
         }
-        Node node = rcx_.getGenome().getNode(key);
+        Node node = dacx_.getCurrentGenome().getNode(key);
         if (node != null) {
           deadSet.add(key);
         }
@@ -202,15 +191,15 @@ public class SetSelectedInactive extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
        
-      Set<String> thru = RemoveLinkage.resolveLinksThruIntersections(linkInter_, rcx_);
+      Set<String> thru = RemoveLinkage.resolveLinksThruIntersections(linkInter_, dacx_);
            
       for (String nodeID : deadSet) {
-        NodeInstance node = (NodeInstance)rcx_.getGenome().getNode(nodeID);
+        NodeInstance node = (NodeInstance)dacx_.getCurrentGenome().getNode(nodeID);
         NodeInstance.ActivityState nias = new NodeInstance.ActivityState(NodeInstance.INACTIVE, 0.0);
-        GenomeItemInstance.ActivityTracking tracking = node.calcActivityBounds(rcx_.getGenomeAsInstance());
+        GenomeItemInstance.ActivityTracking tracking = node.calcActivityBounds(dacx_.getCurrentGenomeAsInstance());
         ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(tracking, nias);
         if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
-          SimpleUserFeedback suf = ActivityLevelSupport.sufForNode(check, appState_);
+          SimpleUserFeedback suf = ActivityLevelSupport.sufForNode(check, dacx_);
           nextStep_ = "stepWillExit";
           return (new DialogAndInProcessCmd(suf, this));  
         }
@@ -218,33 +207,33 @@ public class SetSelectedInactive extends AbstractControlFlow {
       
       
       for (String linkID : thru) {
-        LinkageInstance link = (LinkageInstance)rcx_.getGenome().getLinkage(linkID);
+        LinkageInstance link = (LinkageInstance)dacx_.getCurrentGenome().getLinkage(linkID);
         if (link == null) { // Good old VfN non-links problem!
           continue;
         }
-        GenomeItemInstance.ActivityTracking tracking = link.calcActivityBounds(rcx_.getGenomeAsInstance());      
+        GenomeItemInstance.ActivityTracking tracking = link.calcActivityBounds(dacx_.getCurrentGenomeAsInstance());      
         ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(tracking, LinkageInstance.INACTIVE, 0.0);
         if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
-          SimpleUserFeedback suf = ActivityLevelSupport.sufForNode(check, appState_);
+          SimpleUserFeedback suf = ActivityLevelSupport.sufForNode(check, dacx_);
           nextStep_ = "stepWillExit";
           return (new DialogAndInProcessCmd(suf, this));  
         }
       }
     
           
-      UndoSupport support = new UndoSupport(appState_, "undo.SelectedToInactive"); 
+      UndoSupport support = uFac_.provideUndoSupport("undo.SelectedToInactive", dacx_); 
      
       boolean needEvent = false;
       
       for (String nodeID : deadSet) {
-        NodeInstance node = (NodeInstance)rcx_.getGenome().getNode(nodeID);
+        NodeInstance node = (NodeInstance)dacx_.getCurrentGenome().getNode(nodeID);
         int activeSetting = node.getActivity();
         if (activeSetting != NodeInstance.INACTIVE) {
           NodeInstance copyNode = node.clone();
           copyNode.setActivity(NodeInstance.INACTIVE);
-          GenomeChange gc = (node.getNodeType() == Node.GENE) ? rcx_.getGenome().replaceGene((Gene)copyNode) : rcx_.getGenome().replaceNode(copyNode);
+          GenomeChange gc = (node.getNodeType() == Node.GENE) ? dacx_.getCurrentGenome().replaceGene((Gene)copyNode) : dacx_.getCurrentGenome().replaceNode(copyNode);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
             support.addEdit(gcc);
             needEvent = true;
           }          
@@ -252,15 +241,15 @@ public class SetSelectedInactive extends AbstractControlFlow {
       }
         
       for (String linkID : thru) {
-        LinkageInstance link = (LinkageInstance)rcx_.getGenome().getLinkage(linkID);
+        LinkageInstance link = (LinkageInstance)dacx_.getCurrentGenome().getLinkage(linkID);
         if (link == null) { // Good old VfN non-links problem!
           continue;
         }
         int activeSetting = link.getActivitySetting();
         if (activeSetting != LinkageInstance.INACTIVE) {
-          GenomeChange gc = rcx_.getGenomeAsInstance().replaceLinkageInstanceActivity(linkID, LinkageInstance.INACTIVE, 0.0);
+          GenomeChange gc = dacx_.getCurrentGenomeAsInstance().replaceLinkageInstanceActivity(linkID, LinkageInstance.INACTIVE, 0.0);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
             support.addEdit(gcc);
             needEvent = true;
           }          
@@ -269,12 +258,12 @@ public class SetSelectedInactive extends AbstractControlFlow {
 
   
       if (needEvent) {
-       ModelChangeEvent mcev = new ModelChangeEvent(rcx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+       ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
        support.addEvent(mcev);
       }
    
       support.finish();  // no matter what to handle selection clearing
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
     

@@ -37,7 +37,8 @@ import javax.swing.Box;
 import javax.swing.border.EmptyBorder;
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -59,9 +60,10 @@ public class TagWorkingDialog extends JDialog {
   private JComboBox tagCombo_;
   private boolean haveResult_;
   private String tagResult_;
-  private BTState appState_;
   private Set<String> usedTags_;
   private HashSet<String> forbiddenTags_;
+  private UIComponentSource uics_;
+  private StaticDataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -76,12 +78,13 @@ public class TagWorkingDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public TagWorkingDialog(BTState appState, String defaultTag, Set<String> allTags, Set<String> usedTags) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tagWorking.title"), true);
-    appState_ = appState;
+  public TagWorkingDialog(UIComponentSource uics, StaticDataAccessContext dacx, String defaultTag, Set<String> allTags, Set<String> usedTags) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tagWorking.title"), true);
+    dacx_ = dacx;
+    uics_ = uics;
     usedTags_ = usedTags;
     haveResult_ = false;
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(400, 200);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -127,7 +130,7 @@ public class TagWorkingDialog extends JDialog {
             TagWorkingDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -139,7 +142,7 @@ public class TagWorkingDialog extends JDialog {
           TagWorkingDialog.this.setVisible(false);
           TagWorkingDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -154,7 +157,7 @@ public class TagWorkingDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 1, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   /***************************************************************************
@@ -253,8 +256,8 @@ public class TagWorkingDialog extends JDialog {
       
       // No blank tags:
       if (tagSelection.equals("")) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tagWorking.emptyTag"), 
                                       rMan.getString("tagWorking.emptyTagTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -263,8 +266,8 @@ public class TagWorkingDialog extends JDialog {
       
       // No tags from forbidden set:
       if (DataUtil.containsKey(forbiddenTags_, tagSelection)) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tagWorking.dupTag"), 
                                       rMan.getString("tagWorking.dupTagTitle"),
                                       JOptionPane.ERROR_MESSAGE);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,9 @@ import java.util.Iterator;
 import javax.swing.JEditorPane;
 import javax.swing.SwingUtilities;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.embedded.ExternalInventoryItem;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -46,8 +48,7 @@ import org.systemsbiology.biotapestry.plugin.PluginCallbackWorkerClient;
 
 /****************************************************************************
 **
-** Handles the display, updating, and shutdown of data popups.  Now handling the
-** same functions for selection windows.
+** Builds strings for data popups, including asynchronous events.
 */
 
 public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
@@ -66,7 +67,8 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   private boolean bigScreen_;
   private boolean discarded_;
   private boolean isHeadless_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private TabPinnedDynamicDataAccessContext tpdacx_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -79,14 +81,15 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   ** constructor
   */
 
-  public DataPopupStringBuilder(BTState appState, TextTarget textTarg, ExternalInventoryItem.BuilderArgs args) {
-    appState_ = appState;
-    isHeadless_ = appState_.isHeadless();
+  public DataPopupStringBuilder(UIComponentSource uics, TabPinnedDynamicDataAccessContext dacx, TextTarget textTarg, ExternalInventoryItem.BuilderArgs args) {
+    uics_ = uics;
+    tpdacx_ = dacx;
+    isHeadless_ = uics_.isHeadless();
     textTarg_ = textTarg;
     args_ = args;
     drawBlocks_ = new ArrayList<DrawBlockData>();
     threadList_ = new ArrayList<Thread>();
-    bigScreen_ = appState_.getDisplayOptMgr().isForBigScreen();  // legacy use only!
+    bigScreen_ = uics_.doBig();  // legacy use only!
     discarded_ = false;
   }
   
@@ -106,7 +109,17 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
     textTarg_ = null;
     return;
   }
- 
+  
+  /***************************************************************************
+  **
+  ** Get the text target. Need this for the UI case, since we want to recover the
+  ** JEditorPane to reuse it.
+  */ 
+    
+  public TextTarget getTextTarget() {
+    return (textTarg_);
+  } 
+
   /***************************************************************************
   **
   ** Thread callback.  This is where we move onto the AWT thread!  BUT
@@ -133,24 +146,36 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   ** Prepare the data window
   */ 
   
-  public void prepare() { 
-    Genome genome = appState_.getDB().getGenome(args_.genomeKey);
+  public void prepare() {
+    GenomeSource gs = tpdacx_.getGenomeSource();
+    Genome genome = gs.getGenome(args_.genomeKey);
+    int numTab = tpdacx_.getMetabase().getNumDB();
     if (args_.isALink) {
       Linkage link = genome.getLinkage(args_.itemID);
       String title = link.getDisplayString(genome, false); 
       String useName = ((title == null) || (title.trim().equals(""))) ? "\" \"" : title;
-      String format = appState_.getRMan().getString("dataWindow.dataForLinkFormat");
-      desc_ = MessageFormat.format(format, new Object[] {useName}); 
+      if (numTab == 1) {
+        String format = tpdacx_.getRMan().getString("dataWindow.dataForLinkFormat");
+        desc_ = MessageFormat.format(format, new Object[] {useName});
+      } else {
+        String format = tpdacx_.getRMan().getString("dataWindow.dataForLinkFormatTabbed");
+        desc_ = MessageFormat.format(format, new Object[] {gs.getTabNameData().getTitle(), useName});        
+      }
       prepareBlocksAndThreadsForLink();    
     } else {
       Node node = genome.getNode(args_.itemID);
       String title = node.getDisplayString(genome, false); 
-      String useName = ((title == null) || (title.trim().equals(""))) ? "\" \"" : title;
-      String format = appState_.getRMan().getString("dataWindow.dataForNodeFormat");
-      desc_ = MessageFormat.format(format, new Object[] {useName}); 
+      String useName = ((title == null) || (title.trim().equals(""))) ? "\" \"" : title;  
+      if (numTab == 1) {
+        String format = tpdacx_.getRMan().getString("dataWindow.dataForNodeFormat");
+        desc_ = MessageFormat.format(format, new Object[] {useName});
+      } else {
+        String format = tpdacx_.getRMan().getString("dataWindow.dataForNodeFormatTabbed");
+        desc_ = MessageFormat.format(format, new Object[] {gs.getTabNameData().getTitle(), useName});        
+      }
       prepareBlocksAndThreads();
     }
-    
+ 
     StringBuffer contentsBuf = new StringBuffer();
     boolean pending = buildString(contentsBuf);
     textTarg_.setTextContents(contentsBuf.toString(), !pending);
@@ -261,16 +286,16 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
     //
     
     int count = 0;
-    PlugInManager pim = appState_.getPlugInMgr();
+    PlugInManager pim = uics_.getPlugInMgr();
     Iterator<DataDisplayPlugIn> ddit = pim.getLinkDataDisplayPlugIns();
     while (ddit.hasNext()) {
       DataDisplayPlugIn ddpi = ddit.next();
       if (ddpi.isInternal()) {
         InternalLinkDataDisplayPlugIn ilddpi = (InternalLinkDataDisplayPlugIn)ddpi;
         boolean isPending = ilddpi.haveCallbackWorker();
-        drawBlocks_.add(new DrawBlockData(ilddpi.getDataAsHTML(args_.genomeKey, args_.itemID), !isPending));
+        drawBlocks_.add(new DrawBlockData(ilddpi.getDataAsHTML(args_.tabKey, args_.genomeKey, args_.itemID), !isPending));
         if (isPending) {
-          PluginCallbackWorker pcw = ilddpi.getCallbackWorker(args_.genomeKey, args_.itemID);
+          PluginCallbackWorker pcw = ilddpi.getCallbackWorker(args_.tabKey, args_.genomeKey, args_.itemID);
           pcw.setIDAndClient(Integer.toString(count), this);
           Thread pcwThread = new Thread(pcw);
           threadList_.add(pcwThread);
@@ -310,7 +335,7 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
     //
     
     int count = 0;
-    PlugInManager pim = appState_.getPlugInMgr();
+    PlugInManager pim = uics_.getPlugInMgr();
     Iterator<DataDisplayPlugIn> ddit = pim.getDataDisplayPlugIns();
     while (ddit.hasNext()) {
       DataDisplayPlugIn ddpi = ddit.next();
@@ -323,9 +348,9 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
         } else {
           InternalNodeDataDisplayPlugIn inddpi = (InternalNodeDataDisplayPlugIn)ddpi;
           boolean isPending = inddpi.haveCallbackWorker();
-          drawBlocks_.add(new DrawBlockData(inddpi.getDataAsHTML(args_.genomeKey, args_.itemID), !isPending));
+          drawBlocks_.add(new DrawBlockData(inddpi.getDataAsHTML(args_.tabKey, args_.genomeKey, args_.itemID), !isPending));
           if (isPending) {
-            PluginCallbackWorker pcw = inddpi.getCallbackWorker(args_.genomeKey, args_.itemID);
+            PluginCallbackWorker pcw = inddpi.getCallbackWorker(args_.tabKey, args_.genomeKey, args_.itemID);
             pcw.setIDAndClient(Integer.toString(count), this);
             Thread pcwThread = new Thread(pcw);
             threadList_.add(pcwThread);  
@@ -340,9 +365,9 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
         } else {
           ExternalNodeDataDisplayPlugIn enddpi = (ExternalNodeDataDisplayPlugIn)ddpi;
           boolean isPending = enddpi.haveCallbackWorker();
-          drawBlocks_.add(new DrawBlockData(enddpi.getDataAsHTML(afen.modelNameChain, afen.nodeDisplay, afen.regionName), !isPending));
+          drawBlocks_.add(new DrawBlockData(enddpi.getDataAsHTML(afen.tabName, afen.modelNameChain, afen.nodeDisplay, afen.regionName), !isPending));
           if (isPending) {
-            PluginCallbackWorker pcw = enddpi.getCallbackWorker(afen.modelNameChain, afen.nodeDisplay, afen.regionName);
+            PluginCallbackWorker pcw = enddpi.getCallbackWorker(afen.tabName, afen.modelNameChain, afen.nodeDisplay, afen.regionName);
             pcw.setIDAndClient(Integer.toString(count), this);
             Thread pcwThread = new Thread(pcw);
             threadList_.add(pcwThread);  
@@ -365,11 +390,11 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   ** Answer if we need per-instance windows:
   */ 
   
-  public static boolean needPerInstance(BTState appState, ExternalInventoryItem.BuilderArgs args) {
+  public static boolean needPerInstance(UIComponentSource uics, ExternalInventoryItem.BuilderArgs args) {
     if (args.isALink) {
-      return (needPerInstanceForLink(appState, args));
+      return (needPerInstanceForLink(uics, args));
     } else {
-      return (needPerInstanceForNode(appState, args));
+      return (needPerInstanceForNode(uics, args));
     }    
   }
    
@@ -378,15 +403,15 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   ** Answer if we need per-instance windows:
   */ 
   
-  public static boolean needPerInstanceForLink(BTState appState, ExternalInventoryItem.BuilderArgs args) {
+  public static boolean needPerInstanceForLink(UIComponentSource uics, ExternalInventoryItem.BuilderArgs args) {
     ExternalInventoryItem.ArgsForExternalLink afel = null;
-    PlugInManager pim = appState.getPlugInMgr();
+    PlugInManager pim = uics.getPlugInMgr();
     Iterator<DataDisplayPlugIn> ddit = pim.getLinkDataDisplayPlugIns();
     while (ddit.hasNext()) {
       DataDisplayPlugIn ddpi = ddit.next();
       if (ddpi.isInternal()) {
         InternalLinkDataDisplayPlugIn ilddpi = (InternalLinkDataDisplayPlugIn)ddpi;
-        if (ilddpi.requiresPerInstanceDisplay(args.genomeKey, args.itemID)) {
+        if (ilddpi.requiresPerInstanceDisplay(args.tabKey, args.genomeKey, args.itemID)) {
           return (true);
         }
       } else {
@@ -408,7 +433,7 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
   ** Build the block list
   */ 
   
-  public static boolean needPerInstanceForNode(BTState appState, ExternalInventoryItem.BuilderArgs args) {
+  public static boolean needPerInstanceForNode(UIComponentSource uics, ExternalInventoryItem.BuilderArgs args) {
 
     ExternalInventoryItem.ArgsForExternalNode afen = null;
 
@@ -416,7 +441,7 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
     // Stash all string blocks, get threads ready to launch:
     //
     
-    PlugInManager pim = appState.getPlugInMgr();
+    PlugInManager pim = uics.getPlugInMgr();
     Iterator<DataDisplayPlugIn> ddit = pim.getDataDisplayPlugIns();
     while (ddit.hasNext()) {
       DataDisplayPlugIn ddpi = ddit.next();
@@ -425,7 +450,7 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
           continue;
         } else {
           InternalNodeDataDisplayPlugIn inddpi = (InternalNodeDataDisplayPlugIn)ddpi;
-          if (inddpi.requiresPerInstanceDisplay(args.genomeKey, args.itemID)) {
+          if (inddpi.requiresPerInstanceDisplay(args.tabKey, args.genomeKey, args.itemID)) {
             return (true);
           }
         }
@@ -437,7 +462,7 @@ public class DataPopupStringBuilder implements PluginCallbackWorkerClient {
             afen = new ExternalInventoryItem.ArgsForExternalNode(args);
           }          
           ExternalNodeDataDisplayPlugIn enddpi = (ExternalNodeDataDisplayPlugIn)ddpi;
-          if (enddpi.requiresPerInstanceDisplay(afen.modelNameChain, afen.nodeDisplay, afen.regionName)) { 
+          if (enddpi.requiresPerInstanceDisplay(afen.tabName, afen.modelNameChain, afen.nodeDisplay, afen.regionName)) { 
             return (true);
           }
         }

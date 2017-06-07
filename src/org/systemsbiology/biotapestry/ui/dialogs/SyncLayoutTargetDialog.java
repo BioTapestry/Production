@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.add.SuperAdd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -69,8 +69,8 @@ public class SyncLayoutTargetDialog extends JDialog {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   private ArrayList<SuperAdd.SuperAddPair> saps_;
   private boolean haveResult_;
   private SyncLayoutTree slt_;
@@ -90,14 +90,14 @@ public class SyncLayoutTargetDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public SyncLayoutTargetDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("sltd.title"), true);
-    appState_ = appState;
+  public SyncLayoutTargetDialog(UIComponentSource uics, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("sltd.title"), true);
     dacx_ = dacx;
+    uics_ = uics;
     haveResult_ = false;
     saps_ = new ArrayList<SuperAdd.SuperAddPair>();
     
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -109,7 +109,7 @@ public class SyncLayoutTargetDialog extends JDialog {
     cp.add(lab, gbc);
     
     slt_ = buildModelTree();    
-    jtree_ = new CheckBoxTree(slt_, appState_);
+    jtree_ = new CheckBoxTree(slt_, uics_.getHandlerAndManagerSource());
     expandFullTree();
     JScrollPane jspt = new JScrollPane(jtree_);
     UiUtil.gbcSet(gbc, 0, 1, 1, 20, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
@@ -130,7 +130,7 @@ public class SyncLayoutTargetDialog extends JDialog {
           }
           doExpand_ = !doExpand_;          
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -143,7 +143,7 @@ public class SyncLayoutTargetDialog extends JDialog {
           clearAll();
           jtree_.repaint();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }); 
@@ -155,7 +155,7 @@ public class SyncLayoutTargetDialog extends JDialog {
           selectAll();
           jtree_.repaint();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -171,7 +171,7 @@ public class SyncLayoutTargetDialog extends JDialog {
             SyncLayoutTargetDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -183,7 +183,7 @@ public class SyncLayoutTargetDialog extends JDialog {
           SyncLayoutTargetDialog.this.setVisible(false);
           SyncLayoutTargetDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -204,7 +204,7 @@ public class SyncLayoutTargetDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 21, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -445,7 +445,7 @@ public class SyncLayoutTargetDialog extends JDialog {
       }
 
       retval.addNode(gi.getName(), rootID, gkey, null, true, false, Color.white);
-      Layout lo = dacx_.lSrc.getLayoutForGenomeKey(gkey);
+      Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(gkey);
 
       Iterator<Group> git = gi.getGroupIterator();
       while (git.hasNext()) {
@@ -457,7 +457,7 @@ public class SyncLayoutTargetDialog extends JDialog {
         String groupID = group.getID();
         String baseGroupID = Group.getBaseID(groupID);
         GroupProperties gp = lo.getGroupProperties(baseGroupID);
-        Color gCol = gp.getColor(true, dacx_.cRes);
+        Color gCol = gp.getColor(true, dacx_.getColorResolver());
 
         retval.addNode(groupMsg, gkey, gkey, groupID, false, true, gCol);
       }

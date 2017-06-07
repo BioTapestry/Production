@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,12 +34,14 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
@@ -65,7 +67,8 @@ public class PertManagePrefaceDialog extends JDialog {
   private JComboBox targCombo_;
   private boolean haveResult_;
   private PertFilterExpression pertFilterExpr_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -80,12 +83,13 @@ public class PertManagePrefaceDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public PertManagePrefaceDialog(BTState appState, JFrame parent) {     
-    super(parent, appState.getRMan().getString("pertManagePreface.title"), true);
-    appState_ = appState;
+  public PertManagePrefaceDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent) {     
+    super(parent, dacx.getRMan().getString("pertManagePreface.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     haveResult_ = false;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx.getRMan();    
     setSize(600, 350);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -97,11 +101,11 @@ public class PertManagePrefaceDialog extends JDialog {
     UiUtil.gbcSet(gbc, 0, rowNum++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(mainLabel, gbc);
      
-    PerturbationData pd = appState.getDB().getPertData();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     
-    SortedSet srcCand = pd.getCandidates(PertFilter.SOURCE);
-    String ncstr = rMan.getString("pertManagePreface.chooseAll");
-    Vector srcVec = new Vector();
+    SortedSet<TrueObjChoiceContent> srcCand = pd.getCandidates(PertFilter.Cat.SOURCE);
+    TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManagePreface.chooseAll"), null);
+    Vector<TrueObjChoiceContent> srcVec = new Vector<TrueObjChoiceContent>();
     srcVec.add(ncstr);
     srcVec.addAll(srcCand);
     
@@ -112,8 +116,8 @@ public class PertManagePrefaceDialog extends JDialog {
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(sourceCombo_, gbc);    
   
-    SortedSet targCand = pd.getCandidates(PertFilter.TARGET);
-    Vector targVec = new Vector();
+    SortedSet<TrueObjChoiceContent> targCand = pd.getCandidates(PertFilter.Cat.TARGET);
+    Vector<TrueObjChoiceContent> targVec = new Vector<TrueObjChoiceContent>();
     targVec.add(ncstr);
     targVec.addAll(targCand);
     
@@ -137,7 +141,7 @@ public class PertManagePrefaceDialog extends JDialog {
             PertManagePrefaceDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -150,7 +154,7 @@ public class PertManagePrefaceDialog extends JDialog {
             PertManagePrefaceDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -219,24 +223,24 @@ public class PertManagePrefaceDialog extends JDialog {
       if (sourceCombo_.getSelectedIndex() == 0) {
         srcFilter = null;
       } else {
-        String useSrc = (String)sourceCombo_.getSelectedItem();
-        srcFilter = new PertFilter(PertFilter.SOURCE, PertFilter.STR_EQUALS, useSrc);
+        TrueObjChoiceContent useSrc = (TrueObjChoiceContent)sourceCombo_.getSelectedItem();
+        srcFilter = new PertFilter(PertFilter.Cat.SOURCE, PertFilter.Match.STR_EQUALS, useSrc.val);
       }
       
       PertFilter targFilter;
       if (targCombo_.getSelectedIndex() == 0) {
         targFilter = null;
       } else {
-        String useTarg = (String)targCombo_.getSelectedItem();
-        targFilter = new PertFilter(PertFilter.TARGET, PertFilter.STR_EQUALS, useTarg);
+        TrueObjChoiceContent useTarg = (TrueObjChoiceContent)targCombo_.getSelectedItem();
+        targFilter = new PertFilter(PertFilter.Cat.TARGET, PertFilter.Match.STR_EQUALS, useTarg.val);
       }
       
       if ((srcFilter == null) && (targFilter == null)) {
-        pertFilterExpr_ = new PertFilterExpression(PertFilterExpression.ALWAYS_OP);
+        pertFilterExpr_ = new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP);
       } else if (srcFilter != null) {
         pertFilterExpr_ = new PertFilterExpression(srcFilter);
         if (targFilter != null) {
-          pertFilterExpr_ = new PertFilterExpression(PertFilterExpression.AND_OP, pertFilterExpr_, targFilter);
+          pertFilterExpr_ = new PertFilterExpression(PertFilterExpression.Op.AND_OP, pertFilterExpr_, targFilter);
         }
       } else { // if (targFilter != null)
         pertFilterExpr_ = new PertFilterExpression(targFilter);       

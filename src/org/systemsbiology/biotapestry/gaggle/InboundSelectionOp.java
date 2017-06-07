@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,10 @@
 
 package org.systemsbiology.biotapestry.gaggle;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.gaggle.GaggleSupport;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -36,14 +38,14 @@ public class InboundSelectionOp extends InboundGaggleOp {
   ////////////////////////////////////////////////////////////////////////////
 
   private SelectionSupport.SelectionsForSpecies sfs_;
-   
+
   /***************************************************************************
   **
   ** Create the op - called on RMI thread
   */
 
-  public InboundSelectionOp(BTState appState, SelectionSupport.SelectionsForSpecies sfs) {
-    super(appState);
+  public InboundSelectionOp(SelectionSupport.SelectionsForSpecies sfs) {
+    super();
     sfs_ = sfs;
     return;
   }
@@ -53,11 +55,12 @@ public class InboundSelectionOp extends InboundGaggleOp {
   ** Execute the op - called on AWT thread
   */
 
-  public void executeOp() {
+  @Override
+  public void executeOp(UIComponentSource uics, UndoFactory uFac, StaticDataAccessContext dacx) {
     if (sfs_.selections.isEmpty()) {
-      (new GaggleSupport(appState_)).clearFromGaggle();
+      (new GaggleSupport(uics, uFac)).clearFromGaggle(dacx);
     } else {
-      (new GaggleSupport(appState_)).selectFromGaggle(sfs_);
+      (new GaggleSupport(uics, uFac)).selectFromGaggle(sfs_, dacx);
     }
     return;
   }    

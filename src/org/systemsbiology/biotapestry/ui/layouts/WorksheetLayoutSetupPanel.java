@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,8 @@ import java.util.Vector;
 import javax.swing.JCheckBox;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
@@ -60,9 +61,10 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
   private JCheckBox doBubblesBox_;
   private JCheckBox doColorCheckBox_;
   private JComboBox overlayOptionCombo_;
-  private BTState appState_;
   private boolean forSubset_;
   private boolean forDiagonal_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
  
   private static final long serialVersionUID = 1L;
   
@@ -77,10 +79,10 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
   ** Constructor 
   */ 
   
-  public WorksheetLayoutSetupPanel(BTState appState, Genome genome, boolean forSubset, 
+  public WorksheetLayoutSetupPanel(UIComponentSource uics, StaticDataAccessContext dacx, Genome genome, boolean forSubset, 
                                    boolean forDiagonal, WorksheetLayout.WorksheetLayoutParams params) {     
     haveResult_ = false;
-    appState_ = appState;
+    dacx_ = dacx;
     forSubset_ = forSubset;
     forDiagonal_ = forDiagonal;
     params_ = params.clone();
@@ -137,20 +139,20 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
   public void displayProperties() {
     
     if (srcTypeCombo_ != null) {
-      srcTypeCombo_.setSelectedItem(params_.srcGroups.generateCombo(appState_));
+      srcTypeCombo_.setSelectedItem(params_.srcGroups.generateCombo(dacx_));
       srcSizeField_.setText(Integer.toString(params_.srcSize));
     }
-    targTypeCombo_.setSelectedItem(params_.targGroups.generateCombo(appState_));
+    targTypeCombo_.setSelectedItem(params_.targGroups.generateCombo(dacx_));
 
     targSizeField_.setText(Integer.toString(params_.targSize));
  
     if (colorTypeCombo_ != null) {
-      colorTypeCombo_.setSelectedItem(params_.assignColorMethod.generateCombo(appState_));
+      colorTypeCombo_.setSelectedItem(params_.assignColorMethod.generateCombo(dacx_));
       doBubblesBox_.setSelected(params_.showBubbles);
       doColorCheckBox_.setSelected(params_.checkColorOverlap);
     }
 
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, params_.overlayOption));
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(dacx_, params_.overlayOption));
     return;
   }
   
@@ -179,8 +181,8 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
       }
       
       if (badVal) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("worksheetLayout.badSize"), 
                                       rMan.getString("worksheetLayout.badSizeTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -241,14 +243,14 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
   */ 
   
   private void buildParamPanel(Genome genome) {     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     GridBagConstraints gbc = new GridBagConstraints();
     setLayout(new GridBagLayout());
     int rowNum = 0;
     
     if (!forDiagonal_) {
       JLabel srcTypeLabel = new JLabel(rMan.getString("worksheetLayout.srcType"));
-      srcTypeCombo_ = new JComboBox(WorksheetLayout.SrcTypes.getChoices(appState_));
+      srcTypeCombo_ = new JComboBox(WorksheetLayout.SrcTypes.getChoices(dacx_));
 
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
       add(srcTypeLabel, gbc);
@@ -265,7 +267,7 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
     }
     
     JLabel targTypeLabel = new JLabel(rMan.getString("worksheetLayout.targType"));
-    targTypeCombo_ = new JComboBox(WorksheetLayout.TargTypes.getChoices(appState_));
+    targTypeCombo_ = new JComboBox(WorksheetLayout.TargTypes.getChoices(dacx_));
     
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(targTypeLabel, gbc);
@@ -281,7 +283,7 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
     add(targSizeField_, gbc);
  
     JLabel overlayLabel = new JLabel(rMan.getString("worksheetLayout.overlayOptions"));
-    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
+    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx_);
     overlayOptionCombo_ = new JComboBox(relayoutChoices);
         
     boolean activate = (genome == null) || (genome.getNetworkOverlayCount() > 0);
@@ -297,7 +299,7 @@ public class WorksheetLayoutSetupPanel extends JPanel implements SpecialtyLayout
     
    if (!forSubset_) {   
       JLabel colorTypeLabel = new JLabel(rMan.getString("specialtyLayout.colorStrategy"));
-      colorTypeCombo_ = new JComboBox(ColorTypes.getChoices(appState_));
+      colorTypeCombo_ = new JComboBox(ColorTypes.getChoices(dacx_));
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
       add(colorTypeLabel, gbc);
       UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    

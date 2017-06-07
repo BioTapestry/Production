@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,9 +26,11 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -37,7 +39,6 @@ import org.systemsbiology.biotapestry.cmd.flow.layout.WorkspaceSupport;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
@@ -55,6 +56,7 @@ import org.systemsbiology.biotapestry.util.AsynchExitRequestException;
 import org.systemsbiology.biotapestry.util.BackgroundWorker;
 import org.systemsbiology.biotapestry.util.BackgroundWorkerClient;
 import org.systemsbiology.biotapestry.util.BackgroundWorkerOwner;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -81,8 +83,7 @@ public class DialogBuild extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DialogBuild(BTState appState) {
-    super(appState);
+  public DialogBuild() {
     name =  "command.BuildFromDialog";
     desc =  "command.BuildFromDialog";
     mnem =  "command.BuildFromDialogMnem";
@@ -100,6 +101,7 @@ public class DialogBuild extends AbstractControlFlow {
   ** 
   */
    
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.isNotDynamicInstance()); 
   }
@@ -117,12 +119,10 @@ public class DialogBuild extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
-      }
-      if (ans.cfh == null) {
-        ans.cfh = cfh;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepPreprocessRegions")) {
         next = ans.stepPreprocessRegions();
@@ -170,20 +170,22 @@ public class DialogBuild extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, BackgroundWorkerOwner {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements BackgroundWorkerOwner {
+      
     private BuildInstructionProcessor bip_;
-    private ServerControlFlowHarness cfh;
-    private DataAccessContext rcxT_;
-    private DataAccessContext rcxR_;
+    private StaticDataAccessContext rcxR_;
     private BuildNetworkDialogFactory.DesktopDialog horribleHack_;  
     private Genome parent;
     private List<InstanceInstructionSet.RegionInfo> working;
      
-    public String getNextStep() {
-      return (nextStep_);
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepPreprocessRegions";
     }
     
     /***************************************************************************
@@ -191,12 +193,11 @@ public class DialogBuild extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepPreprocessRegions";
-      rcxT_ = dacx;
     }
- 
+    
     /***************************************************************************
     **
     ** Process a QueBomb
@@ -204,8 +205,8 @@ public class DialogBuild extends AbstractControlFlow {
     
     private RemoteRequest.Result queBombLayoutValues(RemoteRequest qbom) {
       SpecialtyLayoutEngine.SpecialtyType strat = (SpecialtyLayoutEngine.SpecialtyType)qbom.getObjectArg("strategy");     
-      SpecialtyLayout specLayout = SpecialtyLayoutEngine.getLayout(strat, appState_); 
-      SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout.getParameterDialogBuildArgs(rcxT_.getGenome(), null, false);
+      SpecialtyLayout specLayout = SpecialtyLayoutEngine.getLayout(strat, dacx_); 
+      SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout.getParameterDialogBuildArgs(uics_, dacx_.getCurrentGenome(), null, false);
       RemoteRequest.Result result = new RemoteRequest.Result(qbom);
       result.setObjAnswer("specLoParams", ba);
       return (result);
@@ -218,7 +219,7 @@ public class DialogBuild extends AbstractControlFlow {
     
     private RemoteRequest.Result queBombInstanceMismatch(RemoteRequest qbom) {
       List<BuildInstruction> buildCmds = (List<BuildInstruction>)qbom.getObjectArg("buildCmds");
-      List<BuildInstructionProcessor.MatchChecker> mismatch = bip_.findInstanceMismatches(rcxT_, buildCmds);
+      List<BuildInstructionProcessor.MatchChecker> mismatch = bip_.findInstanceMismatches(dacx_, buildCmds);
       RemoteRequest.Result result = new RemoteRequest.Result(qbom);
       result.setObjAnswer("instMismatch", mismatch);
       return (result);
@@ -231,7 +232,7 @@ public class DialogBuild extends AbstractControlFlow {
     
     private RemoteRequest.Result queBombPreProcess(RemoteRequest qbom) {
       List<BuildInstruction> buildCmds = (List<BuildInstruction>)qbom.getObjectArg("buildCmds");
-      BuildInstructionProcessor.BuildChanges bChanges = bip_.preProcess(rcxT_, buildCmds); 
+      BuildInstructionProcessor.BuildChanges bChanges = bip_.preProcess(dacx_, buildCmds); 
       RemoteRequest.Result result = new RemoteRequest.Result(qbom);
       result.setObjAnswer("bChanges", bChanges);
       return (result);
@@ -243,14 +244,14 @@ public class DialogBuild extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepPreprocessRegions() {
-      rcxR_ = rcxT_.getContextForRoot();
+      rcxR_ = dacx_.getContextForRoot();
       parent = null;
       working = null;
-      if (!(rcxT_.getGenome() instanceof DBGenome)) {
-        InstanceInstructionSet iis = rcxT_.getInstructSrc().getInstanceInstructionSet(rcxT_.getGenomeID());
-        parent = rcxT_.getGenomeAsInstance().getVfgParent();
+      if (!dacx_.currentGenomeIsRootDBGenome()) {
+        InstanceInstructionSet iis = dacx_.getInstructSrc().getInstanceInstructionSet(dacx_.getCurrentGenomeID());
+        parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         if (parent != null) {
-          InstanceInstructionSet piis = rcxT_.getInstructSrc().getInstanceInstructionSet(parent.getID());
+          InstanceInstructionSet piis = dacx_.getInstructSrc().getInstanceInstructionSet(parent.getID());
           ArrayList<InstanceInstructionSet.RegionInfo> parentList = new ArrayList<InstanceInstructionSet.RegionInfo>();
           if (piis != null) {
             Iterator<InstanceInstructionSet.RegionInfo>prit = piis.getRegionIterator();  
@@ -267,8 +268,8 @@ public class DialogBuild extends AbstractControlFlow {
           }
           if (working.isEmpty() && !parentList.isEmpty()) {
             RegionInheritDialogFactory.BuildArgs ba = 
-              new RegionInheritDialogFactory.BuildArgs(rcxT_.getGenome(), parentList, working);
-            RegionInheritDialogFactory mddf = new RegionInheritDialogFactory(cfh);   
+              new RegionInheritDialogFactory.BuildArgs(dacx_.getCurrentGenome(), parentList, working);
+            RegionInheritDialogFactory mddf = new RegionInheritDialogFactory(cfh_);   
             ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
             DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
             nextStep_ = "stepProcessEmptyInheritRegionSetup";
@@ -276,8 +277,8 @@ public class DialogBuild extends AbstractControlFlow {
           }
           if (working.isEmpty()) {
             RegionSetupDialogFactory.BuildArgs ba = 
-              new RegionSetupDialogFactory.BuildArgs(rcxT_.getGenome(), working);
-            RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh);   
+              new RegionSetupDialogFactory.BuildArgs(dacx_.getCurrentGenome(), working);
+            RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh_);   
             ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
             DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
             nextStep_ = "stepProcessEmptyRegionSetup";
@@ -285,8 +286,8 @@ public class DialogBuild extends AbstractControlFlow {
           } 
         } else if ((iis == null) || (iis.getRegionCount() == 0)) {
           RegionSetupDialogFactory.BuildArgs ba = 
-            new RegionSetupDialogFactory.BuildArgs(rcxT_.getGenome(), working);
-          RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh);   
+            new RegionSetupDialogFactory.BuildArgs(dacx_.getCurrentGenome(), working);
+          RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh_);   
           ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
           DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
           nextStep_ = "stepProcessEmptyRegionSetup";
@@ -311,11 +312,11 @@ public class DialogBuild extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepLaunchDialog() {  
  
-     bip_ = new BuildInstructionProcessor(appState_);
-     List<BuildInstruction> instruct = bip_.getInstructions(rcxT_);
+     bip_ = new BuildInstructionProcessor(uics_, dacx_, uFac_);
+     List<BuildInstruction> instruct = bip_.getInstructions(dacx_);
       
-     BuildNetworkDialogFactory.BuildArgs ba = new BuildNetworkDialogFactory.BuildArgs(rcxT_.getGenome(), parent, working, instruct);
-     BuildNetworkDialogFactory bndf = new BuildNetworkDialogFactory(cfh);
+     BuildNetworkDialogFactory.BuildArgs ba = new BuildNetworkDialogFactory.BuildArgs(dacx_.getCurrentGenome(), parent, working, instruct);
+     BuildNetworkDialogFactory bndf = new BuildNetworkDialogFactory(cfh_);
      ServerControlFlowHarness.Dialog cfhd = bndf.getDialog(ba);
      DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
      nextStep_ = "stepExtractAndBuildNetwork";
@@ -353,8 +354,8 @@ public class DialogBuild extends AbstractControlFlow {
      working = crq.regionResult;
      if (working.isEmpty()) {
        RegionSetupDialogFactory.BuildArgs ba = 
-         new RegionSetupDialogFactory.BuildArgs(rcxT_.getGenome(), working);
-       RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh);   
+         new RegionSetupDialogFactory.BuildArgs(dacx_.getCurrentGenome(), working);
+       RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(cfh_);   
        ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
        nextStep_ = "stepProcessEmptyRegionSetup";
@@ -387,19 +388,21 @@ public class DialogBuild extends AbstractControlFlow {
       if (crq.params != null) {
         params = crq.params;
       } else {
-        LayoutOptionsManager lom = appState_.getLayoutOptMgr();
+        LayoutOptionsManager lom = dacx_.getLayoutOptMgr();
         params = lom.getLayoutParams(crq.strat); 
       }    
       
-      UndoSupport support = new UndoSupport(appState_, "undo.buildRootFromInstructions");
-      SpecialtyLayout specLayout = SpecialtyLayoutEngine.getLayout(crq.strat, appState_); 
+      UndoSupport support = uFac_.provideUndoSupport("undo.buildRootFromInstructions", rcxR_);
+      SpecialtyLayout specLayout = SpecialtyLayoutEngine.getLayout(crq.strat, dacx_); 
       
-      BuildRunner runner = new BuildRunner(appState_, rcxT_, rcxR_, crq.buildCmds, crq.workingRegions,
-                                           appState_.getCanvasCenter(), appState_.getCanvasSize(), crq.keepLayout,
-                                           appState_.getLayoutOptMgr().getLayoutOptions(), 
+      Point2D cc = dacx_.getWorkspaceSource().getWorkspace().getCanvasCenter();
+      Dimension csz = dacx_.getWorkspaceSource().getWorkspace().getCanvasSize();
+      
+      BuildRunner runner = new BuildRunner(uics_, dacx_, rcxR_, uFac_, crq.buildCmds, crq.workingRegions,
+                                           cc, csz, crq.keepLayout, dacx_.getLayoutOptMgr().getLayoutOptions(), 
                                            crq.globalDelete, support, specLayout, params);
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(uics_, rcxR_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       
       runner.setClient(bwc);
       bwc.launchWorker();
@@ -436,12 +439,12 @@ public class DialogBuild extends AbstractControlFlow {
     }     
   
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
-      Genome toCheck = rcxT_.getGenomeSource().getGenome(rcxT_.getGenomeID());
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      Genome toCheck = dacx_.getGenomeSource().getGenome(dacx_.getCurrentGenomeID());
       if ((toCheck != null) && !toCheck.isEmpty()) {
-        appState_.getZoomCommandSupport().zoomToWorksheetCenter();
+        uics_.getZoomCommandSupport().zoomToWorksheetCenter();
       }
-      LayoutLinkSupport.offerColorFixup(appState_, rcxT_, (LinkRouter.RoutingResult)result);
+      LayoutLinkSupport.offerColorFixup(uics_, dacx_, (LinkRouter.RoutingResult)result, uFac_);
       return;
     }  
   }  
@@ -452,8 +455,11 @@ public class DialogBuild extends AbstractControlFlow {
   */ 
     
   private static class BuildRunner extends BackgroundWorker {
+    private UIComponentSource uics_;
+    private UndoFactory uFac_;
+    
     private String myGenomeID_;
-    private DataAccessContext rcxR_;
+    private StaticDataAccessContext rcxR_;
     private UndoSupport support_;
     private List<BuildInstruction> myBuildCmds_;
     private List<InstanceInstructionSet.RegionInfo> myRegions_;
@@ -462,11 +468,10 @@ public class DialogBuild extends AbstractControlFlow {
     private boolean myKeepLayout_;
     private boolean myGlobalDelete_;
     private LayoutOptions myOptions_;
-    private BTState myAppState_;
     SpecialtyLayout specLayout_;
     SpecialtyLayoutEngineParams params_;
     
-    public BuildRunner(BTState appState, DataAccessContext rcxT, DataAccessContext rcxR,
+    public BuildRunner(UIComponentSource uics, StaticDataAccessContext rcxT, StaticDataAccessContext rcxR, UndoFactory uFac,
                        List<BuildInstruction> buildCmds, List<InstanceInstructionSet.RegionInfo> workingRegions, Point2D center, 
                        Dimension size, boolean keepLayout, 
                        LayoutOptions options, boolean globalDelete,
@@ -474,8 +479,9 @@ public class DialogBuild extends AbstractControlFlow {
                        SpecialtyLayout specLayout,
                        SpecialtyLayoutEngineParams params) {
       super(new LinkRouter.RoutingResult());
-      myAppState_ = appState;
-      myGenomeID_ = rcxT.getGenomeID();
+      uics_ = uics;
+      uFac_ = uFac;
+      myGenomeID_ = rcxT.getCurrentGenomeID();
       rcxR_ = rcxR;
       myBuildCmds_ = buildCmds;
       myRegions_ = workingRegions;
@@ -490,7 +496,7 @@ public class DialogBuild extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      BuildInstructionProcessor bip = new BuildInstructionProcessor(myAppState_);
+      BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, rcxR_, uFac_);
       BuildInstructionProcessor.PIData pid = new BuildInstructionProcessor.PIData(myGenomeID_, myBuildCmds_, myRegions_,
                                                                                   myCenter_, mySize_,  myKeepLayout_, false, myOptions_, 
                                                                                   support_, this, myGlobalDelete_, specLayout_, params_);
@@ -500,10 +506,10 @@ public class DialogBuild extends AbstractControlFlow {
     }
     
     public Object postRunCore() {
-      myAppState_.getZoomTarget().fixCenterPoint(true, support_, false);
-      if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-        Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-        (new WorkspaceSupport(myAppState_, rcxR_)).setWorkspaceToModelBounds(support_, allBounds);
+      rcxR_.getZoomTarget().fixCenterPoint(true, support_, false);
+      if (rcxR_.modelIsOutsideWorkspaceBounds()) {
+        Rectangle allBounds = rcxR_.getZoomTarget().getAllModelBounds();
+        (new WorkspaceSupport(rcxR_)).setWorkspaceToModelBounds(support_, allBounds);
       }    
       return (null);
     }           

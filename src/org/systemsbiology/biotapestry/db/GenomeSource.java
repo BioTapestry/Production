@@ -21,12 +21,14 @@ package org.systemsbiology.biotapestry.db;
 
 import java.util.Iterator;
 
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.XPlatDisplayText;
 import org.systemsbiology.biotapestry.nav.NavTree;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -37,10 +39,18 @@ public interface GenomeSource {
 
   /***************************************************************************
   ** 
+  ** Get the database/tab ID
+  */
+
+  public String getID();   
+  
+  
+  /***************************************************************************
+  ** 
   ** Get the root genome.
   */
 
-  public Genome getGenome();   
+  public DBGenome getRootDBGenome();   
   
   /***************************************************************************
   ** 
@@ -164,7 +174,7 @@ public interface GenomeSource {
   ** Get a unique model name
   */
 
-  public String getUniqueModelName();
+  public String getUniqueModelName(ResourceManager rMan);
   
   /***************************************************************************
   ** 
@@ -180,6 +190,19 @@ public interface GenomeSource {
 
   public DatabaseChange[] removeInstance(String key);
   
+  /***************************************************************************
+  ** 
+  ** Get the TabNameData
+  */
+
+  public TabNameData getTabNameData();
+  
+  /***************************************************************************
+  ** 
+  ** Set the TabNameData
+  */
+
+  public DatabaseChange setTabNameData(TabNameData tnData);
   
   /***************************************************************************
   ** 
@@ -190,12 +213,11 @@ public interface GenomeSource {
   
   /***************************************************************************
   ** 
-  ** Get the startupView
+  ** Set the startupView
   */
 
   public DatabaseChange setStartupView(StartupView startupView);
- 
-  
+   
   /***************************************************************************
   ** 
   ** Get the genome count
@@ -215,7 +237,6 @@ public interface GenomeSource {
   ** Set the core genome
   */
 
-  public void setGenome(Genome genome);
-  
+  public void setGenome(DBGenome genome);
   
 }

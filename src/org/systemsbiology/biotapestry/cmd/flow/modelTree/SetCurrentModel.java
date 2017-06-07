@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,14 +30,18 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.NavigationChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.app.VirtualTimeSlider;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NavigationChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.StartupView;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
@@ -48,11 +52,11 @@ import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.TaggedSet;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -70,6 +74,7 @@ public class SetCurrentModel extends AbstractControlFlow {
   public enum SettingAction {VIA_MODEL_TREE, 
                              VIA_SLIDER, 
                              FOR_EVENT,
+                             GROUP_NODE_SELECTION_ONLY,
                              MODEL_SELECTION_ONLY,
                              MODEL_AND_LINK_SELECTIONS, 
                              MODEL_AND_NODE_SELECTIONS, 
@@ -82,6 +87,7 @@ public class SetCurrentModel extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////    
   
   private SettingAction action_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -95,7 +101,7 @@ public class SetCurrentModel extends AbstractControlFlow {
   */ 
   
   public SetCurrentModel(BTState appState, SettingAction action) {
-    super(appState);
+    appState_ = appState;
     action_ = action;
   }
   
@@ -117,8 +123,9 @@ public class SetCurrentModel extends AbstractControlFlow {
   */ 
   
   @Override  
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx);
+    retval.setAppState(appState_, retval.getDACX());
     return (retval);
   }
 
@@ -135,7 +142,8 @@ public class SetCurrentModel extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh);
+        ans.setAppState(appState_, ans.getDACX());
       } else {
         ans = (StepState)last.currStateX;
       }
@@ -160,11 +168,9 @@ public class SetCurrentModel extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
     private SettingAction myAction_;
-    private BTState appState_;
     private boolean doingUndo_;
     private int value_;
     private boolean doSelectionIgnore_;
@@ -174,36 +180,69 @@ public class SetCurrentModel extends AbstractControlFlow {
     private String currDip_; 
     private StartupView suv_;
     private String modelID_;
+    private String nodeID_;
     private Set<String> nodes_;
     private Set<String> links_;
     private String overlayId_;
     private TaggedSet modules_;
     private TaggedSet revealedModules_;
     private List<Intersection> linkIntersections_;
-    private DataAccessContext dacx_;
+    private DataAccessContext ddacx_;
+    private BTState appState_;
       
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, SettingAction action, DataAccessContext dacx) {
+    public StepState(SettingAction action, StaticDataAccessContext dacx) {
+      super(dacx);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
-     
+
     /***************************************************************************
     **
-    ** for preload
+    ** Construct
+    */ 
+    
+    public StepState(SettingAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
+    }
+    
+    /***************************************************************************
+    **
+    ** We have to use appState for the moment...
+    */ 
+    
+    public void setAppState(BTState appState, DataAccessContext dacx) {
+      appState_ = appState;
+      // We ignore the static context we are being handed, and use what we are provided here!
+      ddacx_ = dacx;
+      if (uics_ == null) {
+        BTState.AppSources asrc = appState_.getAppSources();
+        uics_ = asrc.uics;
+        tSrc_ = asrc.tSrc;
+        uFac_ = asrc.uFac;
+      }  
+      return;
+    }
+
+    /***************************************************************************
+    **
+    ** for preload. We are actually getting used outside normal flows, so we need extra info
+    ** that would come from the harness
     */ 
         
-    public void setPreloadForTreeClick(TreePath currPath, TreePath lastPath, boolean doSelectionIgnore, boolean doingUndo) {
+    public void setPreloadForTreeClick(TreePath currPath, TreePath lastPath, 
+                                       boolean doSelectionIgnore, boolean doingUndo, 
+                                       UIComponentSource uics, TabSource tSrc, UndoFactory uFac) {
+
+      uics_ = uics;
+      tSrc_ = tSrc;
+      uFac_ = uFac;
       doingUndo_ = doingUndo;
       doSelectionIgnore_ = doSelectionIgnore;
       currPath_ = currPath;
@@ -216,7 +255,11 @@ public class SetCurrentModel extends AbstractControlFlow {
     ** for preload
     */ 
         
-    public void setPreloadForSlider(int value, int lastSettingToUse, boolean doingUndo, String currDip) {
+    public void setPreloadForSlider(int value, int lastSettingToUse, boolean doingUndo, String currDip,  
+                                    UIComponentSource uics, TabSource tSrc, UndoFactory uFac) {      
+      uics_ = uics;
+      tSrc_ = tSrc;
+      uFac_ = uFac;
       value_ = value;
       lastSettingToUse_ = lastSettingToUse;
       currDip_ = currDip;
@@ -228,22 +271,37 @@ public class SetCurrentModel extends AbstractControlFlow {
     **
     ** for preload
     */ 
-        
+   
     public void setPreload(String modelID, Set<String> nodes, Set<String> links) {
+    	this.setPreload(modelID,nodes,links,null);
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** for preload
+    */
+    
+    public void setPreload(String modelID, Set<String> nodes, Set<String> links, String nodeId) {
+    	nodeID_ = nodeId;
       modelID_ = modelID;
       nodes_ = nodes;
       links_ = links;
       return;
     }
     
+    /***************************************************************************
+    **
+    ** for preload
+    */
     
     public void setPreload(String modelID, Set<String> nodes, Set<String> links, String overlayId, TaggedSet mods, TaggedSet revealedModules) {
-        setPreload(modelID,nodes,links);
-        overlayId_ = overlayId;
-        modules_ = mods;
-        revealedModules_ = revealedModules;
-        return;
-      }
+      this.setPreload(modelID,nodes,links);
+      overlayId_ = overlayId;
+      modules_ = mods;
+      revealedModules_ = revealedModules;
+      return;
+    }
      
     /***************************************************************************
     **
@@ -251,13 +309,13 @@ public class SetCurrentModel extends AbstractControlFlow {
     */ 
        
     public void coreSwitchingSupport(String genomeID, UndoSupport support) {
-      SUPanel sup = appState_.getSUPanel();
-      DisplayOptions dop = appState_.getDisplayOptMgr().getDisplayOptions();
+      SUPanel sup = uics_.getSUPanel();
+      DisplayOptions dop = ddacx_.getDisplayOptsSource().getDisplayOptions();
       DisplayOptions.NavZoom navZoomMode = dop.getNavZoomMode();
-      String oldLayoutID = appState_.getLayoutKey();
+      String oldLayoutID = ddacx_.getCurrentLayoutID();
   
-      String layoutID = appState_.getLayoutMgr().getLayout(genomeID); 
-      Genome currGenome = appState_.getDB().getGenome(genomeID);
+      String layoutID = ddacx_.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID); 
+      Genome currGenome = ddacx_.getGenomeSource().getGenome(genomeID);
       if (currGenome == null) {
         System.err.println("No genome: " + genomeID);
         throw new IllegalStateException();
@@ -265,17 +323,17 @@ public class SetCurrentModel extends AbstractControlFlow {
       appState_.setGraphLayout(layoutID);
       if ((!doingUndo_) && (support != null)) {
         // This also handles netOverlayController tracking!
-        appState_.setGenome(genomeID, support, dacx_);
+        appState_.setGenome(genomeID, support, ddacx_);
       } else {
-        appState_.setGenomeForUndo(genomeID, dacx_);
+        appState_.setGenomeForUndo(genomeID, ddacx_);
       }
       if (navZoomMode == DisplayOptions.NavZoom.NAV_ZOOM_TO_EACH_MODEL) {
         if ((oldLayoutID == null) || !oldLayoutID.equals(layoutID)) {
-          appState_.getZoomCommandSupport().zoomToModel();
+          uics_.getZoomCommandSupport().zoomToModel();
         }  
       }
       sup.drawModel(true);      
-      appState_.getCommonView().updateDisplayForGenome(currGenome);
+      uics_.getCommonView().updateDisplayForGenome(currGenome);
       return;
     }
     
@@ -292,10 +350,13 @@ public class SetCurrentModel extends AbstractControlFlow {
           return (stepToProcessSlider());
         case MODEL_SELECTION_ONLY:
           return (stepToProcessModel());
+        case GROUP_NODE_SELECTION_ONLY:
+        	return (stepToProcessGroupNode());
         case MODEL_AND_LINK_SELECTIONS: 
         case MODEL_AND_NODE_SELECTIONS:    
         case MODEL_AND_SELECTIONS:
-          return (stepToProcessModelAndSelections());
+          StaticDataAccessContext rcx = new StaticDataAccessContext(appState_, modelID_);
+          return (stepToProcessModelAndSelections(rcx));
         case FOR_EVENT:
         default:
           throw new IllegalStateException();
@@ -306,40 +367,66 @@ public class SetCurrentModel extends AbstractControlFlow {
     **
     ** Do the step
     */ 
-       
+    
+    public DialogAndInProcessCmd stepToProcessGroupNode() {
+    	
+    	suv_ = new StartupView(modelID_,overlayId_,modules_,revealedModules_,"group",nodeID_);
+    	
+    	installStartupView(uics_, ddacx_, false, suv_);    	
+    	
+    	return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
+    }
+    
+    /***************************************************************************
+    **
+    ** Do the step. NOTE THIS IS PUBLIC. It is getting called independently for now, to drive tree selection.
+    ** As such, it needs stuff pre-stocked (e.g. uics_, tSrc_) that is usually handled by the harness!
+    */ 
+ 
     public DialogAndInProcessCmd stepToProcessTree() {   
         
       //
       // Previous handler installed on CommonView
       //
       
-      VirtualTimeSlider vtSlider = appState_.getVTSlider();
-
+      VirtualTimeSlider vtSlider = uics_.getVTSlider();
+      NavTree nt = ddacx_.getGenomeSource().getModelHierarchy();
+      
       //
       // Undo/Redo support
       //
-      UserTreePathController.PathNavigationInfo pni = appState_.getPathController().getPendingNavUndo();
-      UndoSupport support = (pni == null) ? new UndoSupport(appState_, "undo.treeSelection") : pni.support;
-
-      Database db = appState_.getDB();
-      String genomeID = db.getModelHierarchy().getGenomeID(currPath_);
-      String proxyID = db.getModelHierarchy().getDynamicProxyID(currPath_);
+      UserTreePathController.PathNavigationInfo pni = uics_.getPathController().getPendingNavUndo();
+      UndoSupport taSupport = tSrc_.getTabAppendUndoSupport();
+      UndoSupport support;
+      if (pni != null) {
+        support = pni.support;
+      } else if (taSupport != null) {
+        support = taSupport;
+      } else {
+        support = uFac_.provideUndoSupport("undo.treeSelection", ddacx_);
+      }
+      
+      String genomeID = nt.getGenomeID(currPath_);
+      String proxyID = nt.getDynamicProxyID(currPath_);
+      String groupNodeID = nt.getGroupNodeID(currPath_);
+      uics_.getCommonView().showGroupNode((groupNodeID != null));
+      appState_.setGroupNodeSelected((groupNodeID != null));     
       if (genomeID != null) {
         vtSlider.installEmptySlider();
         coreSwitchingSupport(genomeID, support);
-      } else if (proxyID != null) {        
+      } else if (proxyID != null) {
         vtSlider.manageSliderForProxy(proxyID);
-        genomeID = db.getDynamicProxy(proxyID).getKeyForTime(vtSlider.getLastSliderSetting(), true);
+        genomeID = ddacx_.getGenomeSource().getDynamicProxy(proxyID).getKeyForTime(vtSlider.getLastSliderSetting(), true);
         coreSwitchingSupport(genomeID, support);
-      } else {
+      } else {     
         if (!this.doSelectionIgnore_) {
-          SUPanel sup = appState_.getSUPanel();
+          SUPanel sup = uics_.getSUPanel();
           vtSlider.installEmptySlider();
           appState_.setGraphLayout(null);
           if (!doingUndo_) {
-            appState_.setGenome(genomeID, support, dacx_);
+            appState_.setGenome(genomeID, support, ddacx_);
           } else {
-            appState_.setGenomeForUndo(genomeID, dacx_);
+            appState_.setGenomeForUndo(genomeID, ddacx_);
           }
           sup.drawModel(true);
         }
@@ -348,29 +435,30 @@ public class SetCurrentModel extends AbstractControlFlow {
       // Don't post an undo if this selection change is the result of
       // an undo:
       //
-      NavTree nt = db.getModelHierarchy();
+      
       if (!doingUndo_ && !nt.amDoingUndo()) {
-        if (nt.getSkipFlag() != NavTree.SKIP_EVENT) {
+        if (nt.getSkipFlag() != NavTree.Skips.SKIP_EVENT) {
           NavigationChange nc = (pni == null) ? new NavigationChange() : pni.nav;
           if (pni == null) { 
-            appState_.getPathController().syncPathControls(nc, dacx_); 
+            uics_.getPathController().syncPathControls(nc, ddacx_); 
           }
           nc.newPath = currPath_;
           nc.oldPath = lastPath_;
-          nc.commonView = appState_.getCommonView();
           //lastPath_ = tp;
-          support.addEdit(new NavigationChangeCmd(appState_, dacx_, nc));
-          if (nt.getSkipFlag() != NavTree.SKIP_FINISH) {
-            if (pni == null) {
-              support.finish();
-            } else {
+          support.addEdit(new NavigationChangeCmd(ddacx_, nc));
+          if (nt.getSkipFlag() != NavTree.Skips.SKIP_FINISH) { 
+            if (pni != null) {
               pni.finish();
+            } else if (taSupport != null) {
+              support = taSupport;
+            } else {
+              support.finish();
             }
           }
         }
       } 
       SelectionChangeEvent ev = new SelectionChangeEvent(genomeID, null, SelectionChangeEvent.SELECTED_MODEL);
-      appState_.getEventMgr().sendSelectionChangeEvent(ev);
+      uics_.getEventMgr().sendSelectionChangeEvent(ev);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
     
@@ -385,15 +473,14 @@ public class SetCurrentModel extends AbstractControlFlow {
       // Undo/Redo support
       //
 
-      UserTreePathController.PathNavigationInfo pni = appState_.getPathController().getPendingNavUndo();
-      UndoSupport support = (pni == null) ? new UndoSupport(appState_, "undo.sliderPos") : pni.support;
+      UserTreePathController.PathNavigationInfo pni = uics_.getPathController().getPendingNavUndo();
+      UndoSupport support = (pni == null) ? uFac_.provideUndoSupport("undo.sliderPos", ddacx_) : pni.support;
       NavigationChange nc = (pni == null) ? new NavigationChange() : pni.nav;
-      nc.commonView = appState_.getCommonView();
       if (!doingUndo_) {
         nc.oldHour = lastSettingToUse_;
       }
 
-      Database db = appState_.getDB();    
+      GenomeSource db = ddacx_.getGenomeSource();    
       DynamicInstanceProxy dip = db.getDynamicProxy(currDip_);
       String genomeID = dip.getKeyForTime(value_, true);
   //    lastSettingToUse_ = value_;
@@ -406,11 +493,11 @@ public class SetCurrentModel extends AbstractControlFlow {
 
       if (!doingUndo_) {
         if (pni == null) { 
-          appState_.getPathController().syncPathControls(nc, dacx_); 
+          uics_.getPathController().syncPathControls(nc, ddacx_); 
         }
         nc.newHour = value_;
         nc.sliderID = dip.getID();
-        support.addEdit(new NavigationChangeCmd(appState_, dacx_, nc));
+        support.addEdit(new NavigationChangeCmd(ddacx_, nc));
         if (pni == null) {
           support.finish();
         } else {
@@ -419,7 +506,7 @@ public class SetCurrentModel extends AbstractControlFlow {
       }      
 
       SelectionChangeEvent ev = new SelectionChangeEvent(genomeID, null, SelectionChangeEvent.SELECTED_MODEL);
-      appState_.getEventMgr().sendSelectionChangeEvent(ev);    
+      uics_.getEventMgr().sendSelectionChangeEvent(ev);    
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
 
@@ -430,27 +517,28 @@ public class SetCurrentModel extends AbstractControlFlow {
     ** could be better.
     */
     
-    public static void installStartupView(BTState appState, DataAccessContext dacx, boolean selectRoot, StartupView sv) {
+    public static void installStartupView(UIComponentSource uics, DataAccessContext dacx, boolean selectRoot, StartupView sv) {
       TreePath tp;
       int timeVal = -1;
       String modelKey = sv.getModel();
-      NavTree navTree = appState.getDB().getModelHierarchy();
+      String nodeKey = sv.getNodeId();
+      NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
       if (selectRoot) {
-        DefaultTreeModel dtm = appState.getTree().getTreeModel();
+        DefaultTreeModel dtm = uics.getTree().getTreeModel();
         DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)dtm.getRoot(); 
         DefaultMutableTreeNode rootChild = (DefaultMutableTreeNode)rootNode.getChildAt(0);
         TreeNode[] tn = rootChild.getPath();
         tp = new TreePath(tn);
-      } else if (modelKey == null) {
+      } else if (modelKey == null && nodeKey == null) {
         tp = navTree.getDefaultSelection();
       } else {     
-        tp = navTree.getStartupSelection(modelKey, dacx);
+        tp = navTree.getStartupSelection(modelKey != null ? modelKey : nodeKey, dacx);
       }
       
       DynamicInstanceProxy dip = null; 
-      if ((modelKey != null) && DynamicInstanceProxy.isDynamicInstance(modelKey)) {      
+      if ((modelKey != null) && DynamicInstanceProxy.isDynamicInstance(modelKey)) {
         String proxID = DynamicInstanceProxy.extractProxyID(modelKey);
-        Database db = appState.getDB();
+        GenomeSource db = dacx.getGenomeSource();
         dip = db.getDynamicProxy(proxID);
         if (!dip.isSingle()) {
           DynamicGenomeInstance dgi = dip.getProxiedInstance(modelKey);
@@ -458,8 +546,8 @@ public class SetCurrentModel extends AbstractControlFlow {
         }
       }
       
-      NetOverlayController noc = appState.getNetOverlayController();
-      String currModel = appState.getGenome();
+      NetOverlayController noc = uics.getNetOverlayController();
+      String currModel = dacx.getCurrentGenomeID();
       boolean diffModel;
       if (currModel == null) {
         diffModel = (modelKey != null);
@@ -486,7 +574,7 @@ public class SetCurrentModel extends AbstractControlFlow {
       TaggedSet revKeys = sv.getRevealedModules();
       
       
-      String currOvr = appState.getCurrentOverlay();
+      String currOvr = dacx.getOSO().getCurrentOverlay();
       if ((ovrKey != null) || (currOvr != null) || changeInTargOverlay) {
         if (diffModel) {  
           noc.preloadForNextGenome(modelKey, ovrKey, modKeys, revKeys);     
@@ -502,12 +590,12 @@ public class SetCurrentModel extends AbstractControlFlow {
       //
       
    
-      VirtualModelTree vmt = appState.getTree();
+      VirtualModelTree vmt = uics.getTree();
       vmt.setDoNotFlow(true);    
       vmt.setTreeSelectionPath(tp);      // Does refresh and validation   
   
       if (timeVal != -1) {
-        VirtualTimeSlider vts = appState.getVTSlider();
+        VirtualTimeSlider vts = uics.getVTSlider();
         vts.setDoNotFlow(true);
         vts.setSliderForTime(dip, timeVal);
         vts.setDoNotFlow(false);
@@ -523,14 +611,14 @@ public class SetCurrentModel extends AbstractControlFlow {
     */
     
     private DialogAndInProcessCmd stepToProcessModel() {
-    	if(overlayId_ == null) {
-    	      NetOverlayController noc = appState_.getNetOverlayController();
-    	      suv_ = noc.getCachedStateForGenome(modelID_, dacx_);    		
+    	if (overlayId_ == null) {
+    	  NetOverlayController noc = uics_.getNetOverlayController();
+    	  suv_ = noc.getCachedStateForGenome(modelID_, ddacx_);    		
     	} else {
-    		suv_ = new StartupView(modelID_,overlayId_,modules_,revealedModules_);
+    		suv_ = new StartupView(modelID_,overlayId_,modules_,revealedModules_,null);
     	}
 
-      installStartupView(appState_, dacx_, false, suv_);
+      installStartupView(uics_, ddacx_, false, suv_);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
 
@@ -540,7 +628,7 @@ public class SetCurrentModel extends AbstractControlFlow {
     ** 
     */
     
-    private DialogAndInProcessCmd stepToProcessModelAndSelections() {
+    private DialogAndInProcessCmd stepToProcessModelAndSelections(StaticDataAccessContext rcx) {
       int checkProps;
       String dialogQ;
       String dialogT;
@@ -571,18 +659,15 @@ public class SetCurrentModel extends AbstractControlFlow {
           throw new IllegalStateException();
       }
       
-      Genome genome = appState_.getDB().getGenome(modelID_);
-      Layout lo = appState_.getLayoutForGenomeKey(modelID_);
-      
-      DataAccessContext rcx = new DataAccessContext(appState_, genome, lo);
+
       linkIntersections_ = (links_.isEmpty()) ? new ArrayList<Intersection>() 
-                                              : lo.getIntersectionsForLinks(rcx, links_, true);  
-      NetOverlayController noc = appState_.getNetOverlayController();
+                                              : rcx.getCurrentLayout().getIntersectionsForLinks(rcx, links_, true);  
+      NetOverlayController noc = uics_.getNetOverlayController();
       suv_ = noc.getCachedStateForGenome(modelID_, rcx);
       int obs = NetOverlayController.hasObscuredElements(rcx, suv_);
       if (!nodes_.isEmpty() || !linkIntersections_.isEmpty()) {
         if ((obs & checkProps) != 0x00) {   
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, rMan.getString(dialogQ), rMan.getString(dialogT));
           DialogAndInProcessCmd retval = new DialogAndInProcessCmd(suf, this);      
           nextStep_ = "stepToHandleResponse";
@@ -605,7 +690,7 @@ public class SetCurrentModel extends AbstractControlFlow {
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this);
        return (retval);
        }
-      suv_ = new StartupView(modelID_, null, null, null);
+      suv_ = new StartupView(modelID_, null, null, null,null);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
       nextStep_ = "stepToFinish";
       return (retval);
@@ -621,14 +706,14 @@ public class SetCurrentModel extends AbstractControlFlow {
       // This call actually gets routed to the above slider and tree calls through the event handling of the virtual tree and slider objects!
       // Pretty bogus, huh?
       //
-      installStartupView(appState_, dacx_, false, suv_);
+      installStartupView(uics_, ddacx_, false, suv_);
       //
       // FIXME: Probably better to defer this operation to a public method from the selection flow!
       //
-      DataAccessContext rcx = new DataAccessContext(appState_, suv_.getModel());
-      appState_.getGenomePresentation().selectNodesAndLinks(nodes_, rcx, linkIntersections_, true, appState_.getUndoManager());
-      appState_.getSUPanel().drawModel(false);
-      appState_.getZoomCommandSupport().zoomToSelected();
+      StaticDataAccessContext rcx = new StaticDataAccessContext(appState_, suv_.getModel());
+      uics_.getGenomePresentation().selectNodesAndLinks(uics_, nodes_, rcx, linkIntersections_, true, uFac_);
+      uics_.getSUPanel().drawModel(false);
+      uics_.getZoomCommandSupport().zoomToSelected();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,9 +43,8 @@ import javax.swing.JScrollPane;
 import javax.swing.ListModel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
@@ -78,8 +77,8 @@ public class MultiGroupDuplicationDialog extends JDialog {
   private Set<String> groupsToDupResult_; 
   private String modelIDResult_;
   
-  private BTState appState_;
-  private String sourceGenome_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -94,12 +93,12 @@ public class MultiGroupDuplicationDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public MultiGroupDuplicationDialog(BTState appState, String genomeID, Set<String> groupIDs) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("multiGrpDup.title"), true);
-    appState_ = appState;
-    sourceGenome_ = genomeID;
+  public MultiGroupDuplicationDialog(UIComponentSource uics, Set<String> groupIDs, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("multiGrpDup.title"), true);
     haveResult_ = false;
-    ResourceManager rMan = appState.getRMan();    
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -111,7 +110,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
     //
 
     JLabel label = new JLabel(rMan.getString("multiGrpDup.selectGroups"));
-    groupsToChoose_ = new CheckBoxList(buildGroupChoices(genomeID, groupIDs), appState_);
+    groupsToChoose_ = new CheckBoxList(buildGroupChoices(groupIDs), uics_.getHandlerAndManagerSource());
     UiUtil.gbcSet(gbc, 0, 0, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(label, gbc);
 
@@ -131,7 +130,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
           boolean enabled = changeModelBox_.isSelected();
           modelCombo_.setEnabled(enabled);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -144,13 +143,13 @@ public class MultiGroupDuplicationDialog extends JDialog {
     //
     
     label = new JLabel(rMan.getString("grpDup.models"));
-    Vector<ObjChoiceContent> choices = new FullGenomeHierarchyOracle(appState_).topLevelInstanceModels();
+    Vector<ObjChoiceContent> choices = dacx_.getFGHO().topLevelInstanceModels();
     modelCombo_ = new JComboBox(choices);
     modelCombo_.setEnabled(false);
     int numCh = choices.size();
     for (int i = 0; i < numCh; i++) {
       ObjChoiceContent occ = choices.get(i);
-      if (genomeID.equals(occ.val)) {
+      if (dacx_.getCurrentGenomeID().equals(occ.val)) {
         modelCombo_.setSelectedIndex(i);
         break;
       }
@@ -175,7 +174,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
             MultiGroupDuplicationDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -187,7 +186,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
           MultiGroupDuplicationDialog.this.setVisible(false);
           MultiGroupDuplicationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -203,7 +202,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
     
     UiUtil.gbcSet(gbc, 0, 8, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
 
@@ -262,11 +261,10 @@ public class MultiGroupDuplicationDialog extends JDialog {
   ** Get the list of groups to choose from: 
   */
   
-  private Vector<CheckBoxList.ListChoice> buildGroupChoices(String genomeID, Set<String> groupIDs) {
+  private Vector<CheckBoxList.ListChoice> buildGroupChoices(Set<String> groupIDs) {
     
-    Database db = appState_.getDB();
-    GenomeInstance gi = (GenomeInstance)db.getGenome(genomeID);
-    Layout lo = appState_.getLayoutForGenomeKey(genomeID);
+    GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
+    Layout lo = dacx_.getCurrentLayout();
     // HACK ALERT: Use comparable ObjChoiceContents to sort:
     ArrayList<ObjChoiceContent> sortHack = new ArrayList<ObjChoiceContent>();
     int count = 0; 
@@ -286,7 +284,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
       ObjChoiceContent occ = sortHack.get(i);
       String baseGroupID = Group.getBaseID(occ.val);
       GroupProperties gp = lo.getGroupProperties(baseGroupID);
-      Color gCol = gp.getColor(true, db);
+      Color gCol = gp.getColor(true, dacx_.getColorResolver());
       retval.add(new CheckBoxList.ListChoice(occ.val, occ.name, gCol, false));
     }
 
@@ -306,12 +304,12 @@ public class MultiGroupDuplicationDialog extends JDialog {
       // Figure out if we are changing models:
       //
       
-      modelIDResult_ = sourceGenome_;
+      modelIDResult_ = dacx_.getCurrentGenomeID();
       changeModel_ = changeModelBox_.isSelected();
       if (changeModel_) {
         ObjChoiceContent modelSelection = (ObjChoiceContent)modelCombo_.getSelectedItem();
         modelIDResult_ = modelSelection.val;
-        if (modelIDResult_.equals(sourceGenome_)) {
+        if (modelIDResult_.equals(dacx_.getCurrentGenomeID())) {
           changeModel_ = false;
         }
       }
@@ -331,8 +329,8 @@ public class MultiGroupDuplicationDialog extends JDialog {
       //
           
       if (groupsToDupResult_.isEmpty()) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("multiGrpDup.nothingChosen"), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("multiGrpDup.nothingChosen"), 
                                       rMan.getString("multiGrpDup.nothingChosenTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -341,7 +339,7 @@ public class MultiGroupDuplicationDialog extends JDialog {
       haveResult_ = true;
     } else {
       groupsToDupResult_ = null;
-      modelIDResult_ = sourceGenome_;
+      modelIDResult_ = dacx_.getCurrentGenomeID();
       changeModel_ = false;
       haveResult_ = false;
     }

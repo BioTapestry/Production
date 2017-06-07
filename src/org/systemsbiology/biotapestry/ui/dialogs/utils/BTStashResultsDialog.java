@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,10 +20,14 @@
 
 package org.systemsbiology.biotapestry.ui.dialogs.utils;
 
+import java.awt.BorderLayout;
+import java.awt.CardLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
 import java.util.List;
+
 import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
@@ -32,7 +36,8 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
@@ -50,13 +55,19 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
 
   private boolean haveResult_;
   protected JPanel cp_;
+  protected JPanel truPane_;
+  protected JPanel backPane_;
   protected ResourceManager rMan_;
-  protected BTState appState_;
+  protected UIComponentSource uics_;
   protected DialogSupport ds_;
   protected GridBagConstraints gbc_;
   protected int rowNum_;
   protected int columns_;
-  
+  protected CardLayout myCard_;
+  protected BTStashInputPanel ip_;
+  protected boolean showingPrime_;
+  protected DataAccessContext dacx_;
+   
   private static final long serialVersionUID = 1L;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -70,18 +81,28 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   ** Constructor 
   */ 
   
-  protected BTStashResultsDialog(BTState appState, String titleResource, Dimension size, int columns) {     
-    super(appState.getTopFrame(), appState.getRMan().getString(titleResource), true);
+  protected BTStashResultsDialog(UIComponentSource uics, DataAccessContext dacx, String titleResource, Dimension size, int columns) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString(titleResource), true);
     haveResult_ = false;
-    appState_ = appState;
-    rMan_ = appState_.getRMan();    
+    uics_ = uics;
+    dacx_ = dacx;
+    rMan_ = dacx_.getRMan();    
     setSize(size.width, size.height);
-    cp_ = (JPanel)getContentPane();
+    truPane_ = (JPanel)getContentPane();
+    myCard_ = new CardLayout();
+    truPane_.setLayout(myCard_);
+    backPane_ = new JPanel();
+    backPane_.setBackground(new Color(160, 160, 160));
+    truPane_.add(backPane_, "Backup");   
+    cp_ = new JPanel();
+    truPane_.add(cp_, "Prime");
+    myCard_.show(truPane_, "Prime");
+    showingPrime_ = true;
     cp_.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp_.setLayout(new GridBagLayout());
     gbc_ = new GridBagConstraints();
     rowNum_ = 0;
-    ds_ = new DialogSupport(this, appState_, gbc_);
+    ds_ = new DialogSupport(this, uics, dacx, gbc_);
     columns_ = columns;
   }
 
@@ -138,13 +159,98 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   public boolean haveResult() {
     return (haveResult_);
   }
+  
+  /***************************************************************************
+  **
+  ** Do handling of the inputPane. Override if using input pane function.
+  */
+  
+  public boolean processInputAnswer() {
+    throw new UnsupportedOperationException();
+  }
+  
+  /***************************************************************************
+  **
+  ** Cancel the overpane
+  ** 
+  */
+ 
+  public void cancelInputPane() { 
+    myCard_.show(truPane_, "Prime");
+    showingPrime_ = true;
+    truPane_.validate();
+    return;
+  } 
 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PROTECTED METHODS
   //
-  ////////////////////////////////////////////////////////////////////////////   
+  ////////////////////////////////////////////////////////////////////////////    
   
+  /***************************************************************************
+  **
+  ** Show Overpane
+  */ 
+  
+  protected void buildInputPane(String question, String title) {
+    ip_ = new BTStashInputPanel(this, uics_, dacx_, question, title);
+    ip_.positionInputPane(backPane_);
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Show Overpane
+  */ 
+  
+  protected void buildExtraPane(JPanel panel) {
+    backPane_.setLayout(new BorderLayout());
+    backPane_.add(panel, BorderLayout.CENTER);
+    return;
+  }
+
+  /***************************************************************************
+  **
+  ** Init Text
+  */   
+  
+  protected void initInputPane(String fill) {
+    ip_.initText(fill);
+    return;
+  }
+ 
+  /***************************************************************************
+  **
+  ** Show Overpane
+  */ 
+  
+  protected void showInputPane(boolean doit) {
+    myCard_.show(truPane_, (doit) ? "Backup" : "Prime");
+    showingPrime_ = !doit;
+    truPane_.validate();
+    return;
+  } 
+
+  /***************************************************************************
+  **
+  ** Answer if showing input panel
+  */ 
+  
+  protected boolean showingInputPane() {
+    return (!showingPrime_);
+  }
+
+  /***************************************************************************
+  **
+  ** Get answer
+  ** 
+  */
+  
+  public String getInputAnswer() {
+    return (ip_.getAnswer());
+  }
+
   /***************************************************************************
   **
   ** Add a full row component
@@ -192,6 +298,16 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   
   protected void addLabeledWidget(JLabel label, JComponent comp, boolean fixHeight, boolean flushLeft) {
     rowNum_ = ds_.addLabeledWidget(cp_, label, comp, fixHeight, flushLeft, rowNum_, columns_);
+    return;
+  }
+ 
+  /***************************************************************************
+  **
+  ** Add a component with a label, no stretch
+  */ 
+  
+  protected void addLabeledWidgetNoStretch(JLabel label, JComponent comp, boolean fixHeight, boolean flushLeft) {
+    rowNum_ = ds_.addLabeledWidgetNoStretch(cp_, label, comp, fixHeight, flushLeft, rowNum_, columns_);
     return;
   }
   
@@ -255,6 +371,16 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
     rowNum_ = ds_.addTableNoInset(cp_, tablePan, rowHeight, rowNum_, columns_);
     return;
   } 
+  
+  /***************************************************************************
+  **
+  ** Add a row of labeled widgets
+  */ 
+  
+  public void addSeriesToRow(List<JLabel> labs, List<JComponent> comps, int start) { 
+    rowNum_ = ds_.addSeriesToRow(cp_, labs, comps, rowNum_ ,start);
+    return;
+  }
     
   /***************************************************************************
   **
@@ -263,7 +389,18 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   
   protected void finishConstruction() {      
     ds_.buildAndInstallButtonBox(cp_, rowNum_, columns_, false, true);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
+    return;
+  } 
+  
+  /***************************************************************************
+  **
+  ** Finish building
+  */ 
+  
+  protected void finishConstructionForApply() {
+    ds_.buildAndInstallButtonBox(cp_, rowNum_, columns_, true, false);
+    setLocationRelativeTo(uics_.getTopFrame());
     return;
   } 
   
@@ -274,7 +411,7 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   
   protected void finishConstructionWithExtraLeftButton(JButton xtraButton) { 
     ds_.buildAndInstallButtonBoxWithExtra(cp_, rowNum_, columns_, false, xtraButton, true);    
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     return;
   }   
   
@@ -285,7 +422,7 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   
   protected void finishConstructionWithMultiExtraLeftButtons(List<JButton> xtraButtonList) { 
     ds_.buildAndInstallButtonBoxWithMultiExtra(cp_, rowNum_, columns_, false, xtraButtonList, true);    
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     return;
   }   
    

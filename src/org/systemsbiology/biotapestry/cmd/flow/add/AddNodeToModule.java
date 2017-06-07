@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,10 +23,12 @@ package org.systemsbiology.biotapestry.cmd.flow.add;
 import java.io.IOException;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
@@ -66,8 +68,7 @@ public class AddNodeToModule extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNodeToModule(BTState appState, NamedModuleArgs nma) {
-    super(appState);
+  public AddNodeToModule(NamedModuleArgs nma) {
     name = nma.getName();
     desc = nma.getName();
     modID_ = nma.getID();
@@ -86,8 +87,8 @@ public class AddNodeToModule extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, modID_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(modID_, dacx);
     return (retval);
   }
  
@@ -98,8 +99,9 @@ public class AddNodeToModule extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
-    return (rcx.oso.getCurrentOverlay() != null);
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    return (rcx.getOSO().getCurrentOverlay() != null);
   }
     
   /***************************************************************************
@@ -116,6 +118,7 @@ public class AddNodeToModule extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToAdd")) {
           next = ans.stepToAdd();      
         } else {
@@ -134,16 +137,20 @@ public class AddNodeToModule extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
     private String myModID_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(String modID, StaticDataAccessContext dacx) {
+      super(dacx);
+      myModID_ = modID;
+      nextStep_ = "stepToAdd";
     }
     
     /***************************************************************************
@@ -151,12 +158,13 @@ public class AddNodeToModule extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, String modID, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(String modID, ServerControlFlowHarness cfh) {
+      super(cfh);
       myModID_ = modID;
       nextStep_ = "stepToAdd";
-      rcx_ = dacx;
     }
+    
+    
     
     /***************************************************************************
     **
@@ -174,20 +182,20 @@ public class AddNodeToModule extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToAdd() {
-      String ovrKey = rcx_.oso.getCurrentOverlay();
+      String ovrKey = dacx_.getOSO().getCurrentOverlay();
 
       //
       // Changing module geometry may need module link pad fixups:  
     
-      Layout.PadNeedsForLayout padFixups = rcx_.getLayout().findAllNetModuleLinkPadRequirements(rcx_);   
+      Layout.PadNeedsForLayout padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);   
   
-      UndoSupport support = new UndoSupport(appState_, "undo.addNodeToNetworkModule");    
-      NetOverlayOwner owner = rcx_.getCurrentOverlayOwner();
+      UndoSupport support = uFac_.provideUndoSupport("undo.addNodeToNetworkModule", dacx_);    
+      NetOverlayOwner owner = dacx_.getCurrentOverlayOwner();
       NetworkOverlay nol = owner.getNetworkOverlay(ovrKey);
       NetModule nmod = nol.getModule(myModID_);
       NetModuleChange nmc = owner.addMemberToNetworkModule(ovrKey, nmod, intersect_.getObjectID());
       if (nmc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, rcx_, nmc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(dacx_, nmc);
         support.addEdit(gcc);
       } 
      
@@ -195,9 +203,9 @@ public class AddNodeToModule extends AbstractControlFlow {
       // Complete the fixups:
       //
       
-      AddCommands.finishNetModPadFixups(appState_, null, null, rcx_, padFixups, support);    
+      AddCommands.finishNetModPadFixups(null, null, dacx_, padFixups, support);    
       
-      support.addEvent(new ModelChangeEvent(rcx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
       support.finish();    
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }   

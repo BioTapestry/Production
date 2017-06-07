@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,13 +21,13 @@
 package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.Dimension;
-import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
 import javax.swing.JCheckBox;
 import java.text.MessageFormat;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -61,8 +61,8 @@ public class GenomeInstanceCopyDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public GenomeInstanceCopyDialog(BTState appState, String origName, boolean hasKids) {     
-    super(appState, "gicopy.title", new Dimension(500, 200), 4);
+  public GenomeInstanceCopyDialog(UIComponentSource uics, DataAccessContext dacx, String origName, boolean hasKids) {     
+    super(uics, dacx, "gicopy.title", new Dimension(500, 200), 4);
    
     //
     // Build the name panel:
@@ -104,6 +104,7 @@ public class GenomeInstanceCopyDialog extends BTStashResultsDialog {
   ** 
   */
   
+  @Override
   public String getName() {
     return (nameResult_);
   }

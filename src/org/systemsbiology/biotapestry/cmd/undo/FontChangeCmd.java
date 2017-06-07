@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.FontChange;
 import org.systemsbiology.biotapestry.ui.FontManager;
@@ -52,8 +51,8 @@ public class FontChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public FontChangeCmd(BTState appState, DataAccessContext dacx, FontChange restore) {
-    super(appState, dacx);
+  public FontChangeCmd(DataAccessContext dacx, FontChange restore) {
+    super(dacx);
     restore_ = restore;
   }  
   
@@ -81,7 +80,7 @@ public class FontChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    FontManager fm = appState_.getFontMgr();
+    FontManager fm = dacx_.getFontManager();
     fm.changeUndo(restore_);
     return;
   }  
@@ -94,7 +93,7 @@ public class FontChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    FontManager fm = appState_.getFontMgr();
+    FontManager fm = dacx_.getFontManager();
     fm.changeRedo(restore_);
     return;
   }

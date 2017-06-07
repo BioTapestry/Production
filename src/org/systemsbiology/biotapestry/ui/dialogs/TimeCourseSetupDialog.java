@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,22 +39,25 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.IntegerEditor;
 import org.systemsbiology.biotapestry.util.ProtoInteger;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.GeneTemplateEntry;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn;
+import org.systemsbiology.biotapestry.plugin.PlugInManager;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
-
 
 /****************************************************************************
 **
@@ -70,11 +73,13 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   ////////////////////////////////////////////////////////////////////////////  
 
   private EditableTable est_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   private boolean namedStages_;
   private TimeAxisDefinition tad_;
   private TimeCourseData tcData_;
+  private TimeCourseDataMaps tcdm_;
   private String unitHeading_;
   
   private static final long serialVersionUID = 1L;
@@ -91,24 +96,24 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   ** time course structure.
   */ 
   
-  public static TimeCourseSetupDialog timeSourceSetupDialogWrapper(BTState appState, DataAccessContext dacx) {
+  public static TimeCourseSetupDialog timeSourceSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState, dacx);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
       tasd.setVisible(true);
     }
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }
     
-    TimeCourseSetupDialog tcsd = new TimeCourseSetupDialog(appState, dacx);
+    TimeCourseSetupDialog tcsd = new TimeCourseSetupDialog(uics, dacx, uFac);
     return (tcsd);
   }  
   
@@ -123,12 +128,13 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   ** Constructor 
   */ 
   
-  private TimeCourseSetupDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tcsedit.title"), true);
-    appState_ = appState;
+  private TimeCourseSetupDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tcsedit.title"), true);
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
   
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(500, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -141,11 +147,12 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     
     tcData_ = dacx_.getExpDataSrc().getTimeCourseData();
     tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
+    tcdm_ = dacx_.getDataMapSrc().getTimeCourseDataMaps();
     namedStages_ = tad_.haveNamedStages();
     String displayUnits = tad_.unitDisplayString();
     unitHeading_ = MessageFormat.format(rMan.getString("tcsedit.timeUnitFormat"), new Object[] {displayUnits});      
    
-    est_ = new EditableTable(appState_, new TimeCourseSetupTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new TimeCourseSetupTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
@@ -157,9 +164,9 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 10, 10, true, false);   
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -251,8 +258,8 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       }
     }
   
-    TimeCourseSetupTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    TimeCourseSetupTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {unitHeading_,
                                 "tcsedit.region"};
       Class firstClass = (namedStages_) ? String.class : ProtoInteger.class;
@@ -272,6 +279,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       return (retval); 
     }
   
+    @Override
     public void extractValues(List prsList) {
       super.extractValues(prsList);
       Iterator rit = prsList.iterator();
@@ -307,14 +315,14 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   ** 
   */
   
-  private List buildTableList() {
-    ArrayList retval = new ArrayList();
+  private List<TimeCourseSetupTableModel.TableRow> buildTableList() {
+    ArrayList<TimeCourseSetupTableModel.TableRow> retval = new ArrayList<TimeCourseSetupTableModel.TableRow>();
     TimeCourseSetupTableModel tcs = (TimeCourseSetupTableModel)est_.getModel();  
  
     int count = 0;
-    Iterator gtit = tcData_.getGeneTemplate();
+    Iterator<GeneTemplateEntry> gtit = tcData_.getGeneTemplate();
     while (gtit.hasNext()) {
-      GeneTemplateEntry gte = (GeneTemplateEntry)gtit.next();
+      GeneTemplateEntry gte = gtit.next();
       TimeCourseSetupTableModel.TableRow tr = tcs.new TableRow();    
       if (namedStages_) {
         TimeAxisDefinition.NamedStage stageName = tad_.getNamedStageForIndex(gte.time);
@@ -343,7 +351,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Figure out the existing set of regions names:
     //
     
-    HashSet origRegions = new HashSet();
+    HashSet<String> origRegions = new HashSet<String>();
     Iterator gtit = tcData_.getGeneTemplate();
     while (gtit.hasNext()) {
       GeneTemplateEntry gte = (GeneTemplateEntry)gtit.next();
@@ -354,7 +362,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Make sure the integers/stages are OK, and increasing:
     //
 
-    ResourceManager rMan = appState_.getRMan();         
+    ResourceManager rMan = dacx_.getRMan();         
 
     int lastNum = 0;     
     TimeCourseSetupTableModel tcs = (TimeCourseSetupTableModel)est_.getModel(); 
@@ -368,7 +376,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
         String stageName = (String)tr.time;
         thisNum = tad_.getIndexForNamedStage(stageName);
         if (thisNum == TimeAxisDefinition.INVALID_STAGE_NAME) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcsedit.badStageName"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcsedit.badStageName"),
                                         rMan.getString("tcsedit.badStageNameTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
@@ -376,14 +384,14 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       } else {      
         ProtoInteger num = (ProtoInteger)tr.time;
         if ((num == null) || (!num.valid)) {
-          IntegerEditor.triggerWarning(appState_, appState_.getTopFrame());
+          IntegerEditor.triggerWarning(uics_.getHandlerAndManagerSource(), uics_.getTopFrame());
           return (false);
         }
         thisNum = num.value;  
       }
 
       if (thisNum < lastNum) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcsedit.notIncreasing"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcsedit.notIncreasing"),
                                       rMan.getString("tcsedit.notIncreasingTitle"),
                                       JOptionPane.ERROR_MESSAGE);          
         return (false); 
@@ -399,7 +407,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       TimeCourseSetupTableModel.TableRow tr = (TimeCourseSetupTableModel.TableRow)vals.get(i); 
       String region = tr.region;        
       if ((region == null) || (region.trim().equals(""))) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcsedit.badRegion"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcsedit.badRegion"),
                                       rMan.getString("tcsedit.badRegionTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -412,7 +420,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // of regions for each time:
     //
 
-    SortedMap regionSets = new TreeMap();
+    SortedMap<Integer, Set<String>> regionSets = new TreeMap<Integer, Set<String>>();
     for (int i = 0; i < size; i++) {
       TimeCourseSetupTableModel.TableRow tr = (TimeCourseSetupTableModel.TableRow)vals.get(i); 
       String region = tr.region;
@@ -424,13 +432,13 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
         ProtoInteger num = (ProtoInteger)tr.time;
         time = new Integer(num.value);
       }
-      Set setForTime = (Set)regionSets.get(time);
+      Set<String> setForTime = regionSets.get(time);
       if (setForTime == null) {
-        setForTime = new HashSet();
+        setForTime = new HashSet<String>();
         regionSets.put(time, setForTime);
       }
       if (DataUtil.containsKey(setForTime, region)) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcsedit.dupRegionForTime"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcsedit.dupRegionForTime"),
                                       rMan.getString("tcsedit.dupRegionForTimeTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -443,20 +451,20 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // not have seen it before; that means a non-contiguous region.
     //
 
-    HashSet seen = new HashSet();
-    Set lastSet = null;
-    Iterator rskit = regionSets.keySet().iterator();
+    HashSet<String> seen = new HashSet<String>();
+    Set<String> lastSet = null;
+    Iterator<Integer> rskit = regionSets.keySet().iterator();
     while (rskit.hasNext()) {
-      Integer time = (Integer)rskit.next();
-      Set setForTime = (Set)regionSets.get(time);
+      Integer time = rskit.next();
+      Set<String> setForTime = regionSets.get(time);
       if (lastSet != null) {
-        Set newRegions = new HashSet(setForTime);
+        Set<String> newRegions = new HashSet<String>(setForTime);
         newRegions.removeAll(lastSet);  // result is new regions
-        Iterator nrit = newRegions.iterator();
+        Iterator<String> nrit = newRegions.iterator();
         while (nrit.hasNext()) {
-          String region = (String)nrit.next();
+          String region = nrit.next();
           if (seen.contains(region)) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcsedit.notContig"),
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcsedit.notContig"),
                                           rMan.getString("tcsedit.notContigTitle"),
                                           JOptionPane.ERROR_MESSAGE);
             return (false);
@@ -471,9 +479,9 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Let user confirm that massive data deletions may occur:
     //
 
-    if (!tcData_.isEmpty()) {
+    if (tcData_.haveDataEntries()) {
       int ok = 
-        JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+        JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                       rMan.getString("tcsedit.ConfirmChange"), 
                                       rMan.getString("tcsedit.ConfirmChangeTitle"),
                                       JOptionPane.YES_NO_OPTION);
@@ -486,7 +494,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Build new template
     //
 
-    ArrayList newGeneTemplate = new ArrayList();
+    ArrayList<GeneTemplateEntry> newGeneTemplate = new ArrayList<GeneTemplateEntry>();
     for (int i = 0; i < size; i++) {
       TimeCourseSetupTableModel.TableRow tr = (TimeCourseSetupTableModel.TableRow)vals.get(i); 
       int timeVal;
@@ -513,22 +521,22 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Build set of new region names, and find deleted names:
     //
     
-    HashSet newRegions = new HashSet();
-    Iterator ngtit = newGeneTemplate.iterator();
+    HashSet<String> newRegions = new HashSet<String>();
+    Iterator<GeneTemplateEntry> ngtit = newGeneTemplate.iterator();
     while (ngtit.hasNext()) {
-      GeneTemplateEntry gte = (GeneTemplateEntry)ngtit.next();
+      GeneTemplateEntry gte = ngtit.next();
       newRegions.add(gte.region);
     }
-    HashSet droppedRegions = new HashSet(origRegions);
+    HashSet<String> droppedRegions = new HashSet<String>(origRegions);
     droppedRegions.removeAll(newRegions);
     
     //
     // If region maps need to be chopped, let user confirm or abort:
     //
 
-    Set dangling = tcData_.getDanglingRegionMaps(newGeneTemplate);
+    Set<String> dangling = tcdm_.getDanglingRegionMaps(newGeneTemplate);
     if (!dangling.isEmpty()) {
-      int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              rMan.getString("tcsedit.danglingMaps"), 
                                              rMan.getString("tcsedit.danglingMapsTitle"),
                                              JOptionPane.YES_NO_OPTION);
@@ -543,7 +551,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
  
     TimeCourseData.PrunedHierarchy ph = tcData_.havePrunedHierarchy(newGeneTemplate);
     if ((ph != null) && ph.droppedParents) {
-      int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              rMan.getString("tcsedit.prunedHierarchy"), 
                                              rMan.getString("tcsedit.prunedHierarchyTitle"),
                                              JOptionPane.YES_NO_OPTION);
@@ -558,7 +566,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
 
     boolean dropFromPert = pd.haveRegionNameInRegionRestrictions(droppedRegions);
     if (dropFromPert) {
-      int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              rMan.getString("tcsedit.pertRegRestDropped"), 
                                              rMan.getString("tcsedit.pertRegRestDroppedTitle"),
                                              JOptionPane.YES_NO_OPTION);
@@ -573,7 +581,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
 
     boolean dropFromTopo = tcData_.haveRegionNameInTopology(droppedRegions);
     if (dropFromTopo) {
-      int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              rMan.getString("tcsedit.regTopoRegDropped"), 
                                              rMan.getString("tcsedit.regTopoRegDroppedTitle"),
                                              JOptionPane.YES_NO_OPTION);
@@ -591,39 +599,48 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Undo/Redo support
     //
 
-    UndoSupport support = new UndoSupport(appState_, "undo.tcsedit");      
+    UndoSupport support = uFac_.provideUndoSupport("undo.tcsedit", dacx_);      
     boolean doIssue = false;
 
     if (!dangling.isEmpty()) {
       TimeCourseChange[] tcca = 
-        tcData_.repairDanglingRegionMaps(dangling, newGeneTemplate);
+        tcdm_.repairDanglingRegionMaps(dangling, newGeneTemplate);
       for (int i = 0; i < tcca.length; i++) {
-        support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcca[i]));
+        support.addEdit(new TimeCourseChangeCmd(dacx_, tcca[i]));
         doIssue = true;
       }
     }
 
     boolean doPerts = false;
     
-    Iterator drit = droppedRegions.iterator();
+    Iterator<String> drit = droppedRegions.iterator();
     while (drit.hasNext()) {
-      String dropRegion = (String)drit.next();
+      String dropRegion = drit.next();
       
       TimeCourseChange drtopo = tcData_.dropRegionTopologyRegionName(dropRegion);
       if (drtopo != null) {
-        support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, drtopo));
+        support.addEdit(new TimeCourseChangeCmd(dacx_, drtopo));
         doIssue = true;
       }
 
       PertDataChange[] pdc = pd.dropRegionNameForRegionRestrictions(dropRegion);
       if (pdc.length > 0) {
-        support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+        support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
         doPerts = true;
       }
     
+      //
+      // Model builder plugin wants to know about this:
+      //
+ 
+      PlugInManager pluginManager = uics_.getPlugInMgr(); 
+      Iterator<ModelBuilderPlugIn> mbIterator = pluginManager.getBuilderIterator();
+      if (mbIterator.hasNext()) {
+        mbIterator.next().dropRegionName(dacx_, dropRegion, support);
+      }
     }
     
-    ArrayList origIndices = new ArrayList();
+    ArrayList<Integer> origIndices = new ArrayList<Integer>();
     for (int i = 0; i < size; i++) {
       TimeCourseSetupTableModel.TableRow tr = (TimeCourseSetupTableModel.TableRow)vals.get(i);
       origIndices.add(tr.origIndex);
@@ -632,14 +649,14 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     TimeCourseChange tcc = 
       tcData_.updateWithNewGeneTemplate(newGeneTemplate, origIndices);
     if (tcc != null) {
-      support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
       doIssue = true;
     }
 
     if (ph != null) {
       TimeCourseChange htcc = tcData_.setRegionHierarchy(ph.parents, ph.roots, true);
       if (htcc != null) {
-        support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, htcc));
+        support.addEdit(new TimeCourseChangeCmd(dacx_, htcc));
         doIssue = true;
       }
     }

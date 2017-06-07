@@ -39,6 +39,9 @@ public interface XPlatUIElement {
 	// A method to retrieve the entire parameter set
 	public Map<String,Object> getParameters();
 	
+	// A method to retrieve the entire parameter set
+	public Object getParameter(String key);
+	
 	// A method to set parameters as key/value pairs
 	public void setParameter(String key, Object value);
 		
@@ -84,7 +87,10 @@ public interface XPlatUIElement {
 	  	  
 	  	// Button dropdown with a list of options
 	  	COMBO_BOX_BUTTON,
-	  	  
+
+	  	// Special combo box which shows a color (specified as an RGB int) and a name for it
+	  	COMBO_BOX_COLOR,	  	
+	  	
 	  	// An area in which something is drawn (static image, SVG, canvas)
 	  	DRAWING_AREA,
 	  	  
@@ -167,10 +173,10 @@ public interface XPlatUIElement {
 					suffix = "_tabctrl";
 					break;
 				case ACCORDIAN_CONTAINER:
-					suffix = "_acrdctrl";
+					suffix = "_acrdcont";
 					break;	
 				case STACK_CONTAINER:
-					suffix = "_stackctrl";
+					suffix = "_stackcont";
 					break;	
 				case PANE:
 					suffix = "_pane";

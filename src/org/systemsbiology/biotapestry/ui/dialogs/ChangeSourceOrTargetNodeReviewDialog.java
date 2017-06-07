@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -59,7 +59,7 @@ import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
@@ -68,7 +68,6 @@ import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.nav.LayoutManager;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -106,8 +105,8 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
   private JLabel deleteLabel_;
   private boolean doExpand_;
   private boolean changeSource_;
-  private BTState appState_;
   private DataAccessContext dacx_; 
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -122,10 +121,10 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
   ** Constructor 
   */ 
   
-  public ChangeSourceOrTargetNodeReviewDialog(BTState appState, DataAccessContext dacx, String newNodeID, 
+  public ChangeSourceOrTargetNodeReviewDialog(UIComponentSource uics, DataAccessContext dacx, String newNodeID, 
                                               Set<String> linkIDs, Map<String, Map<String, String>> quickKillMap, boolean changeSource) {     
-    super(appState.getTopFrame(), appState.getRMan().getString((changeSource) ? "changeSrcRev.titleSrc" : "changeSrcRev.titleTrg"), true);
-    appState_ = appState;
+    super(uics.getTopFrame(), dacx.getRMan().getString((changeSource) ? "changeSrcRev.titleSrc" : "changeSrcRev.titleTrg"), true);
+    uics_ = uics;
     dacx_ = dacx;
     haveResult_ = false;
     choices_ = new HashMap<String, Map<String, String>>();
@@ -135,7 +134,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
     editing_ = false;
     changeSource_ = changeSource;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -182,7 +181,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
           }
           doExpand_ = !doExpand_;
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });        
@@ -196,7 +195,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
             ChangeSourceOrTargetNodeReviewDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -208,7 +207,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
           ChangeSourceOrTargetNodeReviewDialog.this.setVisible(false);
           ChangeSourceOrTargetNodeReviewDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -225,7 +224,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
     //
     UiUtil.gbcSet(gbc, 0, 26, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     selectToFirst();
   }
   
@@ -297,7 +296,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
         String whichGotta = (changeSource_) ? "changeSrcRev.butIGottaDeleteSrc" : "changeSrcRev.butIGottaDeleteTrg";        
         String whichOptional = (changeSource_) ? "changeSrcRev.optionalDeletionSrc" : "changeSrcRev.optionalDeletionTrg";
  
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         if (bcSize == 0) { 
           nodeCombo_.setEnabled(false);
           deleteChk_.setSelected(true);
@@ -330,7 +329,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
       myCard_.show(hidingPanel_, tag);
       
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -362,7 +361,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
       tempHold_ = new HashMap<String, SortedMap<String, List<DefaultMutableTreeNode>>>();
       DefaultMutableTreeNode myRoot = (DefaultMutableTreeNode)this.getRoot();
       String rootID = dacx_.getDBGenome().getID();
-      myRoot.setUserObject(appState_.getRMan().getString("tree.FullGenome")); 
+      myRoot.setUserObject(dacx_.getRMan().getString("tree.FullGenome")); 
       parentMap_.put(rootID, myRoot);      
     }    
 
@@ -526,7 +525,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
       linkID_ = linkID;
       
       GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(genomeID_);
-      Layout lo = dacx_.lSrc.getLayout(layoutID_);
+      Layout lo = dacx_.getLayoutSource().getLayout(layoutID_);
       
       String newDisplay;
       String staticDisplay;
@@ -552,10 +551,10 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
           String groupID = newGrp.getID();
           String baseGroupID = Group.getBaseID(groupID);
           GroupProperties gp = lo.getGroupProperties(baseGroupID);
-          newColor = gp.getColor(true, dacx_.cRes);
+          newColor = gp.getColor(true, dacx_.getColorResolver());
         }
       } else {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         newDisplay = rMan.getString("changeSrcRev.noNode");
         newColor = Color.RED;
       }
@@ -573,7 +572,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
         String groupID = staticGrp.getID();
         String baseGroupID = Group.getBaseID(groupID);
         GroupProperties gp = lo.getGroupProperties(baseGroupID);
-        staticColor = gp.getColor(true, dacx_.cRes);      
+        staticColor = gp.getColor(true, dacx_.getColorResolver());      
       }
       
       //
@@ -594,7 +593,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
       
       // Link glyph (A hack!)
       
-      String format = DBLinkage.mapSignToDisplay(appState_, link.getSign());
+      String format = DBLinkage.mapSignToDisplay(dacx_, link.getSign());
       String linkMsg = MessageFormat.format(format, new Object[] {"",""});
       linkGlyph_ = linkMsg.trim(); // yuk!
       return;
@@ -658,7 +657,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
                                                      leaf, row, hasFocus));
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }  
@@ -783,7 +782,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
         modelPartition_.put(gkey, models);
        
         retval.addNode(parentID, true, gkey, gi.getName(), null, null, null, null);
-        String loKey = dacx_.lSrc.getLayoutForGenomeKey(gkey).getID();
+        String loKey = dacx_.getLayoutSource().getLayoutForGenomeKey(gkey).getID();
         Iterator<Linkage> lit = gi.getLinkageIterator();
         while (lit.hasNext()) {
           Linkage link = lit.next();
@@ -971,7 +970,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
     
     controlPanel_.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     String which = (changeSource_) ? "changeSrcRev.setSource" : "changeSrcRev.setTarget";
     JLabel nodeLabel = new JLabel(rMan.getString(which));
@@ -997,7 +996,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
         try {
           handleNodeChange();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -1007,7 +1006,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
         try {
           handleCheckBox();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -1055,7 +1054,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
       propagateSettingThroughTree(nodeID, currLink);      
       jtree_.repaint();
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }        
@@ -1076,7 +1075,7 @@ public class ChangeSourceOrTargetNodeReviewDialog extends JDialog implements Tre
     boolean selected = deleteChk_.isSelected();
     String newNode;
     if (selected) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       nodeCombo_.setEnabled(false);
       newNode = null;
       String which = (changeSource_) ? "changeSrcRev.optionalDeletionSrc" : "changeSrcRev.optionalDeletionTrg";

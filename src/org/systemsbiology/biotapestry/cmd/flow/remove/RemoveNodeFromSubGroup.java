@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,12 +20,12 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNodeToSubGroup;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -57,8 +57,7 @@ public class RemoveNodeFromSubGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveNodeFromSubGroup(BTState appState, AddNodeToSubGroup.NodeInGroupArgs args) {
-    super(appState);
+  public RemoveNodeFromSubGroup(AddNodeToSubGroup.NodeInGroupArgs args) {
     name = args.getName();
     desc = args.getName();
     niID_ = args.getNiID();
@@ -78,8 +77,8 @@ public class RemoveNodeFromSubGroup extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, niID_, groupID_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(niID_, groupID_, dacx);
     return (retval);
   }
  
@@ -97,6 +96,7 @@ public class RemoveNodeFromSubGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();      
         } else {
@@ -115,29 +115,21 @@ public class RemoveNodeFromSubGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private String myNiID_;
     private String myGroupID_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, String niID, String groupID, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(String niID, String groupID, StaticDataAccessContext dacx) {
+      super(dacx);
       myNiID_ = niID;
       myGroupID_ = groupID;
       nextStep_ = "stepToRemove";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -155,9 +147,9 @@ public class RemoveNodeFromSubGroup extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToRemove() {
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteNodeFromSubGroup");
-      if (RemoveNode.deleteNodeFromSubGroup(appState_, dacx_, gi, myGroupID_, myNiID_, support)) {
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteNodeFromSubGroup", dacx_);
+      if (RemoveNode.deleteNodeFromSubGroup(dacx_, gi, myGroupID_, myNiID_, support, uFac_)) {
         support.finish();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,10 +27,12 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -39,13 +41,11 @@ import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.DataLocator;
@@ -59,7 +59,6 @@ import org.systemsbiology.biotapestry.util.UndoSupport;
 */
 
 public class AddDynamicGenomeInstance extends AbstractControlFlow {
-
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -72,8 +71,7 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddDynamicGenomeInstance(BTState appState) {
-    super(appState);
+  public AddDynamicGenomeInstance() {
     name = "treePopup.AddDynamicInstance";
     desc = "treePopup.AddDynamicInstance";     
     mnem = "treePopup.AddDynamicInstanceMnem";
@@ -92,8 +90,8 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx) {
-    if (!appState_.getIsEditor() || (key == null)) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx, UIComponentSource uics) {
+    if (!uics.getIsEditor() || (key == null)) {
       return (false);
     } else if (key.modType == XPlatModelNode.ModelType.DB_GENOME) {    
       return (false);  
@@ -101,7 +99,15 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       return (true);            
     } else if (key.modType == XPlatModelNode.ModelType.GENOME_INSTANCE) {
       TimeCourseData tcd = rcx.getExpDataSrc().getTimeCourseData();
-      return (!tcd.isEmpty());
+      return (tcd.haveDataEntries());
+    } else if (key.modType == XPlatModelNode.ModelType.GROUPING_ONLY) {
+      TimeCourseData tcd = rcx.getExpDataSrc().getTimeCourseData();
+      if (!tcd.haveDataEntries()) {
+        return (false);
+      }
+      NavTree nt = rcx.getGenomeSource().getModelHierarchy();
+      TreeNode node = nt.resolveNode(key);
+      return ((nt.ancestorIsDynamicSum(node) || nt.ancestorIsStatic(node)) && !nt.ancestorIsRoot(node));
     } else {
       return (false);
     }
@@ -114,8 +120,8 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(dacx);
      return (retval);
    }
  
@@ -133,6 +139,7 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("addDynamicGenomeInstance")) {
           next = ans.addDynamicGenomeInstance();      
         } else {
@@ -151,42 +158,32 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.ModelTreeCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.ModelTreeCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
-    private Genome popupTarget_;
+    private Genome popupModelAncestor_;
     private TreeNode popupNode_;
-    private TreeSupport treeSupp_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "addDynamicGenomeInstance";
-      treeSupp_ = new TreeSupport(appState_);
-      dacx_ = dacx;
     }
-      
+    
     /***************************************************************************
     **
     ** for preload
     */ 
-        
-    public void setPreload(Genome popupTarget, TreeNode popupNode) {
-      popupTarget_ = popupTarget;
+   
+    public void setPreload(Genome popupModel, Genome popupModelAncestor, TreeNode popupNode) {
+      popupModelAncestor_ = popupModelAncestor; // NEVER null
       popupNode_ = popupNode;
       return;
     }
- 
+    
     /***************************************************************************
     **
     ** add dynamic genome instance
@@ -198,7 +195,7 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       // Gotta be an instance for dynamic submodels
       //
       GenomeInstance vfg = 
-        (popupTarget_ instanceof GenomeInstance) ? (GenomeInstance)popupTarget_ : null;
+        (popupModelAncestor_ instanceof GenomeInstance) ? (GenomeInstance)popupModelAncestor_ : null;
       if (vfg == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
@@ -211,20 +208,20 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       int minHour = tcd.getMinimumTime(); // No longer used?  (Now must have times set in parent...)
       int maxHour = tcd.getMaximumTime(); // as above...
       boolean preferSum = true;
-      if (popupTarget_ instanceof DynamicGenomeInstance) {
-        DynamicGenomeInstance dgi = (DynamicGenomeInstance)popupTarget_;
+      if (popupModelAncestor_ instanceof DynamicGenomeInstance) {
+        DynamicGenomeInstance dgi = (DynamicGenomeInstance)popupModelAncestor_;
         DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(dgi.getProxyID());      
         minHour = dip.getMinimumTime();
         maxHour = dip.getMaximumTime();
         preferSum = false;
-      } else if (popupTarget_ instanceof GenomeInstance) {
-        GenomeInstance gi = (GenomeInstance)popupTarget_;
+      } else if (popupModelAncestor_ instanceof GenomeInstance) {
+        GenomeInstance gi = (GenomeInstance)popupModelAncestor_;
         if (gi.hasTimeBounds()) {
           minHour = gi.getMinTime();
           maxHour = gi.getMaxTime();
         } else {
-          ResourceManager rMan = appState_.getRMan(); 
-          JOptionPane.showMessageDialog(appState_.getTopFrame(),
+          ResourceManager rMan = dacx_.getRMan(); 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                         rMan.getString("treePopup.noParentTimesError"),
                                         rMan.getString("treePopup.noParentTimesErrorTitle"), 
                                         JOptionPane.ERROR_MESSAGE);
@@ -237,7 +234,7 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       //
 
       DynamicInstanceCreationDialog dicd = 
-        new DynamicInstanceCreationDialog(appState_, dacx_.getGenomeSource().getUniqueModelName(), minHour, maxHour, preferSum);
+        new DynamicInstanceCreationDialog(uics_, dacx_, minHour, maxHour, preferSum);
       dicd.setVisible(true);
       if (!dicd.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
@@ -247,7 +244,7 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       // Undo/Redo support
       //
 
-      UndoSupport support = new UndoSupport(appState_, "undo.addDynamicGenomeInstance");
+      UndoSupport support = uFac_.provideUndoSupport("undo.addDynamicGenomeInstance", dacx_);
 
       //
       // Record the pre-change tree expansion state, and hold onto a copy of the expansion
@@ -256,11 +253,11 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       //
 
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-      nt.setSkipFlag(NavTree.SKIP_FINISH); // We stay in the same place, so don't issue tree change events...     
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH); // We stay in the same place, so don't issue tree change events...     
       
-      ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
 
       //
       // Create the proxy, add it to the database
@@ -268,12 +265,13 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
 
       String nextKey = dacx_.getGenomeSource().getNextKey();      
       DynamicInstanceProxy dip = 
-        new DynamicInstanceProxy(appState_, dicd.getName(), nextKey, 
-                                  vfg, !dicd.isPerTime(), dicd.getMinTime(), dicd.getMaxTime()); 
+        new DynamicInstanceProxy(dacx_, dicd.getModName(), nextKey, 
+                                 vfg, !dicd.isPerTime(), dicd.getMinTime(), dicd.getMaxTime(), 
+                                 dicd.getShowDiff(), dicd.getSimKey()); 
       DatabaseChange dc = dacx_.getGenomeSource().addDynamicProxyExistingLabel(nextKey, dip);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
-      support.addEvent(new ModelChangeEvent(nextKey, ModelChangeEvent.DYNAMIC_MODEL_ADDED));
-      new DataLocator(appState_, dacx_).setTitleLocation(support, vfg.getID(), dicd.getName());
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), nextKey, ModelChangeEvent.DYNAMIC_MODEL_ADDED));
+      new DataLocator(uics_.getGenomePresentation(), dacx_).setTitleLocation(support, vfg.getID(), dicd.getName());
 
       //
       // Add the nodes to the nav tree.  Map the pre-change expansion state to match
@@ -281,27 +279,27 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       // already submitted to undo support.
       //
 
-      NavTreeChange ntc;
+      NavTree.NodeAndChanges nac;
       if (dip.isSingle()) {
         List<String> newNodes = dip.getProxiedKeys();
         if (newNodes.size() != 1) {
           throw new IllegalStateException();
         }
         String key = newNodes.iterator().next();
-        ntc = nt.addNode(dip.getProxiedInstanceName(key), vfg.getID(), key);      
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), popupNode_, new NavTree.ModelID(key), null, null, dacx_);      
       } else {
-        ntc = nt.addProxyNode(dip.getName(), vfg.getID(), dip.getID());         
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), popupNode_, null, dip.getID(), null, dacx_);
       }
-      support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
-      ec.expanded = nt.mapAllPaths(ec.expanded, ntc, true);
-      ec.selected = nt.mapAPath(ec.selected, ntc, true);  
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
+      ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);
+      ec.selected = nt.mapAPath(ec.selected, nac.ntc, true);  
 
       //
       // Tell the world our node structure has changed, make sure we select the
       // parent of the new submodel and expand the path to it.
       //
 
-      VirtualModelTree vmTree = appState_.getTree();
+      VirtualModelTree vmTree = uics_.getTree();
       vmTree.getTreeModel().nodeStructureChanged(popupNode_);
       TreeNode[] tn = ((DefaultMutableTreeNode)popupNode_).getPath();
       TreePath tp = new TreePath(tn);      
@@ -324,16 +322,16 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = treeSupp_.buildExpansionChange(false, dacx_);
-      ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
-      ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec));
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
+      ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, false);
+      ec.selected = nt.mapAPath(ec.selected, nac.ntc, false);      
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
 
       // FIX ME??? Use events instead of direct calls.
-      appState_.getDB().clearAllDynamicProxyCaches();
+      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
 
       support.finish();
-      nt.setSkipFlag(NavTree.NO_FLAG);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
    
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this)); 
     }

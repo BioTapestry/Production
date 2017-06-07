@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,13 +24,12 @@ import java.util.Iterator;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -61,8 +60,7 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveBuildInstruct(BTState appState) {
-    super(appState);
+  public RemoveBuildInstruct() {
     name =  "command.DropAllInstructions";
     desc =  "command.DropAllInstructions";     
     mnem =  "command.DropAllInstructionsMnem";
@@ -103,9 +101,10 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToRemove")) {
         next = ans.stepToRemove();
@@ -124,25 +123,16 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
+  public static class StepState extends AbstractStepState {
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToRemove";
-      dacx_ = dacx;
     }
      
     /***************************************************************************
@@ -156,15 +146,15 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));      
       }
       
-      String centered = UiUtil.convertMessageToHtml(dacx_.rMan.getString("dropInstruct.dropQuestion")); 
-      int result = JOptionPane.showConfirmDialog(appState_.getTopFrame(), centered,
-                                                             dacx_.rMan.getString("dropInstruct.messageTitle"),
+      String centered = UiUtil.convertMessageToHtml(dacx_.getRMan().getString("dropInstruct.dropQuestion")); 
+      int result = JOptionPane.showConfirmDialog(uics_.getTopFrame(), centered,
+                                                             dacx_.getRMan().getString("dropInstruct.messageTitle"),
                                                              JOptionPane.YES_NO_OPTION);
       if (result != 0) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
       }
       
-      UndoSupport support = new UndoSupport(appState_, "undo.dropBuildInstructions");       
+      UndoSupport support = uFac_.provideUndoSupport("undo.dropBuildInstructions", dacx_);       
       dropAllInstructions(support);  
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
       support.finish(); 
@@ -179,7 +169,7 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
     private void dropAllInstructions(UndoSupport support) {
             
       DatabaseChange dc = dacx_.getInstructSrc().dropBuildInstructions();
-      DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+      DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
       support.addEdit(dcc);
     
       Iterator<GenomeInstance> iit = dacx_.getGenomeSource().getInstanceIterator();
@@ -188,7 +178,7 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
         String giid = gi.getID();
         if (dacx_.getInstructSrc().getInstanceInstructionSet(giid) != null) {
           DatabaseChange riis = dacx_.getInstructSrc().removeInstanceInstructionSet(giid);
-          DatabaseChangeCmd riiscc = new DatabaseChangeCmd(appState_, dacx_, riis);
+          DatabaseChangeCmd riiscc = new DatabaseChangeCmd(dacx_, riis);
           support.addEdit(riiscc);
         }
       }      

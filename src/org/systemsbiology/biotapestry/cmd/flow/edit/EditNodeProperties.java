@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,14 +19,12 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.GenePropertiesDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.NodePropertiesDialog;
@@ -57,8 +55,7 @@ public class EditNodeProperties extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditNodeProperties(BTState appState, boolean doGene) {
-    super(appState);          
+  public EditNodeProperties(boolean doGene) {         
     name = (doGene) ? "genePopup.Properties" : "nodePopup.Properties";
     desc = (doGene) ? "genePopup.Properties" : "nodePopup.Properties";
     mnem = (doGene) ? "genePopup.PropertiesMnem" : "nodePopup.PropertiesMnem";
@@ -78,8 +75,8 @@ public class EditNodeProperties extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, doGene_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(doGene_, dacx));
   }
 
   /***************************************************************************
@@ -93,10 +90,11 @@ public class EditNodeProperties extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, doGene_, cfh.getDataAccessContext());
+        StepState ans = new StepState(doGene_, cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -115,16 +113,20 @@ public class EditNodeProperties extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
+      
     private String interID_;
     private boolean myDoGene_;
-    private DataAccessContext dacx_;
      
-    public String getNextStep() {
-      return (nextStep_);
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(boolean doGene, StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
+      myDoGene_ = doGene;
     }
     
     /***************************************************************************
@@ -132,13 +134,12 @@ public class EditNodeProperties extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean doGene, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean doGene, ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
       myDoGene_ = doGene;
-      dacx_ = dacx;
     }
-    
+
     /***************************************************************************
     **
     ** for preload
@@ -155,12 +156,12 @@ public class EditNodeProperties extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepDoIt() {    
-      NodeProperties np = dacx_.getLayout().getNodeProperties(interID_);        
+      NodeProperties np = dacx_.getCurrentLayout().getNodeProperties(interID_);        
       if (myDoGene_) {
-        GenePropertiesDialog gpd = new GenePropertiesDialog(appState_, dacx_, np);
+        GenePropertiesDialog gpd = new GenePropertiesDialog(uics_, dacx_, hBld_, np, uFac_);
         gpd.setVisible(true);              
       } else {
-        NodePropertiesDialog npd = new NodePropertiesDialog(appState_, dacx_, np);
+        NodePropertiesDialog npd = new NodePropertiesDialog(uics_, dacx_, hBld_, uFac_, np);
         npd.setVisible(true);
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

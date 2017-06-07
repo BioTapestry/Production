@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,8 @@
 
 package org.systemsbiology.biotapestry.plugin;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 
 /****************************************************************************
 **
@@ -47,7 +48,7 @@ public interface InternalDataDisplayPlugInV2 extends DataDisplayPlugIn {
   ** Internal plugins need to have access to internal state
   */
   
-  public void setAppState(BTState appState);
+  public void setDataAccessContext(DynamicDataAccessContext dacx, UIComponentSource uics);
   
   /***************************************************************************
   **
@@ -55,7 +56,7 @@ public interface InternalDataDisplayPlugInV2 extends DataDisplayPlugIn {
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID);
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID);
     
   /***************************************************************************
   **
@@ -64,7 +65,7 @@ public interface InternalDataDisplayPlugInV2 extends DataDisplayPlugIn {
   ** for internal plug-ins with more required arguments.
   */
   
-  public String getDataAsHTML(String genomeID, String itemID);
+  public String getDataAsHTML(String dbID, String genomeID, String itemID);
    
   /***************************************************************************
   **
@@ -81,6 +82,6 @@ public interface InternalDataDisplayPlugInV2 extends DataDisplayPlugIn {
   ** for internal plug-ins with more required arguments.
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String itemID);
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String itemID);
   
 }

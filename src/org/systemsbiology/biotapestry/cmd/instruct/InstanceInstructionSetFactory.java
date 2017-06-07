@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,12 +26,11 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.parser.ParserClient;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
-** This builds GenomeInstances in SiliconUrchin
+** This builds Instance Instruction Sets
 */
 
 public class InstanceInstructionSetFactory implements ParserClient {
@@ -54,7 +53,7 @@ public class InstanceInstructionSetFactory implements ParserClient {
   private String regionKey_;
   private Set<String> instructionKeys_;
   private HashSet<String> allKeys_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,8 +66,7 @@ public class InstanceInstructionSetFactory implements ParserClient {
   ** Constructor for an InstanceInstructionSet factory
   */
 
-  public InstanceInstructionSetFactory(BTState appState) {
-    appState_ = appState;
+  public InstanceInstructionSetFactory() {
     setKeys_ = InstanceInstructionSet.keywordsOfInterest();
     instructionKeys_ = BuildInstructionInstance.keywordsOfInterest();    
     regionKey_ = InstanceInstructionSet.regionKeyword();
@@ -82,6 +80,16 @@ public class InstanceInstructionSetFactory implements ParserClient {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  ** 
+  ** Set the container
+  */
+
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    return;
+  }
 
   /***************************************************************************
   ** 
@@ -131,7 +139,7 @@ public class InstanceInstructionSetFactory implements ParserClient {
     if (setKeys_.contains(elemName)) {
       InstanceInstructionSet iis = InstanceInstructionSet.buildFromXML(elemName, attrs);
       if (iis != null) {
-        appState_.getDB().addInstanceInstructionSet(iis.getInstanceID(), iis);
+        dacx_.getInstructSrc().addInstanceInstructionSet(iis.getInstanceID(), iis);
         currSet_ = iis;
         return (iis);
       }

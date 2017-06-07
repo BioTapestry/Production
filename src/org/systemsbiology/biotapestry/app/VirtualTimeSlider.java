@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,17 +35,14 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
-import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -71,8 +68,12 @@ public class VirtualTimeSlider implements ChangeListener {
   private JPanel currSliderPanel_;
   private boolean sliderVisible_;
   private boolean doingUndo_;
-  private BTState appState_;
   private boolean doNotFlow_;
+  private HarnessBuilder hBld_;
+  private DynamicDataAccessContext ddacx_;
+  private UIComponentSource uics_;
+  private TabSource tSrc_; 
+  private UndoFactory uFac_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -85,8 +86,13 @@ public class VirtualTimeSlider implements ChangeListener {
   ** Constructor 
   */ 
   
-  public VirtualTimeSlider(BTState appState) {
-    appState_ = appState.setVTSlider(this);
+  public VirtualTimeSlider(DynamicDataAccessContext ddacx, UIComponentSource uics, HarnessBuilder hBld, 
+                           TabSource tSrc, UndoFactory uFac) {
+    ddacx_ = ddacx;
+    hBld_ = hBld;
+    uics_ = uics;
+    tSrc_ = tSrc;
+    uFac_ = uFac;
     lastSetting_ = -1;
     sliders_ = new HashMap<String, JSlider>();
     doNotFlow_ = false;
@@ -196,7 +202,7 @@ public class VirtualTimeSlider implements ChangeListener {
    
   public void manageSliderForProxy(String proxyID) {
     currDip_ = proxyID;
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID);
+    DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(proxyID);
     manageSliderSetup(dip, null);
     sliderPanel_.remove(0);
     sliderPanel_.add(currSliderPanel_);      
@@ -231,7 +237,7 @@ public class VirtualTimeSlider implements ChangeListener {
     String id = null;
     if (mcev.isProxyKey()) {
       String proxID = mcev.getProxyKey();
-      id = appState_.getDB().getDynamicProxy(proxID).getKeyForTime(lastSetting_, true);
+      id = ddacx_.getGenomeSource().getDynamicProxy(proxID).getKeyForTime(lastSetting_, true);
     } else {
       id = mcev.getGenomeKey();
     }
@@ -254,7 +260,7 @@ public class VirtualTimeSlider implements ChangeListener {
     }
     JSlider slider = sliders_.get(id);
     if (slider != null) {    
-      DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(id);
+      DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(id);
       int dipMin = dip.getMinimumTime();
       int dipMax = dip.getMaximumTime();
       if ((slider.getMinimum() != dipMin) || (slider.getMaximum() != dipMax)) {
@@ -296,7 +302,7 @@ public class VirtualTimeSlider implements ChangeListener {
     if (slider == null) {
       throw new IllegalStateException();
     }
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(id);
+    DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(id);
     int dipMin = dip.getMinimumTime();
     int dipMax = dip.getMaximumTime();
     return ((slider.getMinimum() != dipMin) || (slider.getMaximum() != dipMax));
@@ -329,7 +335,7 @@ public class VirtualTimeSlider implements ChangeListener {
   
   public void setupAndDisplayNewSlider(String proxyKey) {
     Integer time = frozenSlider_;  
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyKey);
+    DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(proxyKey);
     currDip_ = proxyKey;
     manageSliderSetup(dip, time);
     sliderPanel_.remove(0);
@@ -351,7 +357,7 @@ public class VirtualTimeSlider implements ChangeListener {
     if (slider != null) {    
       sliders_.remove(proxyKey);
     }   
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyKey);
+    DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(proxyKey);
     currDip_ = proxyKey;
     manageSliderSetup(dip, time);
     sliderPanel_.remove(0);
@@ -430,30 +436,28 @@ public class VirtualTimeSlider implements ChangeListener {
         if (value == lastSetting_) {
           return;
         }
-        DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
         if (doNotFlow_) {
           //
           // This means we are in the middle of another control flow execution, and we have no business launching another control 
           // flow.  So just use the guts of the switching operation from the SetCurrentModel.StepState flow state:
-          //
-          SetCurrentModel.StepState agis = new SetCurrentModel.StepState(appState_, SetCurrentModel.SettingAction.VIA_SLIDER, dacx);
+          //      
+          SetCurrentModel.StepState agis = (SetCurrentModel.StepState)hBld_.getNewCmdState(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_SLIDER, ddacx_);
           int lastSettingToUse = lastSetting_;
           lastSetting_ = value;
-          agis.setPreloadForSlider(value, lastSettingToUse, doingUndo_, currDip_);
+          agis.setPreloadForSlider(value, lastSettingToUse, doingUndo_, currDip_, uics_, tSrc_, uFac_);
           agis.stepToProcess();
         } else {
-          DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-          ControlFlow cf = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_SLIDER, null);           
-          SetCurrentModel.StepState agis = (SetCurrentModel.StepState)cf.getEmptyStateForPreload(dacx);
+          HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_SLIDER);          
+          SetCurrentModel.StepState agis = (SetCurrentModel.StepState)pH.getCmdState();  
           int lastSettingToUse = lastSetting_;
           lastSetting_ = value;
-          agis.setPreloadForSlider(value, lastSettingToUse, doingUndo_, currDip_);
-          dcf.initFlow(cf, dacx);
-          dcf.runFlow(agis);
+          agis.setPreloadForSlider(value, lastSettingToUse, doingUndo_, currDip_, uics_, tSrc_, uFac_);
+          agis.setAppState(ddacx_.getMetabase().getAppState(), ddacx_); // UGH! FIXME
+          hBld_.runHarness(pH);
         }
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -470,7 +474,7 @@ public class VirtualTimeSlider implements ChangeListener {
     slider.setMinorTickSpacing(1);
     int spacing = ((max - min) < 6) ? 1 : 3;
     slider.setMajorTickSpacing(spacing);
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = ddacx_.getExpDataSrc().getTimeAxisDefinition();
     if (tad.haveNamedStages()) {
       Hashtable<Integer, JLabel> namedStageMap = new Hashtable<Integer, JLabel>();
       List<TimeAxisDefinition.NamedStage> stages = tad.getNamedStages();
@@ -568,12 +572,12 @@ public class VirtualTimeSlider implements ChangeListener {
     if (sliderVisible_ == show) {
       return;
     }
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       int height = (show) ? 75 : 0;
       sliderPanel_.setMinimumSize(new Dimension(250, height));
       sliderPanel_.setPreferredSize(new Dimension(250, height));
       sliderPanel_.invalidate();
-      appState_.getContentPane().validate();
+      uics_.getContentPane().validate();
     }
     sliderVisible_ = show;
     return;

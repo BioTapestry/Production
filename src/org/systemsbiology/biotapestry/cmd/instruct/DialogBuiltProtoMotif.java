@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,11 +26,10 @@ import java.util.Set;
 import java.util.Map;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.OldPadMapper;
 import org.systemsbiology.biotapestry.cmd.PadConstraints;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -80,6 +79,7 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
   ** Clone function
   */
   
+  @Override
   public DialogBuiltProtoMotif clone() {
     try {
       return ((DialogBuiltProtoMotif)super.clone());
@@ -280,7 +280,7 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
   ** Fill in the corresponding real motif from matches in the filled Pair. Override if
   ** we need to do this.
   */
-  
+  @SuppressWarnings("unused")
   public void fillLinksFromMatches(DBLinkage newLink, DialogBuiltMotifPair filledPair, DialogBuiltMotif realMotif) {
     return;
   }
@@ -290,7 +290,7 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
   ** Node generation and bookkeeping helper
   */
   
-  protected DBNode genNode(BTState appState, DataAccessContext dacx, DBGenome genome, DBGenome oldGenome, String name, 
+  protected DBNode genNode(StaticDataAccessContext dacx, DBGenome genome, DBGenome oldGenome, String name, 
                            int type, String oldID, UndoSupport support) {
     String nodeID = (oldID == null) ? genome.getNextKey() : oldID;
     Node oldNode = null;
@@ -300,17 +300,17 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
     GenomeChange gc;
     DBNode newNode;
     if (type == Node.GENE) {
-      DBGene newGene = (oldNode == null) ? new DBGene(appState, name, nodeID) : new DBGene((DBGene)oldNode);
+      DBGene newGene = (oldNode == null) ? new DBGene(dacx, name, nodeID) : new DBGene((DBGene)oldNode);
       gc = genome.addGeneWithExistingLabel(newGene);
       newNode = newGene;
     } else {
-      newNode = (oldNode == null) ? new DBNode(appState, type, name, nodeID) : new DBNode((DBNode)oldNode);
+      newNode = (oldNode == null) ? new DBNode(dacx, type, name, nodeID) : new DBNode((DBNode)oldNode);
       gc = genome.addNodeWithExistingLabel(newNode);
     }
     if (gc == null) {
       throw new IllegalStateException();
     }
-    support.addEdit(new GenomeChangeCmd(appState, dacx, gc));
+    support.addEdit(new GenomeChangeCmd(dacx, gc));
     return (newNode);
   }
   
@@ -326,7 +326,6 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
   */ 
     
   public static class BuildData {
-    BTState appState; 
     DBGenome genome;
     DBGenome oldGenome;
     Map<String, String> normNames;
@@ -341,16 +340,15 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
     Map<String, PadConstraints> padConstraintSaver; 
     InvertedSrcTrg ist;
     boolean existingOnly;
-    DataAccessContext dacx;
+    StaticDataAccessContext dacx;
     
   
-    public BuildData(BTState appState, DataAccessContext dacx, DBGenome genome, DBGenome oldGenome,                                     
+    public BuildData(StaticDataAccessContext dacx, DBGenome genome, DBGenome oldGenome,                                     
                      List<DialogBuiltMotifPair> fullList, List<DialogBuiltMotifPair> existingList, 
                      Map<String, String> newNodeToOldNode, Map<String, String> newLinksToOldLinks, 
                      Map<String, Integer> newTypesByID,
                      OldPadMapper opm, Map<String, PadConstraints> padConstraintSaver, 
                      InvertedSrcTrg ist, boolean existingOnly) {
-      this.appState = appState;
       this.genome = genome;
       this.oldGenome = oldGenome;
       this.fullList = fullList;

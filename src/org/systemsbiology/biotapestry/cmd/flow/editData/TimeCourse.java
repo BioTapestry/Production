@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,10 @@ import java.util.List;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditGroupProperties;
@@ -39,12 +41,15 @@ import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.PerturbExpressionEntryDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseEntryDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseMappingDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseRegionMappingTableDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseSetupDialog;
+import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -124,8 +129,7 @@ public class TimeCourse extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public TimeCourse(BTState appState, Action action) {
-    super(appState);
+  public TimeCourse(Action action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -139,8 +143,8 @@ public class TimeCourse extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public TimeCourse(BTState appState, Action action, EditGroupProperties.GroupArg pargs) {
-    this(appState, action);
+  public TimeCourse(Action action, EditGroupProperties.GroupArg pargs) {
+    this(action);
     if ((action != Action.DELETE_REGION_MAP) && (action != Action.EDIT_REGION_MAP)) {
       throw new IllegalArgumentException();
     }
@@ -157,25 +161,31 @@ public class TimeCourse extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    TimeCourseData tcd;   
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    TimeCourseData tcd;
+    TimeCourseDataMaps tcdm;
     switch (action_) {
       case EDIT:
       case EDIT_MAP:
       case EDIT_REGION_MAP:
         return (true);
       case EDIT_PERT:   
-        tcd = appState_.getDB().getTimeCourseData();
-        return (tcd.haveDataForNode(GenomeItemInstance.getBaseID(inter.getObjectID())));
+        tcd = rcx.getExpDataSrc().getTimeCourseData();
+        tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
+        return (tcdm.haveDataForNode(tcd, GenomeItemInstance.getBaseID(inter.getObjectID()), rcx.getGenomeSource()));
       case DELETE:      
-        tcd = appState_.getDB().getTimeCourseData();
-        return ((tcd != null) && tcd.haveDataForNode(GenomeItemInstance.getBaseID(inter.getObjectID())));
+        tcd = rcx.getExpDataSrc().getTimeCourseData();
+        tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
+        return ((tcd != null) && tcdm.haveDataForNode(tcd, GenomeItemInstance.getBaseID(inter.getObjectID()), rcx.getGenomeSource()));
       case DELETE_MAP:      
-        tcd = appState_.getDB().getTimeCourseData();
-        return ((tcd != null) && tcd.haveCustomMapForNode(GenomeItemInstance.getBaseID(inter.getObjectID()))); 
+        tcd = rcx.getExpDataSrc().getTimeCourseData();
+        tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
+        return ((tcd != null) && tcdm.haveCustomMapForNode(GenomeItemInstance.getBaseID(inter.getObjectID()))); 
       case DELETE_REGION_MAP:         
-        tcd = appState_.getDB().getTimeCourseData();
-        return ((tcd != null) && tcd.haveCustomMapForRegion(Group.getBaseID(groupID_)));
+        tcd = rcx.getExpDataSrc().getTimeCourseData();
+        tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
+        return ((tcd != null) && tcdm.haveCustomMapForRegion(Group.getBaseID(groupID_)));
       default:
         throw new IllegalStateException();
     }
@@ -188,8 +198,8 @@ public class TimeCourse extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, action_, groupID_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(action_, groupID_, dacx));
   }     
   
   /***************************************************************************
@@ -216,9 +226,10 @@ public class TimeCourse extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, groupID_, cfh.getDataAccessContext());
+        ans = new StepState(action_, groupID_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -237,32 +248,36 @@ public class TimeCourse extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
 
-    private String nextStep_;
     private Action myAction_;
-    private BTState appState_;
     private Intersection inter_;
     private String myGroupID_;
-    private DataAccessContext rcxT_;
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, Action action, String groupID, DataAccessContext dacx) {
+    public StepState(Action action, String groupID, StaticDataAccessContext dacx) {
+      super(dacx);
       myAction_ = action;
-      appState_ = appState;
-      rcxT_ = dacx;
       nextStep_ = "stepToProcess";
       myGroupID_ = groupID;
     }
      
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(Action action, String groupID, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
+      myGroupID_ = groupID;
+    }
+    
     /***************************************************************************
     **
     ** for preload
@@ -322,20 +337,23 @@ public class TimeCourse extends AbstractControlFlow {
        
     private boolean editData() { 
       String id = inter_.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
+      ResourceManager rMan = dacx_.getRMan();
       id = GenomeItemInstance.getBaseID(id);
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
 
+      UiUtil.fixMePrintout("Getting null ptr here trying to edit data");
       if (!tcd.hasGeneTemplate()) { 
-        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(appState_, rcxT_);
+        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
         if (tcsd == null) {
           return (false);
         }
         tcsd.setVisible(true);
         if (!tcd.hasGeneTemplate()) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rcxT_.rMan.getString("tcdNoTemplate.message"), 
-                                        rcxT_.rMan.getString("tcdNoTemplate.title"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
+                                        rMan.getString("tcdNoTemplate.message"), 
+                                        rMan.getString("tcdNoTemplate.title"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
         } 
@@ -346,35 +364,35 @@ public class TimeCourse extends AbstractControlFlow {
       // map generation:
       //
       
-      List<TimeCourseData.TCMapping> keys = tcd.getTimeCourseTCMDataKeysWithDefault(id);
+      List<TimeCourseDataMaps.TCMapping> keys = tcdm.getTimeCourseTCMDataKeysWithDefault(id, dacx_.getGenomeSource());
       boolean waiting = ((keys == null) || keys.isEmpty());
       if (waiting) {
         while (waiting) {                               
-          TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(appState_, node.getName(), id);
+          TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, dacx_, node.getName(), id);
           tcmd.setVisible(true);
           if (!tcmd.haveResult()) {
             return (false);
           }
-          UndoSupport support = new UndoSupport(appState_, "undo.tcmd");    
-          List<TimeCourseData.TCMapping> entries = tcmd.getEntryList();
-          TimeCourseChange tcc = tcd.addTimeCourseTCMMap(id, entries, true);
+          UndoSupport support = uFac_.provideUndoSupport("undo.tcmd", dacx_);    
+          List<TimeCourseDataMaps.TCMapping> entries = tcmd.getEntryList();
+          TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(id, entries, true);
           if (tcc != null) {
-            support.addEdit(new TimeCourseChangeCmd(appState_, rcxT_, tcc));
+            support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
           } 
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
           support.finish();
-          keys = tcd.getCustomTCMTimeCourseDataKeys(id);
+          keys = tcdm.getCustomTCMTimeCourseDataKeys(id);
           waiting = ((keys == null) || keys.isEmpty());
           if (waiting) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                          rcxT_.rMan.getString("tcdNoKey.message"), 
-                                          rcxT_.rMan.getString("tcdNoKey.title"),
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), 
+                                          rMan.getString("tcdNoKey.message"), 
+                                          rMan.getString("tcdNoKey.title"),
                                           JOptionPane.ERROR_MESSAGE);
           }              
         }
       }
 
-      TimeCourseEntryDialog tced = new TimeCourseEntryDialog(appState_, rcxT_, keys, false);
+      TimeCourseEntryDialog tced = new TimeCourseEntryDialog(uics_, dacx_, keys, false, uFac_);
       tced.setVisible(true);
       return (true);
     }
@@ -387,9 +405,9 @@ public class TimeCourse extends AbstractControlFlow {
     private boolean editPertData() { 
       String id = inter_.getObjectID();
       id = GenomeItemInstance.getBaseID(id);
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
-      List<TimeCourseData.TCMapping> keys = tcd.getTimeCourseTCMDataKeysWithDefault(id);
-      PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.perturbExpressionEntryDialogWrapper(appState_, rcxT_, keys);
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      List<TimeCourseDataMaps.TCMapping> keys = tcdm.getTimeCourseTCMDataKeysWithDefault(id, dacx_.getGenomeSource());
+      PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.perturbExpressionEntryDialogWrapper(uics_, dacx_, keys, uFac_);
       if (tced != null) {
         tced.setVisible(true);
       }
@@ -404,20 +422,21 @@ public class TimeCourse extends AbstractControlFlow {
     private boolean deleteData() { 
       String id = inter_.getObjectID();
       id = GenomeItemInstance.getBaseID(id);
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
       if (tcd != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteTCDat");
-        List<TimeCourseData.TCMapping> mapped = tcd.getTimeCourseTCMDataKeysWithDefault(id);
-        mapped = (mapped == null) ? new ArrayList<TimeCourseData.TCMapping>() : TimeCourseData.TCMapping.cloneAList(mapped);
-        Iterator<TimeCourseData.TCMapping> mit = mapped.iterator();
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCDat", dacx_);
+        List<TimeCourseDataMaps.TCMapping> mapped = tcdm.getTimeCourseTCMDataKeysWithDefault(id, dacx_.getGenomeSource());
+        mapped = (mapped == null) ? new ArrayList<TimeCourseDataMaps.TCMapping>() : TimeCourseDataMaps.TCMapping.cloneAList(mapped);
+        Iterator<TimeCourseDataMaps.TCMapping> mit = mapped.iterator();
         while (mit.hasNext()) {
-          TimeCourseData.TCMapping tcm = mit.next();
-          TimeCourseChange[] changes = tcd.dropMapsTo(tcm.name);
+          TimeCourseDataMaps.TCMapping tcm = mit.next();
+          TimeCourseChange[] changes = tcdm.dropMapsTo(tcm.name);
           for (int j = 0; j < changes.length; j++) {
-            support.addEdit(new TimeCourseChangeCmd(appState_, rcxT_, changes[j]));
+            support.addEdit(new TimeCourseChangeCmd(dacx_, changes[j]));
           }
           TimeCourseChange tcc = tcd.dropGene(tcm.name);
-          support.addEdit(new TimeCourseChangeCmd(appState_, rcxT_, tcc)); 
+          support.addEdit(new TimeCourseChangeCmd(dacx_, tcc)); 
         }
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
         support.finish();
@@ -433,12 +452,13 @@ public class TimeCourse extends AbstractControlFlow {
     private boolean deleteMap() {
       String id = inter_.getObjectID();
       id = GenomeItemInstance.getBaseID(id);
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
       if (tcd != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteTCM");          
-        TimeCourseChange tchg = tcd.dropDataKeys(id);
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCM", dacx_);          
+        TimeCourseChange tchg = tcdm.dropDataKeys(id);
         if (tchg != null) {
-          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(appState_, rcxT_, tchg, false);
+          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
           support.addEdit(cmd);
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
           support.finish();
@@ -454,19 +474,19 @@ public class TimeCourse extends AbstractControlFlow {
        
     private boolean editMap() {
       String id = inter_.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       id = GenomeItemInstance.getBaseID(id);
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
-      TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(appState_, node.getName(), id);
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, dacx_, node.getName(), id);
       tcmd.setVisible(true);
       if (!tcmd.haveResult()) {
         return (false);
       }
-      UndoSupport support = new UndoSupport(appState_, "undo.tcmd");    
-      List<TimeCourseData.TCMapping> entries = tcmd.getEntryList();
-      TimeCourseChange tcc = tcd.addTimeCourseTCMMap(id, entries, true);
+      UndoSupport support = uFac_.provideUndoSupport("undo.tcmd", dacx_);    
+      List<TimeCourseDataMaps.TCMapping> entries = tcmd.getEntryList();
+      TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(id, entries, true);
       if (tcc != null) {
-        support.addEdit(new TimeCourseChangeCmd(appState_, rcxT_, tcc));
+        support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
       } 
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();
@@ -480,12 +500,13 @@ public class TimeCourse extends AbstractControlFlow {
        
     private boolean deleteRegionMap() { 
       String gid = Group.getBaseID(myGroupID_);      
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
       if (tcd != null) {
-        TimeCourseChange tchg = tcd.dropGroupMap(gid);
+        TimeCourseChange tchg = tcdm.dropGroupMap(gid);
         if (tchg != null) {
-          UndoSupport support = new UndoSupport(appState_, "undo.deleteTCRM"); 
-          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(appState_, rcxT_, tchg, false);
+          UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCRM", dacx_); 
+          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
           support.addEdit(cmd);
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
           support.finish();
@@ -501,27 +522,28 @@ public class TimeCourse extends AbstractControlFlow {
        
     private boolean editRegionMap() { 
       String gid = Group.getBaseID(myGroupID_);     
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
       if (!tcd.hasGeneTemplate()) { 
-        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(appState_, rcxT_);
+        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
         if (tcsd == null) {
           return (false);
         }
         tcsd.setVisible(true);
         if (!tcd.hasGeneTemplate()) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rcxT_.rMan.getString("tcdNoTemplate.message"), 
-                                        rcxT_.rMan.getString("tcdNoTemplate.title"),
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
+                                        rMan.getString("tcdNoTemplate.message"), 
+                                        rMan.getString("tcdNoTemplate.title"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
         } 
       }
 
-      GenomeInstance gi = rcxT_.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       gid = Group.getBaseID(gid);
       GenomeInstance root = gi.getVfgParentRoot();      
       Group group = (root == null) ? gi.getGroup(gid) : root.getGroup(gid);          
-      TimeCourseRegionMappingTableDialog tcrmd = new TimeCourseRegionMappingTableDialog(appState_, rcxT_, gid, group.getName());
+      TimeCourseRegionMappingTableDialog tcrmd = new TimeCourseRegionMappingTableDialog(uics_, dacx_, gid, group.getName(), uFac_);
       tcrmd.setVisible(true);
       return (true);
     }

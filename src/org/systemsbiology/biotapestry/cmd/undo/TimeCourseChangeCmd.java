@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,11 +20,11 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 
 /****************************************************************************
 **
@@ -54,8 +54,8 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TimeCourseChangeCmd(BTState appState, DataAccessContext dacx, TimeCourseChange restore, boolean doEvent) {
-    super(appState, dacx);
+  public TimeCourseChangeCmd(DataAccessContext dacx, TimeCourseChange restore, boolean doEvent) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = doEvent;
   }
@@ -65,8 +65,8 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TimeCourseChangeCmd(BTState appState, DataAccessContext dacx, TimeCourseChange restore) {
-    this(appState, dacx, restore, false);
+  public TimeCourseChangeCmd(DataAccessContext dacx, TimeCourseChange restore) {
+    this(dacx, restore, false);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -93,11 +93,16 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();
-    tcd.changeUndo(restore_);
+    if (restore_.forMaps) {
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      tcdm.changeUndo(restore_);
+    } else {
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      tcd.changeUndo(restore_);
+    }
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }  
@@ -110,11 +115,16 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();
-    tcd.changeRedo(restore_);
+    if (restore_.forMaps) {
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      tcdm.changeRedo(restore_);
+    } else {
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      tcd.changeRedo(restore_);
+    }
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }
@@ -130,10 +140,10 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Wrap changes in command array
   */ 
   
-  public static TimeCourseChangeCmd[] wrapChanges(BTState appState, DataAccessContext dacx, TimeCourseChange[] restores) {
+  public static TimeCourseChangeCmd[] wrapChanges(DataAccessContext dacx, TimeCourseChange[] restores) {
     TimeCourseChangeCmd[] retval = new TimeCourseChangeCmd[restores.length];
     for (int i = 0; i < retval.length; i++) {
-      retval[i] = new TimeCourseChangeCmd(appState, dacx, restores[i]);
+      retval[i] = new TimeCourseChangeCmd(dacx, restores[i]);
     }
     return (retval);
   }

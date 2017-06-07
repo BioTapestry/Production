@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -56,7 +56,9 @@ public class StartupView implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private String modelKey_;
+  private String modelId_;
+  private String nodeId_;
+  private String nodeType_;
   private String ovrKey_;
   private TaggedSet modKeys_;
   private TaggedSet revKeys_;  
@@ -73,19 +75,29 @@ public class StartupView implements Cloneable {
   */
 
   public StartupView() {
-    modelKey_ = null;
+    modelId_ = null;
+    nodeId_ = null;
+    nodeType_ = null;
     ovrKey_ = null;
     modKeys_ = new TaggedSet();
-    revKeys_ = new TaggedSet();    
+    revKeys_ = new TaggedSet();
   }
+  
   
   /***************************************************************************
   **
   ** Constructor
   */
   
-  public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys) {  
-    modelKey_ = key;
+  public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String nodeType) {
+	  this(key,ovrKey,modKeys,revKeys,nodeType,null);
+  }   
+  
+  
+ public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String nodeType, String nodeId) { 
+	  modelId_ = key;
+	  nodeId_ = nodeId;
+	  nodeType_ = nodeType;
     ovrKey_ = ovrKey;
     modKeys_ = (modKeys == null) ? new TaggedSet() : modKeys;
     revKeys_ = (revKeys == null) ? new TaggedSet() : revKeys;    
@@ -102,6 +114,7 @@ public class StartupView implements Cloneable {
   ** Clone
   */
 
+  @Override
   public StartupView clone() {
     try {
       StartupView retval = (StartupView)super.clone();
@@ -118,6 +131,7 @@ public class StartupView implements Cloneable {
   ** Standard equals
   */
 
+  @Override
   public boolean equals(Object other) {
     if (this == other) {
       return (true);
@@ -130,11 +144,27 @@ public class StartupView implements Cloneable {
     }
     StartupView otherSV = (StartupView)other;
 
-    if (this.modelKey_ == null) {
-      if (otherSV.modelKey_ != null) {
+    if(this.nodeType_ == null) {
+    	if(otherSV.nodeType_ != null) {
+    		return (false);
+    	}
+    } else if(!(this.nodeType_.equals(otherSV.nodeType_))) {
+    	return (false);
+    }
+
+    if (this.nodeId_ == null) {
+        if (otherSV.nodeId_ != null) {
+          return (false);
+        }
+      } else if (!this.nodeId_.equals(otherSV.nodeId_)) {
+        return (false);
+      }    
+    
+    if (this.modelId_ == null) {
+      if (otherSV.modelId_ != null) {
         return (false);
       }
-    } else if (!this.modelKey_.equals(otherSV.modelKey_)) {
+    } else if (!this.modelId_.equals(otherSV.modelId_)) {
       return (false);
     }
     
@@ -182,7 +212,7 @@ public class StartupView implements Cloneable {
   */
   
   public String getModel() {
-    return (modelKey_);
+    return (modelId_);
   } 
   
   /***************************************************************************
@@ -210,7 +240,15 @@ public class StartupView implements Cloneable {
   
   public TaggedSet getRevealedModules() {
     return (revKeys_);
-  }    
+  } 
+    
+  public String getNodeType() {
+	  return (nodeType_);
+  }
+  
+  public String getNodeId() {
+	  return (nodeId_);
+  }
   
   /***************************************************************************
   **
@@ -218,7 +256,7 @@ public class StartupView implements Cloneable {
   */
   
   public boolean referencesOverlay(String modelKey, String overlayKey) {
-    if ((modelKey_ == null) || !modelKey_.equals(modelKey)) {
+    if ((modelId_ == null) || !modelId_.equals(modelKey)) {
       return (false);
     }
     if (ovrKey_ == null) {
@@ -299,12 +337,12 @@ public class StartupView implements Cloneable {
 
     ind.indent();     
     out.print("<startupView");
-    if (modelKey_ == null) {
+    if (modelId_ == null) {
       out.println("/>");
       return;
     }
     out.print(" model=\"");
-    out.print(modelKey_);
+    out.print(modelId_);
     if (ovrKey_ != null) {
       out.print("\" ovrKey=\"");
       out.print(ovrKey_);
@@ -379,8 +417,10 @@ public class StartupView implements Cloneable {
     
     private StartupView buildFromXML(String elemName, Attributes attrs) throws IOException {  
       String modelID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "model", false);
+      String nodeID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "nodeID", false);
+      String nodeType = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "type", false);
       String ovrKey = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "ovrKey", false);      
-      return (new StartupView(modelID, ovrKey, null, null));
+      return (new StartupView((modelID != null ? modelID : nodeID), ovrKey, null, null, nodeType,nodeID));
     }
   }
   

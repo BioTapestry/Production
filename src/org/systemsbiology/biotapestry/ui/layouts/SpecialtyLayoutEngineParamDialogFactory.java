@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,8 @@ import java.awt.Dimension;
 
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.LayoutOptionsManager;
@@ -108,49 +109,49 @@ public class SpecialtyLayoutEngineParamDialogFactory extends DialogFactory {
     String selected;
     JPanel paramPanel;
   
-    public BuildArgs(BTState appState, Genome genome, LoType lot, boolean forSubset) {
-      this(appState, genome, lot, null, null, forSubset);
+    public BuildArgs(UIComponentSource uics, StaticDataAccessContext dacx, Genome genome, LoType lot, boolean forSubset) {
+      this(uics, dacx, genome, lot, null, null, forSubset);
       if (lot == LoType.HALO) {
         throw new IllegalArgumentException();
       }
     }
     
-    public BuildArgs(BTState appState, Genome genome, LoType lot, String selectedID, HaloLayout halo) {
-      this(appState, genome, lot, selectedID, halo, false);
+    public BuildArgs(UIComponentSource uics, StaticDataAccessContext dacx, Genome genome, LoType lot, String selectedID, HaloLayout halo) {
+      this(uics, dacx, genome, lot, selectedID, halo, false);
       if (lot != LoType.HALO) {
         throw new IllegalArgumentException();
       }
     } 
     
-    private BuildArgs(BTState appState, Genome genome, LoType lot, String selectedID, HaloLayout halo, boolean forSubset) {
+    private BuildArgs(UIComponentSource uics, StaticDataAccessContext dacx, Genome genome, LoType lot, String selectedID, HaloLayout halo, boolean forSubset) {
       super(genome);
       lotype = lot;
-      LayoutOptionsManager lom = appState.getLayoutOptMgr();
+      LayoutOptionsManager lom = dacx.getLayoutOptMgr();
       
       switch (lotype) {
         case HALO:
           diaDim = new Dimension(600, 250);
           diaRows = 3;
           diaTitle = "haloLayout.title";
-          paramPanel = new HaloLayoutSetupPanel(appState, genome, selectedID, halo, lom.getHaloLayoutParams());
+          paramPanel = new HaloLayoutSetupPanel(dacx, genome, selectedID, halo, lom.getHaloLayoutParams());
           break;
         case DIAGONAL:
           diaDim = new Dimension(700, 300);
           diaRows = 4;
           diaTitle = "worksheetDiagonalLayout.title";
-          paramPanel = new WorksheetLayoutSetupPanel(appState, genome, forSubset, true, lom.getDiagLayoutParams());
+          paramPanel = new WorksheetLayoutSetupPanel(uics, dacx, genome, forSubset, true, lom.getDiagLayoutParams());
           break;
         case WORKSHEET:
           diaDim = new Dimension(700, 400);
           diaRows = 4;
           diaTitle = "worksheetLayout.title";
-          paramPanel = new WorksheetLayoutSetupPanel(appState, genome, forSubset, false, lom.getWorksheetLayoutParams());
+          paramPanel = new WorksheetLayoutSetupPanel(uics, dacx, genome, forSubset, false, lom.getWorksheetLayoutParams());
           break;
         case STACKED:
           diaDim = new Dimension(700, 400);
           diaRows = 4;
           diaTitle = "stackedLayout.title";
-          paramPanel = new StackedBlockLayoutSetupPanel(appState, genome, forSubset, lom.getStackedBlockLayoutParams(), !forSubset);
+          paramPanel = new StackedBlockLayoutSetupPanel(uics, dacx, genome, forSubset, lom.getStackedBlockLayoutParams(), !forSubset);
           break;
         default:
           throw new IllegalArgumentException();
@@ -204,6 +205,10 @@ public class SpecialtyLayoutEngineParamDialogFactory extends DialogFactory {
     //
     ////////////////////////////////////////////////////////////////////////////
    
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     /***************************************************************************
     **
     ** Return results
@@ -270,6 +275,10 @@ public class SpecialtyLayoutEngineParamDialogFactory extends DialogFactory {
       haveResult = false;
       return;
     }   
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }  

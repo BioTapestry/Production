@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -114,6 +114,7 @@ public class UniqueLabeller implements Cloneable {
   ** Clone
   */
 
+  @Override
   public UniqueLabeller clone() {
     try {
       UniqueLabeller retval = (UniqueLabeller)super.clone();
@@ -365,6 +366,7 @@ public class UniqueLabeller implements Cloneable {
   ** Standard to String
   */
   
+  @Override
   public String toString() {
     return ("UniqueLabeller: " + existing_ + " legacy = " + legacy_ + " isNumeric = " + isNumeric_ + " fixedPrefix_ = " + fixedPrefix_);
   }

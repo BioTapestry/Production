@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.io;
 
+import java.awt.Dimension;
 import java.awt.Rectangle;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -45,16 +46,25 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.ArgParser;
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.app.CommonView;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabChange;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.app.VirtualPathControls;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.layout.WorkspaceSupport;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
+import org.systemsbiology.biotapestry.cmd.flow.tabs.TabOps;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
+import org.systemsbiology.biotapestry.cmd.undo.TabChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DatabaseFactory;
+import org.systemsbiology.biotapestry.db.MasterFactory;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.StartupView;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.db.Workspace;
@@ -64,7 +74,7 @@ import org.systemsbiology.biotapestry.gaggle.SelectionSupport;
 import org.systemsbiology.biotapestry.genome.DBGenomeSIFFormatFactory;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
-import org.systemsbiology.biotapestry.nav.GroupSettingManager;
+import org.systemsbiology.biotapestry.nav.GroupSettingSource;
 import org.systemsbiology.biotapestry.nav.GroupSettings;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.RecentFilesManager;
@@ -77,6 +87,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.LoginDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.SIFImportChoicesDialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeAxisSetupDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.LayoutStatusReporter;
+import org.systemsbiology.biotapestry.ui.dialogs.utils.MessageTableReportingDialog;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayout;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngineParams;
 import org.systemsbiology.biotapestry.ui.layouts.WorksheetLayout;
@@ -91,6 +102,8 @@ import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.InvalidInputException;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -112,8 +125,13 @@ public class LoadSaveSupport {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
-  private FilePreparer fprep_;
+  private UIComponentSource uics_;
+  private Class<?> prefClass_;
+  private UndoFactory uFac_;
+  private DynamicDataAccessContext ddacx_;
+  private TabSource tSrc_;
+  private CmdSource cSrc_;
+  private PathAndFileSource pafs_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -126,9 +144,16 @@ public class LoadSaveSupport {
   ** Constructor 
   */ 
   
-  public LoadSaveSupport(BTState appState, FilePreparer fprep) {
-    appState_ = appState;
-    fprep_ = fprep;
+  public LoadSaveSupport(UIComponentSource uics, DynamicDataAccessContext ddacx, 
+                         TabSource tSrc, UndoFactory uFac, CmdSource cSrc,
+                         PathAndFileSource pafs, Class<?> prefClass) {
+    uics_ = uics;
+    uFac_ = uFac;
+    tSrc_ = tSrc;
+    ddacx_ = ddacx;
+    pafs_ = pafs;
+    cSrc_ = cSrc;
+    prefClass_ = prefClass;
   }  
    
   ////////////////////////////////////////////////////////////////////////////
@@ -151,8 +176,8 @@ public class LoadSaveSupport {
   ** Get file preparer
   */ 
     
-  public FilePreparer getFprep() {
-    return (fprep_);
+  public FilePreparer getFprep(DataAccessContext dacx) {   
+    return (new FilePreparer(uics_, dacx, uics_.getTopFrame(), prefClass_));
   }  
   
   /***************************************************************************
@@ -161,19 +186,20 @@ public class LoadSaveSupport {
   */ 
     
   public void setCurrentFile(File file) {
-    appState_.setCurrentFile(file);
+    pafs_.setCurrentFile(file);
     if (file == null) {
       return;
     }
-    if (!appState_.isHeadless()) {
-      fprep_.setPreference("LoadDirectory", file.getAbsoluteFile().getParent());
-      if (appState_.getIsEditor()) {
-        if (!appState_.getRecentMenu().haveRecentMenu()) {
+    if (!uics_.isHeadless()) {
+      FilePreparer fprep = getFprep(ddacx_);
+      fprep.setPreference("LoadDirectory", file.getAbsoluteFile().getParent());
+      if (uics_.getIsEditor()) {
+        if (!uics_.getRecentMenu().haveRecentMenu()) {
           return;
         }
-        RecentFilesManager rfm = appState_.getRecentFilesMgr();
+        RecentFilesManager rfm = pafs_.getRecentFilesMgr();
         rfm.updateLatestFile(file);
-        appState_.getRecentMenu().updateRecentMenu();
+        uics_.getRecentMenu().updateRecentMenu();
       }
     }
     return;
@@ -214,10 +240,9 @@ public class LoadSaveSupport {
   public FilePreparer.FileInputResultClosure loadRemoteGenome(URL url, URL saltUrl, boolean isViewer) {
 
     PasswordEvaluation pEval = null;
-    CommonView cv = appState_.getCommonView();
-    FilePreparer fprep = new FilePreparer(appState_, appState_.isHeadless(), appState_.getTopFrame(), getClass());
-    SUPanel sup = appState_.getSUPanel();
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+    CommonView cv = uics_.getCommonView();   
+    FilePreparer fprep = getFprep(ddacx_);
+    SUPanel sup = uics_.getSUPanel();
     
     try {
       if (saltUrl != null) {
@@ -228,23 +253,22 @@ public class LoadSaveSupport {
         }
       }
     } catch (IOException ioe) {
-      dacx.drop();
+      ddacx_.drop();
       cv.manageWindowTitle(null);
-      newModelOperations(dacx);
+      newModelOperations(ddacx_);
       sup.drawModel(true);     
       FilePreparer.FileInputResultClosure retval = fprep.getFileInputError(ioe);
       retval.setPasswordStatus((pEval != null) ? !pEval.failure : true);
       return (retval);              
     }
 
-    dacx.drop();
-    Database db = appState_.getDB();
-    db.setWorkspaceNeedsCenter();
-    db.installLegacyTimeAxisDefinition();
-    appState_.getGroupMgr().drop();
+    ddacx_.drop();
+    ddacx_.getWorkspaceSource().setWorkspaceNeedsCenter();
+    ddacx_.getExpDataSrc().installLegacyTimeAxisDefinition(ddacx_);
+    ddacx_.getGSM().drop();
     ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-    alist.add(new DatabaseFactory(appState_, isViewer));
-    SUParser supr = new SUParser(appState_, alist);
+    alist.add(new MasterFactory(isViewer, false, null, ddacx_, uics_, tSrc_, uFac_));
+    SUParser supr = new SUParser(ddacx_, alist);
 
     //
     // This is new code to fix both BT-06-15-05:3 and BT-06-15-05:1
@@ -255,7 +279,7 @@ public class LoadSaveSupport {
        } else {
          supr.parse(url);
        }
-       db.legacyIOFixup(appState_.getTopFrame());
+       ddacx_.getMetabase().legacyIOFixup(uics_.getTopFrame(), 0, 1);
        // If we have a file path, make it the current file
        if (url.getProtocol().toLowerCase().equals("file")) {
          try {
@@ -269,25 +293,26 @@ public class LoadSaveSupport {
          }
        }
     } catch (IOException ioe) {
-       dacx.drop();
+       ddacx_.drop();
        cv.manageWindowTitle(null);
-       newModelOperations(dacx);
+       newModelOperations(ddacx_);
        sup.drawModel(true);
        FilePreparer.FileInputResultClosure retval = fprep.getFileInputError(ioe);
        retval.setPasswordStatus((pEval != null) ? !pEval.failure : true);
        return (retval);  
     }
-    if (db.getGenome() == null) {
-      dacx.drop();
+    if (ddacx_.getDBGenome() == null) {
+      UiUtil.fixMePrintout("Gotta kill off dead tabs!");
+      ddacx_.drop();
       cv.manageWindowTitle(null);
-      newModelOperations(dacx);
+      newModelOperations(ddacx_);
       sup.drawModel(true);
       FilePreparer.FileInputResultClosure retval = fprep.getFileInputError(null);
       retval.setPasswordStatus((pEval != null) ? !pEval.failure : true);
       return (retval);  
     }
     cv.manageWindowTitle(url.toString());
-    postLoadOperations(false, dacx);
+    postLoadOperations(false, ddacx_, 0, true, false, null);
     sup.drawModel(true);
     FilePreparer.FileInputResultClosure retval = new FilePreparer.FileInputResultClosure();
     retval.setPasswordStatus((pEval != null) ? !pEval.failure : true);
@@ -300,7 +325,7 @@ public class LoadSaveSupport {
   */  
   
   public String getPasswordString(URL saltUrl) {
-    LoginDialog ld = new LoginDialog(appState_);
+    LoginDialog ld = new LoginDialog(uics_, ddacx_);
     ld.setVisible(true);
     if (!ld.haveResult()) {
       return (null); 
@@ -405,8 +430,8 @@ public class LoadSaveSupport {
   ** Common load operations
   */ 
     
-  public FilePreparer.FileInputResultClosure loadFromFile(File file, DataAccessContext dacx) {
-    return (loadFromSource(file, null, dacx));
+  public FilePreparer.FileInputResultClosure loadFromFile(File file, boolean forAppend, UndoSupport appendSupport) {
+    return (loadFromSource(file, null, forAppend, appendSupport));
   }  
   
   /***************************************************************************
@@ -414,8 +439,8 @@ public class LoadSaveSupport {
   ** Common load operations
   */ 
     
-  public FilePreparer.FileInputResultClosure loadFromStream(InputStream stream, DataAccessContext dacx) {
-    return (loadFromSource(null, stream, dacx));
+  public FilePreparer.FileInputResultClosure loadFromStream(InputStream stream, boolean forAppend, UndoSupport appendSupport) {
+    return (loadFromSource(null, stream,forAppend, appendSupport));
   }   
   
   /***************************************************************************
@@ -423,53 +448,149 @@ public class LoadSaveSupport {
   ** Common load operations.  Take your pick of input sources
   */ 
     
-  private FilePreparer.FileInputResultClosure loadFromSource(File file, InputStream stream, DataAccessContext dacx) {
+  private FilePreparer.FileInputResultClosure loadFromSource(File file, InputStream stream,
+                                                             boolean forAppend, UndoSupport appendSupport) {
     String chosenFileName = (file == null) ? null : file.getName();
-    CommonView cv = appState_.getCommonView();
-    ModelChangeEvent mcev = new ModelChangeEvent(dacx.getDBGenomeID(),
+    CommonView cv = uics_.getCommonView();
+    UiUtil.fixMePrintout("Aren't all the models, one for each tab, getting dropped???");
+     UiUtil.fixMePrintout("In fact, doesn't all this stuff imply only one tab?");
+    ModelChangeEvent mcev = new ModelChangeEvent(ddacx_.getGenomeSource().getID(), ddacx_.getDBGenomeID(),
                                                  ModelChangeEvent.MODEL_DROPPED);     
-    appState_.getEventMgr().sendModelChangeEvent(mcev); 
-    dacx.drop();
-    Database db = appState_.getDB();
-    db.setWorkspaceNeedsCenter();
-    db.installLegacyTimeAxisDefinition();
-    ((GroupSettingManager)dacx.gsm).drop();
+    uics_.getEventMgr().sendModelChangeEvent(mcev); 
+    ddacx_.drop();
+    ddacx_.getWorkspaceSource().setWorkspaceNeedsCenter();
+    ddacx_.getExpDataSrc().installLegacyTimeAxisDefinition(ddacx_);
+    ddacx_.getGSM().drop();
+    
+    int preLoadCount = tSrc_.getNumTab();
+    
+    FilePreparer.FileInputResultClosure retval = loadFromSourceGuts(file, stream, false, 0, null);
+    if (!retval.wasSuccessful()) {
+      
+      TabOps.clearOutTabs(tSrc_, uics_, preLoadCount);
+   //   newModelOperations(dacx);
+      
+      
+      ddacx_.drop();
+      chosenFileName = null;
+      cv.manageWindowTitle(null);
+      if (!uics_.isHeadless()) {
+        UiUtil.fixMePrintout("NOT CLEAN AFTER Database element read error!");
+        newModelOperations(ddacx_);
+      }
+      return (retval);              
+    }
+ 
+    if (ddacx_.getGenomeSource() == null) {
+      ddacx_.drop();
+      chosenFileName = null;
+      cv.manageWindowTitle(null);
+      if (!uics_.isHeadless()) {
+        newModelOperations(ddacx_);
+      }
+      retval = getFprep(ddacx_).getFileInputError(null);
+      return (retval);  
+    }
+    cv.manageWindowTitle(chosenFileName);
+    postLoadOperations(false, ddacx_, 0, true, forAppend, appendSupport);
+    return (new FilePreparer.FileInputResultClosure());
+  } 
+
+  /***************************************************************************
+  **
+  ** Load into new tabs next to existing tabs
+  */ 
+    
+  public FilePreparer.FileInputResultClosure addNewTabs(File file, UndoSupport appendSupport) {
+    return (addNewTabsFromSource(file, null, appendSupport));
+  }
+  
+  /***************************************************************************
+  **
+  ** Load into new tabs next to existing tabs
+  */ 
+    
+  private FilePreparer.FileInputResultClosure addNewTabsFromSource(File file, InputStream stream, UndoSupport appendSupport) {
+    int preTabCount = tSrc_.getNumTab();
+    FilePreparer.FileInputResultClosure retval = loadFromSourceGuts(file, stream, true, preTabCount, appendSupport);
+    if (!retval.wasSuccessful()) {
+      TabOps.clearOutTabs(tSrc_, uics_, preTabCount);
+      return (retval);              
+    }
+ 
+    //
+    // Check that everything is chill with each tab, and destroy those that are not:
+    //
+    
+    int numTab = tSrc_.getNumTab();
+    int currIndex = tSrc_.getCurrentTabIndex();
+    boolean badDeal = false;
+    for (int i = preTabCount; i < numTab; i++) {
+      tSrc_.setCurrentTabIndex(i);
+      if (ddacx_.getGenomeSource() == null) {
+        TabOps.clearATab(tSrc_, uics_, i, ddacx_);
+        badDeal = true;
+      }
+    }
+    tSrc_.setCurrentTabIndex(currIndex);
+    if (badDeal) {
+      retval = getFprep(ddacx_).getFileInputError(null);
+      return (retval);  
+    }
+    
+    tSrc_.setTabAppendUndoSupport(appendSupport);  
+    postLoadOperations(false, ddacx_, preTabCount, true, true, appendSupport);
+    tSrc_.setTabAppendUndoSupport(null);
+    appendSupport.finish();
+    
+    return (new FilePreparer.FileInputResultClosure());
+  }
+  
+
+
+  /***************************************************************************
+  **
+  ** Common load operation guts
+  */ 
+    
+  private FilePreparer.FileInputResultClosure loadFromSourceGuts(File file, InputStream stream, boolean isForAppend, int preTabCount, UndoSupport appendSupport) {
     ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-    alist.add(new DatabaseFactory(appState_, false));
-    SUParser sup = new SUParser(appState_, alist);
+    MasterFactory mf = new MasterFactory(false, isForAppend, appendSupport, ddacx_, uics_, tSrc_, uFac_);
+    alist.add(mf);
+    SUParser sup = new SUParser(ddacx_, alist);
     setCurrentFile(file);
     try {
+      if (isForAppend) {
+        ddacx_.getMetabase().setForTabAppend();
+      }
       if (file != null) {
         sup.parse(file);
       } else {
         sup.parse(stream);
       }
-      db.legacyIOFixup((appState_.isHeadless()) ? null : appState_.getTopFrame());
+      if (isForAppend) {
+        ddacx_.getMetabase().doTabAppendPostMerge();
+        List<String> mergeIssues = mf.getMergeIssues();
+        if ((mergeIssues != null) && !mergeIssues.isEmpty()) {
+          MessageTableReportingDialog mtrd = 
+                   new MessageTableReportingDialog(uics_, new StaticDataAccessContext(ddacx_),
+                                                   mergeIssues, 
+                                                   "tabMerge.issues", 
+                                                   "tabMerge.issues", 
+                                                   "tabMerge.issues", 
+                                                   new Dimension(800, 800), false, true);
+          mtrd.setVisible(true);
+        }
+      }      
+      int postTabCount = tSrc_.getNumTab();  
+      ddacx_.getMetabase().legacyIOFixup((uics_.isHeadless()) ? null : uics_.getTopFrame(), preTabCount, postTabCount);
     } catch (IOException ioe) {
-      dacx.drop();
-      chosenFileName = null;
-      cv.manageWindowTitle(null);
-      if (!appState_.isHeadless()) {
-        newModelOperations(dacx);
-      }
-      FilePreparer.FileInputResultClosure retval = fprep_.getFileInputError(ioe);
+      FilePreparer.FileInputResultClosure retval = getFprep(ddacx_).getFileInputError(ioe);
       return (retval);              
     }
- 
-    if (dacx.getGenomeSource() == null) {
-      dacx.drop();
-      chosenFileName = null;
-      cv.manageWindowTitle(null);
-      if (!appState_.isHeadless()) {
-        newModelOperations(dacx);
-      }
-      FilePreparer.FileInputResultClosure retval = fprep_.getFileInputError(null);
-      return (retval);  
-    }
-    cv.manageWindowTitle(chosenFileName);
-    postLoadOperations(false, dacx);
     return (new FilePreparer.FileInputResultClosure());
-  }  
+  }
+
    
   /***************************************************************************
   **
@@ -477,21 +598,23 @@ public class LoadSaveSupport {
   */   
   
   boolean saveToFile(String fileName) {
-       
+
+ //   StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_);
+  
     File file = null;
     if (fileName == null) { 
       ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-      filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".btp", "filterName.btp"));
+      filts.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".btp", "filterName.btp"));
       ArrayList<String> suffs = new ArrayList<String>();
       suffs.add("btp");
-      file = fprep_.getOrCreateWritableFileWithSuffix("LoadDirectory", filts, suffs, "btp");   
+      file = getFprep(ddacx_).getOrCreateWritableFileWithSuffix("LoadDirectory", filts, suffs, "btp");   
       if (file == null) {
         return (true);
       }
     } else {
       // given a name, we do not check overwrite:
       file = new File(fileName);
-      if (!fprep_.checkWriteFile(file, false)) {
+      if (!getFprep(ddacx_).checkWriteFile(file, false)) {
         return (false);
       }        
     }
@@ -499,9 +622,9 @@ public class LoadSaveSupport {
     try {
       saveToOutputStream(new FileOutputStream(file));
       setCurrentFile(file);
-      appState_.getCommonView().manageWindowTitle(file.getName());
+      uics_.getCommonView().manageWindowTitle(file.getName());
     } catch (IOException ioe) {
-      fprep_.displayFileOutputError();
+      getFprep(ddacx_).displayFileOutputError();
       return (false);
     }
     return (true);
@@ -513,12 +636,12 @@ public class LoadSaveSupport {
   */   
   
   void saveToOutputStream(OutputStream stream) throws IOException {
-    Database db = appState_.getDB();
+    Metabase mb = ddacx_.getMetabase();
     PrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(stream, "UTF-8")));
     Indenter ind = new Indenter(out, Indenter.DEFAULT_INDENT);
-    db.writeXML(out, ind);
+    mb.writeXML(out, ind);
     out.close();
-    appState_.clearUndoTracking();
+    cSrc_.clearUndoTracking();
     return;
   }  
    
@@ -528,14 +651,14 @@ public class LoadSaveSupport {
   */   
   
   public void saveToFileOperations(OutputClient client) {
-    
+       
     File file = null;
     ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-    filts.add(new FileExtensionFilters.SimpleFilter(appState_, client.getExtension(), client.getFilterName()));
+    filts.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), client.getExtension(), client.getFilterName()));
     String noDot = client.getExtension().replace('.', ' ').trim();
     ArrayList<String> suffs = new ArrayList<String>();
     suffs.add(noDot);
-    file = fprep_.getOrCreateWritableFileWithSuffix(client.getPrefsTag(), filts, suffs, noDot);   
+    file = getFprep(ddacx_).getOrCreateWritableFileWithSuffix(client.getPrefsTag(), filts, suffs, noDot);   
     if (file == null) {
       return;
     }
@@ -546,13 +669,13 @@ public class LoadSaveSupport {
       client.writeOutput(out);
       out.close();
       if (client.isBtpOut()) {
-        appState_.clearUndoTracking();
+        cSrc_.clearUndoTracking();
         setCurrentFile(file);
       } else {
-        fprep_.setPreference(client.getPrefsTag(), file.getAbsoluteFile().getParent());
+        getFprep(ddacx_).setPreference(client.getPrefsTag(), file.getAbsoluteFile().getParent());
       }
     } catch (IOException ioe) {
-      fprep_.displayFileOutputError();
+      getFprep(ddacx_).displayFileOutputError();
     }
     return;
   }
@@ -563,28 +686,35 @@ public class LoadSaveSupport {
   */ 
 
   public void newModelOperations(DataAccessContext dacx) {
-    if (dacx.getDBGenome() != null) {
-      ModelChangeEvent mcev = new ModelChangeEvent(dacx.getDBGenomeID(), 
+    
+ // at org.systemsbiology.biotapestry.app.DynamicDataAccessContext.getDBGenome(DynamicDataAccessContext.java:50)
+ // at org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport.newModelOperations(LoadSaveSupport.java:650)
+ // at org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveOps$StepState.doNewModel(LoadSaveOps.java:870)
+ // at org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveOps$StepState.stepToProcessPostWarn(LoadSaveOps.java:427)
+    UiUtil.fixMePrintout("FAIL on new model with multiple tabs already up");
+    if ((dacx.getGenomeSource() != null) && (dacx.getDBGenome() != null)) {
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx.getGenomeSource().getID(), dacx.getDBGenomeID(), 
                                                    ModelChangeEvent.MODEL_DROPPED);     
-      appState_.getEventMgr().sendModelChangeEvent(mcev);
+      uics_.getEventMgr().sendModelChangeEvent(mcev);
     }
-    ((GroupSettingManager)dacx.gsm).drop();    
+    dacx.getGSM().drop();    
     dacx.newModel();
     setCurrentFile(null);
     // Gotta reset now so it forgets previous settings before tree installation...
-    appState_.getNetOverlayController().resetControllerState(dacx);
+    uics_.getNetOverlayController().resetControllerState(dacx);
     NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
     TreePath dstp = navTree.getDefaultSelection();
-    VirtualModelTree vmtree = appState_.getTree();      
+    VirtualModelTree vmtree = uics_.getTree();      
     vmtree.setTreeSelectionPath(dstp);
-    appState_.getPathController().clearControllerState();
-    appState_.getCommonView().newModelVisibility();
-    VirtualPathControls vpc = appState_.getPathControls();
+    uics_.getPathController().clearControllerState();     
+    uics_.getCommonView().setTabTitleData(tSrc_.getCurrentTabIndex(), dacx.getGenomeSource().getTabNameData());
+    uics_.getCommonView().newModelVisibility();
+    VirtualPathControls vpc = uics_.getPathControls();
     vpc.updateUserPathActions();
     vpc.setCurrentUserPath(0);
-    appState_.getZoomCommandSupport().setCurrentZoomForNewModel();
-    appState_.getUndoManager().discardAllEdits();
-    appState_.clearUndoTracking();  
+    uics_.getZoomCommandSupport().setCurrentZoomForNewModel();
+    cSrc_.getUndoManager().discardAllEdits();
+    cSrc_.clearUndoTracking();  
     return;
   }
   
@@ -594,12 +724,12 @@ public class LoadSaveSupport {
   */ 
 
   public void newModelTweaks(DataAccessContext dacx) {    
-    appState_.getPathController().clearControllerState();
-    appState_.getNetOverlayController().resetControllerState(dacx);
-    VirtualPathControls vpc = appState_.getPathControls();
+    uics_.getPathController().clearControllerState();
+    uics_.getNetOverlayController().resetControllerState(dacx);
+    VirtualPathControls vpc = uics_.getPathControls();
     vpc.updateUserPathActions();
     vpc.setCurrentUserPath(0);
-    appState_.getZoomCommandSupport().setCurrentZoomForNewModel();
+    uics_.getZoomCommandSupport().setCurrentZoomForNewModel();
     return;
   }
   
@@ -608,10 +738,51 @@ public class LoadSaveSupport {
   ** Handles post-loading operations
   */ 
        
-  public void postLoadOperations(boolean selectRoot, DataAccessContext dacx) { 
-    GroupSettingManager gsm = (GroupSettingManager)dacx.gsm;
+  public void postLoadOperations(boolean selectRoot, DataAccessContext dacx, 
+                                 int firstIndex, boolean multiTab, boolean forAppend, UndoSupport appendSupport) {    
+    if (multiTab) { 
+      int numTab = tSrc_.getNumTab();
+      //
+      // Am seeing that the scroll panes in the hidden tabs are not keeping consistent state.
+      // Am needing to track the scrolling for resizes, but this tracking messes stuff up
+      // when models are installed. Set the scroll panes to ignore all the resize events
+      // happening during construction. They will be cleaned up when the final zoom to
+      // model occurs:
+      //
+      
+      for (int i = 0; i < numTab; i++) {  
+        uics_.getZoomCommandSupportForTab(i).setIgnoreScroll(true);
+      }  
+      for (int i = firstIndex; i < numTab; i++) { 
+        TabChange tc = tSrc_.setCurrentTabIndex(i);
+        // If this is not done after the above statement, the tree and view get all whacked out of sync.
+        if ((tc != null) && (appendSupport != null)) {
+          appendSupport.addEdit(new TabChangeCmd(dacx, tc));
+        }
+        postLoadOperationsPerTab(selectRoot, dacx);
+      }   
+      for (int i = 0; i < numTab; i++) {  
+        uics_.getZoomCommandSupportForTab(i).setIgnoreScroll(false);
+      }  
+      if (!forAppend) {
+        cSrc_.getUndoManager().discardAllEdits();
+        cSrc_.clearUndoTracking();
+      }
+    } else {
+      postLoadOperationsPerTab(selectRoot, dacx);
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Handles post-loading operations
+  */ 
+       
+  private void postLoadOperationsPerTab(boolean selectRoot, DataAccessContext dacx) { 
+    GroupSettingSource gsm = dacx.getGSM();
     NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
-    VirtualModelTree vmtree = appState_.getTree();
+    VirtualModelTree vmtree = uics_.getTree();
     vmtree.setTreeModel(navTree);
     List<TreePath> nonleafPaths = navTree.getAllPathsToNonLeaves();
     Iterator<TreePath> nlpit = nonleafPaths.iterator();
@@ -624,9 +795,9 @@ public class LoadSaveSupport {
     // Gotta get the overlay stuff cleared out
     // _before_ loading up the new genome!
     //
-    appState_.getPathController().clearControllerState();
-    appState_.getNetOverlayController().resetControllerState(dacx);
-    VirtualPathControls vpc = appState_.getPathControls();
+    uics_.getPathController().clearControllerState();
+    uics_.getNetOverlayController().resetControllerState(dacx);
+    VirtualPathControls vpc = uics_.getPathControls();
     vpc.updateUserPathActions();
     vpc.setCurrentUserPath(0);    
         
@@ -636,36 +807,34 @@ public class LoadSaveSupport {
       gsm.setGroupVisibilities(gi, GroupSettings.Setting.ACTIVE);        
     }
     preloadWithoutRefresh(dacx);
-    Workspace ws = dacx.wSrc.getWorkspace();
+    Workspace ws = dacx.getWorkspaceSource().getWorkspace();
     if (ws.needsCenter()) {  // Legacy condition...
-      appState_.getZoomTarget().fixCenterPoint(true, null, false);
+      ddacx_.getZoomTarget().fixCenterPoint(true, null, false);
     }
    
-    if (!appState_.isHeadless()) {
-      appState_.getCommonView().postLoadVisibility();
+    if (!uics_.isHeadless()) {
+      uics_.getCommonView().postLoadVisibility();
       StartupView sv = dacx.getGenomeSource().getStartupView();
-      SetCurrentModel.StepState.installStartupView(appState_, dacx, selectRoot, sv);
-      DisplayOptions dop = appState_.getDisplayOptMgr().getDisplayOptions();
+      System.out.println("SV is " + sv.getModel());
+      SetCurrentModel.StepState.installStartupView(uics_, dacx, selectRoot, sv);
+      DisplayOptions dop = ddacx_.getDisplayOptsSource().getDisplayOptions();
       switch (dop.getFirstZoomMode()) {
         case FIRST_ZOOM_TO_ALL_MODELS:
-          appState_.getZoomCommandSupport().zoomToAllModels();
+          uics_.getZoomCommandSupport().zoomToAllModels();
           break;
         case FIRST_ZOOM_TO_CURRENT_MODEL:
-          appState_.getZoomCommandSupport().zoomToModel();
+          uics_.getZoomCommandSupport().zoomToModel();
           break;   
         case FIRST_ZOOM_TO_WORKSPACE:
-          appState_.getZoomCommandSupport().zoomToFullWorksheet();
+          uics_.getZoomCommandSupport().zoomToFullWorksheet();
           break;
         default:
           throw new IllegalArgumentException();
       }
     }
-       
-    appState_.getUndoManager().discardAllEdits();
-    appState_.clearUndoTracking();
     return;
   }
-                    
+                
   /***************************************************************************
   **
   ** Used to load a model into the SUP for centering calcs without 
@@ -676,21 +845,24 @@ public class LoadSaveSupport {
     NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
     TreePath dstp = navTree.getDefaultSelection();    
     String genomeID = navTree.getGenomeID(dstp);
-    String proxyID = navTree.getDynamicProxyID(dstp);    
+    String proxyID = navTree.getDynamicProxyID(dstp); 
+    Metabase mBase = dacx.getMetabase();
+    UiUtil.fixMePrintout("HORRIBLE HACK");
+    BTState appState = mBase.getAppState();
     if (genomeID != null) {
-      String layoutID = dacx.lSrc.mapGenomeKeyToLayoutKey(genomeID);
-      appState_.setGraphLayout(layoutID);
-      appState_.setGenomeForUndo(genomeID, dacx);
+      String layoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
+      appState.setGraphLayout(layoutID);
+      appState.setGenomeForUndo(genomeID, dacx);
     } else if (proxyID != null) {
       DynamicInstanceProxy dip = dacx.getGenomeSource().getDynamicProxy(proxyID);
       int min = dip.getMinimumTime();
       genomeID = dip.getKeyForTime(min, true);
-      String layoutID = dacx.lSrc.mapGenomeKeyToLayoutKey(genomeID);
-      appState_.setGraphLayout(layoutID);
-      appState_.setGenomeForUndo(genomeID, dacx);
+      String layoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
+      appState.setGraphLayout(layoutID);
+      appState.setGenomeForUndo(genomeID, dacx);
     } else {
-      appState_.setGraphLayout(null);
-      appState_.setGenomeForUndo(genomeID, dacx);
+      appState.setGraphLayout(null);
+      appState.setGenomeForUndo(genomeID, dacx);
     }
     return;
   }
@@ -706,13 +878,13 @@ public class LoadSaveSupport {
       return (true);
     }
     
-    TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState_, dacx);
+    TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx, uFac_);
     tasd.setVisible(true);
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = ddacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -728,7 +900,7 @@ public class LoadSaveSupport {
   */ 
        
   public SimpleUserFeedback displayInvalidInputError(InvalidInputException iiex) { 
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = ddacx_.getRMan(); 
     String errKey = iiex.getErrorKey();
     boolean haveKey = (errKey != null) && (!errKey.equals(InvalidInputException.UNSPECIFIED_ERROR)); 
     int lineno = iiex.getErrorLineNumber();
@@ -748,7 +920,7 @@ public class LoadSaveSupport {
     } else {
       outMsg = rMan.getString("fileRead.inputErrorMessage");      
     }
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       System.err.println(outMsg);
     }
     return (new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, outMsg, 
@@ -777,17 +949,17 @@ public class LoadSaveSupport {
     
     private SIFImportChoicesDialogFactory.LayoutModes importMode_ = SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT;
     private String species_;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext dacx_;
     
-    public void doNetworkBuild(String species, List<BuildInstruction> instruct, DataAccessContext dacx) {
+    public void doNetworkBuild(String species, List<BuildInstruction> instruct, StaticDataAccessContext dacx) {
       try {
-        CommonView cv = appState_.getCommonView();
+        CommonView cv = uics_.getCommonView();
         species_ = species;
         dacx_ = dacx.getContextForRoot();
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-          ResourceManager rMan = appState_.getRMan();
-          if (appState_.hasAnUndoChange()) {
-            int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx.getRMan();
+          if (cSrc_.hasAnUndoChange()) {
+            int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                     rMan.getString("loadAction.warningMessage"), 
                                     rMan.getString("loadAction.warningMessageTitle"),
                                     JOptionPane.YES_NO_OPTION);
@@ -796,26 +968,26 @@ public class LoadSaveSupport {
             }
           }
         }
-        SpecialtyLayout specLayout = new WorksheetLayout(appState_, true);
-        SpecialtyLayoutEngineParams params = appState_.getLayoutOptMgr().getDiagLayoutParams();
+        SpecialtyLayout specLayout = new WorksheetLayout(true, new StaticDataAccessContext(dacx_));
+        SpecialtyLayoutEngineParams params = dacx_.getLayoutOptMgr().getDiagLayoutParams();
               
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
           setCurrentFile(null);  // since we replace everything
-          ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getDBGenomeID(),
+          ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getDBGenomeID(),
                                                        ModelChangeEvent.MODEL_DROPPED);     
-          appState_.getEventMgr().sendModelChangeEvent(mcev);
+          uics_.getEventMgr().sendModelChangeEvent(mcev);
           cv.manageWindowTitle("");
           newModelOperations(dacx_);
         }
         boolean doOpt = false;
-        UndoSupport support = new UndoSupport(appState_, "undo.buildFromGaggleNetwork");            
-        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(appState_, dacx_, instruct, importMode_, doOpt, support, specLayout, params);
+        UndoSupport support = uFac_.provideUndoSupport("undo.buildFromGaggleNetwork", dacx_);            
+        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(uics_, dacx_, uFac_, instruct, importMode_, doOpt, support, specLayout, params);
         BackgroundWorkerClient bwc = 
-          new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+          new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
         runner.setClient(bwc);
         bwc.launchWorker();         
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
@@ -846,36 +1018,36 @@ public class LoadSaveSupport {
 
     private FilePreparer.FileInputResultClosure finishedImport(LinkRouter.RoutingResult result, IOException ioEx) {   
       if (result != null) {
-        (new LayoutStatusReporter(appState_, result)).doStatusAnnouncements();
+        (new LayoutStatusReporter(uics_, ddacx_, result)).doStatusAnnouncements();
       }
-      CommonView cv = appState_.getCommonView();
+      CommonView cv = uics_.getCommonView();
       if (ioEx != null) {
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
           dacx_.drop();
           cv.manageWindowTitle(null);
           newModelOperations(dacx_);
         }
-        FilePreparer.FileInputResultClosure retval = fprep_.getFileInputError(ioEx);
+        FilePreparer.FileInputResultClosure retval = getFprep(ddacx_).getFileInputError(ioEx);
         return (retval);                
       }
-      if (dacx_.getGenomeSource().getGenome() == null) {
+      if (dacx_.getGenomeSource().getRootDBGenome() == null) {
         dacx_.drop();
         cv.manageWindowTitle(null);
         newModelOperations(dacx_);                
-        FilePreparer.FileInputResultClosure retval = fprep_.getFileInputError(null);
+        FilePreparer.FileInputResultClosure retval = getFprep(ddacx_).getFileInputError(null);
         return (retval);
       }
-      GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+      GooseAppInterface goose = uics_.getGooseMgr().getGoose();
       if ((goose != null) && goose.isActivated()) {
         SelectionSupport ss = goose.getSelectionSupport();
         ss.setSpecies(species_);
       }
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = ddacx_.getRMan();
         cv.manageWindowTitle(rMan.getString("gaggleSupport.gaggle") + ": " + species_);
-        postLoadOperations(true, dacx_);
+        postLoadOperations(true, dacx_, 0, false, false, null);
       }
-      LayoutLinkSupport.offerColorFixup(appState_, dacx_, result);
+      LayoutLinkSupport.offerColorFixup(uics_, dacx_, result, uFac_);
       return (new FilePreparer.FileInputResultClosure());
     }
   }
@@ -887,7 +1059,8 @@ public class LoadSaveSupport {
     
   private static class NewGaggleNetworkRunner extends BackgroundWorker {
  
-    private BTState myAppState_;
+    private UIComponentSource myUics_;
+    private UndoFactory myUFac_; 
     private DataAccessContext myDacx_;
     private UndoSupport support_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
@@ -896,12 +1069,13 @@ public class LoadSaveSupport {
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
     
-    public NewGaggleNetworkRunner(BTState appState, DataAccessContext dacx, List<BuildInstruction> commands,
+    public NewGaggleNetworkRunner(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, List<BuildInstruction> commands,
                                   SIFImportChoicesDialogFactory.LayoutModes importMode, boolean doOpts,
                                   UndoSupport support, SpecialtyLayout specLayout, SpecialtyLayoutEngineParams params) {
       super(new LinkRouter.RoutingResult());      
       commands_ = commands;
-      myAppState_ = appState;
+      myUics_ = uics;
+      myUFac_ = uFac;
       myDacx_ = dacx;
       importMode_ = importMode;
       doOpts_ = doOpts;
@@ -913,7 +1087,7 @@ public class LoadSaveSupport {
     public Object runCore() throws AsynchExitRequestException {
       DBGenomeSIFFormatFactory sff = new DBGenomeSIFFormatFactory();
       try {
-        LinkRouter.RoutingResult res = sff.buildForGaggle(myAppState_, myDacx_, commands_,
+        LinkRouter.RoutingResult res = sff.buildForGaggle(myUics_, myDacx_, myUFac_, commands_,
                                                           (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), 
                                                           specLayout_, params_,
                                                           support_, doOpts_, this, 0.0, 1.0);
@@ -925,9 +1099,9 @@ public class LoadSaveSupport {
     }
     
     public Object postRunCore() {
-      if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-        Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-        (new WorkspaceSupport(myAppState_, myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
+      if (myDacx_.modelIsOutsideWorkspaceBounds()) {
+        Rectangle allBounds = myDacx_.getZoomTarget().getAllModelBounds();
+        (new WorkspaceSupport(myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
       }
       return (null);
     } 

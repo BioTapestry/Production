@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,8 @@
 
 package org.systemsbiology.biotapestry.ui.dialogs.factory;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -38,7 +38,7 @@ public abstract class DialogFactory {
   
   protected ServerControlFlowHarness cfh;
   protected DialogPlatform platform;
-  protected BTState appState;
+  protected DataAccessContext dacx;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -52,9 +52,9 @@ public abstract class DialogFactory {
   */ 
   
   public DialogFactory(ServerControlFlowHarness cfh) {
-    this.appState = cfh.getBTState();
     this.cfh = cfh;
-    this.platform = cfh.getDialogPlatform(); 
+    this.dacx = cfh.getDataAccessContext();
+    this.platform = cfh.getDialogPlatform();
   }  
       
   ////////////////////////////////////////////////////////////////////////////

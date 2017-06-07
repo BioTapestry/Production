@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ import java.io.PrintWriter;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;

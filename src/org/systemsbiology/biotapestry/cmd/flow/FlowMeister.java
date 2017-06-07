@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 
 import org.systemsbiology.biotapestry.cmd.flow.add.AddCisRegModule;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddExtraProxyNode;
@@ -77,8 +79,9 @@ import org.systemsbiology.biotapestry.cmd.flow.export.ExportPerturbCSV;
 import org.systemsbiology.biotapestry.cmd.flow.export.ExportPublish;
 import org.systemsbiology.biotapestry.cmd.flow.export.ExportSBML;
 import org.systemsbiology.biotapestry.cmd.flow.gaggle.GaggleOps;
-import org.systemsbiology.biotapestry.cmd.flow.image.ModelImageOps;
+import org.systemsbiology.biotapestry.cmd.flow.image.ImageOps;
 import org.systemsbiology.biotapestry.cmd.flow.info.ShowInfo;
+import org.systemsbiology.biotapestry.cmd.flow.io.ExportGroupNode;
 import org.systemsbiology.biotapestry.cmd.flow.io.ExportModel;
 import org.systemsbiology.biotapestry.cmd.flow.io.ExportWeb;
 import org.systemsbiology.biotapestry.cmd.flow.io.ImportCSV;
@@ -106,8 +109,10 @@ import org.systemsbiology.biotapestry.cmd.flow.link.RelocateSeg;
 import org.systemsbiology.biotapestry.cmd.flow.link.SwapPads;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.AddDynamicGenomeInstance;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.AddGenomeInstance;
+import org.systemsbiology.biotapestry.cmd.flow.modelTree.AddGroupNode;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.CopyGenomeInstance;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.DeleteGenomeInstance;
+import org.systemsbiology.biotapestry.cmd.flow.modelTree.EditGroupNodeNavMap;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.EditModelProps;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.MoveModelNode;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
@@ -133,6 +138,8 @@ import org.systemsbiology.biotapestry.cmd.flow.search.NodeSrcTargSearch;
 import org.systemsbiology.biotapestry.cmd.flow.search.SearchAStep;
 import org.systemsbiology.biotapestry.cmd.flow.select.Selection;
 import org.systemsbiology.biotapestry.cmd.flow.settings.DoSettings;
+import org.systemsbiology.biotapestry.cmd.flow.simulate.SimulationLaunch;
+import org.systemsbiology.biotapestry.cmd.flow.tabs.TabOps;
 import org.systemsbiology.biotapestry.cmd.flow.undo.UndoRedoOps;
 import org.systemsbiology.biotapestry.cmd.flow.userPath.PathManage;
 import org.systemsbiology.biotapestry.cmd.flow.userPath.PathStep;
@@ -145,6 +152,9 @@ import org.systemsbiology.biotapestry.ui.layouts.HaloLayout;
 import org.systemsbiology.biotapestry.ui.layouts.StackedBlockLayout;
 import org.systemsbiology.biotapestry.ui.layouts.WorksheetLayout;
 
+import org.systemsbiology.biotapestry.cmd.flow.netBuild.LaunchLinkDrawTracker;
+import org.systemsbiology.biotapestry.cmd.flow.netBuild.LaunchBuilder;
+import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuilderPluginArg;
 
 /****************************************************************************
 **
@@ -186,6 +196,7 @@ public class FlowMeister {
     SAVE,
     SAVE_AS,
     LOAD,
+    LOAD_AS_NEW_TABS,
     NEW_MODEL,
     PRINT,
     SELECT_ALL,
@@ -239,6 +250,7 @@ public class FlowMeister {
     DROP_ALL_INSTRUCTIONS,
     APPLY_KID_LAYOUTS_TO_ROOT,
     GET_MODEL_COUNTS,
+    GET_DATA_SHARING_STATE,
     COPIES_PER_EMBRYO_IMPORT,
     EXPORT_PUBLISH,
     DROP_NODE_SELECTIONS,
@@ -256,8 +268,6 @@ public class FlowMeister {
     ZOOM_TO_SHOW_WORKSPACE,
     SHIFT_ALL_MODELS_TO_WORKSPACE,
     SELECT_NONE,
-    ASSIGN_IMAGE_TO_MODEL,
-    DROP_IMAGE_FOR_MODEL,
     TREE_PATH_BACK, 
     TREE_PATH_FORWARD,
     TREE_PATH_CREATE,
@@ -293,13 +303,26 @@ public class FlowMeister {
     LOAD_RECENT,
     CLEAR_RECENT,
     MODEL_EXPORT,
+    GROUP_NODE_EXPORT,
     TREE_PATH_SET_CURRENT_USER_PATH,
     SET_CURRENT_GAGGLE_TARGET,
     SELECT_STEP_UPSTREAM,
     SELECT_STEP_DOWNSTREAM,
+    LAUNCH_SIM_PLUGIN,
+    RECOVER_SIMULATION,
     SELECT_ROOT_ONLY_NODES,
     SELECT_ROOT_ONLY_LINKS,
     SELECTIONS_TO_INACTIVE,
+    LAUNCH_LINK_DRAWING_TRACKER,
+    LAUNCH_WORKSHEET,
+    TIME_COURSE_REGION_TOPOLOGY,
+    NEW_TAB,
+    DROP_THIS_TAB,
+    DROP_ALL_BUT_THIS_TAB, 
+    CHANGE_TAB,
+    RETITLE_TAB,
+    TEMPORAL_INPUT_DERIVE,
+    TEMPORAL_INPUT_DROP_ALL,
    ;
     
    public FlowType getFlowType() {
@@ -309,7 +332,6 @@ public class FlowMeister {
    public String toString() {
      return (FlowType.MAIN.toString() + "_" + super.toString());    
    }
- 
   }
   
   ////////////////////////////////////////////////////////////////////////////   
@@ -320,6 +342,14 @@ public class FlowMeister {
   public enum TreeFlow implements FlowKey {
     ADD_GENOME_INSTANCE, 
     ADD_DYNAMIC_GENOME_INSTANCE, 
+    ADD_MODEL_TREE_GROUP_NODE, 
+    EDIT_GROUP_NODE_NAV_MAP, 
+    ASSIGN_IMAGE_TO_MODEL,
+    DROP_IMAGE_FOR_MODEL,
+    ASSIGN_IMAGE_TO_GROUPING_NODE,
+    DROP_IMAGE_FOR_GROUPING_NODE,
+    ASSIGN_MAPPING_IMAGE_TO_GROUPING_NODE,
+    DROP_MAPPING_IMAGE_FOR_GROUPING_NODE,
     DELETE_GENOME_INSTANCE, 
     DELETE_GENOME_INSTANCE_KIDS_ONLY, 
     EDIT_MODEL_PROPERTIES, 
@@ -464,6 +494,7 @@ public class FlowMeister {
     MERGE_NODES,
     DEFINE_CIS_REG_MODULE,
     EDIT_CIS_REG_MODULE,
+    LINK_WORKSHEET,
     ;
     
     public FlowType getFlowType() {
@@ -508,6 +539,7 @@ public class FlowMeister {
     REMOTE_BATCH_SELECTION,
     LOCAL_CLICK_SELECTION,
     LOCAL_RECT_SELECTION,
+    GROUP_NODE_SELECTION,
     MODEL_SELECTION,
     MODEL_SELECTION_FROM_TREE, 
     MODEL_SELECTION_FROM_SLIDER,
@@ -518,6 +550,8 @@ public class FlowMeister {
     PATH_MODEL_GENERATION,
     TARDY_LINK_DATA,
     TARDY_NODE_DATA,
+    GROUP_NODE_CLICK,
+    SYNC_WEB_CLIENT_STATE,
     ;
     
     public FlowType getFlowType() {
@@ -536,6 +570,7 @@ public class FlowMeister {
   ////////////////////////////////////////////////////////////////////////////  
 
   private BTState appState_;
+  private UIComponentSource uics_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -548,8 +583,9 @@ public class FlowMeister {
   ** Constructor 
   */ 
   
-  public FlowMeister(BTState appState) {
+  public FlowMeister(BTState appState, UIComponentSource uics) {
     appState_ = appState;
+    uics_ = uics;
   }  
   
   
@@ -722,13 +758,21 @@ public class FlowMeister {
   private ControlFlow getMainControlFlowWithArgs(MainFlow flowKey, ControlFlow.OptArgs args) {
     switch (flowKey) { 
       case TREE_PATH_SET_CURRENT_USER_PATH:
-        return (new PathStep(appState_, (PathStep.PathArg)args));    
+        return (new PathStep((PathStep.PathArg)args));    
       case REMOVE_SELECTIONS_FOR_NODE_TYPE:
-        return (new Selection(appState_, Selection.SelectAction.DROP_NODE_TYPE, (Selection.TypeArg)args));
+        return (new Selection(uics_, Selection.SelectAction.DROP_NODE_TYPE, (Selection.TypeArg)args));
       case LOAD_RECENT: 
         return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.LOAD_RECENT, (LoadSaveOps.FileArg)args));
       case SET_CURRENT_GAGGLE_TARGET:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.SET_CURRENT, (GaggleOps.GaggleArg)args));   
+        return (new GaggleOps(GaggleOps.GaggleAction.SET_CURRENT, (GaggleOps.GaggleArg)args));
+      case LAUNCH_SIM_PLUGIN:
+    	  return (new SimulationLaunch(appState_, SimulationLaunch.ActionType.LAUNCH, (SimulationLaunch.SimulationPluginArg)args));
+      case RECOVER_SIMULATION: 
+        return (new SimulationLaunch(appState_, SimulationLaunch.ActionType.LOAD_RESULTS, (SimulationLaunch.SimulationPluginArg)args));    
+      case LAUNCH_WORKSHEET:
+        return (new LaunchBuilder(false, (BuilderPluginArg)args));
+      case LAUNCH_LINK_DRAWING_TRACKER:
+        return (new LaunchLinkDrawTracker((BuilderPluginArg)args));               
       default:
         throw new IllegalArgumentException();
     }
@@ -746,11 +790,11 @@ public class FlowMeister {
       case SBML_WRITER: 
         return (new ExportSBML(appState_)); 
       case NETWORK_SEARCH:
-        return (new NetworkSearch(appState_)); 
+        return (new NetworkSearch()); 
       case GENOME_TO_SIF:
         return (new ExportGenomeToSIF(appState_));           
       case EXPORT_PUBLISH:
-        return (new ExportPublish(appState_)); 
+        return (new ExportPublish()); 
       case EXPRESSION_TABLES_TO_CSV: 
         return (new ExportExpression(appState_));
       case PERTURBATION_TO_CSV: 
@@ -758,71 +802,71 @@ public class FlowMeister {
       case BUILD_INSTRUCTIONS_TO_CSV:
         return (new ExportBuildInstr(appState_));
       case ADD:
-        return (new AddNode(appState_, true)); 
+        return (new AddNode(true)); 
       case ADD_NODE:
-        return (new AddNode(appState_, false)); 
+        return (new AddNode(false)); 
       case ADD_NOTE:
-        return (new AddNote(appState_)); 
+        return (new AddNote()); 
       case ADD_NETWORK_OVERLAY:
-        return (new AddNetworkOverlay(appState_)); 
+        return (new AddNetworkOverlay()); 
       case CHANGE_MODEL_DATA:
-        return (new EditModelData(appState_)); 
+        return (new EditModelData()); 
       case SQUASH_GENOME:
-        return (new SquashExpandGenome(appState_, true, false));      
+        return (new SquashExpandGenome(true, false));      
       case EXPAND_GENOME:
-        return (new SquashExpandGenome(appState_, false, false));
+        return (new SquashExpandGenome(false, false));
       case ADD_GENOME_INSTANCE:
-        return (new AddGenomeInstance(appState_)); 
+        return (new AddGenomeInstance()); 
       case DRAW_GROUP_IN_INSTANCE:
-        return (new DrawGroup(appState_));  
+        return (new DrawGroup());  
       case EDIT_CURR_NETWORK_OVERLAY:
-        return (new EditNetOverlay(appState_, false));    
+        return (new EditNetOverlay(false));    
       case TREE_PATH_BACK:          
-        return (new PathStep(appState_, false)); 
+        return (new PathStep(false)); 
       case TREE_PATH_FORWARD:
-        return (new PathStep(appState_, true));
+        return (new PathStep(true));
       case TREE_PATH_CREATE:
-        return (new PathManage(appState_, true));
+        return (new PathManage(true));
       case TREE_PATH_DELETE:        
-        return (new PathManage(appState_, false));
+        return (new PathManage(false));
       case SELECT_ALL:
-        return (new Selection(appState_, Selection.SelectAction.ALL));
+        return (new Selection(Selection.SelectAction.ALL));
       case SELECT_NONE:
-        return (new Selection(appState_, Selection.SelectAction.NONE)); 
+        return (new Selection(Selection.SelectAction.NONE)); 
       case SELECT_STEP_UPSTREAM:
-        return (new SearchAStep(appState_, true));
+        return (new SearchAStep(true));
       case SELECT_STEP_DOWNSTREAM:
-        return (new SearchAStep(appState_, false));
+        return (new SearchAStep(false));
       case DROP_NODE_SELECTIONS:
-        return (new Selection(appState_, Selection.SelectAction.DROP_NODES));    
+        return (new Selection(Selection.SelectAction.DROP_NODES));    
       case DROP_LINK_SELECTIONS:
-        return (new Selection(appState_, Selection.SelectAction.DROP_LINKS));
+        return (new Selection(Selection.SelectAction.DROP_LINKS));
       case SELECT_NON_ORTHO_SEGS:
-        return (new Selection(appState_, Selection.SelectAction.SELECT_NON_ORTHO));
+        return (new Selection(Selection.SelectAction.SELECT_NON_ORTHO));
       case SELECT_ROOT_ONLY_NODES:
-        return (new Selection(appState_, Selection.SelectAction.SELECT_ROOT_ONLY_NODE));
+        return (new Selection(Selection.SelectAction.SELECT_ROOT_ONLY_NODE));
       case SELECT_ROOT_ONLY_LINKS:
-        return (new Selection(appState_, Selection.SelectAction.SELECT_ROOT_ONLY_LINK));
+        return (new Selection(Selection.SelectAction.SELECT_ROOT_ONLY_LINK));
       case REMOVE_CURR_NETWORK_OVERLAY:  
-        return (new RemoveOverlay(appState_, false));   
+        return (new RemoveOverlay(false));   
       case SPECIALTY_LAYOUT_HALO:
-        return (new SpecialtyLayoutFlow(appState_, new HaloLayout(appState_), SpecialtyLayoutFlow.LAYOUT_ALL));
+        return (new SpecialtyLayoutFlow(new HaloLayout(new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_ALL));
       case SPECIALTY_LAYOUT_WORKSHEET:
-        return (new SpecialtyLayoutFlow(appState_, new WorksheetLayout(appState_, false), SpecialtyLayoutFlow.LAYOUT_ALL));          
+        return (new SpecialtyLayoutFlow(new WorksheetLayout(false, new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_ALL));          
       case SPECIALTY_LAYOUT_DIAGONAL:
-        return (new SpecialtyLayoutFlow(appState_, new WorksheetLayout(appState_, true), SpecialtyLayoutFlow.LAYOUT_ALL));          
+        return (new SpecialtyLayoutFlow(new WorksheetLayout(true, new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_ALL));          
       case SPECIALTY_LAYOUT_STACKED:
-        return (new SpecialtyLayoutFlow(appState_, new StackedBlockLayout(appState_), SpecialtyLayoutFlow.LAYOUT_ALL));          
+        return (new SpecialtyLayoutFlow(new StackedBlockLayout(new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_ALL));          
       case SPECIALTY_LAYOUT_SELECTED:
-        return (new SpecialtyLayoutFlow(appState_, new StackedBlockLayout(appState_), SpecialtyLayoutFlow.LAYOUT_SELECTION)); 
+        return (new SpecialtyLayoutFlow(new StackedBlockLayout(new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_SELECTION)); 
       case SPECIALTY_LAYOUT_PER_OVERLAY:
-        return (new SpecialtyLayoutFlow(appState_, new StackedBlockLayout(appState_), SpecialtyLayoutFlow.LAYOUT_PER_OVERLAY));    
+        return (new SpecialtyLayoutFlow(new StackedBlockLayout(new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_PER_OVERLAY));    
       case RELAYOUT_ALL_LINKS:
-        return (new RelayoutLinks(appState_, true, false));           
+        return (new RelayoutLinks(true, false));           
       case RELAYOUT_DIAG_LINKS:
-        return (new RelayoutLinks(appState_, false, false));                
+        return (new RelayoutLinks(false, false));                
       case REPAIR_ALL_TOPOLOGY:
-        return (new LinkRepair(appState_, false, false));          
+        return (new LinkRepair(false, false));          
       case ZOOM_TO_ALL_MODELS: 
         return (new Zoom(appState_, Zoom.ZoomAction.ALL_MODELS));          
       case ZOOM_TO_CURRENT_MODEL: 
@@ -838,9 +882,9 @@ public class FlowMeister {
       case CENTER_ON_PREVIOUS_SELECTED: 
         return (new Zoom(appState_, Zoom.ZoomAction.CENTER_PREV_SELECTED));
       case TOGGLE_BUBBLES:
-        return (new Toggle(appState_, Toggle.ToggleAction.PAD_BUBBLES)); 
+        return (new Toggle(Toggle.ToggleAction.PAD_BUBBLES)); 
       case TOGGLE_MODULE_COMPONENT_DISPLAY:
-        return (new Toggle(appState_, Toggle.ToggleAction.MOD_PARTS)); 
+        return (new Toggle(Toggle.ToggleAction.MOD_PARTS)); 
       case ZOOM_TO_CURRENT_NETWORK_MODULE: 
         return (new Zoom(appState_, Zoom.ZoomAction.ZOOM_CURRENT_MOD));
       case ZOOM_OUT:
@@ -848,57 +892,57 @@ public class FlowMeister {
       case ZOOM_IN: 
         return (new Zoom(appState_, Zoom.ZoomAction.ZOOM_IN)); 
       case CANCEL_ADD_MODE:
-        return (new CancelAdd(appState_));           
+        return (new CancelAdd());           
       case RECOLOR_LAYOUT:
-        return (new Recolor(appState_));          
+        return (new Recolor());          
       case ADD_EXTRA_PROXY_NODE:
-        return (new AddExtraProxyNode(appState_));
+        return (new AddExtraProxyNode());
       case ADD_LINK:
-        return (new AddLink(appState_, false));
+        return (new AddLink(false));
       case DRAW_NETWORK_MODULE_LINK:
-        return (new AddLink(appState_, true));
+        return (new AddLink(true));
       case DROP_ALL_INSTRUCTIONS:
-        return (new RemoveBuildInstruct(appState_));
+        return (new RemoveBuildInstruct());
       case GAGGLE_RAISE_GOOSE:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.RAISE));           
+        return (new GaggleOps(GaggleOps.GaggleAction.RAISE));           
       case GAGGLE_LOWER_GOOSE:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.LOWER));   
+        return (new GaggleOps(GaggleOps.GaggleAction.LOWER));   
       case GAGGLE_SEND_NETWORK:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.SEND_NET));         
+        return (new GaggleOps(GaggleOps.GaggleAction.SEND_NET));         
       case GAGGLE_SEND_NAMELIST:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.SEND_NAMES));
+        return (new GaggleOps(GaggleOps.GaggleAction.SEND_NAMES));
       case GAGGLE_GOOSE_UPDATE:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.GOOSE_UPDATE));
+        return (new GaggleOps(GaggleOps.GaggleAction.GOOSE_UPDATE));
       case GAGGLE_PROCESS_INBOUND:
-        return (new GaggleOps(appState_, GaggleOps.GaggleAction.PROCESS_INBOUND));
+        return (new GaggleOps(GaggleOps.GaggleAction.PROCESS_INBOUND));
       case UNDO:
-        return (new UndoRedoOps(appState_, UndoRedoOps.UndoAction.UNDO)); 
+        return (new UndoRedoOps(UndoRedoOps.UndoAction.UNDO)); 
       case REDO:
-        return (new UndoRedoOps(appState_, UndoRedoOps.UndoAction.REDO)); 
+        return (new UndoRedoOps(UndoRedoOps.UndoAction.REDO)); 
       case SET_DISPLAY_OPTIONS:
-        return (new DoSettings(appState_, DoSettings.SettingAction.DISPLAY));
+        return (new DoSettings(DoSettings.SettingAction.DISPLAY));
       case EDIT_COLORS:
-        return (new DoSettings(appState_, DoSettings.SettingAction.COLORS));
+        return (new DoSettings(DoSettings.SettingAction.COLORS));
       case SET_FONT:
-        return (new DoSettings(appState_, DoSettings.SettingAction.FONTS));
+        return (new DoSettings(DoSettings.SettingAction.FONTS));
       case TIME_COURSE_TABLE_SETUP: 
-        return (new DoSettings(appState_, DoSettings.SettingAction.TIME_COURSE_SETUP));
+        return (new DoSettings(DoSettings.SettingAction.TIME_COURSE_SETUP));
       case TIME_COURSE_REGION_HIERARCHY: 
-        return (new DoSettings(appState_, DoSettings.SettingAction.REGION_HIERARCHY));
+        return (new DoSettings(DoSettings.SettingAction.REGION_HIERARCHY));
       case TIME_COURSE_TABLE_MANAGE: 
-        return (new DoSettings(appState_, DoSettings.SettingAction.TIME_COURSE_MANAGE));
+        return (new DoSettings(DoSettings.SettingAction.TIME_COURSE_MANAGE));
       case TEMPORAL_INPUT_TABLE_MANAGE: 
-        return (new DoSettings(appState_, DoSettings.SettingAction.TEMPORAL_INPUT_MANAGE));
+        return (new DoSettings(DoSettings.SettingAction.TEMPORAL_INPUT_MANAGE));
       case SET_AUTOLAYOUT_OPTIONS:
-        return (new DoSettings(appState_, DoSettings.SettingAction.AUTO_LAYOUT));           
+        return (new DoSettings(DoSettings.SettingAction.AUTO_LAYOUT));           
       case DEFINE_TIME_AXIS:
-        return (new DoSettings(appState_, DoSettings.SettingAction.TIME_AXIS)); 
+        return (new DoSettings(DoSettings.SettingAction.TIME_AXIS)); 
       case PERTURB_MANAGE: 
-        return (new DoSettings(appState_, DoSettings.SettingAction.PERTURB));
+        return (new DoSettings(DoSettings.SettingAction.PERTURB));
       case IMPORT_FULL_HIERARCHY_FROM_CSV:
-        return (new ImportCSV(appState_));
+        return (new ImportCSV());
       case IMPORT_GENOME_FROM_SIF:
-        return (new ImportSIF(appState_)); 
+        return (new ImportSIF()); 
       case WEB:
         return (new ExportWeb(appState_)); 
       case EXPORT:
@@ -908,7 +952,9 @@ public class FlowMeister {
       case SAVE_AS: 
         return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.SAVE_AS)); 
       case LOAD:
-        return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.LOAD)); 
+        return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.LOAD));
+      case LOAD_AS_NEW_TABS:
+        return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.LOAD_AS_NEW_TABS));        
       case NEW_MODEL: 
         return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.NEW_MODEL));
       case CLEAR_RECENT: 
@@ -924,59 +970,75 @@ public class FlowMeister {
       case IMPORT_PERTURB_CSV_FROM_FILE:
         return (new LoadSaveOps(appState_, LoadSaveOps.IOAction.PERTURB));
       case ALIGN_ALL_LAYOUTS:
-        return (new Align(appState_)); 
+        return (new Align()); 
       case TREE_PATH_ADD_STOP:
-        return (new PathStop(appState_, true));
+        return (new PathStop(true));
       case TREE_PATH_DELETE_STOP:
-        return (new PathStop(appState_, false));   
+        return (new PathStop(false));   
       case REPAIR_ALL_NON_ORTHO_MIN_SHIFT:
-        return (new LayoutNonOrthoLink(appState_, true, false, false, false));      
+        return (new LayoutNonOrthoLink(true, false, false, false));      
       case REPAIR_ALL_NON_ORTHO_MIN_SPLIT:
-        return (new LayoutNonOrthoLink(appState_, true, true, false, false));
+        return (new LayoutNonOrthoLink(true, true, false, false));
       case OPTIMIZE_LINKS:
-        return (new OptimizeLink(appState_, false, false));           
+        return (new OptimizeLink(false, false));           
       case CENTER_CURRENT_MODEL_ON_WORKSPACE: 
-        return (new CenterCurrent(appState_)); 
+        return (new CenterCurrent()); 
       case RESIZE_WORKSPACE: 
-        return (new WorkspaceOps(appState_, WorkspaceOps.SpaceAction.RESIZE)); 
+        return (new WorkspaceOps(WorkspaceOps.SpaceAction.RESIZE)); 
       case SHIFT_ALL_MODELS_TO_WORKSPACE: 
-        return (new WorkspaceOps(appState_, WorkspaceOps.SpaceAction.SHIFT_ALL));
+        return (new WorkspaceOps(WorkspaceOps.SpaceAction.SHIFT_ALL));
       case GET_MODEL_COUNTS:
         return (new ShowInfo(appState_, ShowInfo.InfoType.COUNTS)); 
+      case GET_DATA_SHARING_STATE:
+        return (new ShowInfo(appState_, ShowInfo.InfoType.DATA_SHARING));          
       case HELP_POINTER:
         return (new ShowInfo(appState_, ShowInfo.InfoType.HELP)); 
       case ABOUT:
         return (new ShowInfo(appState_, ShowInfo.InfoType.ABOUT)); 
       case BUILD_FROM_DIALOG:
-        return (new DialogBuild(appState_));           
+        return (new DialogBuild());           
+      case TIME_COURSE_REGION_TOPOLOGY: 
+        return (new DoSettings(DoSettings.SettingAction.REGION_TOPOLOGY));  
       case APPLY_KID_LAYOUTS_TO_ROOT:
-        return (new UpwardSync(appState_));
+        return (new UpwardSync());
       case SYNC_ALL_LAYOUTS:
-        return (new DownwardSync(appState_)); 
+        return (new DownwardSync()); 
       case ADD_QPCR_TO_ROOT_INSTANCES:
-        return (new SimpleBuilds(appState_, SimpleBuilds.SimpleType.PERT_TO_ROOT_INST));       
+        return (new SimpleBuilds(SimpleBuilds.SimpleType.PERT_TO_ROOT_INST));       
       case PROP_ROOT_WITH_EXP_DATA:
-        return (new SimpleBuilds(appState_, SimpleBuilds.SimpleType.PROP_ROOT)); 
+        return (new SimpleBuilds(SimpleBuilds.SimpleType.PROP_ROOT)); 
       case PRINT:
-        return (new Print(appState_)); 
+        return (new Print()); 
       case MULTI_GROUP_COPY:
-        return (new DupGroups(appState_, false));
+        return (new DupGroups(false));
       case PROPAGATE_DOWN:
-        return (new PropagateDown(appState_)); 
+        return (new PropagateDown()); 
       case MODEL_EXPORT:
-        return (new ExportModel(appState_)); 
-      case ASSIGN_IMAGE_TO_MODEL:
-        return (new ModelImageOps(appState_, ModelImageOps.ImageAction.ADD));
-      case DROP_IMAGE_FOR_MODEL:
-        return (new ModelImageOps(appState_, ModelImageOps.ImageAction.DROP));
+        return (new ExportModel(appState_));
+      case GROUP_NODE_EXPORT:
+          return (new ExportGroupNode());         
       case DRAW_NETWORK_MODULE:
-        return (new AddNetModule(appState_, true));
+        return (new AddNetModule(true));
       case SELECTIONS_TO_INACTIVE:
-        return (new SetSelectedInactive(appState_));
+        return (new SetSelectedInactive());
       case PULLDOWN:
-        return (new PullDown(appState_));
-     case CLOSE:
-        return (new CloseApp(appState_)); 
+        return (new PullDown());
+      case CLOSE:
+        return (new CloseApp());
+      case NEW_TAB: 
+        return (new TabOps(appState_, TabOps.TabOption.NEW_TAB));        
+      case DROP_THIS_TAB: 
+        return (new TabOps(appState_, TabOps.TabOption.DROP_THIS));
+      case DROP_ALL_BUT_THIS_TAB: 
+        return (new TabOps(appState_, TabOps.TabOption.DROP_ALL_BUT_THIS));
+      case RETITLE_TAB: 
+          return (new TabOps(appState_, TabOps.TabOption.RETITLE_TAB));   
+      case CHANGE_TAB: 
+        return (new TabOps(appState_, TabOps.TabOption.CHANGE_TAB));
+      case TEMPORAL_INPUT_DERIVE: 
+        return (new TemporalInput(TemporalInput.Action.TEMPORAL_INPUT_DERIVE));
+      case TEMPORAL_INPUT_DROP_ALL: 
+        return (new TemporalInput(TemporalInput.Action.TEMPORAL_INPUT_DROP_ALL));
       default:
         throw new IllegalArgumentException();
     }
@@ -990,25 +1052,41 @@ public class FlowMeister {
   private ControlFlow getModelTreeFlow(TreeFlow key) {  
     switch (key) {
       case ADD_GENOME_INSTANCE:
-        return (new AddGenomeInstance(appState_));
+        return (new AddGenomeInstance());
       case ADD_DYNAMIC_GENOME_INSTANCE:
-        return (new AddDynamicGenomeInstance(appState_));
+        return (new AddDynamicGenomeInstance());
+      case ADD_MODEL_TREE_GROUP_NODE:
+        return (new AddGroupNode());
+      case EDIT_GROUP_NODE_NAV_MAP:
+        return (new EditGroupNodeNavMap());
+      case ASSIGN_IMAGE_TO_MODEL:
+        return (new ImageOps(ImageOps.ImageAction.ADD));
+      case DROP_IMAGE_FOR_MODEL:
+        return (new ImageOps(ImageOps.ImageAction.DROP));
+      case ASSIGN_IMAGE_TO_GROUPING_NODE:
+        return (new ImageOps(ImageOps.ImageAction.GROUPING_NODE_ADD));
+      case DROP_IMAGE_FOR_GROUPING_NODE:
+        return (new ImageOps(ImageOps.ImageAction.GROUPING_NODE_DROP)); 
+      case ASSIGN_MAPPING_IMAGE_TO_GROUPING_NODE:
+        return (new ImageOps(ImageOps.ImageAction.GROUPING_NODE_ADD_MAP));
+      case DROP_MAPPING_IMAGE_FOR_GROUPING_NODE:
+        return (new ImageOps(ImageOps.ImageAction.GROUPING_NODE_DROP_MAP));                       
       case DELETE_GENOME_INSTANCE:
-        return (new DeleteGenomeInstance(appState_, false));
+        return (new DeleteGenomeInstance(false));
       case DELETE_GENOME_INSTANCE_KIDS_ONLY:
-        return (new DeleteGenomeInstance(appState_, true));
+        return (new DeleteGenomeInstance(true));
       case EDIT_MODEL_PROPERTIES:
-        return (new EditModelProps(appState_));
+        return (new EditModelProps());
       case COPY_GENOME_INSTANCE:
-        return (new CopyGenomeInstance(appState_));
+        return (new CopyGenomeInstance());
       case MOVE_MODEL_NODEUP:
-        return (new MoveModelNode(appState_, false));
+        return (new MoveModelNode(false));
       case MOVE_MODEL_NODE_DOWN:
-        return (new MoveModelNode(appState_, true)); 
+        return (new MoveModelNode(true)); 
       case MAKE_STARTUP_VIEW:
-        return (new SettingOps(appState_, SettingOps.SettingAction.STARTUP_VIEW));
+        return (new SettingOps(SettingOps.SettingAction.STARTUP_VIEW));
       case SET_CURRENT_OVERLAY_FOR_FIRST_VIEW:
-        return (new SettingOps(appState_, SettingOps.SettingAction.OVERLAY_FIRST));
+        return (new SettingOps(SettingOps.SettingAction.OVERLAY_FIRST));
       default:
         throw new IllegalArgumentException();
     }
@@ -1022,17 +1100,17 @@ public class FlowMeister {
   private ControlFlow getKeyBoundFlow(KeyFlowKey key) {  
     switch (key) {
       case MULTI_DELETE:
-        return (new RemoveSelections(appState_));
+        return (new RemoveSelections());
       case CANCEL_MODE:
-        return (new CancelAdd(appState_));
+        return (new CancelAdd());
       case NUDGE_UP:
-        return (new Mover(appState_, Mover.Action.NUDGE_UP));  
+        return (new Mover(Mover.Action.NUDGE_UP));  
       case NUDGE_DOWN:
-        return (new Mover(appState_, Mover.Action.NUDGE_DOWN));    
+        return (new Mover(Mover.Action.NUDGE_DOWN));    
       case NUDGE_LEFT:
-        return (new Mover(appState_, Mover.Action.NUDGE_LEFT));    
+        return (new Mover(Mover.Action.NUDGE_LEFT));    
       case NUDGE_RIGHT:
-        return (new Mover(appState_, Mover.Action.NUDGE_RIGHT));    
+        return (new Mover(Mover.Action.NUDGE_RIGHT));    
       default:
         throw new IllegalArgumentException();
     }
@@ -1046,19 +1124,21 @@ public class FlowMeister {
   private ControlFlow getOtherFlow(OtherFlowKey key) {  
     switch (key) {
       case REMOTE_BATCH_SELECTION:
-        return (new Selection(appState_, Selection.SelectAction.REMOTE_BATCH_SELECT));
+        return (new Selection(Selection.SelectAction.REMOTE_BATCH_SELECT));
       case LOCAL_CLICK_SELECTION:
-        return (new Selection(appState_, Selection.SelectAction.LOCAL_SINGLE_CLICK_SELECT)); 
+        return (new Selection(Selection.SelectAction.LOCAL_SINGLE_CLICK_SELECT)); 
       case LOCAL_RECT_SELECTION:
-        return (new Selection(appState_, Selection.SelectAction.LOCAL_SELECTION_BY_RECT));       
+        return (new Selection(Selection.SelectAction.LOCAL_SELECTION_BY_RECT));       
       case MODEL_SELECTION_FROM_TREE: 
         return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.VIA_MODEL_TREE));
       case MODEL_SELECTION_FROM_SLIDER:
         return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.VIA_SLIDER));
       case MOVE_ELEMENTS:
-        return (new Mover(appState_, Mover.Action.MOVE_MODEL_ELEMS));
+        return (new Mover(Mover.Action.MOVE_MODEL_ELEMS));
       case MODEL_SELECTION: 
         return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.MODEL_SELECTION_ONLY));
+      case GROUP_NODE_SELECTION: 
+          return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.GROUP_NODE_SELECTION_ONLY));
       case MODEL_AND_NODE_SELECTION: 
         return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.MODEL_AND_NODE_SELECTIONS));
       case MODEL_AND_LINK_SELECTION:
@@ -1066,11 +1146,13 @@ public class FlowMeister {
       case MODEL_AND_NODE_LINK_SELECTION:
         return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.MODEL_AND_SELECTIONS));
       case PATH_MODEL_GENERATION:
-        return (new PathGenerator(appState_));
+        return (new PathGenerator());
       case TARDY_LINK_DATA:
         return (new DisplayData(appState_, DisplayData.InfoType.PENDING_LINK)); 
       case TARDY_NODE_DATA:
         return (new DisplayData(appState_, DisplayData.InfoType.PENDING_NODE)); 
+      case GROUP_NODE_CLICK:
+        return (new SetCurrentModel(appState_, SetCurrentModel.SettingAction.MODEL_SELECTION_ONLY));
       default:
         throw new IllegalArgumentException();
     }
@@ -1084,238 +1166,240 @@ public class FlowMeister {
   private ControlFlow getPopFlow(PopFlow key, ControlFlow.OptArgs args) {     
     switch (key) {
       case EDIT_CURRENT_OVERLAY:
-        return (new EditNetOverlay(appState_, true));
+        return (new EditNetOverlay(true));
       case DELETE_CURRENT_OVERLAY:
-        return (new RemoveOverlay(appState_, true));
+        return (new RemoveOverlay(true));
       case EDIT_NOTE:
-        return (new EditNote(appState_, true));
+        return (new EditNote(true));
       case DELETE_NOTE:
-        return (new RemoveNote(appState_));       
+        return (new RemoveNote());       
       case DELETE_LINK_POINT:
-        return (new RemoveLinkPoint(appState_));
+        return (new RemoveLinkPoint());
       case TOGGLE:
-        return (new Toggle(appState_, Toggle.ToggleAction.GROUP_TOGGLE));
+        return (new Toggle(Toggle.ToggleAction.GROUP_TOGGLE));
       case ZOOM_TO_GROUP:
         return (new Zoom(appState_, Zoom.ZoomAction.ZOOM_TO_GROUP));
       case GROUP_PROPERTIES:
-        return (new EditGroupProperties(appState_, (EditGroupProperties.GroupArg)args));
+        return (new EditGroupProperties((EditGroupProperties.GroupArg)args));
       case INCLUDE_ALL_FOR_GROUP:
-        return (new IncludeAllForGroup(appState_));
+        return (new IncludeAllForGroup());
       case RAISE_GROUP:
-        return (new ReorderGroups(appState_, ReorderGroups.Direction.RAISE));
+        return (new ReorderGroups(ReorderGroups.Direction.RAISE));
       case LOWER_GROUP:
-        return (new ReorderGroups(appState_, ReorderGroups.Direction.LOWER));       
+        return (new ReorderGroups(ReorderGroups.Direction.LOWER));       
       case MOVE_GROUP:
-        return (new Mover(appState_, Mover.Action.GROUP));
+        return (new Mover(Mover.Action.GROUP));
       case LAYOUT_GROUP:
-        return (new SpecialtyLayoutFlow(appState_, new StackedBlockLayout(appState_), SpecialtyLayoutFlow.LAYOUT_REGION));  
+        return (new SpecialtyLayoutFlow(new StackedBlockLayout(new StaticDataAccessContext(appState_)), SpecialtyLayoutFlow.LAYOUT_REGION));  
       case COMPRESS_GROUP:
-        return (new SquashExpandGenome(appState_, true, true));          
+        return (new SquashExpandGenome(true, true));          
       case EXPAND_GROUP:
-        return (new SquashExpandGenome(appState_, false, true));
+        return (new SquashExpandGenome(false, true));
       case COPY_REGION:
-        return (new DupGroups(appState_, true)); 
+        return (new DupGroups(true)); 
       case GROUP_DELETE:
-        return (new RemoveGroup(appState_));
+        return (new RemoveGroup());
       case REGION_MAP:
-        return (new TimeCourse(appState_, TimeCourse.Action.EDIT_REGION_MAP, (EditGroupProperties.GroupArg)args));
+        return (new TimeCourse(TimeCourse.Action.EDIT_REGION_MAP, (EditGroupProperties.GroupArg)args));
       case DELETE_REGION_MAP:
-        return (new TimeCourse(appState_, TimeCourse.Action.DELETE_REGION_MAP, (EditGroupProperties.GroupArg)args));
+        return (new TimeCourse(TimeCourse.Action.DELETE_REGION_MAP, (EditGroupProperties.GroupArg)args));
       case INPUT_REGION_MAP:
-        return (new TemporalInput(appState_, TemporalInput.Action.EDIT_REGION_MAP, (EditGroupProperties.GroupArg)args));
+        return (new TemporalInput(TemporalInput.Action.EDIT_REGION_MAP, (EditGroupProperties.GroupArg)args));
       case DELETE_INPUT_REGION_MAP:
-        return (new TemporalInput(appState_, TemporalInput.Action.DELETE_REGION_MAP, (EditGroupProperties.GroupArg)args));
+        return (new TemporalInput(TemporalInput.Action.DELETE_REGION_MAP, (EditGroupProperties.GroupArg)args));
       case CREATE_SUB_GROUP:
-        return (new AddSubGroup(appState_, AddSubGroup.Action.CREATE));
+        return (new AddSubGroup(AddSubGroup.Action.CREATE));
       case LINK_PROPERTIES:
-        return (new EditLinkProperties(appState_)); 
+        return (new EditLinkProperties()); 
       case SPECIAL_LINE:
-        return (new SpecialLineProps(appState_));  
+        return (new SpecialLineProps());  
       case INSERT_GENE_IN_LINK:
-        return (new InsertNodeInLink(appState_, true));  
+        return (new InsertNodeInLink(true));  
       case INSERT_NODE_IN_LINK:
-        return (new InsertNodeInLink(appState_, false)); 
+        return (new InsertNodeInLink(false)); 
       case CHANGE_SOURCE_NODE:
-        return (new ChangeNode(appState_, false));  
+        return (new ChangeNode(false));  
       case CHANGE_TARGET_NODE:
-        return (new ChangeNode(appState_, true));
+        return (new ChangeNode(true));
       case MERGE_LINKS:
-        return (new MergeDuplicateLinks(appState_));
+        return (new MergeDuplicateLinks());
       case DIVIDE:
-        return (new Divide(appState_, false));
+        return (new Divide(false));
       case DIVIDE_MOD:
-        return (new Divide(appState_, true));        
+        return (new Divide(true));        
       case RELOCATE_SEGMENT:
-        return (new RelocateSeg(appState_, false));
+        return (new RelocateSeg(false));
       case RELOCATE_SEGMENT_MOD:
-        return (new RelocateSeg(appState_, true));        
+        return (new RelocateSeg(true));        
       case RELOCATE_SOURCE_PAD:
-        return (new ChangePad(appState_, false, false, false));
+        return (new ChangePad(false, false, false));
       case RELOCATE_SOURCE_PAD_MOD:
-        return (new ChangePad(appState_, false, true, false));        
+        return (new ChangePad(false, true, false));        
       case RELOCATE_TARGET_PAD:
-        return (new ChangePad(appState_, true, false, false));
+        return (new ChangePad(true, false, false));
       case RELOCATE_TARGET_PAD_MOD:
-        return (new ChangePad(appState_, true, true, false));
+        return (new ChangePad(true, true, false));
       case CHANGE_TARGET_GENE_MODULE:
-        return (new ChangePad(appState_, true, false, true));  
+        return (new ChangePad(true, false, true));  
       case SWAP_PADS:
-        return (new SwapPads(appState_));  
+        return (new SwapPads());  
       case DELETE_LINKAGE:
-        return (new RemoveLinkage(appState_)); 
+        return (new RemoveLinkage()); 
       case FIX_ALL_NON_ORTHO_SEGMENTS_MIN_SHIFT:
-        return (new LayoutNonOrthoLink(appState_, true, false, true, false));
+        return (new LayoutNonOrthoLink(true, false, true, false));
       case FIX_ALL_NON_ORTHO_SEGMENTS_MIN_SHIFT_MOD:
-        return (new LayoutNonOrthoLink(appState_, true, false, true, true));
+        return (new LayoutNonOrthoLink(true, false, true, true));
       case FIX_ALL_NON_ORTHO_SEGMENTS_MIN_SPLIT:
-        return (new LayoutNonOrthoLink(appState_, true, true, true, false));        
+        return (new LayoutNonOrthoLink(true, true, true, false));        
       case FIX_ALL_NON_ORTHO_SEGMENTS_MIN_SPLIT_MOD:
-        return (new LayoutNonOrthoLink(appState_, true, true, true, true));
+        return (new LayoutNonOrthoLink(true, true, true, true));
       case FIX_NON_ORTHO_MIN_SHIFT:
-        return (new LayoutNonOrthoLink(appState_, false, false, true, false));
+        return (new LayoutNonOrthoLink(false, false, true, false));
       case FIX_NON_ORTHO_MIN_SHIFT_MOD:
-        return (new LayoutNonOrthoLink(appState_, false, false, true, true));
+        return (new LayoutNonOrthoLink(false, false, true, true));
       case FIX_NON_ORTHO_MIN_SPLIT:
-        return (new LayoutNonOrthoLink(appState_, false, true, true, false));
+        return (new LayoutNonOrthoLink(false, true, true, false));
       case FIX_NON_ORTHO_MIN_SPLIT_MOD:
-        return (new LayoutNonOrthoLink(appState_, false, true, true, true));
+        return (new LayoutNonOrthoLink(false, true, true, true));
       case TOPO_REPAIR:
-        return (new LinkRepair(appState_, false, true));
+        return (new LinkRepair(false, true));
       case TOPO_REPAIR_MOD:
-        return (new LinkRepair(appState_, true, true));
+        return (new LinkRepair(true, true));
       case SEG_LAYOUT:
-        return (new RelayoutLinks(appState_, false, true));
+        return (new RelayoutLinks(false, true));
       case SEG_OPTIMIZE:
-        return (new OptimizeLink(appState_, true, false));
+        return (new OptimizeLink(true, false));
       case MODULE_LINK_PROPERTIES:
-        return (new EditNetModuleLink(appState_)); 
+        return (new EditNetModuleLink()); 
       case DELETE_MODULE_LINKAGE:
-        return (new RemoveModuleLinkOrPoint(appState_, false));         
+        return (new RemoveModuleLinkOrPoint(false));         
       case DISPLAY_LINK_DATA:
         return (new DisplayData(appState_, DisplayData.InfoType.LINK));
       case FULL_SELECTION:
-        return (new Selection(appState_, Selection.SelectAction.SELECT_FULL_LINK));       
+        return (new Selection(Selection.SelectAction.SELECT_FULL_LINK));       
       case ANALYZE_PATHS:
       case ANALYZE_PATHS_WITH_QPCR:
-        return (new DisplayPaths(appState_, DisplayPaths.InfoType.LINK_PATHS)); 
+        return (new DisplayPaths(DisplayPaths.InfoType.LINK_PATHS)); 
       case ANALYZE_PATHS_FROM_USER_SELECTED:
-        return (new DisplayPathsUserSource(appState_, true));        
+        return (new DisplayPathsUserSource(true));               
+      case LINK_WORKSHEET:
+        return (new LaunchBuilder(true, (BuilderPluginArg)args));       
       case SELECT_LINK_SOURCE:
-        return (new NodeSrcTargSearch(appState_, true));
+        return (new NodeSrcTargSearch(true));
       case SELECT_LINK_TARGETS:
-        return (new NodeSrcTargSearch(appState_, false));
+        return (new NodeSrcTargSearch(false));
       case LINK_USAGES:
         return (new DisplayData(appState_, DisplayData.InfoType.LINK_USAGES));
       case SELECT_SOURCES:
-        return (new NodeSrcTargSearch(appState_, false, true));
+        return (new NodeSrcTargSearch(false, true));
       case SELECT_SOURCES_GENE_ONLY:
-        return (new NodeSrcTargSearch(appState_, true, true));
+        return (new NodeSrcTargSearch(true, true));
       case SELECT_TARGETS:
-        return (new NodeSrcTargSearch(appState_, false, false));
+        return (new NodeSrcTargSearch(false, false));
       case SELECT_TARGETS_GENE_ONLY:
-        return (new NodeSrcTargSearch(appState_, true, false));
+        return (new NodeSrcTargSearch(true, false));
       case SELECT_LINKS_TOGGLE:
-        return (new Toggle(appState_, Toggle.ToggleAction.SELECT_LINKS));
+        return (new Toggle(Toggle.ToggleAction.SELECT_LINKS));
       case SELECT_QUERY_NODE_TOGGLE:
-        return (new Toggle(appState_, Toggle.ToggleAction.SELECT_QUERY_NODE));
+        return (new Toggle(Toggle.ToggleAction.SELECT_QUERY_NODE));
       case APPEND_TO_CURRENT_SELECTION_TOGGLE:
-        return (new Toggle(appState_, Toggle.ToggleAction.APPEND_SELECT));
+        return (new Toggle(Toggle.ToggleAction.APPEND_SELECT));
       case NODE_USAGES:
         return (new DisplayData(appState_, DisplayData.InfoType.NODE_USAGES));
       case SIMULATION_PROPERTIES:
-        return (new EditSimProperties(appState_));
+        return (new EditSimProperties());
       case NODE_SUPER_ADD:
-        return (new SuperAdd(appState_));
+        return (new SuperAdd());
       case NODE_TYPE_CHANGE:
-        return (new ChangeNodeType(appState_));
+        return (new ChangeNodeType());
       case CHANGE_NODE_GROUP_MEMBERSHIP:
-        return (new ChangeNodeGroup(appState_));
+        return (new ChangeNodeGroup());
       case DELETE_NODE:
-        return (new RemoveNode(appState_));
+        return (new RemoveNode());
       case EDIT_PERT:
-        return (new PerturbData(appState_, PerturbData.InfoType.EDIT));       
+        return (new PerturbData(PerturbData.InfoType.EDIT));       
       case DELETE_PERT:
-        return (new PerturbData(appState_, PerturbData.InfoType.DELETE));        
+        return (new PerturbData(PerturbData.InfoType.DELETE));        
       case EDIT_PERT_MAP:
-        return (new PerturbData(appState_, PerturbData.InfoType.PERT_MAP));        
+        return (new PerturbData(PerturbData.InfoType.PERT_MAP));        
       case DELETE_PERT_MAP:
-        return (new PerturbData(appState_, PerturbData.InfoType.DELETE_PERT_MAP));
+        return (new PerturbData(PerturbData.InfoType.DELETE_PERT_MAP));
       case EDIT_TIME_COURSE:
-        return (new TimeCourse(appState_, TimeCourse.Action.EDIT));       
+        return (new TimeCourse(TimeCourse.Action.EDIT));       
       case DELETE_TIME_COURSE:
-        return (new TimeCourse(appState_, TimeCourse.Action.DELETE));        
+        return (new TimeCourse(TimeCourse.Action.DELETE));        
       case EDIT_PERTURBED_TIME_COURSE:
-        return (new TimeCourse(appState_, TimeCourse.Action.EDIT_PERT));
+        return (new TimeCourse(TimeCourse.Action.EDIT_PERT));
       case EDIT_TIME_COURSE_MAP:
-        return (new TimeCourse(appState_, TimeCourse.Action.EDIT_MAP));       
+        return (new TimeCourse(TimeCourse.Action.EDIT_MAP));       
       case DELETE_TIME_COURSE_MAP:
-        return (new TimeCourse(appState_, TimeCourse.Action.DELETE_MAP));
+        return (new TimeCourse(TimeCourse.Action.DELETE_MAP));
       case EDIT_TEMPORAL_INPUT:
-        return (new TemporalInput(appState_, TemporalInput.Action.EDIT));
+        return (new TemporalInput(TemporalInput.Action.EDIT));
       case DELETE_TEMPORAL_INPUT:
-        return (new TemporalInput(appState_, TemporalInput.Action.DELETE));
+        return (new TemporalInput(TemporalInput.Action.DELETE));
       case EDIT_TEMPORAL_INPUT_MAP:
-        return (new TemporalInput(appState_, TemporalInput.Action.EDIT_MAP));
+        return (new TemporalInput(TemporalInput.Action.EDIT_MAP));
       case DELETE_TEMPORAL_INPUT_MAP:
-        return (new TemporalInput(appState_, TemporalInput.Action.DELETE_MAP)); 
+        return (new TemporalInput(TemporalInput.Action.DELETE_MAP)); 
       case DISPLAY_DATA:
         return (new DisplayData(appState_, DisplayData.InfoType.NODE)); 
       case GENE_PROPERTIES:
-        return (new EditNodeProperties(appState_, true)); 
+        return (new EditNodeProperties(true)); 
       case NODE_PROPERTIES:
-        return (new EditNodeProperties(appState_, false));         
+        return (new EditNodeProperties(false));         
       case EDIT_MULTI_SELECTIONS:
-        return (new MultiSelectionProperties(appState_));
+        return (new MultiSelectionProperties());
       case MERGE_NODES:
-        return (new MergeDuplicateNodes(appState_));
+        return (new MergeDuplicateNodes());
       case DEFINE_CIS_REG_MODULE:
-        return (new AddCisRegModule(appState_));    
+        return (new AddCisRegModule());    
       case EDIT_CIS_REG_MODULE:
-        return (new EditCisRegModule(appState_));    
+        return (new EditCisRegModule());    
       case ZOOM_TO_NET_MODULE:
         return (new Zoom(appState_, Zoom.ZoomAction.ZOOM_MOD_POPUP));
       case TOGGLE_NET_MODULE_CONTENT_DISPLAY:
-        return (new Toggle(appState_, Toggle.ToggleAction.NET_MOD_CONTENT));
+        return (new Toggle(Toggle.ToggleAction.NET_MOD_CONTENT));
       case SET_AS_SINGLE_CURRENT_NET_MODULE:
-        return (new Modules(appState_, Modules.ModAction.SET_AS_SINGLE));
+        return (new Modules(Modules.ModAction.SET_AS_SINGLE));
       case DROP_FROM_CURRENT_NET_MODULES:
-        return (new Modules(appState_, Modules.ModAction.DROP_FROM_CURRENT));
+        return (new Modules(Modules.ModAction.DROP_FROM_CURRENT));
       case EDIT_SELECTED_NETWORK_MODULE:
-        return (new EditNetModule(appState_)); 
+        return (new EditNetModule()); 
       case ADD_REGION_TO_NET_MODULE:
-        return (new AddNetModule(appState_, false));
+        return (new AddNetModule(false));
       case DETACH_MODULE_FROM_GROUP:
-        return (new RemoveModuleOrPart(appState_, RemoveModuleOrPart.ModAction.DETACH_FROM_GROUP, null));
+        return (new RemoveModuleOrPart(RemoveModuleOrPart.ModAction.DETACH_FROM_GROUP, null));
       case REMOVE_THIS_NETWORK_MODULE:
-        return (new RemoveModuleOrPart(appState_, RemoveModuleOrPart.ModAction.REMOVE_ALL, null));
+        return (new RemoveModuleOrPart(RemoveModuleOrPart.ModAction.REMOVE_ALL, null));
       case EDIT_MODULE_MEMBERS:
-        return (new EditNetModuleMembers(appState_));
+        return (new EditNetModuleMembers());
       case SIZE_CORE_TO_REGION_BOUNDS:
-        return (new ResizeModuleCore(appState_));
+        return (new ResizeModuleCore());
       case DROP_NET_MODULE_REGION:
-        return (new RemoveModuleOrPart(appState_, RemoveModuleOrPart.ModAction.REMOVE_REGION, (RemoveModuleOrPart.HardwiredEnabledArgs)args));
+        return (new RemoveModuleOrPart(RemoveModuleOrPart.ModAction.REMOVE_REGION, (RemoveModuleOrPart.HardwiredEnabledArgs)args));
       case MOVE_NET_MODULE_REGION:
-        return (new Mover(appState_, Mover.Action.MODULES, (Mover.MoveNetModuleRegionArgs)args));
+        return (new Mover(Mover.Action.MODULES, (Mover.MoveNetModuleRegionArgs)args));
       case DELETE_MODULE_LINK_POINT:
-        return (new RemoveModuleLinkOrPoint(appState_, true));
+        return (new RemoveModuleLinkOrPoint(true));
       case DELETE_FROM_MODULE:
-        return (new RemoveNodeFromMod(appState_, (AddNodeToModule.NamedModuleArgs)args));
+        return (new RemoveNodeFromMod((AddNodeToModule.NamedModuleArgs)args));
       case ADD_TO_MODULE:
-        return (new AddNodeToModule(appState_, (AddNodeToModule.NamedModuleArgs)args));
+        return (new AddNodeToModule((AddNodeToModule.NamedModuleArgs)args));
       case ANALYZE_PATHS_FOR_NODE:
-        return (new DisplayPaths(appState_, DisplayPaths.InfoType.PATHS_FOR_NODE, (DisplayPaths.PathAnalysisArgs)args));
+        return (new DisplayPaths(DisplayPaths.InfoType.PATHS_FOR_NODE, (DisplayPaths.PathAnalysisArgs)args));
       case PERTURB_PATH_COMPARE:
-        return (new DisplayPaths(appState_, DisplayPaths.InfoType.PATHS_FOR_NODE, (DisplayPaths.PathAnalysisArgs)args));       
+        return (new DisplayPaths(DisplayPaths.InfoType.PATHS_FOR_NODE, (DisplayPaths.PathAnalysisArgs)args));       
       case DELETE_SUB_GROUP:
-        return (new RemoveSubGroup(appState_, (RemoveSubGroup.SubGroupArgs)args));
+        return (new RemoveSubGroup((RemoveSubGroup.SubGroupArgs)args));
       case ADD_NODE_TO_SUB_GROUP:
-        return (new AddNodeToSubGroup(appState_, (AddNodeToSubGroup.NodeInGroupArgs)args)); 
+        return (new AddNodeToSubGroup((AddNodeToSubGroup.NodeInGroupArgs)args)); 
       case DELETE_NODE_FROM_SUB_GROUP:
-        return (new RemoveNodeFromSubGroup(appState_, (AddNodeToSubGroup.NodeInGroupArgs)args)); 
+        return (new RemoveNodeFromSubGroup((AddNodeToSubGroup.NodeInGroupArgs)args)); 
       case INCLUDE_SUB_GROUP:
-        return (new AddSubGroup(appState_, AddSubGroup.Action.INCLUDE,  (AddSubGroup.GroupPairArgs)args));
+        return (new AddSubGroup(AddSubGroup.Action.INCLUDE,  (AddSubGroup.GroupPairArgs)args));
       case ACTIVATE_SUB_GROUP:
-        return (new AddSubGroup(appState_, AddSubGroup.Action.ACTIVATE, (AddSubGroup.GroupPairArgs)args));         
+        return (new AddSubGroup(AddSubGroup.Action.ACTIVATE, (AddSubGroup.GroupPairArgs)args));         
       default:
         throw new IllegalArgumentException();
     }

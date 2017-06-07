@@ -164,10 +164,10 @@ class Source implements Cloneable {
   **
   ** Clone
   */
-
-   public Object clone() {
+   @Override
+   public Source clone() {
     try {
-      return (super.clone());
+      return ((Source)super.clone());
     } catch (CloneNotSupportedException ex) {
       throw new IllegalStateException();     
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -41,8 +41,6 @@ public class OrthoPoint  {
   ////////////////////////////////////////////////////////////////////////////
 
   private Point point_;
-  private DegreeOfFreedom dofX_;
-  private DegreeOfFreedom dofY_;
   private String tag_;
 
   ////////////////////////////////////////////////////////////////////////////

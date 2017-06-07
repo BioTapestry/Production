@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -90,10 +90,10 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
   ** Render the bare node using the provided layout
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -103,7 +103,7 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = new Integer(0);
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     
     boolean isGhosted = rcx.isGhosted();
     Point2D origin = np.getLocation(); 
@@ -112,9 +112,9 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
     }
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop, mode);
     Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+    AnnotatedFont mFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
 
     CommonCacheGroup group = new CommonCacheGroup(item.getID(), item.getName(), "bare");
     
@@ -125,7 +125,7 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
     // If pads go beyond text, we don't want this floating around in nothingness:
     //
     
-    if (mightHaveExtraPadWidth(item) && haveExtraPadWidth(item, rcx.getFrc(), np, rcx.fmgr)) {
+    if (mightHaveExtraPadWidth(item) && haveExtraPadWidth(item, rcx.getFrc(), np, rcx.getFontManager())) {
     	// TODO fix stroke
     	ModelObjectCache.Rectangle rect = new ModelObjectCache.Rectangle(bounds.getMinX(), bounds.getMinY(),
     			bounds.getWidth(), bounds.getHeight(), DrawMode.FILL, backupCol, new BasicStroke());
@@ -140,38 +140,6 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
     
     return;  	
   }
- 
-  /*
-  public void renderOld(Graphics2D g2, RenderObjectCache cache, GenomeItem item, Intersection selected, 
-                       DataAccessContext rcx, Object miscInfo, ModelObjectCache moc) {
-    
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
-    Point2D origin = np.getLocation(); 
-    boolean isGhosted = rcx.isGhosted();
-    if (item instanceof NodeInstance) {
-      int activityLevel = ((NodeInstance)item).getActivity();
-      isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
-    }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.dopt);
-    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
-    Rectangle2D textBounds = new Rectangle2D.Double(); 
-    Rectangle2D bounds = renderSupportA(null, item, selected, textBounds, rcx);    
-
-    //
-    // If pads go beyond text, we don't want this floating around in nothingness:
-    //
-    
-    if (mightHaveExtraPadWidth(item) && haveExtraPadWidth(item, g2.getFontRenderContext(), np, rcx.fmgr)) {
-      g2.setPaint(backupCol);
-      g2.fill(bounds);
-    }
-    
-    renderSupportB(null, item, isGhosted, isGhosted,
-                   mFont, origin, textBounds, col, col, rcx);    
-    return;
-  }
-  */
   
   /***************************************************************************
   **
@@ -192,7 +160,7 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
       
     HashSet<Integer> usedPads = new HashSet<Integer>();    
     String myID = item.getID();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String targ = link.getTarget();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,9 +30,10 @@ import javax.swing.JPanel;
 import javax.swing.Box;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -57,7 +58,8 @@ public class SingleModelPropDialog extends JDialog {
   private JTextField longNameField_;
   private JTextField descripField_;
   private DataAccessContext dacx_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -72,15 +74,16 @@ public class SingleModelPropDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public SingleModelPropDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("smprop.title"), true);
-    appState_ = appState;
+  public SingleModelPropDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("smprop.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
-    if (!dacx_.genomeIsRootGenome()) {
+    uFac_ = uFac;
+    if (!dacx_.currentGenomeIsRootDBGenome()) {
       throw new IllegalArgumentException();
     }
         
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 200);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -126,7 +129,7 @@ public class SingleModelPropDialog extends JDialog {
           SingleModelPropDialog.this.setVisible(false);
           SingleModelPropDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -137,7 +140,7 @@ public class SingleModelPropDialog extends JDialog {
           SingleModelPropDialog.this.setVisible(false);
           SingleModelPropDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -152,7 +155,7 @@ public class SingleModelPropDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, rowNum, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
     
@@ -176,8 +179,8 @@ public class SingleModelPropDialog extends JDialog {
   
   private void displayProperties() {
 
-    longNameField_.setText(dacx_.getGenome().getLongName());
-    descripField_.setText(dacx_.getGenome().getDescription());    
+    longNameField_.setText(dacx_.getCurrentGenome().getLongName());
+    descripField_.setText(dacx_.getCurrentGenome().getDescription());    
     return;
   }
 
@@ -193,21 +196,21 @@ public class SingleModelPropDialog extends JDialog {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.smprop");  
+    UndoSupport support = uFac_.provideUndoSupport("undo.smprop", dacx_);  
     String longName = longNameField_.getText();
-    GenomeChange gc = dacx_.getGenomeAsDBGenome().setProperties(dacx_.getGenome().getName(),  
+    GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().setProperties(dacx_.getCurrentGenome().getName(),  
                                                                 longName, 
                                                                 descripField_.getText());
-    GenomeChangeCmd cmd = new GenomeChangeCmd(appState_, dacx_, gc);
+    GenomeChangeCmd cmd = new GenomeChangeCmd(dacx_, gc);
     support.addEdit(cmd);
     
     if (!longName.trim().equals("")) {
-      new DataLocator(appState_, dacx_).setTitleLocation(support, dacx_.getGenomeID(), longName);
+      new DataLocator(uics_.getGenomePresentation(), dacx_).setTitleLocation(support, dacx_.getCurrentGenomeID(), longName);
     }
     
-    ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+    ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
     support.addEvent(mcev);    
-    mcev = new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.PROPERTY_CHANGE);
+    mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.PROPERTY_CHANGE);
     support.addEvent(mcev);
     
     support.finish();    

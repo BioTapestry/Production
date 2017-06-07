@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@ import java.awt.Font;
 import java.awt.font.FontRenderContext;
 import java.awt.event.MouseEvent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DoubMinMax;
 import org.systemsbiology.biotapestry.util.PatternPaint;
 
@@ -97,7 +97,7 @@ public abstract class MultiStripChart extends JPanel {
   protected Dimension dimForCache_;
   protected ChartTransform transform_;
   protected int coverage_;
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -110,8 +110,8 @@ public abstract class MultiStripChart extends JPanel {
   ** Null constructor
   */
   
-  public MultiStripChart(BTState appState) {
-    appState_ = appState;
+  public MultiStripChart(DataAccessContext dacx) {
+    dacx_ = dacx;
     allStrips_ = new ArrayList<MultiStripChart.Strip>();
     prunedStrips_ = new ArrayList<MultiStripChart.Strip>();
     coverage_ = COVERAGE_ALL;
@@ -340,7 +340,7 @@ public abstract class MultiStripChart extends JPanel {
   */
   
   protected void refreshSizeBasedCache(Dimension dim) {     
-    Font mFont = appState_.getFontMgr().getFixedFont(FontManager.STRIP_CHART_AXIS);
+    Font mFont = dacx_.getFontManager().getFixedFont(FontManager.STRIP_CHART_AXIS);
     transform_ = childRefresh(mFont, dim);
     dimForCache_ = dim;
     return;
@@ -392,7 +392,7 @@ public abstract class MultiStripChart extends JPanel {
     int stripMaxY = y + STRIP_SIZE_;
     int drawnElem = 0;
     for (int i = 0; i < numElem; i++) {
-      StripElement se = (StripElement)strip.elements.get(i);
+      StripElement se = strip.elements.get(i);
       Color drawColor = se.color;
       boolean doFill;
       Paint usePaint = null;
@@ -458,7 +458,7 @@ public abstract class MultiStripChart extends JPanel {
     
     if (drawnElem > 0) {
       g2.setPaint(Color.black);
-      Font mFont = appState_.getFontMgr().getFixedFont(FontManager.STRIP_CHART);
+      Font mFont = dacx_.getFontManager().getFixedFont(FontManager.STRIP_CHART);
       Rectangle2D bounds = mFont.getStringBounds(strip.name, frc_);
       double tWidth = bounds.getWidth();
       double tHeight = bounds.getHeight() * HEIGHT_HACK_;
@@ -486,7 +486,7 @@ public abstract class MultiStripChart extends JPanel {
   */
   
   protected double convertFromScreenX(int xScreen, ChartTransform transform) {
-    double xWorld = (((double)xScreen - transform.screenMin) / transform.slope) + transform.worldMin;
+    double xWorld = ((xScreen - transform.screenMin) / transform.slope) + transform.worldMin;
     return (xWorld);
   }  
  
@@ -508,7 +508,7 @@ public abstract class MultiStripChart extends JPanel {
     protected double slope;
   
     protected ChartTransform(double slope, int screenMin, double worldMin) {
-      this.screenMin = (double)screenMin;
+      this.screenMin = screenMin;
       this.worldMin = worldMin;
       this.slope = slope;
     }

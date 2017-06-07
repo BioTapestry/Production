@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNodeToModule;
@@ -54,8 +56,7 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveNodeFromMod(BTState appState, AddNodeToModule.NamedModuleArgs nma) {
-    super(appState);
+  public RemoveNodeFromMod(AddNodeToModule.NamedModuleArgs nma) {
     name = nma.getName();
     desc = nma.getName();
     modID_ = nma.getID();
@@ -74,8 +75,8 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, modID_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(modID_, dacx);
     return (retval);
   }
  
@@ -86,8 +87,9 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
-    return (rcx.oso.getCurrentOverlay() != null);
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    return (rcx.getOSO().getCurrentOverlay() != null);
   }
     
   /***************************************************************************
@@ -104,6 +106,7 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();      
         } else {
@@ -122,28 +125,20 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
     private String myModID_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+ 
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, String modID, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(String modID, StaticDataAccessContext dacx) {
+      super(dacx);
       myModID_ = modID;
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -162,8 +157,8 @@ public class RemoveNodeFromMod extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToRemove() {
-      String ovrKey = rcxT_.oso.getCurrentOverlay();
-      OverlaySupport.deleteNodeFromModule(appState_, rcxT_, intersect_.getObjectID(), myModID_, ovrKey);          
+      String ovrKey = dacx_.getOSO().getCurrentOverlay();
+      OverlaySupport.deleteNodeFromModule(uics_, dacx_, intersect_.getObjectID(), myModID_, ovrKey, uFac_);          
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
   }

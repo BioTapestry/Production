@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,8 +21,10 @@ package org.systemsbiology.biotapestry.gaggle;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -36,17 +38,13 @@ public class InboundGaggleOp {
   // PROTECTED INSTANCE VARIABLES
   //
   ////////////////////////////////////////////////////////////////////////////
-
-  protected BTState appState_;
-   
+  
   /***************************************************************************
   **
   ** Create the op - called on RMI thread
   */
 
-  public InboundGaggleOp(BTState appState) {
-    appState_ = appState;
-    return;
+  public InboundGaggleOp() {
   }
 
   /***************************************************************************
@@ -54,9 +52,9 @@ public class InboundGaggleOp {
   ** Execute the op - called on AWT thread
   */
 
-  public void executeOp() {
-    ResourceManager rMan = appState_.getRMan();
-    JOptionPane.showMessageDialog(appState_.getTopFrame(),
+  public void executeOp(UIComponentSource uics, UndoFactory uFac, StaticDataAccessContext dacx) {
+    ResourceManager rMan = dacx.getRMan();
+    JOptionPane.showMessageDialog(uics.getTopFrame(),
                                   rMan.getString("gaggle.opNotSupported"), 
                                   rMan.getString("gaggle.opNotSupportedTitle"),
                                   JOptionPane.WARNING_MESSAGE);

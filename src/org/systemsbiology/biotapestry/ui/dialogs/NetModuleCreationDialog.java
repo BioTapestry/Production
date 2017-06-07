@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,8 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -59,7 +60,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   private String nameResult_;
   private boolean doNodeAdd_;
   private boolean gotNodes_;
-  private Set existingNames_;
+  private Set<String> existingNames_;
   private int displayTypeResult_;
   private boolean attachToGroup_;
   
@@ -76,8 +77,8 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public NetModuleCreationDialog(BTState appState, Set existingNames, boolean askForAttach, boolean gotNodes) {
-    super(appState, "nmodule.title", new Dimension(500, 300), 3);
+  public NetModuleCreationDialog(UIComponentSource uics, DataAccessContext dacx, Set<String> existingNames, boolean askForAttach, boolean gotNodes) {
+    super(uics, dacx, "nmodule.title", new Dimension(500, 300), 3);
     existingNames_ = existingNames;
     gotNodes_ = gotNodes;
   
@@ -86,14 +87,14 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
     //
     
     JLabel label = new JLabel(rMan_.getString("nmodule.displayType"));
-    Vector choices = NetModuleProperties.getDisplayTypes(appState_, gotNodes);
+    Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(dacx_, gotNodes);
     typeCombo_ = new JComboBox(choices);
     typeCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
           setInstructions((ChoiceContent)typeCombo_.getSelectedItem());
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -193,7 +194,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   */
   
   private void setInstructions(ChoiceContent displayType) {
-    String instruct =  NetModuleProperties.mapTypeToInstruction(appState_, displayType.val);
+    String instruct =  NetModuleProperties.mapTypeToInstruction(dacx_, displayType.val);
     addInstructionsLabel_.setText(instruct);
     addNodesBox_.setEnabled((displayType.val != NetModuleProperties.MEMBERS_ONLY) && gotNodes_);
     validate();
@@ -206,8 +207,8 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private String uniqueNewName(Set existingNames) {
-    ResourceManager rMan = appState_.getRMan();
+  private String uniqueNewName(Set<String> existingNames) {
+    ResourceManager rMan = dacx_.getRMan();
     String uniqueBase = rMan.getString("nmodule.defaultBaseName");
     int count = 1;
     while (true) {
@@ -228,8 +229,8 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
     nameResult_ = nameField_.getText().trim();
 
     if (nameResult_.equals("")) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nmodule.emptyName"), 
                                     rMan.getString("nmodule.emptyNameTitle"),
                                     JOptionPane.ERROR_MESSAGE); 
@@ -238,8 +239,8 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
 
 
     if (DataUtil.containsKey(existingNames_, nameResult_)) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nmodule.dupName"), 
                                     rMan.getString("nmodule.dupNameTitle"),
                                     JOptionPane.ERROR_MESSAGE); 

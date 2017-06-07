@@ -79,7 +79,7 @@ public class DiamondNodeFree extends AbstractTabletNodeFree {
   
 	protected void renderGlyph(ModalShapeContainer group, GenomeItem item, Point2D origin,
 			Rectangle2D extraPad, Color fillColor, NodeProperties np,
-			DisplayOptions dopt, boolean isGhosted) {
+			DisplayOptions dopt, boolean isGhosted, Mode mode) {
 		
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
@@ -123,7 +123,7 @@ public class DiamondNodeFree extends AbstractTabletNodeFree {
     ModelObjectCache.SegmentedPathShape spath1 = new ModelObjectCache.SegmentedPathShape(DrawMode.FILL, fillColor, new BasicStroke(0), (GeneralPath)path.clone());
     
     BasicStroke drawStroke = new BasicStroke((float)LINE_WIDTH_, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER);
-    Color lineCol = getVariableActivityColor(item, Color.BLACK, false, dopt);
+    Color lineCol = getVariableActivityColor(item, Color.BLACK, false, dopt, mode);
     Color drawColor = (isGhosted) ? dopt.getInactiveGray() : lineCol;
     ModelObjectCache.SegmentedPathShape spath2 = new ModelObjectCache.SegmentedPathShape(DrawMode.DRAW, drawColor, drawStroke, (GeneralPath)path.clone());
     

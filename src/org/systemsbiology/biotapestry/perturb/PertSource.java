@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.util.HashSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -514,11 +514,11 @@ public class PertSource implements Cloneable {
   ** Gets the valid measurement types in a list
   */
   
-  public static List<ObjChoiceContent> getProxySignValues(BTState appState) { 
+  public static List<ObjChoiceContent> getProxySignValues(DataAccessContext dacx) { 
     ArrayList<ObjChoiceContent> retval = new ArrayList<ObjChoiceContent>();
-    retval.add(getProxySignValue(appState, NO_PROXY));
-    retval.add(getProxySignValue(appState, SAME_SIGN_PROXY));
-    retval.add(getProxySignValue(appState, OPPOSITE_SIGN_PROXY));
+    retval.add(getProxySignValue(dacx, NO_PROXY));
+    retval.add(getProxySignValue(dacx, SAME_SIGN_PROXY));
+    retval.add(getProxySignValue(dacx, OPPOSITE_SIGN_PROXY));
     return (retval);
   }
   
@@ -527,8 +527,8 @@ public class PertSource implements Cloneable {
   ** Gets a valid measurement types
   */
   
-  public static ObjChoiceContent getProxySignValue(BTState appState, String proxVal) { 
-    return (new ObjChoiceContent(appState.getRMan().getString("proxyTypes." + proxVal), proxVal));
+  public static ObjChoiceContent getProxySignValue(DataAccessContext dacx, String proxVal) { 
+    return (new ObjChoiceContent(dacx.getRMan().getString("proxyTypes." + proxVal), proxVal));
   }
 
   /***************************************************************************

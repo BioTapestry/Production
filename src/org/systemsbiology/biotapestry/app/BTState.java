@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,37 +20,41 @@
 
 package org.systemsbiology.biotapestry.app;
 
-import java.awt.Dimension;
-import java.awt.Rectangle;
 import java.awt.font.FontRenderContext;
-import java.awt.geom.Point2D;
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.undo.UndoManager;
 
-import org.systemsbiology.biotapestry.cmd.MainCommands;
+import org.systemsbiology.biotapestry.cmd.GroupPanelCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.PopCommands;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.WebServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.PropagateDown;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
 import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
 import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Workspace;
+import org.systemsbiology.biotapestry.db.Metabase;
+import org.systemsbiology.biotapestry.db.SimParamSource;
+import org.systemsbiology.biotapestry.db.TabNameData;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.gaggle.GooseManager;
 import org.systemsbiology.biotapestry.nav.DataPopupManager;
 import org.systemsbiology.biotapestry.nav.GroupSettingManager;
 import org.systemsbiology.biotapestry.nav.ImageManager;
-import org.systemsbiology.biotapestry.nav.LayoutManager;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.OverlayDisplayChange;
 import org.systemsbiology.biotapestry.nav.RecentFilesManager;
@@ -58,24 +62,28 @@ import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.nav.UserTreePathManager;
 import org.systemsbiology.biotapestry.nav.ZoomCommandSupport;
 import org.systemsbiology.biotapestry.plugin.PlugInManager;
+import org.systemsbiology.biotapestry.simulation.ModelSource;
 import org.systemsbiology.biotapestry.ui.CursorManager;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsManager;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.GenomePresentation;
+import org.systemsbiology.biotapestry.ui.GroupPanel;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LayoutOptionsManager;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
+import org.systemsbiology.biotapestry.ui.OverlayStateWriter;
 import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.ui.TextBoxManager;
 import org.systemsbiology.biotapestry.ui.ZoomTargetSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
-import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.ExceptionHandler;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.TaggedSet;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 
@@ -84,7 +92,7 @@ import org.systemsbiology.biotapestry.util.UndoSupport;
 ** Essential current application state
 */
 
-public class BTState implements OverlayStateOracle, HandlerAndManagerSource { 
+public class BTState { 
                                                              
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -100,73 +108,58 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   private SerializableDialogPlatform.Dialog lastWebDialog_;
   private SimpleUserFeedback lastSuf_;
   private WebServerControlFlowHarness.PendingMouseClick pendingClick_;
-  private File serverBtpDirectory_;
-  private File serverConfigDirectory_;
-  private String modelListFile_;
-  private String fullServletContextPath_;
-  
+
   //
   // General use:
   //
   
+  private SimParamSource sps_;
   private FlowMeister fm_;
   private File currentFile_;
   private LoadSaveSupport lsSup_;
   private String sid_;
-  private Database db_;
   private ResourceManager rMan_;
+
   private CommonView cView_;
-  private SUPanel sup_;
-  private PanelCommands pCmds_;
-  private PopCommands popCmds_;
   
+  private Metabase mBase_;
+  private HashMap<String, PerTab> perTab_;
+  private ArrayList<String> tabOrder_;
+  private String currTab_;
+    
   //
   // Controls that used to be implemented purely as Swing
   // now can operate in both Swing and Headless mode:
   //
   
-  private VirtualModelTree vmTree_;
-  private VirtualTimeSlider vtSlider_;
-  private VirtualPathControls vpc_;
-  private VirtualGaggleControls vgc_;
-  private VirtualRecentMenu vrm_;
-  private VirtualZoomControls vzc_;
+  //
+  // These are shared by all tabs. Some e.g. Path control, are
+  // restocked with each tab switch.
+  //
   
-  private LayoutManager layoutMgr_;
+  private VirtualGaggleControls vgc_;
+  private VirtualRecentMenu vrm_; 
+  private VirtualPathControls vpc_;
+ 
   private UndoManager undo_;
   private JFrame topFrame_;
-  private MainCommands mcmd_;
-  private GenomePresentation myGenomePre_;
-  private UserTreePathController utpControl_;
-  private NetOverlayController noc_; 
+
   private boolean doGaggle_;
   private String gaggleSpecies_;
   private boolean isEditor_;
   private Map<String, Object> args_;
   private JComponent topContent_;
   private FontRenderContext frc_;
-  private FontRenderContext tempFRC_;
-  private CursorManager cursorMgr_;
+
   private boolean isHeadless_;
   private boolean isWebApplication_;
-  private TextBoxManager textMgr_;
   private JFrame tempTop_;
   private boolean bigScreen_;
-  private ZoomTargetSupport zoomer_;
-  private ZoomCommandSupport zcs_;
   private EventManager eventMgr_;
   private DataPopupManager dpm_;
   private DisplayOptionsManager dom_;
   private PlugInManager plum_;
-  private UserTreePathManager utpm_;
   
-  private String layout_ = null;
-  private String genomeKey_ = null; 
-  private String currentOverlay_;
-  private NetModuleFree.CurrentSettings currOvrSettings_;
-  private TaggedSet currentNetMods_;
-  private TaggedSet revealed_;
-  private boolean showingNetModuleComponents_;
   private PrintWriter out_;
   private ImageManager imageMgr_;
   private RecentFilesManager rfm_;
@@ -175,15 +168,20 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   private LayoutOptionsManager lopm_;
   private ExceptionHandler exh_;
   
-  private GroupSettingManager gsm_;
   private int undoChangeCount_;
-  private PropagateDown.DownPropState downProp_; // remember user's last down propagation Genome
   private HashMap<String, Boolean> status_;  // Remember e.g. yes no shutup state
-  private SearchModifiers searchMod_; 
+  private CmdSource.SearchModifiers searchMod_; 
   
   private boolean amPulling_;  // Is pulldown mode in effect
-  private DynamicDataAccessContext rcx_; // Needed to keep zoom target in sync with current genome.
-   
+ 
+  private ModelSource mSrc_;
+  
+  private UIComponentSource uics_;
+  private TabSource tSrc_;
+  private CmdSource cSrc_;
+  private RememberSource rSrc_;
+  private PathAndFileSource pafs_;
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -196,7 +194,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   */ 
    
   public BTState() {
-    rMan_ = new ResourceManager(); 
+    rMan_ = new ResourceManager();
+    uics_ = new UIComponentSource(this);
   }
    
   /***************************************************************************
@@ -208,19 +207,46 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
     sid_ = session;
     isHeadless_ = isHeadless;
     isWebApplication_ = isWebApplication;
-    fm_ = new FlowMeister(this);
+
+    UiUtil.fixMePrintout("All tabs getting notified of a change in one tab??");
     eventMgr_ = new EventManager();
     imageMgr_ = new ImageManager();
     goomr_ = new GooseManager();
-    utpm_ = new UserTreePathManager();
+    
+    uics_ = new UIComponentSource(this);
+    tSrc_ = new TabSource(this);
+    mBase_ = new Metabase(this, uics_, tSrc_);
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(this, mBase_, isWebApplication);
+    mBase_.setDDacx(ddacx);
+    
     fom_ = new FontManager();
-    rfm_ = new RecentFilesManager(this);
-    gsm_ = new GroupSettingManager(this);
-    lopm_ = new LayoutOptionsManager(this);
-    // DB gotta get going before DOM:
-    db_ = new Database(this);
-    dom_ = new DisplayOptionsManager(this);
+    rfm_ = new RecentFilesManager(uics_);
+    lopm_ = new LayoutOptionsManager(ddacx);
     rMan_ = new ResourceManager();
+   
+    //
+    // Plugin manager needs to start before database:
+    //
+    
+    plum_ = new PlugInManager(ddacx, uics_);
+    
+    // DB gotta get going before DOM:
+    perTab_ = new HashMap<String, PerTab>();
+    tabOrder_ = new ArrayList<String>();
+
+    currTab_ = mBase_.getNextDbID();
+    perTab_.put(currTab_, new PerTab(currTab_));
+    perTab_.get(currTab_).initRcx(this);
+    mBase_.addDB(0, currTab_);
+    
+    tabOrder_.add(currTab_);
+    
+    UiUtil.fixMePrintout("This circles back to this instance to mess things up");
+    dom_ = new DisplayOptionsManager(ddacx);
+    cSrc_ = new CmdSource(this, uics_);
+    rSrc_ = new RememberSource(this);
+    pafs_ = new PathAndFileSource(this);
+    
     args_ = args;
 
     gaggleSpecies_ = ((String)args_.get(ArgParser.GAGGLE));
@@ -230,18 +256,13 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
       doBig = new Boolean(false);
     }
     bigScreen_ = doBig.booleanValue(); 
-    layoutMgr_ = new LayoutManager(this);
-    currentNetMods_ = new TaggedSet();
-    revealed_ = new TaggedSet();
-    showingNetModuleComponents_ = false;    
-    dpm_ = new DataPopupManager(this);
-    plum_ = new PlugInManager(this);
+    dpm_ = new DataPopupManager(ddacx, uics_, tSrc_);
     undoChangeCount_ = 0;
-    downProp_ = new PropagateDown.DownPropState();
     status_ = new HashMap<String, Boolean>();
-    searchMod_ = new SearchModifiers();
+    searchMod_ = new CmdSource.SearchModifiers();
     amPulling_ = false;
-    rcx_ = new DynamicDataAccessContext(this);
+    sps_ = new SimParamSource();
+   
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -249,100 +270,470 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////    
+ 
+  /***************************************************************************
+  ** 
+  ** Get tab-pinned data access contexts
+  */  
+  
+  Map<String, TabPinnedDynamicDataAccessContext> getTabContexts() { 
+    HashMap<String, TabPinnedDynamicDataAccessContext> retval = new HashMap<String, TabPinnedDynamicDataAccessContext>();     
+    for (String tabKey : perTab_.keySet()) {
+      retval.put(tabKey, perTab_.get(tabKey).rcx_);
+    }
+    return (retval);   
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get single tab-pinned data access context
+  */  
+  
+  TabPinnedDynamicDataAccessContext getTabContext(String tabKey) {
+    return (perTab_.get(tabKey).rcx_);
+  }
 
+  /***************************************************************************
+  ** 
+  ** Get the various application sources
+  */   
+  
+  public AppSources getAppSources() {
+    return (new AppSources(this));
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Certain saved state is handled by RememberSource
+  */   
+  
+  PathAndFileSource getPathAndFileSource() {
+    return (pafs_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Certain saved state is handled by RememberSource
+  */   
+  
+  RememberSource getRememberSource() {
+    return (rSrc_);
+  }
+
+  /***************************************************************************
+  ** 
+  ** Command access is handled by CmdSource:
+  */   
+  
+  CmdSource getCmdSource() {
+    return (cSrc_);
+  }
+
+  /***************************************************************************
+  ** 
+  ** Tabbing state is handled by the TabSource:
+  */   
+  
+  TabSource getTabSource() {
+    return (tSrc_);
+  }
+
+  /***************************************************************************
+  ** 
+  ** UI Components are handled by the UIComponentSource:
+  */   
+  
+  UIComponentSource getUIComponentSource() {
+    return (uics_);
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** get if group node is selected
+  */   
+  
+  public boolean groupNodeSelected() {
+    return (perTab_.get(currTab_).groupNodeSelected_);
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** set if group node is selected
+  */
+ 
+  public void setGroupNodeSelected(boolean selected) {
+    perTab_.get(currTab_).groupNodeSelected_ = selected;
+    return;
+  }
+
+  /***************************************************************************
+  ** 
+  ** get the Metabase
+  */
+  
+  Metabase getMetabase() { 
+    return (mBase_);  
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** reset data for our one tab on load
+  */
+  
+  void resetTabForLoadX(String dbID, int tabNum) throws IOException {
+
+    if ((perTab_.size() != 1) || (tabOrder_.size() != 1) || (tabNum != 0)) {
+      throw new IOException(); 
+    }   
+    mBase_.resetZeroDB(tabNum, dbID);
+    PerTab pt = perTab_.get(currTab_);
+    currTab_ = dbID;
+    perTab_.put(currTab_, pt);
+    tabOrder_.clear();
+    tabOrder_.add(tabNum, currTab_); 
+    return;  
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Add a new tab. If dbID != null, we are specifying database from IO load. Else
+  ** this is what creates the database for the new tab.
+  */
+  
+  TabChange addATabX(boolean forLoad, String dbID, int tabNum) {
+	  
+    TabChange retval = new TabChange(false);
+    retval.didTabChange = false;
+    retval.newCurrIndexPre = getCurrentTabIndexX();
+    retval.newChangeIndex = (!forLoad) ? tabOrder_.size() : tabNum; 
+    
+    if (dbID == null) {
+      currTab_ = mBase_.getNextDbID();
+      retval.newBTPerTab = new PerTab(currTab_);
+      perTab_.put(currTab_, retval.newBTPerTab);
+      retval.newBTPerTab.initRcx(this);
+      mBase_.addDB(retval.newChangeIndex, currTab_);
+    } else {
+      currTab_ = dbID;
+      retval.newBTPerTab = new PerTab(currTab_);
+      perTab_.put(currTab_, retval.newBTPerTab);
+      retval.newBTPerTab.initRcx(this);
+      mBase_.loadDB(tabNum, dbID);
+    }
+    retval.newDB = mBase_.getDB(currTab_);
+    retval.newDbId = retval.newDB.getID();
+
+   
+    tabOrder_.add(retval.newChangeIndex, currTab_);
+    
+    retval.newCurrIndexPost = getCurrentTabIndexX();
+    return (retval);  
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Remove a tab
+  */
+  
+  TabChange removeATabX(int tabIndex, int currentCurrent, int newCurrent) {
+    if (perTab_.size() == 1) {
+      return (null);
+    }
+    TabChange retval = new TabChange(false);
+    retval.didTabChange = false;
+    retval.oldCurrIndexPre = currentCurrent;
+    retval.oldChangeIndex = tabIndex;
+    retval.oldDbId = tabOrder_.remove(tabIndex);    
+    retval.oldDB = mBase_.removeDB(retval.oldDbId);
+    retval.oldBTPerTab = perTab_.remove(retval.oldDbId);
+    if (tabIndex == retval.oldCurrIndexPre) {
+      if (perTab_.size() == tabIndex) {
+        currTab_ = tabOrder_.get(retval.oldCurrIndexPre - 1);
+      } else {
+        currTab_ = tabOrder_.get(retval.oldCurrIndexPre);
+      }
+    } else if (tabIndex < retval.oldCurrIndexPre) {
+      currTab_ = tabOrder_.get(retval.oldCurrIndexPre - 1);
+    }
+    
+    //
+    // Have to reset the indices of all the databases above the deletion:
+    //
+    Iterator<String> idIt = mBase_.getDBIDs();
+    while (idIt.hasNext()) {
+      String dbid = idIt.next();
+      Database dbNow = mBase_.getDB(dbid);
+      int oldIndex = dbNow.getIndex();
+      if (oldIndex > tabIndex) {
+        dbNow.setIndex(oldIndex - 1);
+        Integer[] onindx = new Integer[2];
+        onindx[0] = Integer.valueOf(oldIndex);
+        onindx[1] = Integer.valueOf(oldIndex - 1);
+        retval.reindex.put(dbid, onindx);
+      }
+    }
+    
+    retval.oldCurrIndexPost = newCurrent;
+    return (retval);   
+  }
+  
+ 
+  /***************************************************************************
+  **
+  ** Undo a tab change
+  */
+  
+  void changeTabUndoX(TabChange undo) {
+    if (undo.didTabChange) {
+      setCurrentTabIndexX(undo.changeTabPreIndex);
+    } else if (undo.oldDB != null) {
+      perTab_.put(undo.oldDbId, undo.oldBTPerTab);
+      mBase_.restoreDB(undo.oldDB);
+      tabOrder_.add(undo.oldChangeIndex, undo.oldDbId);
+      currTab_ = tabOrder_.get(undo.oldCurrIndexPre);
+      //
+      // Have to reset the indices of all the databases above the deletion:
+      //
+      Iterator<String> idIt = undo.reindex.keySet().iterator();
+      while (idIt.hasNext()) {
+        String dbid = idIt.next();
+        Integer[] onindx = undo.reindex.get(dbid);
+        Database dbNow = mBase_.getDB(dbid);
+        dbNow.setIndex(onindx[0].intValue());
+      }
+    } else if (undo.newDB != null) {
+      tabOrder_.remove(undo.newDbId);
+      mBase_.removeDB(undo.newDbId);
+      perTab_.remove(undo.newBTPerTab);
+      currTab_ = tabOrder_.get(undo.newCurrIndexPre);   
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Redo a tab change
+  */
+  
+  void changeTabRedoX(TabChange redo) {
+    if (redo.didTabChange) {
+      System.out.println("did tab change " + redo.changeTabPostIndex);
+      setCurrentTabIndexX(redo.changeTabPostIndex);
+    } else if (redo.oldDB != null) {
+      tabOrder_.remove(redo.oldDbId);
+      mBase_.removeDB(redo.oldDbId);
+      perTab_.remove(redo.oldBTPerTab);
+      currTab_ = tabOrder_.get(redo.oldCurrIndexPost);
+      //
+      // Have to reset the indices of all the databases above the deletion:
+      //
+      Iterator<String> idIt = redo.reindex.keySet().iterator();
+      while (idIt.hasNext()) {
+        String dbid = idIt.next();
+        Integer[] onindx = redo.reindex.get(dbid);
+        Database dbNow = mBase_.getDB(dbid);
+        dbNow.setIndex(onindx[1].intValue());
+      }
+    } else if (redo.newDB != null) {
+      System.out.println("redo.newDB ctr " + redo.newDB);
+      perTab_.put(currTab_, redo.newBTPerTab);
+      mBase_.restoreDB(redo.newDB);
+      tabOrder_.add(redo.newChangeIndex, redo.newDbId);
+      currTab_ = tabOrder_.get(redo.newCurrIndexPost);   
+    }
+    return;
+  }
+
+   /*************
+   * getTabs
+   ************* 
+   * 
+   * Returns the tab name data needed to generate an 
+   * Array of the current set of tabs based on tabOrder_
+   * which contains XPlatTab objects, which house information needed
+   * by the WebClient
+   * 
+   * 
+   */
+  
+  List<TabSource.AnnotatedTabData> getTabsX() {  
+    ArrayList<TabSource.AnnotatedTabData> tabs = new ArrayList<TabSource.AnnotatedTabData>();
+    for(String tab : this.tabOrder_) {
+      Database tabDB = mBase_.getDB(tab);
+      tabs.add(new TabSource.AnnotatedTabData(tab, tabDB.getTabNameData()));
+    }
+   return tabs; 
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Not efficient, but tiny, and this way we don't have to maintain a 
+  ** separate data structure:
+  */  
+  
+  int getTabIndexFromIdX(String id) {
+    for (int i = 0; i < tabOrder_.size(); i++) {
+      if (tabOrder_.get(i).equals(id)) {
+        return (i);
+      }
+    }
+	  throw new IllegalArgumentException();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Need to be able to rename a tab that is not current; need info to fill in
+  */
+  
+  TabNameData getTabNameDataForIndexX(int index) {  
+    Database tabDB = mBase_.getDB(tabOrder_.get(index));
+    return (tabDB.getTabNameData()); 
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Need to get dbid for given index
+  */
+  
+  String getDbIdForIndexX(int index) {  
+    return (tabOrder_.get(index));
+  }
+
+  /***************************************************************************
+  ** 
+  ** Get current tab
+  */
+  
+  String getCurrentTabX() {
+    return (currTab_);  
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** Get current tab
+  */
+  
+  int getCurrentTabIndexX() {
+    int num = getNumTabX();
+    for (int i = 0; i < num; i ++) {
+      String oid = tabOrder_.get(i);
+      if (currTab_.equals(oid)) {
+        return (i);
+      }
+    }
+    throw new IllegalStateException();
+  } 
+
+  /***************************************************************************
+  ** 
+  ** Get number of tabs
+  */
+  
+   int getNumTabX() {
+    return (perTab_.size());  
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Set current tab
+  */
+
+  TabChange setCurrentTabIndexX(String tabId) {
+	  return (this.setCurrentTabIndexX(getTabIndexFromIdX(tabId)));
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set current tab
+  */
+
+  TabChange setCurrentTabIndexX(int cTab) {
+    if ((cTab < 0) || cTab >= perTab_.size()) {
+      throw new IllegalArgumentException();
+    }
+    TabChange retval = new TabChange(false);
+    retval.didTabChange = true;
+    retval.changeTabPreIndex = getCurrentTabIndexX();
+    currTab_ = tabOrder_.get(cTab);
+    retval.changeTabPostIndex = cTab;
+    return (retval);
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** On reset, we need to get ourselves back in sync with the Metabase state.
+  */
+  
+  void clearCurrentTabIDX(String id) {
+    currTab_ = id;
+    UiUtil.fixMePrintout("Illegal state here when reading multi-tab file with bad XML");
+    if ((perTab_.size() != 1) || (tabOrder_.size() != 1)) {
+      throw new IllegalStateException();
+    }
+    
+    String oneKey = perTab_.keySet().iterator().next();
+    PerTab onePT = perTab_.get(oneKey);
+    perTab_.clear();
+    perTab_.put(id, onePT);
+    
+    tabOrder_.set(0, id);
+    return;
+  } 
+
+  /***************************************************************************
+  ** 
+  ** Set current tab
+  */
+  
+  void setCurrentTabIDX(String id) {
+    currTab_ = id;
+    return;
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Get simulator parameter source
+  */
+  
+  SimParamSource getSimParamSource() {
+    return (sps_);  
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** Get simulator model source
+  */
+  
+  public ModelSource getModelSource() {
+    return (mSrc_);  
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set simulator model source
+  */
+  
+  public void setModelSource(ModelSource mSrc) {
+    mSrc_ = mSrc; 
+    return;
+  }   
+  
   /***************************************************************************
   ** 
   ** For setup only! This context is used to drive the zoomer state only
   */
   
-  public DynamicDataAccessContext getRenderingContextForZTS() {
-    return (rcx_);  
+  public DataAccessContext getRenderingContextForZTS() {
+    return (perTab_.get(currTab_).rcx_);  
   }     
 
-  /***************************************************************************
-  ** 
-  ** Get the server BTP directory
-  */
-  
-  public File getServerBtpDirectory() {
-    return (serverBtpDirectory_);  
-  } 
-  
-  /***************************************************************************
-  ** 
-  ** Get the server config files directory
-  */
-  
-  public File getServerConfigDirectory() {
-    return (serverConfigDirectory_);  
-  }   
-  
-  /***************************************************************************
-  ** 
-  ** Set the server BTP directory
-  */
-  
-  public void setServerBtpDirectory(String dir) {
-    serverBtpDirectory_ = new File(dir); 
-    return;
-  } 
-  
-  /***************************************************************************
-  ** 
-  ** Set the server config files directory
-  */
-  
-  public void setServerConfigDirectory(String dir) {
-    serverConfigDirectory_ = new File(dir); 
-    return;
-  } 
- 
-  /***************************************************************************
-  ** 
-  ** Get the servlet's context path (needed to access resource files)
-  *
-  */  
-  
-  public String getFullServletContextPath() {
-	return fullServletContextPath_;
-  }
-
-  /***************************************************************************
-  ** 
-  ** Set the servlet's context path (needed to access resource files)
-  *
-  */
-  
-  public void setFullServletContextPath(String fullServletContextPath_) {
-	this.fullServletContextPath_ = fullServletContextPath_;
-  }
-
-/***************************************************************************
-  ** 
-  ** Get the list of valid model files (if applicable)
-  */
-  
-  public String getServerBtpFileList() {
-    return (modelListFile_);  
-  }   
-  
-  /***************************************************************************
-  ** 
-  ** Set the list of valid model files (if applicable)
-  */
-  
-  public void setServerBtpFileList(String modelListFile) {
-    this.modelListFile_ = modelListFile;
-    return;
-  } 
-  
   /***************************************************************************
   ** 
   ** Get the VirtualZoomControls
   */
   
-  public VirtualZoomControls getVirtualZoom() {
-    return (vzc_);  
+  VirtualZoomControls getVirtualZoomX() {
+    return (perTab_.get(currTab_).vzc_);  
   }   
   
   /***************************************************************************
@@ -350,8 +741,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set the VirtualZoomControls
   */
   
-  public void setVirtualZoom(VirtualZoomControls vzc) {
-    vzc_ = vzc; 
+  void setVirtualZoomX(VirtualZoomControls vzc) {
+    perTab_.get(currTab_).vzc_ = vzc; 
     return;
   }
  
@@ -360,7 +751,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the VirtualRecentMenu
   */
   
-  public VirtualRecentMenu getRecentMenu() {
+  VirtualRecentMenu getRecentMenu() {
     return (vrm_);  
   }   
   
@@ -379,7 +770,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the VirtualGaggleControls
   */
   
-  public VirtualGaggleControls getGaggleControls() {
+  VirtualGaggleControls getGaggleControls() {
     return (vgc_);  
   }   
   
@@ -398,8 +789,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the VirtualPathControls
   */
   
-  public VirtualPathControls getPathControls() {
-    return (vpc_);  
+  VirtualPathControls getPathControls() {
+    return (/*perTab_.get(currTab_).*/vpc_);  
   }   
   
   /***************************************************************************
@@ -408,7 +799,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   */
   
   public void setPathControls(VirtualPathControls vpc) {
-    vpc_ = vpc; 
+    /*perTab_.get(currTab_).*/ vpc_ = vpc; 
     return;
   } 
   
@@ -436,7 +827,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the SimpleBrowserDialogPlatform.Dialog
   */
   
-  public SerializableDialogPlatform.Dialog getDialog() {
+  SerializableDialogPlatform.Dialog getDialog() {
     return (lastWebDialog_);  
   }   
   
@@ -445,7 +836,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set the SimpleBrowserDialogPlatform.Dialog
   */
   
-  public void setDialog(SerializableDialogPlatform.Dialog lastWebDialog) {
+  void setDialog(SerializableDialogPlatform.Dialog lastWebDialog) {
     lastWebDialog_ = lastWebDialog; 
     return;
   }  
@@ -455,7 +846,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the SimpleUserFeedback
   */
   
-  public SimpleUserFeedback getSUF() {
+  SimpleUserFeedback getSUF() {
     return (lastSuf_);  
   }   
   
@@ -464,7 +855,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set theSimpleUserFeedback
   */
   
-  public void setSUF(SimpleUserFeedback lastSuf) {
+  void setSUF(SimpleUserFeedback lastSuf) {
     lastSuf_ = lastSuf; 
     return;
   } 
@@ -474,7 +865,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the PendingMouseClick
   */
   
-  public WebServerControlFlowHarness.PendingMouseClick getPendingClick() {
+  WebServerControlFlowHarness.PendingMouseClick getPendingClick() {
     return (pendingClick_);  
   }   
   
@@ -483,7 +874,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set the PendingMouseClick
   */
   
-  public void setPendingClick(WebServerControlFlowHarness.PendingMouseClick pendingClick) {
+  void setPendingClick(WebServerControlFlowHarness.PendingMouseClick pendingClick) {
     pendingClick_ = pendingClick; 
     return;
   } 
@@ -493,7 +884,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get the Flow meister
   */
   
-  public FlowMeister getFloM() {
+  FlowMeister getFloMX() {
     return (fm_);  
   }   
   
@@ -502,8 +893,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Return last down prop target
   */
   
-  public PropagateDown.DownPropState getDownProp() {
-    return (downProp_);  
+  PropagateDown.DownPropState getDownProp() {
+    return (perTab_.get(currTab_).downProp_);  
   }   
 
   /***************************************************************************
@@ -511,7 +902,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Are we doing pulldown?
   */
   
-  public boolean getAmPulling() {
+  boolean getAmPulling() {
+    UiUtil.fixMePrintout("Should this be per tab??");
     return (amPulling_);  
   }   
 
@@ -520,17 +912,17 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set if we doing pulldown
   */
   
-  public void setAmPulling(boolean amPulling) {
+  void setAmPulling(boolean amPulling) {
     amPulling_ = amPulling;
     return;
   }   
   
-    /***************************************************************************
+  /***************************************************************************
   **
   ** Bump up undo count
   */
   
-  public void bumpUndoCount() {
+  void bumpUndoCount() {
     undoChangeCount_++;  
     return;
   }   
@@ -540,18 +932,18 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Clear the change tracking
   */
   
-  public void clearUndoTracking() {
+  void clearUndoTracking() {
     undoChangeCount_ = 0;  
     return;
   }  
  
   /***************************************************************************
   **
-  ** Answer if a change has occurred sincce last clear.  FIX ME: We don't
+  ** Answer if a change has occurred since last clear.  FIX ME: We don't
   ** account for undone/redone changes.
   */
   
-  public boolean hasAnUndoChange() {
+  boolean hasAnUndoChange() {
     return (undoChangeCount_ > 0);
   }
    
@@ -560,7 +952,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
        
-   public LayoutOptionsManager getLayoutOptMgr() {
+   LayoutOptionsManager getLayoutOptMgr() {
      return (lopm_);
    } 
   
@@ -569,16 +961,35 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
       
-  public UserTreePathManager getPathMgr() {
-    return (utpm_);
+  UserTreePathManager getPathMgr() {
+    return (perTab_.get(currTab_).utpm_);
   } 
 
   /***************************************************************************
   **
   ** Command
   */ 
+
+  boolean hasPaths() {
+	  boolean hasPaths = false;
+	  Set<String> tabs = perTab_.keySet();
+	  
+	  Iterator<String> tabIt = tabs.iterator();
+	  
+	  while(tabIt.hasNext() && !hasPaths) {
+		  String thisTab = tabIt.next();
+		  hasPaths = (perTab_.get(thisTab).utpm_.getPathCount() > 0);
+	  }
+	  
+	  return hasPaths;
+  }
+  
+  /***************************************************************************
+  **
+  ** Command
+  */ 
       
-   public GooseManager getGooseMgr() {
+   GooseManager getGooseMgr() {
      return (goomr_);
    }  
   
@@ -587,7 +998,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
       
-   public FontManager getFontMgr() {
+   FontManager getFontMgr() {
      return (fom_);
    }  
   
@@ -596,7 +1007,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
       
-   public RecentFilesManager getRecentFilesMgr() {
+   RecentFilesManager getRecentFilesMgr() {
      return (rfm_);
    }  
   
@@ -605,8 +1016,17 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
       
-   public GroupSettingManager getGroupMgr() {
-     return (gsm_);
+   public GroupSettingManager getGroupMgrX(String tab) {
+     return (perTab_.get(tab).gsm_);
+   }  
+   
+  /***************************************************************************
+  **
+  ** Command
+  */ 
+      
+   GroupSettingManager getGroupMgrX() {
+     return (getGroupMgrX(currTab_));
    }  
 
   /***************************************************************************
@@ -614,7 +1034,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
      
-  public void setCurrentPrintWriter(PrintWriter out) {
+  void setCurrentPrintWriterX(PrintWriter out) {
     out_ = out;
     return;
   }  
@@ -624,7 +1044,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
      
-  public PrintWriter getCurrentPrintWriter() {
+  PrintWriter getCurrentPrintWriterX() {
     return (out_);
   }
  
@@ -633,7 +1053,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
      
-  public PlugInManager getPlugInMgr() {
+  PlugInManager getPlugInMgrX() {
     return (plum_);
   }   
    
@@ -642,7 +1062,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
      
-  public DisplayOptionsManager getDisplayOptMgr() {
+  DisplayOptionsManager getDisplayOptMgrX() {
     return (dom_);
   } 
   
@@ -651,7 +1071,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
     
-  public DataPopupManager getDataPopupMgr() {
+  DataPopupManager getDataPopupMgrX() {
     return (dpm_);
   } 
  
@@ -660,7 +1080,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
     
-  public EventManager getEventMgr() {
+  EventManager getEventMgrX() {
     return (eventMgr_);
   } 
    
@@ -669,7 +1089,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Command
   */ 
     
-  public ImageManager getImageMgr() {
+  ImageManager getImageMgrX() {
     return (imageMgr_);
   } 
  
@@ -678,7 +1098,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Push down a temp top frame
   */  
    
-  public void pushTopFrame(JFrame newTop) {
+  public void pushTopFrameX(JFrame newTop) {
     tempTop_ = newTop;
     return;
   }  
@@ -688,38 +1108,63 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
    ** Pop a temp top frame
    */  
     
-   public void popTopFrame() {
+   public void popTopFrameX() {
      tempTop_ = null;
      return;
    }  
- 
-   /****************************************************************************
-   **
-   ** Push down a temp FRC
-   */  
-     
-   public void pushFRC(FontRenderContext tempFRC) {
-     tempFRC_ = tempFRC;
-     return;
-   }  
-    
-   /****************************************************************************
-   **
-   ** Pop a temp FRC
-   */  
-      
-   public void popFRC() {
-     tempFRC_ = null;
-     return;
-   }  
-    
+
+  /****************************************************************************
+  **
+  ** Get OverlayStateOracle
+  */  
+   
+  public OverlayStateOracle getOSOX() {
+    return (getOSOX(currTab_));
+  }
+  
+  /****************************************************************************
+  **
+  ** Get OverlayStateOracle
+  */  
+   
+  OverlayStateOracle getOSOX(String tab) {
+    return (perTab_.get(tab).ptoso_);
+  }
+  
+  /****************************************************************************
+  **
+  ** Get OverlayState Writer
+  */  
+   
+  public OverlayStateWriter getOverlayWriterX(String tab) {
+    return (perTab_.get(tab).ptoso_);
+  }
+  
+  /****************************************************************************
+  **
+  ** Get OverlayState Writer
+  */  
+   
+  public OverlayStateWriter getOverlayWriter() {
+    return (getOverlayWriterX(currTab_));
+  }
+  
   /****************************************************************************
   **
   ** Get Database
   */  
    
-  public Database getDB() {
-    return (db_);
+  Database getDBX() {
+    return (getDBX(currTab_));
+  }
+  
+  /****************************************************************************
+  **
+  ** Get Database
+  */  
+   
+  Database getDBX(String tab) {
+    return (mBase_.getDB(tab));
   }
   
   /****************************************************************************
@@ -727,7 +1172,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get Resource Manager
   */  
    
-  public ResourceManager getRMan() {
+  public ResourceManager getRManX() {
     return (rMan_);
   }
   
@@ -745,7 +1190,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set TopFrame
   */  
   
-  public BTState setTopFrame(JFrame topFrame, JComponent contentPane) {
+  public BTState setTopFrameX(JFrame topFrame, JComponent contentPane) {
     topFrame_ = topFrame;
     topContent_ = contentPane;
     return (this);
@@ -756,7 +1201,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set ExceptionHandler
   */  
    
-  public void setExceptionHandler(ExceptionHandler exh) {
+  void setExceptionHandlerX(ExceptionHandler exh) {
     synchronized (this) {
       exh_ = exh;
     }
@@ -768,7 +1213,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get ExceptionHandler
   */  
    
-  public ExceptionHandler getExceptionHandler() {
+  public ExceptionHandler getExceptionHandlerX() {
     synchronized (this) {
       return (exh_);
     }
@@ -779,7 +1224,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set status value
   */  
    
-  public void setStatus(String key, boolean val) {
+  void setStatus(String key, boolean val) {
     status_.put(key, Boolean.valueOf(val));
     return;
   }
@@ -789,7 +1234,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get status value
   */  
    
-  public Boolean getStatus(String key) {
+  Boolean getStatus(String key) {
     return (status_.get(key));
   }  
    
@@ -798,7 +1243,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Answer if headless
   */  
    
-  public boolean isHeadless() {
+  boolean isHeadless() {
     return (isHeadless_);
   }
  
@@ -816,7 +1261,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get TopFrame
   */  
    
-  public JFrame getTopFrame() {
+  JFrame getTopFrame() {
     if (tempTop_ != null) {
       return (tempTop_);
     }
@@ -838,7 +1283,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set current file
   */  
   
-  public void setCurrentFile(File currentFile) {
+  void setCurrentFile(File currentFile) {
     currentFile_ = currentFile;
     return;
   }
@@ -848,7 +1293,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get current file
   */  
    
-  public File getCurrentFile() {
+  File getCurrentFile() {
     return (currentFile_);
   }
   
@@ -867,7 +1312,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get load save support
   */  
    
-  public LoadSaveSupport getLSSupport() {
+  LoadSaveSupport getLSSupport() {
     return (lsSup_);
   }
   
@@ -876,7 +1321,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
    ** Set CommonView
    */  
    
-   public BTState setCommonView(CommonView cView) {
+   BTState setCommonView(CommonView cView) {
      cView_ = cView;
      return (this);
    }
@@ -886,7 +1331,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
    ** Get CommonView
    */  
     
-   public CommonView getCommonView() {
+   CommonView getCommonView() {
      return (cView_);
    }
   
@@ -895,8 +1340,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set Cursor Manager
   */  
   
-  public BTState setCursorManager(CursorManager cursorMgr) {
-    cursorMgr_ = cursorMgr;
+  BTState setCursorManager(CursorManager cursorMgr) {
+    perTab_.get(currTab_).cursorMgr_ = cursorMgr;
     return (this);
   }
   
@@ -905,8 +1350,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get Cursor Manager
   */  
    
-  public CursorManager getCursorMgr() {
-    return (cursorMgr_);
+  CursorManager getCursorMgr() {
+    return (perTab_.get(currTab_).cursorMgr_);
   }
   
   /****************************************************************************
@@ -914,8 +1359,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set Path Controller
   */  
   
-  public BTState setPathController(UserTreePathController utpControl) {
-    utpControl_ = utpControl;
+  BTState setPathControllerX(UserTreePathController utpControl) {
+    perTab_.get(currTab_).utpControl_ = utpControl;
     return (this);
   }
   
@@ -924,8 +1369,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get Path Controller
   */  
    
-  public UserTreePathController getPathController() {
-    return (utpControl_);
+  UserTreePathController getPathControllerX() {
+    return (perTab_.get(currTab_).utpControl_);
   }
 
   /****************************************************************************
@@ -933,8 +1378,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set TextBoxManager
   */  
   
-  public BTState setTextBoxManager(TextBoxManager textMgr) {
-    textMgr_ = textMgr;
+  public BTState setTextBoxManagerX(TextBoxManager textMgr) {
+    perTab_.get(currTab_).textMgr_ = textMgr;
     return (this);
   }
   
@@ -943,8 +1388,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get TextBoxManager
   */  
    
-  public TextBoxManager getTextBoxMgr() {
-    return (textMgr_);
+  TextBoxManager getTextBoxMgrX() {
+    return (perTab_.get(currTab_).textMgr_);
   }
 
   /****************************************************************************
@@ -952,10 +1397,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get Font render context
   */  
    
-  public FontRenderContext getFontRenderContext() {
-    if (tempFRC_ != null) {
-      return (tempFRC_);
-    }
+  FontRenderContext getFontRenderContext() {
     return (frc_);
   }
   
@@ -974,7 +1416,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set if is editor
   */  
   
-  public BTState setIsEditor(boolean isEdit) {
+  BTState setIsEditor(boolean isEdit) {
     isEditor_ = isEdit;
     // needs to be initialized even for viewer since tree navigation creates undos that are tossed away...
     undo_ = new UndoManager();
@@ -987,7 +1429,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get if is editor
   */  
   
-  public boolean getIsEditor() {
+  boolean getIsEditorX() {
     return (isEditor_);
   }
   
@@ -996,7 +1438,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get if gaggle-enabled
   */  
   
-  public boolean getDoGaggle() {
+  boolean getDoGaggleX() {
     return (doGaggle_);
   }
   
@@ -1005,7 +1447,7 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get if using large fonts
   */  
   
-  public boolean doBig() {
+  boolean doBigX() {
     return (bigScreen_);
   }
    
@@ -1023,8 +1465,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** set Pop Commands
   */  
   
-  public BTState setPopCmds(PopCommands popCmds) {
-    popCmds_ = popCmds;
+  BTState setPopCmdsX(PopCommands popCmds) {
+    perTab_.get(currTab_).popCmds_ = popCmds;
     return (this);
   }
   
@@ -1033,8 +1475,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
    ** Get Pop Commands
    */  
    
-   public PopCommands getPopCmds() {
-     return (popCmds_);
+   PopCommands getPopCmdsX() {
+     return (perTab_.get(currTab_).popCmds_);
    } 
   
   /****************************************************************************
@@ -1042,8 +1484,27 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Get Panel Commands
   */  
   
-  public PanelCommands getPanelCmds() {
-    return (pCmds_);
+  PanelCommands getPanelCmdsX() {  
+    return (perTab_.get(currTab_).pCmds_);
+  }
+  
+  /****************************************************************************
+  **
+  ** set Group Panel Commands
+  */  
+  
+  BTState setGroupPanelCmdsX(GroupPanelCommands gpCmds) {
+    perTab_.get(currTab_).gpCmds_ = gpCmds;
+    return (this);
+  }
+  
+  /****************************************************************************
+  **
+  ** Get Group Panel Commands
+  */  
+  
+  GroupPanelCommands getGroupPanelCmdsX() {
+    return (perTab_.get(currTab_).gpCmds_);
   }
   
   /****************************************************************************
@@ -1051,56 +1512,47 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** set Panel Commands
   */  
   
-  public BTState setPanelCmds(PanelCommands pCmds) {
-    pCmds_ = pCmds;
+  BTState setPanelCmdsX(PanelCommands pCmds) {
+    perTab_.get(currTab_).pCmds_ = pCmds;
     return (this);
   }
   
-  /****************************************************************************
-  **
-  ** Get Main Commands
-  */  
-  
-  public MainCommands getMainCmds() {
-    return (mcmd_);
-  }
-  
-  /****************************************************************************
-  **
-  ** set Main Commands
-  */  
-  
-  public BTState setMainCmds(MainCommands mcmd) {
-    mcmd_ = mcmd;
-    return (this);
-  }
 
   /****************************************************************************
-   **
-   ** set ZoomCommandSupport
-   */  
+  **
+  ** set ZoomCommandSupport
+  */  
    
-   public BTState setZoomCommandSupport(ZoomCommandSupport zcs) {
-     zcs_ = zcs;
-     return (this);
-   }
+  BTState setZoomCommandSupportX(ZoomCommandSupport zcs) {
+    perTab_.get(currTab_).zcs_ = zcs;
+    return (this);
+  }
    
    /***************************************************************************
    **
    ** Used to get the ZoomCommandSupport
    */
    
-   public ZoomCommandSupport getZoomCommandSupport() {
-     return (zcs_);
+   ZoomCommandSupport getZoomCommandSupportX() {
+     return (perTab_.get(currTab_).zcs_);
    }
   
+   /***************************************************************************
+   **
+   ** Used to get the ZoomCommandSupport
+   */
+   
+   ZoomCommandSupport getZoomCommandSupportForTabX(int index) {
+     return (perTab_.get(tabOrder_.get(index)).zcs_);
+   }
+   
   /****************************************************************************
   **
   ** set time slider
   */  
   
-  public BTState setVTSlider(VirtualTimeSlider vtSlider) {
-    vtSlider_ = vtSlider;
+  BTState setVTSliderX(VirtualTimeSlider vtSlider) {
+    perTab_.get(currTab_).vtSlider_ = vtSlider;
     return (this);
   }
   
@@ -1109,8 +1561,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the time slider
   */
   
-  public VirtualTimeSlider getVTSlider() {
-    return (vtSlider_);
+   VirtualTimeSlider getVTSliderX() {
+    return (perTab_.get(currTab_).vtSlider_);
   }
   
   /***************************************************************************
@@ -1118,8 +1570,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the display panel
   */
   
-  public SUPanel getSUPanel() {
-    return (sup_);
+  SUPanel getSUPanelX() {
+    return (perTab_.get(currTab_).sup_);
   }
  
   /****************************************************************************
@@ -1127,27 +1579,37 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** set the display panel
   */  
    
-  public BTState setSUPanel(SUPanel sup) {
-    sup_ = sup;
+  BTState setSUPanelX(SUPanel sup) {
+    perTab_.get(currTab_).sup_ = sup;
     return (this);
   }
   
   /***************************************************************************
   **
-  ** Used to get the layout manager
+  ** Used to get the group panel
   */
   
-  public LayoutManager getLayoutMgr() {
-    return (layoutMgr_);
-  } 
-  
+  GroupPanel getGroupPanel() {
+    return (perTab_.get(currTab_).gup_);
+  }
+ 
+  /****************************************************************************
+  **
+  ** set the group panel
+  */  
+   
+  public BTState setGroupPanel(GroupPanel gup) {
+    perTab_.get(currTab_).gup_ = gup;
+    return (this);
+  }
+
   /****************************************************************************
   **
   ** set the tree
   */  
   
-  public BTState setVmTree(VirtualModelTree vmTree) {
-    vmTree_ = vmTree;
+  BTState setVmTreeX(VirtualModelTree vmTree) {
+    perTab_.get(currTab_).vmTree_ = vmTree;
     return (this);
   }
  
@@ -1156,8 +1618,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the tree
   */
   
-  public VirtualModelTree getTree() {
-    return (vmTree_);
+  VirtualModelTree getTreeX() {
+    return (perTab_.get(currTab_).vmTree_);
   }
   
   /****************************************************************************
@@ -1165,8 +1627,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** set the Zoom target
   */  
   
-  public BTState setZoomTarget(ZoomTargetSupport zoomer) {
-    zoomer_ = zoomer;
+  BTState setZoomTargetX(ZoomTargetSupport zoomer) {
+    perTab_.get(currTab_).zoomer_ = zoomer;
     return (this);
   }
  
@@ -1175,16 +1637,25 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the Zoom target
   */
   
-  public ZoomTargetSupport getZoomTarget() {
-    return (zoomer_);
+  ZoomTargetSupport getZoomTargetX() {
+    return (getZoomTargetX(currTab_));
   }
     
+  /***************************************************************************
+  **
+  ** Used to get the Zoom target
+  */
+  
+  ZoomTargetSupport getZoomTargetX(String currTab) {
+    return (perTab_.get(currTab).zoomer_);
+  }
+
   /***************************************************************************
   **
   ** Used to get the undo manager
   */
   
-  public UndoManager getUndoManager() {
+  UndoManager getUndoManager() {
     return (undo_);
   }  
 
@@ -1193,8 +1664,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** set the renderer
   */  
     
-  public BTState setGenomePresentation(GenomePresentation myGenomePre) {
-    myGenomePre_ = myGenomePre;
+  BTState setGenomePresentationX(GenomePresentation myGenomePre) {
+    perTab_.get(currTab_).myGenomePre_ = myGenomePre;
     return (this);
   }
   
@@ -1203,8 +1674,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** get the Net Overlay Controller
   */  
     
-  public NetOverlayController getNetOverlayController() {
-    return (noc_);
+  NetOverlayController getNetOverlayControllerX() {
+    return (perTab_.get(currTab_).noc_);
   }
   
   /****************************************************************************
@@ -1212,8 +1683,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set the NetOverlayController
   */  
     
-  public BTState setNetOverlayController(NetOverlayController noc) {
-    noc_ = noc;
+  BTState setNetOverlayControllerX(NetOverlayController noc) {
+    perTab_.get(currTab_).noc_ = noc;
     return (this);
   }
   
@@ -1222,8 +1693,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** get the renderer
   */  
     
-  public GenomePresentation getGenomePresentation() {
-    return (myGenomePre_);
+  GenomePresentation getGenomePresentationX() {
+    return (perTab_.get(currTab_).myGenomePre_);
   }
   
   /***************************************************************************
@@ -1232,20 +1703,23 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   */
   
   public void setGenomeForUndo(String key, DataAccessContext dacx) {
-    genomeKey_ = key;
-     //
-     // Gotta keep the DataAccessContext in sync!
-     //
-     dacx.setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
-     dacx.setLayout((key == null) ? null : dacx.lSrc.getLayoutForGenomeKey(key));
-    textMgr_.setMessageSource(genomeKey_, TextBoxManager.MODEL_MESSAGE, true);
+    perTab_.get(currTab_).genomeKey_ = key;
+    //
+    // If dacx is static, gotta keep it in sync!
+    //
+    if (dacx instanceof StaticDataAccessContext) {
+      ((StaticDataAccessContext)dacx).setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
+      ((StaticDataAccessContext)dacx).setLayout((key == null) ? null : dacx.getLayoutSource().getLayoutForGenomeKey(key));
+    }
+    perTab_.get(currTab_).textMgr_.setMessageSource(perTab_.get(currTab_).genomeKey_, TextBoxManager.MODEL_MESSAGE, true);
     
-    NetOverlayController noc = getNetOverlayController();
+    NetOverlayController noc = getNetOverlayControllerX();
    // if ((key != null) && noc.hasPreloadForNextGenome(key)) {
-      noc.setForNewGenome(genomeKey_, null, null, dacx);
+      noc.setForNewGenome(perTab_.get(currTab_).genomeKey_, null, null, dacx);
   //  }
-    rcx_.setGenome((genomeKey_ == null) ? null : rcx_.getGenomeSource().getGenome());
-    //zoomer_.setGenome(key); now handled through rcx_ state change above!
+      
+    // This makes no sense in the current set-up? A dynamic DACX tracks current genome automatically, from genomeKey_ = key. You CANNOT set it! 
+    perTab_.get(currTab_).rcx_.setGenome((perTab_.get(currTab_).genomeKey_ == null) ? null : perTab_.get(currTab_).rcx_.getGenomeSource().getGenome(key));
     return;
   }  
    
@@ -1255,16 +1729,18 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   */
   
   public void setGenome(String key, UndoSupport support, DataAccessContext dacx) {	
-    getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
+    cSrc_.getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
     boolean updateModules = false;
    
     // Note this omits case of (genomeKey == null) && (key != null), which
     // OK in the context of clearing selections (key == null means nothing is
     // selected and nothing needs clearing:
-    if ((key == null) || ((genomeKey_ != null) && !genomeKey_.equals(key))) {
+    if ((key == null) || ((perTab_.get(currTab_).genomeKey_ != null) && !perTab_.get(currTab_).genomeKey_.equals(key))) {
       // FIX ME:  Better yet, cache selections and reinstall later?
-      DataAccessContext rcx2 = new DataAccessContext(rcx_, genomeKey_, layout_);
-      myGenomePre_.clearSelections(rcx2, support);
+      StaticDataAccessContext rcx2 = new StaticDataAccessContext(perTab_.get(currTab_).rcx_,
+                                                                 perTab_.get(currTab_).genomeKey_, 
+                                                                 perTab_.get(currTab_).layout_);
+      perTab_.get(currTab_).myGenomePre_.clearSelections(new UIComponentSource(this), rcx2, support);
       updateModules = true;
     }
      
@@ -1272,31 +1748,37 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
      // For module updates, we need to catch the extra case, plus when we are waiting for
      // a user path change:
      OverlayDisplayChange odc = null;
-     NetOverlayController noc = getNetOverlayController();
+     NetOverlayController noc = getNetOverlayControllerX();
      
-     if (updateModules || ((genomeKey_ == null) && (key != null)) || noc.hasPreloadForNextGenome(key)) {
+     if (updateModules || ((perTab_.get(currTab_).genomeKey_ == null) && (key != null)) || noc.hasPreloadForNextGenome(key)) {
        updateModules = true;
        // Gotta send all the old info to the overlay controller so it can generate
        // consistent undo packages:
        odc = new OverlayDisplayChange();
-       odc.oldGenomeID = genomeKey_;
-       odc.oldOvrKey = currentOverlay_;
-       odc.oldModKeys = currentNetMods_.clone();
-       odc.oldRevealedKeys = revealed_.clone();
+       odc.oldGenomeID = perTab_.get(currTab_).genomeKey_;
+       odc.oldOvrKey = perTab_.get(currTab_).currentOverlay_;
+       odc.oldModKeys = perTab_.get(currTab_).currentNetMods_.clone();
+       odc.oldRevealedKeys = perTab_.get(currTab_).revealed_.clone();
      }
-     genomeKey_ = key;
+     perTab_.get(currTab_).genomeKey_ = key;
      //
      // Gotta keep the DataAccessContext in sync!
      //
-     dacx.setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
-     dacx.setLayout((key == null) ? null : dacx.lSrc.getLayoutForGenomeKey(key));
-     
-     textMgr_.setMessageSource(genomeKey_, TextBoxManager.MODEL_MESSAGE, true);
+         //
+    // If dacx is static, gotta keep it in sync!
+    //
+    if (dacx instanceof StaticDataAccessContext) {
+      ((StaticDataAccessContext)dacx).setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
+      ((StaticDataAccessContext)dacx).setLayout((key == null) ? null : dacx.getLayoutSource().getLayoutForGenomeKey(key));
+    }
+    
+     perTab_.get(currTab_).textMgr_.setMessageSource(perTab_.get(currTab_).genomeKey_, TextBoxManager.MODEL_MESSAGE, true);
      if (updateModules) {
-       noc.setForNewGenome(genomeKey_, support, odc, dacx);
+       noc.setForNewGenome(perTab_.get(currTab_).genomeKey_, support, odc, dacx);
      }
-     rcx_.setGenome((genomeKey_ == null) ? null : rcx_.getGenomeSource().getGenome());
-     //zoomer_.setGenome(key); now handled through rcx_ state change above!
+       System.out.println("Used to set genome here on rcx_");
+     // This makes no sense in the current set-up? A dynamic DACX tracks current genome automatically, from genomeKey_ = key. You CANNOT set it! 
+     perTab_.get(currTab_).rcx_.setGenome((perTab_.get(currTab_).genomeKey_ == null) ? null : perTab_.get(currTab_).rcx_.getGenomeSource().getGenome(key));
 
      return; 
   } 
@@ -1306,8 +1788,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the genome
   */
   
-  public String getGenome() {
-    return (genomeKey_);
+  String getGenomeX() {
+    return (perTab_.get(currTab_).genomeKey_);
   }
   
   /***************************************************************************
@@ -1315,8 +1797,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Used to get the layout
   */
    
-  public String getLayoutKey() {
-    return (layout_);
+  String getLayoutKeyX() {
+    return (perTab_.get(currTab_).layout_);
   } 
   
   /***************************************************************************
@@ -1325,116 +1807,11 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   */
   
   public void setGraphLayout(String key) {
-    layout_ = key;
-    rcx_.setLayout(((layout_ == null) ? null : rcx_.lSrc.getLayout(layout_)));
+    perTab_.get(currTab_).layout_ = key;
+    System.out.println("Set layout here on rcx_");  
+    perTab_.get(currTab_).rcx_.setLayout(((perTab_.get(currTab_).layout_ == null) ? null : perTab_.get(currTab_).rcx_.getLayoutSource().getLayout(perTab_.get(currTab_).layout_)));
     //zoomer_.setGraphLayout(key); now handled through rcx_ state change above!
     return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the current network overlay key
-  */
-  
-  public String getCurrentOverlay() {
-    return (currentOverlay_);
-  } 
-  
-  /***************************************************************************
-  **
-  ** Set the current network module
-  */
-  
-  public void setCurrentNetModules(TaggedSet keys, boolean forUndo) {
-    currentNetMods_ = new TaggedSet(keys);
-    String currKey = (currentNetMods_.set.size() == 1) ? (String)currentNetMods_.set.iterator().next() : null;
-    textMgr_.setMessageSource(currKey, TextBoxManager.NETMOD_MESSAGE, forUndo);
-    zoomer_.setCurrentNetModules(keys);
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Set the currently revealed modules
-  */
-  
-  public void setRevealedModules(TaggedSet keys, boolean forUndo) {
-    this.revealed_ = new TaggedSet(keys);
-    return;
-  }  
- 
-  /***************************************************************************
-  **
-  ** Get the current network module keys
-  */
-  
-  public TaggedSet getCurrentNetModules() {
-    return (new TaggedSet(currentNetMods_));
-  } 
-
-  /***************************************************************************
-  **
-  ** Get the current overlay settings
-  */
-  
-  public NetModuleFree.CurrentSettings getCurrentOverlaySettings() {
-    return (currOvrSettings_);
-  } 
-
-  /***************************************************************************
-  **
-  ** Get the set of modules that are showing their contents
-  */  
-  
-  public TaggedSet getRevealedModules() {
-    return (revealed_);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Answer if module components are being displayed
-  */  
-  
-  public boolean showingModuleComponents() {
-    return (showingNetModuleComponents_);
-  } 
-  
-  /***************************************************************************
-  **
-  ** Set the current network overlay key
-  */
-  
-  public void installCurrentSettings(NetModuleFree.CurrentSettings settings) { 
-    currOvrSettings_ = settings;
-  }
-  
-  /***************************************************************************
-  **
-  ** Set the current network overlay key
-  */
-  
-  public SelectionChangeCmd.Bundle setCurrentOverlay(String key, boolean forUndo) { 
-    
-    //
-    // Note that during set genome ops, by the time we get here we don't have the
-    // old genome ID, and the layout is stale.  So it is involved to figure out if
-    // we were showing links before....
-    
-    currentOverlay_ = key;
-    
-    Database db = getDB();
-    Layout lo = db.getLayout(getLayoutKey());     
-    SelectionChangeCmd.Bundle bundle = null;
-    if ((currentOverlay_ != null) && !forUndo) {
-      NetOverlayProperties nop = lo.getNetOverlayProperties(currentOverlay_);
-      if (nop.hideLinks()) {
-        DataAccessContext rcx2 = new DataAccessContext(rcx_, genomeKey_, layout_);
-        bundle = sup_.dropLinkSelections(true, null, rcx2);
-      }
-    }
-    textMgr_.setMessageSource(currentOverlay_, TextBoxManager.OVERLAY_MESSAGE, forUndo);
-    zoomer_.setOverlay(key);
-    return (bundle);
   }
   
   /***************************************************************************
@@ -1442,8 +1819,8 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   ** Set the state to show module components.
   */
   
-  public void toggleModuleComponents() {
-    showingNetModuleComponents_ = !showingNetModuleComponents_;
+  void toggleModuleComponentsX() {
+    perTab_.get(currTab_).showingNetModuleComponents_ = !perTab_.get(currTab_).showingNetModuleComponents_;
  //   if (isShowBubbleMode(currentMode_)) {
   //    pushedShowBubbles_ = showBubbles_;
   //  }
@@ -1452,58 +1829,10 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   
   /***************************************************************************
   **
-  ** Get bounds of drawing canvas
-  */
-  
-  public Dimension getCanvasSize() {
-    Rectangle rect = getDB().getWorkspace().getWorkspace();
-    return (new Dimension(rect.width, rect.height));
-  }
-
-  /***************************************************************************
-  **
-  ** Answer if we are outside bounds
-  */
-  
-  public boolean modelIsOutsideWorkspaceBounds() {
-    return (!getDB().getWorkspace().contains(getZoomTarget().getAllModelBounds()));
-  }  
-
-  /***************************************************************************
-  **
-  ** Get aspectRatio drawing canvas
-  */
-  
-  public double getCanvasAspectRatio() {
-    return (Workspace.ASPECT_RATIO);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Get center of drawing canvas (wrt canvas origin)
-  */
-  
-  public Point2D getCanvasCenter() {
-    Rectangle rect = getDB().getWorkspace().getWorkspace();
-    return (new Point2D.Double(rect.getWidth() / 2.0, rect.getHeight() / 2.0));
-  } 
-  
-  /***************************************************************************
-  **
-  ** Go from Genome ID key to Layout
-  */
-  
-  public Layout getLayoutForGenomeKey(String key) {
-    Database db = getDB();
-    return (db.getLayout(db.mapGenomeKeyToLayoutKey(key)));
-  } 
-  
-  /***************************************************************************
-  **
   ** Search modifiers
   */
   
-  public SearchModifiers getSearchModifiers() {
+  CmdSource.SearchModifiers getSearchModifiersX() {
     return (searchMod_);
   }
   
@@ -1515,19 +1844,240 @@ public class BTState implements OverlayStateOracle, HandlerAndManagerSource {
   
   /***************************************************************************
   **
-  ** Persistent modifiers for search 
+  ** Things that are different per tab:
   */ 
     
-  public static class SearchModifiers  {
-    public boolean includeLinks;
-    public boolean appendToCurrent;
-    public boolean includeQueryNode;                  
+  public static class AppSources {
  
-    SearchModifiers() {
-     // Init to legacy options
-      includeLinks = true;
-      includeQueryNode = true;
-      appendToCurrent = false;
+    public CmdSource cSrc;
+    public TabSource tSrc;
+    public HarnessBuilder hBld;
+    public PathAndFileSource pafs;
+    public UIComponentSource uics;
+    public UndoFactory uFac;
+    public RememberSource rSrc;
+    
+    AppSources(BTState appState) {
+      this.pafs = appState.getPathAndFileSource();
+      this.rSrc = appState.getRememberSource();
+      this.cSrc = appState.getCmdSource(); 
+      this.tSrc = appState.getTabSource();
+      this.uics = appState.getUIComponentSource();
+      this.uFac = new UndoFactory(tSrc, cSrc, uics);
+      this.hBld = new HarnessBuilder(appState, uics, cSrc, tSrc, rSrc, pafs, uFac);
     }
-  } 
+  }
+  
+  /***************************************************************************
+  **
+  ** Things that are different per tab:
+  */ 
+    
+  public class PerTab {
+ 
+    private SUPanel sup_; // Per Tab
+    private GroupPanel gup_;
+
+    private boolean groupNodeSelected_;
+    
+    private String myKey_;
+    //
+    // Controls that used to be implemented purely as Swing
+    // now can operate in both Swing and Headless mode:
+    //
+    
+    private VirtualModelTree vmTree_; // Per Tab
+    private VirtualTimeSlider vtSlider_; // Per Tab
+    private VirtualZoomControls vzc_; // Per Tab
+   //   private VirtualPathControls vpc_;
+
+    
+    private GenomePresentation myGenomePre_; // Per Tab
+    private UserTreePathController utpControl_; // Per Tab
+    private NetOverlayController noc_; // Per Tab
+    private ZoomTargetSupport zoomer_; // Per Tab?
+    private ZoomCommandSupport zcs_; // Per Tab?
+    private UserTreePathManager utpm_; // Per Tab
+    private TextBoxManager textMgr_; // Per Tab
+    
+    private String layout_; // Per Tab
+    private String genomeKey_; // Per Tab
+    private String currentOverlay_; // Per Tab
+    private NetModuleFree.CurrentSettings currOvrSettings_; // Per Tab
+    private TaggedSet currentNetMods_; // Per Tab
+    private TaggedSet revealed_; // Per Tab
+    private boolean showingNetModuleComponents_; // Per Tab
+   
+    private PanelCommands pCmds_;
+    private GroupPanelCommands gpCmds_;
+    private PopCommands popCmds_;
+    private CursorManager cursorMgr_;
+
+    private GroupSettingManager gsm_; // Per Tab
+    private PropagateDown.DownPropState downProp_; // remember user's last down propagation Genome // Per Tab?
+    
+    private TabPinnedDynamicDataAccessContext rcx_; // Needed to keep zoom target in sync with current genome. // Per Tab
+    private PerTabOSO ptoso_;
+ 
+    PerTab(String myKey) {
+      myKey_ = myKey;
+      layout_ = null;
+      genomeKey_ = null;
+      utpm_ = new UserTreePathManager();
+      gsm_ = new GroupSettingManager();
+      currentNetMods_ = new TaggedSet();
+      revealed_ = new TaggedSet();
+      showingNetModuleComponents_ = false;     
+      downProp_ = new PropagateDown.DownPropState();
+      groupNodeSelected_ = false;
+      ptoso_ = new PerTabOSO(this);
+    }
+    
+    private void initRcx(BTState parent) {
+      rcx_ = new TabPinnedDynamicDataAccessContext(parent, myKey_);
+    }
+  }
+  
+  /****************************************************************************
+  **
+  ** The implementation of overlay state oracle
+  */
+  
+  public class PerTabOSO implements OverlayStateWriter { 
+                                                               
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // PRIVATE MEMBERS
+    //
+    ////////////////////////////////////////////////////////////////////////////  
+  
+    private PerTab myTabInfo_;
+     
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // PUBLIC CONSTRUCTORS
+    //
+    ////////////////////////////////////////////////////////////////////////////    
+  
+    /***************************************************************************
+    **
+    ** Constructor 
+    */ 
+    
+    public PerTabOSO(PerTab myTabInfo) {
+      myTabInfo_ = myTabInfo;
+    }
+      
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // PUBLIC METHODS
+    //
+    ////////////////////////////////////////////////////////////////////////////    
+    
+    /***************************************************************************
+    **
+    ** Get the current network overlay key
+    */
+    
+    public String getCurrentOverlay() {
+      return (myTabInfo_.currentOverlay_);
+    } 
+    
+    /***************************************************************************
+    **
+    ** Set the current network module
+    */
+    
+    public void setCurrentNetModules(TaggedSet keys, boolean forUndo) {
+      myTabInfo_.currentNetMods_ = new TaggedSet(keys);
+      String currKey = (myTabInfo_.currentNetMods_.set.size() == 1) ? (String)myTabInfo_.currentNetMods_.set.iterator().next() : null;
+      myTabInfo_.textMgr_.setMessageSource(currKey, TextBoxManager.NETMOD_MESSAGE, forUndo);
+      myTabInfo_.zoomer_.setCurrentNetModules(keys);
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** Set the currently revealed modules
+    */
+    
+    public void setRevealedModules(TaggedSet keys, boolean forUndo) {
+      myTabInfo_.revealed_ = new TaggedSet(keys);
+      return;
+    }  
+   
+    /***************************************************************************
+    **
+    ** Get the current network module keys
+    */
+    
+    public TaggedSet getCurrentNetModules() {
+      return (new TaggedSet(myTabInfo_.currentNetMods_));
+    } 
+  
+    /***************************************************************************
+    **
+    ** Get the current overlay settings
+    */
+    
+    public NetModuleFree.CurrentSettings getCurrentOverlaySettings() {
+      return (myTabInfo_.currOvrSettings_);
+    } 
+  
+    /***************************************************************************
+    **
+    ** Get the set of modules that are showing their contents
+    */  
+    
+    public TaggedSet getRevealedModules() {
+      return (myTabInfo_.revealed_);
+    }  
+    
+    /***************************************************************************
+    **
+    ** Answer if module components are being displayed
+    */  
+    
+    public boolean showingModuleComponents() {
+      return (myTabInfo_.showingNetModuleComponents_);
+    } 
+    
+    /***************************************************************************
+    **
+    ** Set the current network overlay key
+    */
+    
+    public void installCurrentSettings(NetModuleFree.CurrentSettings settings) { 
+      myTabInfo_.currOvrSettings_ = settings;
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** Set the current network overlay key
+    */
+    
+    public SelectionChangeCmd.Bundle setCurrentOverlay(String key, boolean forUndo) { 
+      
+      //
+      // Note that during set genome ops, by the time we get here we don't have the
+      // old genome ID, and the layout is stale.  So it is involved to figure out if
+      // we were showing links before....
+      
+      myTabInfo_.currentOverlay_ = key;
+      
+      Layout lo = myTabInfo_.rcx_.getLayoutSource().getLayout(myTabInfo_.layout_);     
+      SelectionChangeCmd.Bundle bundle = null;
+      if ((myTabInfo_.currentOverlay_ != null) && !forUndo) {
+        NetOverlayProperties nop = lo.getNetOverlayProperties(myTabInfo_.currentOverlay_);
+        if (nop.hideLinks()) {
+          StaticDataAccessContext rcx2 = new StaticDataAccessContext(myTabInfo_.rcx_, myTabInfo_.genomeKey_, myTabInfo_.layout_);
+          bundle = myTabInfo_.sup_.dropLinkSelections(new UIComponentSource(BTState.this), true, null, rcx2);
+        }
+      }
+      myTabInfo_.textMgr_.setMessageSource(myTabInfo_.currentOverlay_, TextBoxManager.OVERLAY_MESSAGE, forUndo);
+      myTabInfo_.zoomer_.setOverlay(key);
+      return (bundle);
+    }
+  }
 }

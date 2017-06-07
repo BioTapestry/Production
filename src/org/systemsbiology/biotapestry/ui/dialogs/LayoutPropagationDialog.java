@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -74,30 +74,27 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
 import org.systemsbiology.biotapestry.cmd.flow.layout.UpwardSync;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
 import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LayoutDataSource;
 import org.systemsbiology.biotapestry.ui.LayoutDerivation;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.BackgroundWorkerControlManager;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
@@ -125,7 +122,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   
   private LocalGenomeSource fgs_;
   private LocalLayoutSource lls_;
-  private DataAccessContext rcxR_;
+  private StaticDataAccessContext rcxR_;
   private DataAccessContext dacx_;
   private GenomeSource origGs_;
   private Layout origLO_;
@@ -177,9 +174,9 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   private JCheckBox swapPadsBox_;
   private JCheckBox noPadOverlayBox_;
   
-  private JComboBox overlayOptionCombo_;
+  private JComboBox overlayOptionCombo_; 
+  private UIComponentSource uics_;
   
-  private BTState appState_;
   private static final long serialVersionUID = 1L;
    
   ////////////////////////////////////////////////////////////////////////////
@@ -193,35 +190,28 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   ** Constructor 
   */ 
   
-  public LayoutPropagationDialog(BTState appState, DataAccessContext dacx, boolean showOverlayOptions) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("lpd.title"), true);
-    appState_ = appState;
+  public LayoutPropagationDialog(UIComponentSource uics, DataAccessContext dacx, boolean showOverlayOptions) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("lpd.title"), true);
     haveResult_ = false;
     calculating_ = false;
     sliderProc_ = false;
     dacx_ = dacx;
+    uics_ = uics;
         
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(1000, 800);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new BorderLayout());
     
-    fgs_ = new LocalGenomeSource(new DBGenome(appState_, "foo", "bar"), new DBGenome(appState_, "foo", "bar"));
+    fgs_ = new LocalGenomeSource();
     origGs_ = dacx_.getGenomeSource();
     lls_ = new LocalLayoutSource(null, fgs_);
-
+    rcxR_ = StaticDataAccessContext.getCustomDACX7(fgs_, lls_, dacx_);
+    fgs_.install(new DBGenome(rcxR_, "foo", "bar"), new DBGenome(rcxR_, "foo", "bar"));
+    origLO_ = dacx_.getLayoutSource().getLayoutForGenomeKey(dacx_.getDBGenome().getID());
     GridBagConstraints gbc = new GridBagConstraints();
-    rcxR_ = new DataAccessContext(null, null, false, false, 0.0,
-                                 appState_.getFontMgr(), appState_.getDisplayOptMgr(), 
-                                 appState_.getFontRenderContext(), fgs_, dacx_.cRes, false, 
-                                 new FullGenomeHierarchyOracle(fgs_, lls_), appState_.getRMan(), 
-                                 new LocalGroupSettingSource(), dacx_.wSrc, lls_,
-                                 new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), 
-                                 dacx_.getExpDataSrc(), dacx_.getInstructSrc()                               
-      );   
-    origLO_ = dacx_.lSrc.getLayoutForGenomeKey(dacx_.getDBGenome().getID());
-
+    
     //
     // Get existing layout directives, if any:
     //
@@ -259,7 +249,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     // Layout directives list:
     //
     
-    Rectangle rect = dacx_.wSrc.getWorkspace().getWorkspace();    
+    Rectangle rect = dacx_.getWorkspaceSource().getWorkspace().getWorkspace();    
     JPanel directivesPanel = buildLayoutDirectivesPanel(rect);
     UiUtil.gbcSet(gbc, 0, 0, 1, 10, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.6);              
     rightSide.add(directivesPanel, gbc);    
@@ -300,7 +290,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
             LayoutPropagationDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -312,7 +302,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
           LayoutPropagationDialog.this.setVisible(false);
           LayoutPropagationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -328,7 +318,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     //
     buttonPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
     cp.add(buttonPanel, BorderLayout.SOUTH);   
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -402,12 +392,10 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     try {
       currTargetNode_ = null;
       TreePath tp = jtree_.getSelectionPath();
-      LayoutSourceNodeContents lsnc = null;
       if (tp != null) {
         DefaultMutableTreeNode targetNode = (DefaultMutableTreeNode)tp.getLastPathComponent();
         Object inNode = targetNode.getUserObject();
         if (inNode instanceof LayoutSourceNodeContents) {
-          lsnc = (LayoutSourceNodeContents)inNode;
           currTargetNode_ = targetNode;
         }
       }
@@ -417,7 +405,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       calcDefinedBy();
       getContentPane().validate();
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -453,11 +441,11 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     if (currTargetNode_ != null) {
       LayoutSourceNodeContents lsnc = (LayoutSourceNodeContents)currTargetNode_.getUserObject();
       LayoutDataSource lds = new LayoutDataSource(lsnc.getModelID(), lsnc.getGroupID());
-      LayoutRubberStamper lrs = new LayoutRubberStamper(appState_);
+      LayoutRubberStamper lrs = new LayoutRubberStamper();
       
       GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(lds.getModelID());
-      Layout lo = dacx_.lSrc.getLayoutForGenomeKey(lds.getModelID());
-      DataAccessContext rcxT = new DataAccessContext(dacx_, gi, lo);
+      Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(lds.getModelID());
+      StaticDataAccessContext rcxT = new StaticDataAccessContext(dacx_, gi, lo);
       Set<String> defs = lrs.definedByLayout(lds, rcxT);
       int numEnl = elementsNeedingLayout_.size();
       for (int i = 0; i < numEnl; i++) {
@@ -489,7 +477,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       tempHold_ = new HashMap<String, SortedMap<String, List<DefaultMutableTreeNode>>>();
       DefaultMutableTreeNode myRoot = (DefaultMutableTreeNode)this.getRoot();
       String rootID = dacx_.getDBGenome().getID();
-      myRoot.setUserObject(dacx_.rMan.getString("tree.FullGenome")); 
+      myRoot.setUserObject(dacx_.getRMan().getString("tree.FullGenome")); 
       parentMap_.put(rootID, myRoot);      
     }    
 
@@ -612,13 +600,13 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     
     public void setData() {
       GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(modelID_);
-      Layout lo = dacx_.lSrc.getLayoutForGenomeKey(modelID_);
+      Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(modelID_);
       Group newGrp = gi.getGroup(groupID_);
       groupDisplay_ = newGrp.getInheritedDisplayName(gi);
       groupModelDisplay_ = gi.getName() + ": " + groupDisplay_;
       String baseGroupID = Group.getBaseID(groupID_);
       GroupProperties gp = lo.getGroupProperties(baseGroupID);
-      groupColor_ = gp.getColor(true, dacx_.cRes);
+      groupColor_ = gp.getColor(true, dacx_.getColorResolver());
       return;
     }
   }  
@@ -655,7 +643,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
                                                      leaf, row, hasFocus));
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }  
@@ -802,7 +790,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     nodeList.clear();
     linkList.clear();
     
-    LayoutRubberStamper lrs = new LayoutRubberStamper(appState_);
+    LayoutRubberStamper lrs = new LayoutRubberStamper();
 
     HashSet<String> undefNodes = new HashSet<String>();
     HashSet<String> undefLinks = new HashSet<String>();
@@ -810,7 +798,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     lrs.undefinedLayout(dacx_, layoutDerive_, undefNodes, undefLinks, dropFGOnly);  
 
     // Issue #187 has to work at all levels of model hierarchy
-    Genome rootG = dacx_.getGenomeSource().getGenome();
+    Genome rootG = dacx_.getGenomeSource().getRootDBGenome();
     Iterator<String> undit = undefNodes.iterator();
     while (undit.hasNext()) {
       String nodeID = undit.next();
@@ -873,13 +861,13 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     Iterator<String> mdit = modDep.iterator();
     while (mdit.hasNext()) {
       String mKey = mdit.next();
-      Layout log = dacx_.lSrc.getLayoutForGenomeKey(mKey);
+      Layout log = dacx_.getLayoutSource().getLayoutForGenomeKey(mKey);
       lls_.addInstanceLayout(log);
       fgs_.setGenome(mKey, dacx_.getGenomeSource().getGenome(mKey));
     }
              
     UpwardSync.UpwardLayoutSynch uls = new UpwardSync.UpwardLayoutSynch();   
-    uls.synchronizeRootLayoutFromChildrenAsynch(appState_, rcxR_, null, layoutDerive_, msp_.getRawCenterPoint(), this);
+    uls.synchronizeRootLayoutFromChildrenAsynch(uics_, rcxR_, null, layoutDerive_, msp_.getRawCenterPoint(), this);
     if (uls.wasCancelled()) {
       lls_.setRootLayout(new Layout(origLO_));
     }
@@ -896,7 +884,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
 
   private JPanel buildSelectionTreePanel() {
-    ResourceManager rMan = dacx_.rMan;
+    ResourceManager rMan = dacx_.getRMan();
     GridBagConstraints gbc = new GridBagConstraints();
   
     //
@@ -928,7 +916,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           addLayoutElement(); 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -940,7 +928,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           addOneNodeLayoutElement(); 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -965,7 +953,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
 
   private JPanel buildLayoutDirectivesPanel(Rectangle workspace) {
-    ResourceManager rMan = dacx_.rMan;   
+    ResourceManager rMan = dacx_.getRMan();   
     GridBagConstraints gbc = new GridBagConstraints();
 
     JPanel directivesPanel = new JPanel();
@@ -993,7 +981,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           deleteLayoutElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1005,7 +993,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           editLayoutElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1017,7 +1005,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           bumpUpLayoutElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1029,7 +1017,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           bumpDownLayoutElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1093,7 +1081,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
 
   private JPanel buildPadPanel(boolean showOverlayOptions) {
-    ResourceManager rMan = dacx_.rMan; 
+    ResourceManager rMan = dacx_.getRMan(); 
     GridBagConstraints gbc = new GridBagConstraints();
 
     JPanel padPanel = new JPanel();
@@ -1111,7 +1099,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
           syncUniqBox();
           makePreviewStale();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });   
@@ -1126,23 +1114,23 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
           layoutDerive_.setForceUnique(noPadOverlayBox_.isSelected());
           makePreviewStale();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
     
     if (showOverlayOptions) {
       JLabel overlayLabel = new JLabel(rMan.getString("layoutParam.overlayOptions"));
-      Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
+      Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx_);
       overlayOptionCombo_ = new JComboBox(relayoutChoices);
-      overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, layoutDerive_.getOverlayOption()));
+      overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(dacx_, layoutDerive_.getOverlayOption()));
       overlayOptionCombo_.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
             layoutDerive_.setOverlayOption(((ChoiceContent)overlayOptionCombo_.getSelectedItem()).val);
             makePreviewStale();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1178,7 +1166,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
 
   private JPanel buildUnresolvedPanel() {
-    ResourceManager rMan = dacx_.rMan;
+    ResourceManager rMan = dacx_.getRMan();
     GridBagConstraints gbc = new GridBagConstraints();
 
     JPanel unresPanel = new JPanel();
@@ -1226,7 +1214,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
           maintainUndefinedLists();
           getContentPane().validate();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -1241,7 +1229,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
 
   private JPanel buildPreviewPanel() {
-    ResourceManager rMan = dacx_.rMan;
+    ResourceManager rMan = dacx_.getRMan();
     GridBagConstraints gbc = new GridBagConstraints();
 
     JPanel previewPanel = new JPanel();
@@ -1252,7 +1240,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);       
     previewPanel.add(prevLab, gbc);
        
-    msp_ = new ModelViewPanel(appState_, rcxR_);
+    msp_ = new ModelViewPanel(uics_, rcxR_);
  
     msp_.setMinimumSize(new Dimension(200, 300));
     msp_.setPreferredSize(new Dimension(200, 300));
@@ -1278,7 +1266,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           updateZoom('-');
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1289,7 +1277,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           updateZoom('+');
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1300,7 +1288,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         try {
           updatePreviewDisplay();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1357,7 +1345,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     LayoutSourceNodeContents lsnc = (LayoutSourceNodeContents)inNode;
     LayoutDataSource master = new LayoutDataSource(lsnc.getModelID(), lsnc.getGroupID());
     
-    PickNodesForLayoutDialog pnfl = new PickNodesForLayoutDialog(appState_, master, new DataAccessContext(appState_));
+    PickNodesForLayoutDialog pnfl = new PickNodesForLayoutDialog(uics_, master, dacx_);
     pnfl.setVisible(true);
     
     if (!pnfl.haveResult()) {
@@ -1475,7 +1463,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     
     LayoutDataSource lds = layoutDerive_.getDirective(selectedLayoutDirectiveIndex_);
     LayoutDataSource ldsCopy = lds.clone();
-    PickNodesForLayoutDialog pnfl = new PickNodesForLayoutDialog(appState_, ldsCopy, new DataAccessContext(appState_));
+    PickNodesForLayoutDialog pnfl = new PickNodesForLayoutDialog(uics_, ldsCopy, dacx_);
     pnfl.setVisible(true);   
     if (!pnfl.haveResult()) {
       return;
@@ -1584,7 +1572,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     try {
       msp_.getZoomController().bumpZoomWrapper(sign);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -1602,7 +1590,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       if (selectedLayoutDirectiveIndex_ == -1) {
         return;
       }
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)layoutDeriveDisplay_.get(selectedLayoutDirectiveIndex_);
+      TrueObjChoiceContent tocc = layoutDeriveDisplay_.get(selectedLayoutDirectiveIndex_);
       // This is a ref to the copy held inside the Layout derivation:
       LayoutDataSource lds = (LayoutDataSource)tocc.val;
       sliderProc_ = true;
@@ -1647,7 +1635,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
           JSlider slider = (JSlider)ev.getSource();
           updateSlider(slider);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1749,7 +1737,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
   */
   
   private Map<String, FixedJLabel> buildSliderPanelLabels() {  
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
         
     HashMap<String, FixedJLabel> retval = new HashMap<String, FixedJLabel>();    
     int maxWidth = Integer.MIN_VALUE;
@@ -1810,7 +1798,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       if (selectedLayoutDirectiveIndex_ == -1) {
         return;
       }
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)layoutDeriveDisplay_.get(selectedLayoutDirectiveIndex_);
+      TrueObjChoiceContent tocc = layoutDeriveDisplay_.get(selectedLayoutDirectiveIndex_);
       // This is a ref to the copy held inside the Layout derivation:
       LayoutDataSource lds = (LayoutDataSource)tocc.val;
       if (mySlider == xSlider_) {
@@ -1963,7 +1951,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
         getContentPane().validate();        
  
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;             
     }  
@@ -1997,7 +1985,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       try {
         roundVal(mySlider_, myField_, min_, max_, minorTic_, start_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
     public void focusGained(FocusEvent evt) {
@@ -2006,7 +1994,7 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
       try {
         roundVal(mySlider_, myField_, min_, max_, minorTic_, start_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }        
   }

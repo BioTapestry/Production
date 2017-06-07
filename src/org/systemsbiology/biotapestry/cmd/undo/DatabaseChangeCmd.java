@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 
@@ -52,8 +51,8 @@ public class DatabaseChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public DatabaseChangeCmd(BTState appState, DataAccessContext dacx, DatabaseChange restore) {
-    super(appState, dacx);
+  public DatabaseChangeCmd(DataAccessContext dacx, DatabaseChange restore) {
+    super(dacx);
     restore_ = restore;
   }
 
@@ -81,7 +80,13 @@ public class DatabaseChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    appState_.getDB().databaseChangeUndo(restore_); 
+    
+    if (restore_.dataSharingPolicyChange || restore_.sharedTimeAxisChange || restore_.sharedPertDataChange || 
+        restore_.sharedTcdChange || restore_.sharedCPEChange) {
+      dacx_.getMetabase().metabaseSharedChangeUndo(restore_);
+    } else {
+      dacx_.getMetabase().getDB(tSrc_.getCurrentTab()).databaseChangeUndo(restore_);
+    }
     return;
   }  
 
@@ -93,7 +98,12 @@ public class DatabaseChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    appState_.getDB().databaseChangeRedo(restore_); 
+    if (restore_.dataSharingPolicyChange || restore_.sharedTimeAxisChange || restore_.sharedPertDataChange || 
+        restore_.sharedTcdChange || restore_.sharedCPEChange) {
+      dacx_.getMetabase().metabaseSharedChangeRedo(restore_);
+    } else {
+      dacx_.getMetabase().getDB(tSrc_.getCurrentTab()).databaseChangeRedo(restore_); 
+    }
     return;
   }
 }

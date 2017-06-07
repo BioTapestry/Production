@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,11 +20,11 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.add;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 
@@ -46,8 +46,7 @@ public class CancelAdd extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public CancelAdd(BTState appState) {
-    super(appState);
+  public CancelAdd() {
     name =  "command.CancelAddMode";
     desc = "command.CancelAddMode";
     icon = "Stop24.gif";
@@ -92,7 +91,7 @@ public class CancelAdd extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_);
+        StepState ans = new StepState(cfh);
         next = ans.stepCX();    
       } else {
         throw new IllegalStateException();
@@ -109,22 +108,15 @@ public class CancelAdd extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
+  public static class StepState extends AbstractStepState {
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepCX";
     }
  
@@ -134,7 +126,7 @@ public class CancelAdd extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepCX() {
-      appState_.getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
+      cmdSrc_.getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }  

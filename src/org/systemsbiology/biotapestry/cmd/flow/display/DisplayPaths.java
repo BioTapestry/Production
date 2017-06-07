@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,9 +24,11 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -113,8 +115,7 @@ public class DisplayPaths extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DisplayPaths(BTState appState, InfoType action) {
-    super(appState);
+  public DisplayPaths(InfoType action) {
     if (action == InfoType.PATHS_FOR_NODE) {
       throw new IllegalArgumentException();    
     } 
@@ -131,8 +132,7 @@ public class DisplayPaths extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DisplayPaths(BTState appState, InfoType action, PathAnalysisArgs paargs) {
-    super(appState);
+  public DisplayPaths(InfoType action, PathAnalysisArgs paargs) {
     if (action != InfoType.PATHS_FOR_NODE) {
       throw new IllegalArgumentException();    
     }
@@ -150,13 +150,14 @@ public class DisplayPaths extends AbstractControlFlow {
   */
     
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     switch (action_) {
       case LINK_PATHS:
         if (!isSingleSeg) {
           return (false);
         }     
-        LinkProperties lp = rcx.getLayout().getLinkProperties(inter.getObjectID());
+        LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(inter.getObjectID());
         LinkSegmentID segID = inter.segmentIDFromIntersect();       
         Set<String> resolved = lp.resolveLinkagesThroughSegment(segID);
         return (resolved.size() == 1);
@@ -174,7 +175,7 @@ public class DisplayPaths extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
     return (new StepState(action_, srcID_, trgID_, dacx));
   }     
   
@@ -202,11 +203,11 @@ public class DisplayPaths extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(action_, srcID_, trgID_, cfh.getDataAccessContext());
+        ans = new StepState(action_, srcID_, trgID_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
-      ans.cfh = cfh;
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
       } else {
@@ -224,18 +225,24 @@ public class DisplayPaths extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
 
-    private String nextStep_;
     private InfoType myAction_;
     private Intersection inter_;
     private String mySrcID_;
     private String myTargID_;
-    private ServerControlFlowHarness cfh;
-    private DataAccessContext dacx_;
     
-    public String getNextStep() {
-      return (nextStep_);
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(InfoType action, String sourceID, String targID, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      mySrcID_ = sourceID;
+      myTargID_ = targID;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -243,14 +250,14 @@ public class DisplayPaths extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(InfoType action, String sourceID, String targID, DataAccessContext dacx) {
+    public StepState(InfoType action, String sourceID, String targID, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
       mySrcID_ = sourceID;
       myTargID_ = targID;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
-     
+  
     /***************************************************************************
     **
     ** for preload
@@ -275,14 +282,14 @@ public class DisplayPaths extends AbstractControlFlow {
            
       switch (myAction_) {
         case LINK_PATHS:      
-          lp = dacx_.getLayout().getLinkProperties(inter_.getObjectID());
+          lp = dacx_.getCurrentLayout().getLinkProperties(inter_.getObjectID());
           segID = inter_.segmentIDFromIntersect();
           resolved = lp.resolveLinkagesThroughSegment(segID);
           if (resolved.size() > 1) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
           }
           String linkID = resolved.iterator().next();
-          Linkage link = dacx_.getGenome().getLinkage(linkID);
+          Linkage link = dacx_.getCurrentGenome().getLinkage(linkID);
           src = link.getSource();
           trg = link.getTarget();
           break;
@@ -294,8 +301,8 @@ public class DisplayPaths extends AbstractControlFlow {
           throw new IllegalStateException();
       }
       
-      PathDisplayFrameFactory.BuildArgs ba = new PathDisplayFrameFactory.BuildArgs(dacx_.getGenomeID(), src, trg);
-      PathDisplayFrameFactory nocdf = new PathDisplayFrameFactory(cfh);
+      PathDisplayFrameFactory.BuildArgs ba = new PathDisplayFrameFactory.BuildArgs(dacx_.getCurrentGenomeID(), src, trg);
+      PathDisplayFrameFactory nocdf = new PathDisplayFrameFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
       // This dialog is NOT modal, so we are done:
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         

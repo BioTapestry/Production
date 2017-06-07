@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -73,8 +73,8 @@ public class DBGene extends DBNode implements Gene {
   ** Name and id
   */
 
-  public DBGene(BTState appState, String name, String id) {
-    super(appState, GENE, name, id);
+  public DBGene(DataAccessContext dacx, String name, String id) {
+    super(dacx, GENE, name, id);
     regions_ = new ArrayList<DBGeneRegion>();
     evidenceLevel_ = LEVEL_NONE;
   }
@@ -84,8 +84,8 @@ public class DBGene extends DBNode implements Gene {
   ** Name and id and evidence:
   */
 
-  public DBGene(BTState appState, String name, String id, String evidence, String size) throws IOException {
-    super(appState, GENE_TAG, name, id, size);
+  public DBGene(DataAccessContext dacx, String name, String id, String evidence, String size) throws IOException {
+    super(dacx, GENE_TAG, name, id, size);
     regions_ = new ArrayList<DBGeneRegion>();
     evidenceLevel_ = LEVEL_NONE;
     if (evidence != null) {
@@ -172,7 +172,7 @@ public class DBGene extends DBNode implements Gene {
 
   @Override
   public String getDisplayString(Genome genome, boolean typePreface) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String retval;
     if (typePreface) { 
       String format = rMan.getString("ncreate.importFormat");
@@ -325,7 +325,7 @@ public class DBGene extends DBNode implements Gene {
   **
   */
   
-  public static DBGene buildFromXML(BTState appState, Genome genome,
+  public static DBGene buildFromXML(DataAccessContext dacx,
                                     Attributes attrs) throws IOException {
     String name = null;
     String id = null;
@@ -350,7 +350,7 @@ public class DBGene extends DBNode implements Gene {
         }
       }
     }
-    return (new DBGene(appState, name, id, evidence, size));
+    return (new DBGene(dacx, name, id, evidence, size));
   }  
 
   /***************************************************************************
@@ -383,10 +383,10 @@ public class DBGene extends DBNode implements Gene {
   ** Return possible evidence choices
   */
   
-  public static Vector<ChoiceContent> getEvidenceChoices(BTState appState) {
+  public static Vector<ChoiceContent> getEvidenceChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_EVIDENCE_LEVELS; i++) {
-      retval.add(evidenceTypeForCombo(appState, i));    
+      retval.add(evidenceTypeForCombo(dacx, i));    
     }
     return (retval);
   }
@@ -396,8 +396,8 @@ public class DBGene extends DBNode implements Gene {
   ** Get a combo box element
   */
   
-  public static ChoiceContent evidenceTypeForCombo(BTState appState, int eviLev) {
-    return (new ChoiceContent(appState.getRMan().getString("nprop." + mapToEvidenceTag(eviLev)), eviLev));
+  public static ChoiceContent evidenceTypeForCombo(DataAccessContext dacx, int eviLev) {
+    return (new ChoiceContent(dacx.getRMan().getString("nprop." + mapToEvidenceTag(eviLev)), eviLev));
   }
 
   /***************************************************************************

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -159,6 +159,7 @@ public class InstructionRegions implements Cloneable {
   ** Distribute the regions: Unused....
   */
   
+  @SuppressWarnings("unused")
   public void distributeUniquely(InstructionRegions other, List<?> overflows) {
 
     return;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,6 +25,8 @@ import java.util.List;
 import javax.swing.JList;
 import javax.swing.ListCellRenderer;
 
+import org.systemsbiology.biotapestry.ui.NamedColor;
+
 /***************************************************************************
 **
 ** Used for rendering a list with a color block
@@ -32,17 +34,17 @@ import javax.swing.ListCellRenderer;
 
 public class ColorListRenderer extends ColorLabel implements ListCellRenderer {
     
-  private List<ColorSource> values_;
+  private List<NamedColor> values_;
   private static final long serialVersionUID = 1L;
   private HandlerAndManagerSource hms_;
 
-  public ColorListRenderer(List<ColorSource> values, HandlerAndManagerSource hms) {
+  public ColorListRenderer(List<NamedColor> values, HandlerAndManagerSource hms) {
     super(Color.white, "");
     values_ = values;
     hms_ = hms;
   }
 
-  public void setValues(List<ColorSource> values) {
+  public void setValues(List<NamedColor> values) {
     values_ = values;
   }
 
@@ -64,17 +66,12 @@ public class ColorListRenderer extends ColorLabel implements ListCellRenderer {
           return (this);
         }
       }
-      ColorSource currCol = values_.get(index);
+      NamedColor currCol = values_.get(index);
       setColorValues(currCol.getColor(), currCol.getDescription());
       setBackground((isSelected) ? list.getSelectionBackground() : list.getBackground());
     } catch (Exception ex) {
       hms_.getExceptionHandler().displayException(ex);
     }      
     return (this);             
-  }
-   
-  public interface ColorSource extends Comparable<ColorSource> {
-    public Color getColor();
-    public String getDescription();
   }
 }

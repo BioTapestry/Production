@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,7 @@
 
 package org.systemsbiology.biotapestry.ui;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.layouts.HaloLayout;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngine;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngineParams;
@@ -45,7 +45,7 @@ public class LayoutOptionsManager {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
+  private DataAccessContext dacx_;
   private LayoutOptions options_;
   private WorksheetLayout.WorksheetLayoutParams workSheetParams_;
   private WorksheetLayout.WorksheetLayoutParams workSheetParamsDiag_;
@@ -63,8 +63,8 @@ public class LayoutOptionsManager {
   ** constructor
   */
     
-  public LayoutOptionsManager(BTState appState) {
-    appState_ = appState;
+  public LayoutOptionsManager(DataAccessContext dacx) {
+    dacx_ = dacx;
     options_ = new LayoutOptions();
     workSheetParams_ = WorksheetLayout.getDefaultParams(false, false);
     workSheetParamsDiag_ = WorksheetLayout.getDefaultParams(false, true);
@@ -97,10 +97,10 @@ public class LayoutOptionsManager {
       case STACKED:
         return (stackedBlockParams_);
       case DIAGONAL:
-        WorksheetLayout.forceParamsAsNeeded(appState_, workSheetParamsDiag_);
+        WorksheetLayout.forceParamsAsNeeded(dacx_, workSheetParamsDiag_);
         return (workSheetParamsDiag_);
       case ALTERNATING:
-        WorksheetLayout.forceParamsAsNeeded(appState_, workSheetParams_);
+        WorksheetLayout.forceParamsAsNeeded(dacx_, workSheetParams_);
         return (workSheetParams_);
       case HALO:
         return (haloParams_);
@@ -115,7 +115,7 @@ public class LayoutOptionsManager {
   */
 
   public WorksheetLayout.WorksheetLayoutParams getWorksheetLayoutParams() {
-    WorksheetLayout.forceParamsAsNeeded(appState_, workSheetParams_);
+    WorksheetLayout.forceParamsAsNeeded(dacx_, workSheetParams_);
     return (workSheetParams_);
   }  
   
@@ -125,7 +125,7 @@ public class LayoutOptionsManager {
   */
 
   public WorksheetLayout.WorksheetLayoutParams getDiagLayoutParams() {
-    WorksheetLayout.forceParamsAsNeeded(appState_, workSheetParamsDiag_);
+    WorksheetLayout.forceParamsAsNeeded(dacx_, workSheetParamsDiag_);
     return (workSheetParamsDiag_);
   }  
     

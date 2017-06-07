@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@ package org.systemsbiology.biotapestry.ui.layouts;
 
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 
 ////////////////////////////////////////////////////////////////////////////
@@ -48,14 +48,14 @@ public enum ColorTypes {
     this.tag_ = tag;  
   }
   
-  public EnumChoiceContent<ColorTypes> generateCombo(BTState appState) {
-    return (new EnumChoiceContent<ColorTypes>(appState.getRMan().getString("specialtyColor." + tag_), this));
+  public EnumChoiceContent<ColorTypes> generateCombo(DataAccessContext dacx) {
+    return (new EnumChoiceContent<ColorTypes>(dacx.getRMan().getString("specialtyColor." + tag_), this));
   }
 
-  public static Vector<EnumChoiceContent<ColorTypes>> getChoices(BTState appState) {
+  public static Vector<EnumChoiceContent<ColorTypes>> getChoices(DataAccessContext dacx) {
     Vector<EnumChoiceContent<ColorTypes>> retval = new Vector<EnumChoiceContent<ColorTypes>>();
     for (ColorTypes ct: values()) {
-      retval.add(ct.generateCombo(appState));    
+      retval.add(ct.generateCombo(dacx));    
     }
     return (retval);
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,10 +26,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -82,8 +84,7 @@ public class ChangePad extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ChangePad(BTState appState, boolean isForTarget, boolean isForModules, boolean isForGeneModSwap) {
-    super(appState);
+  public ChangePad(boolean isForTarget, boolean isForModules, boolean isForGeneModSwap) {
     isForTarget_ = isForTarget;
     isForModules_ = isForModules;
     isForGeneModSwap_ = isForGeneModSwap;
@@ -118,20 +119,21 @@ public class ChangePad extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }
     if (isForGeneModSwap_) {    
       String lid = inter.getObjectID();  // Remember... this may not be the link we want!
-      BusProperties bp = rcx.getLayout().getLinkProperties(lid);
+      BusProperties bp = rcx.getCurrentLayout().getLinkProperties(lid);
       LinkSegmentID[] linkIDs = inter.segmentIDsFromIntersect();
       // Only allowed to perform this op if there is only one link through the segment! 
       Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
       String myLinkId = throughSeg.iterator().next();
-      Linkage link = rcx.getGenome().getLinkage(myLinkId);
+      Linkage link = rcx.getCurrentGenome().getLinkage(myLinkId);
       String target = link.getTarget();
-      Node targNode = rcx.getGenome().getNode(target);
+      Node targNode = rcx.getCurrentGenome().getNode(target);
       if (targNode.getNodeType() != Node.GENE) {
         return (false);
       }
@@ -153,8 +155,8 @@ public class ChangePad extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    ChangePadState retval = new ChangePadState(appState_, isForTarget_, isForModules_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    ChangePadState retval = new ChangePadState(isForTarget_, isForModules_, dacx);
     return (retval);
   }
   
@@ -172,6 +174,7 @@ public class ChangePad extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         ChangePadState ans = (ChangePadState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetToMode")) {
           next = ans.stepSetToMode();      
         } else if (ans.getNextStep().equals("stepRelocateTarget")) {   
@@ -205,16 +208,16 @@ public class ChangePad extends AbstractControlFlow {
     ChangePadState ans = (ChangePadState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
     
     if (isForGeneModSwap_) { 
-      ans.nextStep_ = "stepSwitchGeneModule";
+      ans.setNextStep("stepSwitchGeneModule");
     } else {
       if (isForTarget_) {
-        ans.nextStep_ = (ans.isForModule) ? "stepRelocateModuleTarget" : "stepRelocateTarget"; 
+        ans.setNextStep((ans.isForModule) ? "stepRelocateModuleTarget" : "stepRelocateTarget"); 
       } else {
-        ans.nextStep_ = (ans.isForModule) ? "stepRelocateModuleSource" : "stepRelocateSource"; 
+        ans.setNextStep((ans.isForModule) ? "stepRelocateModuleSource" : "stepRelocateSource"); 
       }
     }
     return (retval);
@@ -225,39 +228,38 @@ public class ChangePad extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class ChangePadState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class ChangePadState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
     private Intersection intersect;
-    private DataAccessContext rcxT_;
     private boolean isForModule;
     private boolean isForTarget; 
     private int x;
-    private int y;
-    private String nextStep_;   
-    private BTState appState_;
+    private int y;  
 
     /***************************************************************************
     **
     ** Constructor
     */
      
-    private ChangePadState(BTState appState, boolean isForTarget, boolean isForModule, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    private ChangePadState(boolean isForTarget, boolean isForModule, StaticDataAccessContext dacx) {
+      super(dacx);
       this.isForTarget = isForTarget;
       this.isForModule = isForModule;
       nextStep_ = "stepSetToMode";
     }
     
     /***************************************************************************
-     **
-     ** Next step...
-     */ 
-      
-     public String getNextStep() {
-       return (nextStep_);
-     }
+    **
+    ** Constructor
+    */
      
+    private ChangePadState(boolean isForTarget, boolean isForModule, ServerControlFlowHarness cfh) {
+      super(cfh);
+      this.isForTarget = isForTarget;
+      this.isForModule = isForModule;
+      nextStep_ = "stepSetToMode";
+    }
+
     /***************************************************************************
     **
     ** mouse masking
@@ -335,7 +337,7 @@ public class ChangePad extends AbstractControlFlow {
       // Legacy belt-and-supenders code:
       if (!LinkSupport.amIValidForTargetOrSource(intersect, 
                                                  (isForTarget) ? LinkSupport.IS_FOR_TARGET : LinkSupport.IS_FOR_SOURCE, 
-                                                 isForModule, rcxT_)) {
+                                                 isForModule, dacx_)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       } 
       
@@ -358,8 +360,8 @@ public class ChangePad extends AbstractControlFlow {
       // Go and find if we intersect anything.
       //
 
-      List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+      List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       //
       // If we don't intersect anything, we need to bag it.
@@ -375,7 +377,7 @@ public class ChangePad extends AbstractControlFlow {
       }
 
       String id = inter.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       if (node == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
@@ -386,7 +388,7 @@ public class ChangePad extends AbstractControlFlow {
        
       List<Intersection.PadVal> pads = inter.getPadCand();
     
-      if (LinkSupport.changeLinkTarget(appState_, intersect, inter, pads, id, rcxT_)) {
+      if (LinkSupport.changeLinkTarget(intersect, pads, id, dacx_, uFac_)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
@@ -399,15 +401,15 @@ public class ChangePad extends AbstractControlFlow {
     */
        
     private DialogAndInProcessCmd stepRelocateModuleTarget() {
-   //    Database db = appState_.getDB();
-       String currentOverlay = appState_.getCurrentOverlay();
+
+       String currentOverlay = dacx_.getOSO().getCurrentOverlay();
    
        //
        // Go and find if we intersect anything.
        //
   
        Intersection intersected = 
-         appState_.getGenomePresentation().intersectANetModuleElement(x, y, rcxT_, GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
+         uics_.getGenomePresentation().intersectANetModuleElement(x, y, dacx_, GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
        //
        // If we don't intersect anything, or the correct thing, we need to bag it.
        //
@@ -416,7 +418,7 @@ public class ChangePad extends AbstractControlFlow {
          return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
        }
        String id = intersected.getObjectID();
-       NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+       NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
        NetworkOverlay novr = owner.getNetworkOverlay(currentOverlay);
        NetModule nm = novr.getModule(id);
        if (nm == null) {
@@ -439,7 +441,7 @@ public class ChangePad extends AbstractControlFlow {
        
        String treeID = intersect.getObjectID();
        NetModuleLinkageProperties nmlp = 
-         rcxT_.getLayout().getNetOverlayProperties(currentOverlay).getNetModuleLinkagePropertiesFromTreeID(treeID);
+         dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay).getNetModuleLinkagePropertiesFromTreeID(treeID);
        
        LinkSegmentID[] linkIDs = intersect.segmentIDsFromIntersect();
        Set<String> throughSeg = nmlp.resolveLinkagesThroughSegment(linkIDs[0]);
@@ -468,18 +470,18 @@ public class ChangePad extends AbstractControlFlow {
        // Undo/Redo support
        //
   
-       UndoSupport support = new UndoSupport(appState_, "undo.changeModuleLinkTarget");     
+       UndoSupport support = uFac_.provideUndoSupport("undo.changeModuleLinkTarget", dacx_);     
   
        //
        // We reject unless the target we are intersecting matches the
        // link we are trying to relocate.
        //
   
-       Layout.PropChange lpc = rcxT_.getLayout().changeNetModuleTarget(currentOverlay, myLinkId, padPt, toSide, rcxT_);
+       Layout.PropChange lpc = dacx_.getCurrentLayout().changeNetModuleTarget(currentOverlay, myLinkId, padPt, toSide, dacx_);
        if (lpc != null) {
-         PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+         PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
          support.addEdit(mov);
-         support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
+         support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
          support.finish();
          return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
        } else {
@@ -498,8 +500,8 @@ public class ChangePad extends AbstractControlFlow {
       // Go and find if we intersect anything.
       //
 
-     List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-     Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+     List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+     Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
      Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       //
       // If we don't intersect anything, we need to bag it.
@@ -515,7 +517,7 @@ public class ChangePad extends AbstractControlFlow {
       }
 
       String id = inter.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       if (node == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
@@ -526,7 +528,7 @@ public class ChangePad extends AbstractControlFlow {
       
       List<Intersection.PadVal> pads = inter.getPadCand();
    
-      if (LinkSupport.changeLinkSource(appState_, intersect, inter, pads, id, rcxT_)) {
+      if (LinkSupport.changeLinkSource(uics_, intersect, pads, id, dacx_, uFac_)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
@@ -539,14 +541,14 @@ public class ChangePad extends AbstractControlFlow {
     */
         
     private DialogAndInProcessCmd stepRelocateModuleSource() {
-      String currentOverlay = rcxT_.oso.getCurrentOverlay();
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
   
       //
       // Go and find if we intersect anything.
       //
  
       Intersection intersected = 
-        appState_.getGenomePresentation().intersectANetModuleElement(x, y, rcxT_, GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
+        uics_.getGenomePresentation().intersectANetModuleElement(x, y, dacx_, GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
       //
       // If we don't intersect anything, or the correct thing, we need to bag it.
       //
@@ -555,7 +557,7 @@ public class ChangePad extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
       String id = intersected.getObjectID();
-      NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+      NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
       NetworkOverlay novr = owner.getNetworkOverlay(currentOverlay);
       NetModule nm = novr.getModule(id);
       if (nm == null) {
@@ -578,7 +580,7 @@ public class ChangePad extends AbstractControlFlow {
            
       String treeID = intersect.getObjectID();
       NetModuleLinkageProperties nmlp = 
-        rcxT_.getLayout().getNetOverlayProperties(currentOverlay).getNetModuleLinkagePropertiesFromTreeID(treeID);
+        dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay).getNetModuleLinkagePropertiesFromTreeID(treeID);
       
       LinkSegmentID[] linkIDs = intersect.segmentIDsFromIntersect();
       Set<String> throughSeg = nmlp.resolveLinkagesThroughSegment(linkIDs[0]);
@@ -613,18 +615,18 @@ public class ChangePad extends AbstractControlFlow {
       // Undo/Redo support
       //
 
-      UndoSupport support = new UndoSupport(appState_, "undo.changeModuleLinkSource");     
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeModuleLinkSource", dacx_);     
 
       //
       // We reject unless the target we are intersecting matches the
       // link we are trying to relocate.
       //
 
-      Layout.PropChange lpc = rcxT_.getLayout().changeNetModuleSource(currentOverlay, treeID, padPt, toSide, rcxT_);
+      Layout.PropChange lpc = dacx_.getCurrentLayout().changeNetModuleSource(currentOverlay, treeID, padPt, toSide, dacx_);
       if (lpc != null) {
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
         support.finish();
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
@@ -642,8 +644,8 @@ public class ChangePad extends AbstractControlFlow {
       // Go and find if we intersect anything.
       //
 
-      List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+      List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       //
       // If we don't intersect anything, we need to bag it.
@@ -659,7 +661,7 @@ public class ChangePad extends AbstractControlFlow {
       }
 
       String id = inter.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       if (node == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
@@ -670,7 +672,7 @@ public class ChangePad extends AbstractControlFlow {
        
       List<Intersection.PadVal> pads = inter.getPadCand();
       
-      if (LinkSupport.changeLinkTargetGeneModule(appState_, intersect, pads, id, rcxT_)) {
+      if (LinkSupport.changeLinkTargetGeneModule(intersect, pads, id, dacx_, uFac_)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));

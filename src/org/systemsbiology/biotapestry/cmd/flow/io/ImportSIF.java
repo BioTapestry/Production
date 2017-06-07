@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,16 +26,16 @@ import java.text.MessageFormat;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.CommonView;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.layout.WorkspaceSupport;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenomeSIFFormatFactory;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -54,6 +54,7 @@ import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -80,8 +81,7 @@ public class ImportSIF extends AbstractControlFlow  {
   ** Constructor 
   */ 
   
-  public ImportSIF(BTState appState) {
-    super(appState);
+  public ImportSIF() {
     name = "command.ImportGenomeSIF";
     desc = "command.ImportGenomeSIF";
     mnem = "command.ImportGenomeSIFMnem";
@@ -115,13 +115,10 @@ public class ImportSIF extends AbstractControlFlow  {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh; 
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("presentImportChoices")) {
         next = ans.presentImportChoices(); 
@@ -152,11 +149,8 @@ public class ImportSIF extends AbstractControlFlow  {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, BackgroundWorkerOwner {
+  public static class StepState extends AbstractStepState implements BackgroundWorkerOwner {
      
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
     private File chosenFile_;
     private LoadSaveSupport myLsSup_;
@@ -164,29 +158,47 @@ public class ImportSIF extends AbstractControlFlow  {
     private SpecialtyLayoutEngineParams params_;
     private boolean doOpt;
     private int overlayOption;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext rcxT_;
 
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      myLsSup_ = appState_.getLSSupport();
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+     //  myLsSup_ = uics_.getLSSupport(); Gotta get cfh in
       nextStep_ = "presentImportChoices";
-      dacx_ = dacx.getContextForRoot();
+      rcxT_ = dacx_.getContextForRoot();
     }
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      myLsSup_ = uics_.getLSSupport();
+      nextStep_ = "presentImportChoices";
+      rcxT_ = dacx_.getContextForRoot();
     }
-       
+    
+    /***************************************************************************
+    **
+    ** Gotta override to make sure myLsSup_ can get initialized.
+    */
+    
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      myLsSup_ = uics_.getLSSupport();
+      return;
+    }
+ 
     /***************************************************************************
     **
     ** First Step. Get import choices
@@ -195,8 +207,8 @@ public class ImportSIF extends AbstractControlFlow  {
     private DialogAndInProcessCmd presentImportChoices() {
       specLayout_ = null;  // Applies in non-replacement case
       params_ = null;
-      SIFImportChoicesDialogFactory.BuildArgs ba = new SIFImportChoicesDialogFactory.BuildArgs(true);
-      SIFImportChoicesDialogFactory mddf = new SIFImportChoicesDialogFactory(cfh);   
+      SIFImportChoicesDialogFactory.BuildArgs ba = new SIFImportChoicesDialogFactory.BuildArgs(true, rcxT_);
+      SIFImportChoicesDialogFactory mddf = new SIFImportChoicesDialogFactory(cfh_);   
       ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepProcessImportChoices";
@@ -220,12 +232,12 @@ public class ImportSIF extends AbstractControlFlow  {
       DialogAndInProcessCmd daipc;
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         SpecialtyLayoutEngine.SpecialtyType strat = crq.layoutType;
-        specLayout_ = SpecialtyLayoutEngine.getLayout(strat, appState_);          
+        specLayout_ = SpecialtyLayoutEngine.getLayout(strat, new StaticDataAccessContext(rcxT_));          
         boolean showOptions = crq.showOptionDialog;
         if (showOptions) {
-          Genome targetGenome = dacx_.getGenomeSource().getGenome();
-          SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout_.getParameterDialogBuildArgs(targetGenome, null, false);
-          SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh);
+          Genome targetGenome = rcxT_.getGenomeSource().getRootDBGenome();
+          SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specLayout_.getParameterDialogBuildArgs(uics_, targetGenome, null, false);
+          SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh_);
           ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
           daipc = new DialogAndInProcessCmd(cfhd, this);
           nextStep_ = "stepExtractParams";
@@ -260,8 +272,8 @@ public class ImportSIF extends AbstractControlFlow  {
     */ 
        
     private DialogAndInProcessCmd stepWarn() {
-      if ((importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) && appState_.hasAnUndoChange()) { 
-        ResourceManager rMan = appState_.getRMan();      
+      if ((importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) && cmdSrc_.hasAnUndoChange()) { 
+        ResourceManager rMan = rcxT_.getRMan();      
         String message = rMan.getString("loadAction.warningMessage");
         String title = rMan.getString("loadAction.warningMessageTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -298,8 +310,8 @@ public class ImportSIF extends AbstractControlFlow  {
        
     private DialogAndInProcessCmd getFile() {
       chosenFile_ = null;
-      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(appState_, ".sif", "filterName.sif");
-      chosenFile_ = myLsSup_.getFprep().getExistingImportFile("ImportDirectory", filt);
+      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(rcxT_.getRMan(), ".sif", "filterName.sif");
+      chosenFile_ = myLsSup_.getFprep(rcxT_).getExistingImportFile("ImportDirectory", filt);
       if (chosenFile_ == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
       }
@@ -316,26 +328,26 @@ public class ImportSIF extends AbstractControlFlow  {
     private DialogAndInProcessCmd doIt() { 
 
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-        appState_.setCurrentFile(null);  // since we replace everything
-        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), 
+        myLsSup_.setCurrentFile(null);  // since we replace everything
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), 
                                                      ModelChangeEvent.MODEL_DROPPED);     
-        appState_.getEventMgr().sendModelChangeEvent(mcev);
-        appState_.getCommonView().manageWindowTitle(chosenFile_.getName());
-        myLsSup_.newModelOperations(dacx_);
+        uics_.getEventMgr().sendModelChangeEvent(mcev);
+        uics_.getCommonView().manageWindowTitle(chosenFile_.getName());
+        myLsSup_.newModelOperations(rcxT_);
       }
-      myLsSup_.getFprep().setPreference("ImportDirectory", chosenFile_.getAbsoluteFile().getParent());
-      UndoSupport support = new UndoSupport(appState_, "undo.buildFromSIF");            
-      SIFImportRunner runner = new SIFImportRunner(appState_, dacx_, chosenFile_, importMode_, doOpt, overlayOption, support, specLayout_, params_);
+      myLsSup_.getFprep(rcxT_).setPreference("ImportDirectory", chosenFile_.getAbsoluteFile().getParent());
+      UndoSupport support = uFac_.provideUndoSupport("undo.buildFromSIF", rcxT_);            
+      SIFImportRunner runner = new SIFImportRunner(uics_, rcxT_, uFac_, chosenFile_, importMode_, doOpt, overlayOption, support, specLayout_, params_);
       BackgroundWorkerClient bwc;     
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, rcxT_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
       } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, support);
+        bwc = new BackgroundWorkerClient(uics_, rcxT_, this, runner, support);
       }        
       runner.setClient(bwc);
       bwc.launchWorker();
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
                                                                                        : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done    
       return (daipc);
     }
@@ -363,36 +375,36 @@ public class ImportSIF extends AbstractControlFlow  {
 
     private void finishedImport(DBGenomeSIFFormatFactory.AugmentedResult result, IOException ioEx) {   
       if ((result != null) && (result.coreResult != null)) {
-        (new LayoutStatusReporter(appState_, result.coreResult)).doStatusAnnouncements();
+        (new LayoutStatusReporter(uics_, rcxT_, result.coreResult)).doStatusAnnouncements();
       }
-      CommonView cv = appState_.getCommonView();
+      CommonView cv = uics_.getCommonView();
       if (ioEx != null) {
         if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
-          dacx_.drop();
+          rcxT_.drop();
           cv.manageWindowTitle(null);
-          myLsSup_.newModelOperations(dacx_);
+          myLsSup_.newModelOperations(rcxT_);
         }
-        myLsSup_.getFprep().getFileInputError(ioEx).displayFileInputError();
+        myLsSup_.getFprep(rcxT_).getFileInputError(ioEx).displayFileInputError();
         return;                
       }
-      if (dacx_.getGenomeSource().getGenome() == null) {
-        dacx_.drop();
+      if (rcxT_.getGenomeSource().getRootDBGenome() == null) {
+        rcxT_.drop();
         cv.manageWindowTitle(null);
-        myLsSup_.newModelOperations(dacx_);                
-        myLsSup_.getFprep().getFileInputError(null).displayFileInputError();
+        myLsSup_.newModelOperations(rcxT_);                
+        myLsSup_.getFprep(rcxT_).getFileInputError(null).displayFileInputError();
         return;
       }
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         cv.manageWindowTitle(chosenFile_.getName());
-        myLsSup_.postLoadOperations(true, dacx_);
+        myLsSup_.postLoadOperations(true, rcxT_, 0, false, false, null);
       }
-      LayoutLinkSupport.offerColorFixup(appState_, dacx_, result.coreResult);
+      LayoutLinkSupport.offerColorFixup(uics_, rcxT_, result.coreResult, uFac_);
       
       if ((result != null) && !result.usedSignTag) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = rcxT_.getRMan();
         Object[] tags = DBGenomeSIFFormatFactory.getSignTags();
         String desc = MessageFormat.format(UiUtil.convertMessageToHtml(rMan.getString("loadAction.couldUseTags")), tags); 
-        JOptionPane.showMessageDialog(appState_.getTopFrame(),desc, 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(),desc, 
                                       rMan.getString("loadAction.couldUseTagsTitle"),
                                       JOptionPane.WARNING_MESSAGE);
       }
@@ -407,8 +419,9 @@ public class ImportSIF extends AbstractControlFlow  {
     
   private static class SIFImportRunner extends BackgroundWorker {
  
-    private BTState myAppState_;
-    private DataAccessContext myDacx_;
+    private UIComponentSource myUics_;
+    private UndoFactory myUFac_;
+    private StaticDataAccessContext myDacx_;
     private UndoSupport support_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
     private File file_;
@@ -417,12 +430,13 @@ public class ImportSIF extends AbstractControlFlow  {
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
     
-    public SIFImportRunner(BTState appState, DataAccessContext dacx, File file,
+    public SIFImportRunner(UIComponentSource uics, StaticDataAccessContext dacx, UndoFactory uFac, File file,
                            SIFImportChoicesDialogFactory.LayoutModes importMode, boolean doOpts, int overlayOption,
                            UndoSupport support, SpecialtyLayout specLayout, SpecialtyLayoutEngineParams params) {
       super(new DBGenomeSIFFormatFactory.AugmentedResult(new LinkRouter.RoutingResult(), false));      
       file_ = file;
-      myAppState_ = appState;
+      myUics_ = uics;
+      myUFac_ = uFac;
       myDacx_ = dacx;
       importMode_ = importMode;
       doOpts_ = doOpts;
@@ -435,7 +449,7 @@ public class ImportSIF extends AbstractControlFlow  {
     public Object runCore() throws AsynchExitRequestException {
       DBGenomeSIFFormatFactory sff = new DBGenomeSIFFormatFactory();
       try {
-        DBGenomeSIFFormatFactory.AugmentedResult ar = sff.buildFromSIF(myAppState_, myDacx_, file_,                                                       
+        DBGenomeSIFFormatFactory.AugmentedResult ar = sff.buildFromSIF(myUics_, myDacx_, myUFac_, file_,                                                       
                                                                        (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT),
                                                                        specLayout_, params_,
                                                                        support_, doOpts_, overlayOption_, this, 0.0, 1.0);
@@ -447,9 +461,9 @@ public class ImportSIF extends AbstractControlFlow  {
     }
     
     public Object postRunCore() {
-      if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-        Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-        (new WorkspaceSupport(myAppState_, myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
+      if (myDacx_.modelIsOutsideWorkspaceBounds()) {
+        Rectangle allBounds = myDacx_.getZoomTarget().getAllModelBounds();
+        (new WorkspaceSupport(myDacx_)).setWorkspaceToModelBounds(support_, allBounds);
       }
       return (null);
     } 

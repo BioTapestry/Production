@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,6 +37,7 @@ import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.XPlatDisplayText;
 import org.systemsbiology.biotapestry.nav.NavTree;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -55,9 +56,7 @@ public class LocalGenomeSource implements GenomeSource {
     
   public LocalGenomeSource(DBGenome genome, Genome keyedGenome) {
     this();
-    ArrayList<Genome> myList = new ArrayList<Genome>();
-    myList.add(keyedGenome);
-    install(genome, myList);
+    install(genome, keyedGenome);
   }
   
   public LocalGenomeSource(DBGenome genome, List<Genome> keyedGenomes) {
@@ -92,6 +91,13 @@ public class LocalGenomeSource implements GenomeSource {
     keyedGenomes_.clear();
     return;
   }     
+  
+  public void install(DBGenome genome, Genome keyedGenome) {
+    ArrayList<Genome> myList = new ArrayList<Genome>();
+    myList.add(keyedGenome);
+    install(genome, myList);
+    return;
+  }
   
   public void install(DBGenome genome, List<Genome> keyedGenomes) {
     rootGenome_ = genome;
@@ -136,7 +142,7 @@ public class LocalGenomeSource implements GenomeSource {
     return;
   }
   
-  public void setGenome(Genome genome) {
+  public void setGenome(DBGenome genome) {
     rootGenome_ = (DBGenome)genome;
     keyedGenomes_.put(genome.getID(), genome);
     return;
@@ -155,7 +161,7 @@ public class LocalGenomeSource implements GenomeSource {
     return;
   }    
   
-  public Genome getGenome() {
+  public DBGenome getRootDBGenome() {
     return (rootGenome_);
   }    
 
@@ -247,6 +253,15 @@ public class LocalGenomeSource implements GenomeSource {
   }   
  
   /***************************************************************************
+  ** 
+  ** Get ID
+  */
+
+  public String getID() {
+    throw new UnsupportedOperationException();  
+  }
+
+  /***************************************************************************
   **
   ** Get an iterator over the dynamic proxies
   */ 
@@ -317,7 +332,8 @@ public class LocalGenomeSource implements GenomeSource {
   */
 
   public void clearAllDynamicProxyCaches() {
-    throw new UnsupportedOperationException();
+    // We don't have anything to clear...
+    return;
   }
   
   /***************************************************************************
@@ -326,6 +342,24 @@ public class LocalGenomeSource implements GenomeSource {
   */
 
   public StartupView getStartupView() {
+    throw new UnsupportedOperationException();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get the startupView, with first view overlay preference installed
+  */
+
+  public TabNameData getTabNameData() {
+    throw new UnsupportedOperationException();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set the TabNameData
+  */
+
+  public DatabaseChange setTabNameData(TabNameData tnData) {
     throw new UnsupportedOperationException();
   }
   
@@ -388,7 +422,7 @@ public class LocalGenomeSource implements GenomeSource {
   ** Get a unique model name
   */
 
-  public String getUniqueModelName(){
+  public String getUniqueModelName(ResourceManager rMan) {
     throw new UnsupportedOperationException();
   }
   

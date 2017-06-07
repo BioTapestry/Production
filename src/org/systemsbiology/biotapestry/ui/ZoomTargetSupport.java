@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.util.Map;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -53,7 +53,6 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
 
   private TaggedSet currentNetMods_;
   private String currentOverlay_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,12 +68,11 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
 
   /***************************************************************************
   **
-  ** Constructor
+  ** Constructor. Yes, this class can take either dynamic DACs (full application) or static DACs (model dialogs):
   */
   
-  public ZoomTargetSupport(BTState appState, ZoomPresentation genomePre, JPanel paintTarget, DataAccessContext rcx) {
+  public ZoomTargetSupport(ZoomPresentation genomePre, JPanel paintTarget, DataAccessContext rcx) {
     super(genomePre, paintTarget, rcx);
-    appState_ = appState;
     currentOverlay_ = null;
     currentNetMods_ = new TaggedSet();
   }
@@ -112,21 +110,21 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
   
   @Override
   public void fixCenterPoint(boolean doComplete, UndoSupport support, boolean closeIt) {
-    Genome genome = rcx_.getGenome();
+    Genome genome = rcx_.getCurrentGenome();
     if ((genome != null) && genome.isEmpty() && (genome.getNetworkModuleCount() == 0)) {
       if (genome instanceof DBGenome) {         
         setRawOrigin(new Point2D.Double(0.0, 0.0), support, closeIt);
         return;
       }
       genome = rcx_.getDBGenome();
-      DataAccessContext rcxR = new DataAccessContext(rcx_, genome.getID());
+      DataAccessContext rcxR = new StaticDataAccessContext(rcx_).getContextForRoot();
      
       if ((genome != null) && genome.isEmpty() && (genome.getNetworkModuleCount() == 0)) {
         setRawOrigin(new Point2D.Double(0.0, 0.0), support, closeIt);
         return;
       }  
       boolean doModules = genome.isEmpty();
-      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcxR.fgho.fullModuleKeysPerLayout() : null;
+      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcxR.getFGHO().fullModuleKeysPerLayout() : null;
       Rectangle rect = myGenomePre_.getRequiredSize(rcxR, doComplete, false, 
                                                     doModules, doModules, null, null, allKeys);
       double cx = rect.getX() + (rect.getWidth() / 2.0);
@@ -138,8 +136,8 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
     // If modules are visible, use the visible ones for centering. If not, use them as a backup
     // if the genome is empty
     //
-    boolean doModules = genome.isEmpty() || ((currentOverlay_ != null) && !currentNetMods_.set.isEmpty());
-    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.fgho.fullModuleKeysPerLayout() : null;
+    boolean doModules = ((genome != null) && genome.isEmpty()) || ((currentOverlay_ != null) && !currentNetMods_.set.isEmpty());
+    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.getFGHO().fullModuleKeysPerLayout() : null;
     Rectangle rect = myGenomePre_.getRequiredSize(rcx_, doComplete, false, 
                                                   doModules, doModules, currentOverlay_, currentNetMods_, allKeys);
     double cx = rect.getX() + (rect.getWidth() / 2.0);
@@ -155,15 +153,15 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
   */
   
   public void setRawCenterPoint(Point2D rawPt, UndoSupport support, boolean closeIt) {
-    Workspace currWS = rcx_.wSrc.getWorkspace();
+    Workspace currWS = rcx_.getWorkspaceSource().getWorkspace();
     Workspace ws = new Workspace(currWS, rawPt);
-    DatabaseChange dc = rcx_.wSrc.setWorkspace(ws);      
+    DatabaseChange dc = rcx_.getWorkspaceSource().setWorkspace(ws);      
     if (support != null) {   
       if (dc != null) {
-        DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, rcx_, dc);
+        DatabaseChangeCmd dcc = new DatabaseChangeCmd(rcx_, dc);
         support.addEdit(dcc);
         if (closeIt) {
-          support.addEvent(new LayoutChangeEvent(rcx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+          support.addEvent(new LayoutChangeEvent(rcx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
           support.finish();
         }
       }
@@ -177,16 +175,16 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
   */
   
   public void setRawOrigin(Point2D rawPt, UndoSupport support, boolean closeIt) {
-    Workspace currWS = rcx_.wSrc.getWorkspace();
+    Workspace currWS = rcx_.getWorkspaceSource().getWorkspace();
     Workspace ws = currWS.clone();
     ws.setOrigin(rawPt);
-    DatabaseChange dc = rcx_.wSrc.setWorkspace(ws);      
+    DatabaseChange dc = rcx_.getWorkspaceSource().setWorkspace(ws);      
     if (support != null) {   
       if (dc != null) {
-        DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, rcx_, dc);
+        DatabaseChangeCmd dcc = new DatabaseChangeCmd(rcx_, dc);
         support.addEdit(dcc);
         if (closeIt) {
-          support.addEvent(new LayoutChangeEvent(rcx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+          support.addEvent(new LayoutChangeEvent(rcx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
           support.finish();
         }
       }
@@ -220,7 +218,7 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
       default:
         throw new IllegalArgumentException();
     }
-    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.fgho.fullModuleKeysPerLayout() : null;
+    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.getFGHO().fullModuleKeysPerLayout() : null;
     Rectangle origRect = myGenomePre_.getRequiredSize(rcx_, doComplete, 
                                                       doBuffer, doModules, doModules, 
                                                       useOverlay, useModules, allKeys);
@@ -253,7 +251,7 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
       default:
         throw new IllegalArgumentException();
     }
-    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.fgho.fullModuleKeysPerLayout() : null;
+    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? rcx_.getFGHO().fullModuleKeysPerLayout() : null;
     return (myGenomePre_.getRequiredSize(rcx_, doComplete, doBuffer, doModules, doModules, 
                                          useOverlay, useModules, allKeys));  
   }  
@@ -266,12 +264,12 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
   @Override
   public Rectangle getAllModelBounds() {  
     Genome root = rcx_.getDBGenome();
-    DataAccessContext rcxR = new DataAccessContext(rcx_, root);
+    DataAccessContext rcxR = new StaticDataAccessContext(rcx_, root);
     Rectangle rect = getBasicBounds(rcxR, true, false);
     Iterator<GenomeInstance> giit = rcx_.getGenomeSource().getInstanceIterator();
     while (giit.hasNext()) {
       GenomeInstance gi = giit.next();
-      DataAccessContext rcxI = new DataAccessContext(rcx_, gi);
+      DataAccessContext rcxI = new StaticDataAccessContext(rcx_, gi);
       Rectangle modRect = getBasicBounds(rcxI, true, false);
       rect = rect.union(modRect);      
     }    
@@ -284,7 +282,7 @@ public class ZoomTargetSupport extends BasicZoomTargetSupport {
   */
   
   private Rectangle getBasicBounds(DataAccessContext rcx, boolean doComplete, boolean doBuffer) {  
-    Map<String, Layout.OverlayKeySet> allKeys = rcx.fgho.fullModuleKeysPerLayout();
+    Map<String, Layout.OverlayKeySet> allKeys = rcx.getFGHO().fullModuleKeysPerLayout();
     return (myGenomePre_.getRequiredSize(rcx, doComplete, doBuffer, true, true, null, null, allKeys));
   }   
 }

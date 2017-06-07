@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,18 +29,16 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -71,7 +69,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   // PRIVATE INSTANCE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////  
-
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -83,8 +81,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   ** Constructor 
   */ 
   
-  public PullDown(BTState appState) {
-    super(appState);  
+  public PullDown() {
     name =  "command.Pulldown" ;
     desc = "command.Pulldown";
     icon =  "Inherit24.gif";
@@ -114,6 +111,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   ** 
   */
  
+  @Override
   public boolean canPush(int pushCondition) {
     return ((pushCondition & MainCommands.SKIP_PULLDOWN_PUSH) == 0x00);
   }
@@ -124,8 +122,8 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   ** 
   */
   
-  public void directCheck(boolean isActive) {
-    appState_.setAmPulling(isActive);
+  public void directCheck(boolean isActive, CmdSource cSrc) {
+    cSrc.setAmPulling(isActive);
     return;
   }
   
@@ -139,14 +137,11 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        StepState ans = new StepState(cfh); 
         next = ans.stepStart();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepStart")) {
           next = ans.stepStart();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -174,8 +169,8 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.nextStep_ = "stepContinuePullDown";
-    ans.rcxX_.pixDiam = pixDiam;
+    ans.setNextStep("stepContinuePullDown");
+    ans.getDACX().setPixDiam(pixDiam);
     return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans));
   }
    
@@ -184,33 +179,21 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.ButtonMaskerCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.ButtonMaskerCmdState {
 
-    private ServerControlFlowHarness cfh;
     private boolean rootInstance_;
-    private DataAccessContext rcxX_;
-    
-    //--------------------
-     
-    private String nextStep_;
     private int x;
     private int y;  
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+ 
     /***************************************************************************
     **
     ** Constructor
     */
        
-    public StepState(BTState appState, DataAccessContext dacx) {
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       rootInstance_ = false;
-      appState_ = appState;
-      rcxX_ = dacx;
-      GenomeInstance parent = rcxX_.getGenomeAsInstance().getVfgParent();
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       rootInstance_ = (parent == null);    
       nextStep_ = "stepStart";  
     }
@@ -237,12 +220,12 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
       //
       // First thing to do is to toggle the pulldown state.
       //     
-      boolean nowPulling = !appState_.getAmPulling();
-      appState_.setAmPulling(nowPulling);
+      boolean nowPulling = !cmdSrc_.getAmPulling();
+      cmdSrc_.setAmPulling(nowPulling);
       DialogAndInProcessCmd retval;
       if (nowPulling) { 
-        if (appState_.getDB().haveBuildInstructions()) {
-          ResourceManager rMan = appState_.getRMan();
+        if (dacx_.getInstructSrc().haveBuildInstructions()) {
+          ResourceManager rMan = dacx_.getRMan();
           String message = rMan.getString("instructWarning.PullDownMessage");
           String title = rMan.getString("instructWarning.PullDownTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -266,8 +249,8 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     
     private DialogAndInProcessCmd stepSetToMode() {
       if (rootInstance_) {
-        PullDownFromRootFrame pdfrd = new PullDownFromRootFrame(appState_, rcxX_.getDBGenome(), rcxX_.getGenomeAsInstance());
-        appState_.getCommonView().registerPullFrame(pdfrd);
+        PullDownFromRootFrame pdfrd = new PullDownFromRootFrame(uics_, dacx_, uFac_, cmdSrc_);
+        uics_.getCommonView().registerPullFrame(pdfrd);
         pdfrd.show(); // NEED TO USE THIS...OVERRIDDEN IN pdrfd class!
       }
       
@@ -283,16 +266,16 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
    
     private DialogAndInProcessCmd stepContinuePullDown() {
       if (rootInstance_) {
-        appState_.getSUPanel().giveErrorFeedback();
+        uics_.getSUPanel().giveErrorFeedback();
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }        
       
-      if (rcxX_.getGenome() instanceof GenomeInstance) {  
-        GenomeInstance parent = rcxX_.getGenomeAsInstance().getVfgParent();
+      if (dacx_.currentGenomeIsAnInstance()) {  
+        GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         if (parent != null) {            
           ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.UNSELECTED;
           try {
-            if (rcxX_.getGenome() instanceof DynamicGenomeInstance) {
+            if (dacx_.currentGenomeIsADynamicInstance()) {
               result = doGroupAdd(x, y);
             } else {
               //
@@ -313,9 +296,9 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           //  appState_.getCursorMgr().showDefaultCursor();
           }
           if ((result == ServerControlFlowHarness.ClickResult.ERROR) || (result == ServerControlFlowHarness.ClickResult.UNSELECTED)) {
-            appState_.getSUPanel().giveErrorFeedback();
+            uics_.getSUPanel().giveErrorFeedback();
           }
-          appState_.getSUPanel().drawModel(false);            
+          uics_.getSUPanel().drawModel(false);            
         }
       }
      return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this)); 
@@ -330,10 +313,10 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     
       x = (int)((Math.round(x / 10.0)) * 10.0);
       y = (int)((Math.round(y / 10.0)) * 10.0); 
-      if (rcxX_.getGenome() instanceof GenomeInstance) {
-        GenomeInstance parent = rcxX_.getGenomeAsInstance().getVfgParent();
+      if (dacx_.currentGenomeIsAnInstance()) {
+        GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         if (parent != null) {    
-          Intersection inter = appState_.getGenomePresentation().selectGroupFromParent(x, y, rcxX_);
+          Intersection inter = uics_.getGenomePresentation().selectGroupFromParent(x, y, dacx_);
           if (inter == null) {
             return (ServerControlFlowHarness.ClickResult.UNSELECTED);
           }
@@ -344,14 +327,14 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           if (subsetGroup == null) {
             return (ServerControlFlowHarness.ClickResult.ERROR);
           }
-          genCount = rcxX_.getGenomeAsInstance().getGeneration();        
+          genCount = dacx_.getCurrentGenomeAsInstance().getGeneration();        
           inherit = Group.buildInheritedID(startID, genCount);
-          Group checkGroup = rcxX_.getGenomeAsInstance().getGroup(inherit);
+          Group checkGroup = dacx_.getCurrentGenomeAsInstance().getGroup(inherit);
           if (checkGroup != null) { // already present
             return (ServerControlFlowHarness.ClickResult.PRESENT);
           }
-          GroupCreationSupport handler = new GroupCreationSupport(appState_);
-          handler.addNewGroupToSubsetInstance(rcxX_, subsetGroup, null);
+          GroupCreationSupport handler = new GroupCreationSupport(uics_, uFac_);
+          handler.addNewGroupToSubsetInstance(dacx_, subsetGroup, null);
           return (ServerControlFlowHarness.ClickResult.SELECTED);
         }
       }
@@ -364,15 +347,15 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     */  
     
     private ServerControlFlowHarness.ClickResult doNodePulldown(int x, int y) {
-      String currentOverlay = appState_.getCurrentOverlay();
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
       
       x = (int)((Math.round(x / 10.0)) * 10.0);
       y = (int)((Math.round(y / 10.0)) * 10.0); 
-      if (rcxX_.getGenome() instanceof GenomeInstance) {
-        GenomeInstance parent = rcxX_.getGenomeAsInstance().getVfgParent();
+      if (dacx_.currentGenomeIsAnInstance()) {
+        GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         if (parent != null) {    
-          List<Intersection> itemList = appState_.getGenomePresentation().selectFromParent(x, y, rcxX_);
-          Intersection inter = (new IntersectionChooser(true, rcxX_).intersectionRanker(itemList));
+          List<Intersection> itemList = uics_.getGenomePresentation().selectFromParent(x, y, dacx_);
+          Intersection inter = (new IntersectionChooser(true, dacx_).intersectionRanker(itemList));
           if (inter == null) {
             return (ServerControlFlowHarness.ClickResult.UNSELECTED);
           }
@@ -388,20 +371,20 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           if (group == null) {  // should not happen...
             return (ServerControlFlowHarness.ClickResult.UNSELECTED);
           }
-          int genCount = rcxX_.getGenomeAsInstance().getGeneration();        
+          int genCount = dacx_.getCurrentGenomeAsInstance().getGeneration();        
           String inherit = Group.buildInheritedID(group.getID(), genCount);
-          Group checkGroup = rcxX_.getGenomeAsInstance().getGroup(inherit);
+          Group checkGroup = dacx_.getCurrentGenomeAsInstance().getGroup(inherit);
           if (checkGroup == null) { // we don't have the group!
             return (ServerControlFlowHarness.ClickResult.UNSELECTED);
           }
 
-          NodeInstance checkNode = (NodeInstance)rcxX_.getGenome().getNode(startID);
+          NodeInstance checkNode = (NodeInstance)dacx_.getCurrentGenome().getNode(startID);
           if (checkNode != null) { // already present
             int activity = checkNode.getActivity();
             if (activity != NodeInstance.ACTIVE) {
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = dacx_.getRMan();
               boolean doGene = (checkNode.getNodeType() == Node.GENE);
-              JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+              JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                             rMan.getString((doGene) ? "addGene.PresentButInactive" 
                                                                     : "addNode.PresentButInactive"), 
                                             rMan.getString((doGene) ? "addGene.MakeActiveTitle" 
@@ -419,18 +402,18 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           // bounds to not include the newly added node:
           //
           List<String> modCandidates = null;
-          if (moduleOnDisplay(rcxX_.getGenome())) {
-            NodeProperties np = rcxX_.getLayout().getNodeProperties(startID);
+          if (moduleOnDisplay()) {
+            NodeProperties np = dacx_.getCurrentLayout().getNodeProperties(startID);
             Point2D nodeLoc = np.getLocation();
-            AddNodeSupport.NetModuleIntersector nmi = new AddNodeSupport.NetModuleIntersector(appState_, rcxX_);
+            AddNodeSupport.NetModuleIntersector nmi = new AddNodeSupport.NetModuleIntersector(uics_, dacx_);
             modCandidates = nmi.netModuleIntersections((int)nodeLoc.getX(), (int)nodeLoc.getY(), 0.0);
           }
 
-          UndoSupport support = new UndoSupport(appState_, (doGene) ? "undo.addGene" : "undo.addNode");
-          PropagateSupport.addNewNodeToSubsetInstance(appState_, rcxX_, subsetNode, support);
+          UndoSupport support = uFac_.provideUndoSupport((doGene) ? "undo.addGene" : "undo.addNode", dacx_);
+          PropagateSupport.addNewNodeToSubsetInstance(dacx_, subsetNode, support);
           if (modCandidates != null) {
-            Node inSub = rcxX_.getGenome().getNode(startID);
-            AddCommands.drawIntoNetModuleSupport(appState_, inSub, modCandidates, rcxX_, currentOverlay, support);
+            Node inSub = dacx_.getCurrentGenome().getNode(startID);
+            AddCommands.drawIntoNetModuleSupport(inSub, modCandidates, dacx_, currentOverlay, support);
           }
           support.finish();
 
@@ -445,9 +428,9 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
     ** Helper
     */  
     
-    private boolean moduleOnDisplay(Genome genome) {
-      String currentOverlay = appState_.getCurrentOverlay();
-      TaggedSet currentNetMods = appState_.getCurrentNetModules();           
+    private boolean moduleOnDisplay() {
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
+      TaggedSet currentNetMods = dacx_.getOSO().getCurrentNetModules();           
       if (currentOverlay == null) {
         return (false);
       }
@@ -463,14 +446,14 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
   
       x = (int)((Math.round(x / 10.0)) * 10.0);
       y = (int)((Math.round(y / 10.0)) * 10.0); 
-      if (rcxX_.getGenome() instanceof GenomeInstance) {
-        GenomeInstance parent = rcxX_.getGenomeAsInstance().getVfgParent();
+      if (dacx_.currentGenomeIsAnInstance()) {
+        GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         //
         // Handles the subset inclusion case
         //
         if (parent != null) {    
-          List<Intersection> itemList = appState_.getGenomePresentation().selectFromParent(x, y, rcxX_);
-          Intersection inter = (new IntersectionChooser(true, rcxX_).intersectionRanker(itemList));
+          List<Intersection> itemList = uics_.getGenomePresentation().selectFromParent(x, y, dacx_);
+          Intersection inter = (new IntersectionChooser(true, dacx_).intersectionRanker(itemList));
           if (inter == null) {
             return (ServerControlFlowHarness.ClickResult.UNSELECTED);
           }
@@ -484,7 +467,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           // and pull in those.
           //
           HashSet<String> linkagesToPull = new HashSet<String>();
-          BusProperties lp = rcxX_.getLayout().getLinkProperties(inter.getObjectID());
+          BusProperties lp = dacx_.getCurrentLayout().getLinkProperties(inter.getObjectID());
           LinkSegmentID segID = inter.segmentIDFromIntersect();       
           Set<String> resolved = lp.resolveLinkagesThroughSegment(segID);
           linkagesToPull.addAll(resolved);
@@ -505,14 +488,14 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
             if (subsetLink == null) {
               continue;
             }        
-            LinkageInstance checkLink = (LinkageInstance)rcxX_.getGenome().getLinkage(linkageID);        
+            LinkageInstance checkLink = (LinkageInstance)dacx_.getCurrentGenome().getLinkage(linkageID);        
             if (checkLink != null) { // already present
               continue;
             }
             String srcKey = subsetLink.getSource();          
             String trgKey = subsetLink.getTarget();
-            NodeInstance srcNode = (NodeInstance)rcxX_.getGenome().getNode(srcKey);
-            NodeInstance trgNode = (NodeInstance)rcxX_.getGenome().getNode(trgKey);
+            NodeInstance srcNode = (NodeInstance)dacx_.getCurrentGenome().getNode(srcKey);
+            NodeInstance trgNode = (NodeInstance)dacx_.getCurrentGenome().getNode(trgKey);
             // Don't let it go in if groups aren't there
             // This check addresses BT-06-17-05:4:
             // FIX TO FIX:  Allow it to go if src AND target is already present in the model.
@@ -523,7 +506,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
               if (srcGrpInParent == null) {
                 continue;
               }
-              Group srcGrpInChild = rcxX_.getGenomeAsInstance().getGroup(Group.addGeneration(srcGrpInParent.getID()));
+              Group srcGrpInChild = dacx_.getCurrentGenomeAsInstance().getGroup(Group.addGeneration(srcGrpInParent.getID()));
               if (srcGrpInChild == null) {
                 continue;
               }
@@ -531,7 +514,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
               if (trgGrpInParent == null) {
                 continue;
               }
-              Group trgGrpInChild = rcxX_.getGenomeAsInstance().getGroup(Group.addGeneration(trgGrpInParent.getID()));
+              Group trgGrpInChild = dacx_.getCurrentGenomeAsInstance().getGroup(Group.addGeneration(trgGrpInParent.getID()));
               if (trgGrpInChild == null) {
                 continue;
               }
@@ -552,9 +535,9 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
           }
 
           if (nodesToAdd.size() > 0) {
-            ResourceManager rMan = appState_.getRMan();          
+            ResourceManager rMan = dacx_.getRMan();          
             int include = 
-              JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+              JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                             rMan.getString("addLink.NeedSrcTarg"), 
                                             rMan.getString("addLink.NeedSrcTargTitle"),
                                             JOptionPane.YES_NO_CANCEL_OPTION);        
@@ -563,7 +546,7 @@ public class PullDown extends AbstractControlFlow implements ControlFlow.FlowFor
             }
           }
 
-          PropagateSupport.addNewLinkWithNodesToSubsetInstance(appState_, rcxX_, parent, pullSurvivors, nodesToAdd);      
+          PropagateSupport.addNewLinkWithNodesToSubsetInstance(dacx_, parent, pullSurvivors, nodesToAdd, uFac_);      
           return (ServerControlFlowHarness.ClickResult.SELECTED);
         }
       }

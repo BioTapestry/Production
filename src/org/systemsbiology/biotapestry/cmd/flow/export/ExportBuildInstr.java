@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,6 +21,7 @@
 package org.systemsbiology.biotapestry.cmd.flow.export;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
@@ -72,6 +73,7 @@ public class ExportBuildInstr extends AbstractSimpleExport {
   ** 
   */
  
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.haveBuildInstructions());
   }
@@ -84,7 +86,7 @@ public class ExportBuildInstr extends AbstractSimpleExport {
 
   @Override
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv"));
+    es.filts.add(new FileExtensionFilters.SimpleFilter(es.getDACX().getRMan(), ".csv", "filterName.csv"));
     es.suffs.add("csv");
     es.direct = "BuildInstrToCSVDirectory";
     es.pref = "csv";
@@ -98,10 +100,10 @@ public class ExportBuildInstr extends AbstractSimpleExport {
   */
  
   @Override
-  protected boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "none";
     es.fileErrTitle = "none";
-    (new BuildInstructionProcessor(appState_)).exportInstructions(es.out, es.dacx_);        
+    (new BuildInstructionProcessor(es.getUICS(), es.getDACX(), es.getUFac())).exportInstructions(es.out, es.getDACX());        
     return (true);
   } 
 }

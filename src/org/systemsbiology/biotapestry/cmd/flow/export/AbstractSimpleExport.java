@@ -31,13 +31,16 @@ import java.util.ArrayList;
 import javax.swing.filechooser.FileFilter;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FilePreparer;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -52,8 +55,8 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  protected FilePreparer fprep_;
- 
+  protected BTState appState_;
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -66,8 +69,7 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
   */ 
   
   public AbstractSimpleExport(BTState appState) {
-    super(appState);
-    fprep_ = appState_.getLSSupport().getFprep();
+    appState_ = appState;
     fillResources();
   }
      
@@ -120,7 +122,7 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
   ** 
   */
     
-  protected abstract boolean runTheExport(ExportState es); 
+  protected abstract boolean runTheExport(ExportState es, TabSource tSrc); 
   
   /***************************************************************************
   **
@@ -132,11 +134,11 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        ExportState es = new ExportState(appState_, cfh.getDataAccessContext());
-        es.fprep = fprep_;
+        ExportState es = new ExportState(cfh);
         next = es.getAPreDialog(cfh, this);    
       } else {
         ExportState ans = (ExportState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("extractPreFileSettings")) {
           next = ans.extractPreFileSettings(last);       
         } else if (ans.getNextStep().equals("getFileDialog")) {
@@ -159,7 +161,7 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class ExportState implements DialogAndInProcessCmd.CmdState {
+  public static class ExportState extends AbstractStepState {
      
     //
     // Package-visible so all the child classes can get to them easily:
@@ -175,21 +177,52 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
     String direct;
     PrintWriter out;      
     ServerControlFlowHarness.UserInputs preFileSet;
-    DataAccessContext dacx_;
-    
-    
-    private String nextStep_;
-    private BTState myAppState_;
- 
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    ** 
+    */
+        
+    public ExportState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      this.fprep = uics_.getLSSupport().getFprep(dacx_);
+      nextStep_ = "getAPreDialog";
     }
-      
-    public ExportState(BTState appState, DataAccessContext dacx) {
-      myAppState_ = appState;
-      dacx_ = dacx;
-    }
+    
+    /***************************************************************************
+    **
+    ** Add cfh in if StepState was pre-built
+    */
      
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      this.fprep = uics_.getLSSupport().getFprep(dacx_);
+      return;
+    }
+
+    /***************************************************************************
+    **
+    ** Needed by subclasses of AbstractSimpleExport
+    */
+       
+     UIComponentSource getUICS() {
+      return (uics_);
+    }
+    
+    /***************************************************************************
+    **
+    ** Needed by subclasses of AbstractSimpleExport
+    */
+       
+     UndoFactory getUFac() {
+      return (uFac_);
+    }
+
     /***************************************************************************
     **
     ** Get any pre-file dialog:
@@ -249,7 +282,7 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(fprep.generateSUFForWriteError(ioe), this));
       }
 
-      boolean ok = ase.runTheExport(this);
+      boolean ok = ase.runTheExport(this, tSrc_);
       out.close();
       
       if (!ok) {

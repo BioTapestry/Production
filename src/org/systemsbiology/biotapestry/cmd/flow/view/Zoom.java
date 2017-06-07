@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,17 +23,22 @@ package org.systemsbiology.biotapestry.cmd.flow.view;
 import java.awt.Rectangle;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.util.TaggedSet;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -104,6 +109,7 @@ public class Zoom extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////    
   
   private ZoomAction action_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -117,7 +123,7 @@ public class Zoom extends AbstractControlFlow {
   */ 
   
   public Zoom(BTState appState, ZoomAction action) {
-    super(appState);
+    appState_ = appState;
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -163,7 +169,7 @@ public class Zoom extends AbstractControlFlow {
        case SELECTED:
          return (cache.haveASelection());
        case CURRENT_SELECTED:
-         return (appState_.getZoomTarget().haveCurrentSelectionForBounds());  
+         return ((new StaticDataAccessContext(appState_)).getZoomTarget().haveCurrentSelectionForBounds());  // YUK
        case CENTER_PREV_SELECTED:
        case CENTER_NEXT_SELECTED:
          return (cache.haveASelection() && cache.hasMultiSelections());
@@ -184,7 +190,8 @@ public class Zoom extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if ((action_ == ZoomAction.ZOOM_TO_GROUP) || (action_ == ZoomAction.ZOOM_MOD_POPUP)) {
       return (true);
     } else {
@@ -200,6 +207,7 @@ public class Zoom extends AbstractControlFlow {
  
   @Override
   public boolean externallyEnabled() {
+    UiUtil.fixMePrintout("Need to handle group node");
     return ((action_ == ZoomAction.ZOOM_CURRENT_MOD) ||
             (action_ == ZoomAction.ZOOM_IN) ||
             (action_ == ZoomAction.ZOOM_OUT));
@@ -212,8 +220,8 @@ public class Zoom extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx, new DynamicDataAccessContext(appState_));
     return (retval);
   }
   
@@ -229,9 +237,10 @@ public class Zoom extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh, new DynamicDataAccessContext(appState_));
       } else { 
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepZoom")) {
         next = ans.stepZoom();
@@ -251,16 +260,22 @@ public class Zoom extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
     private ZoomAction myAction_;
-    private String nextStep_;
-    private DataAccessContext rcxT_;
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+    private DynamicDataAccessContext rcxT_;
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(ZoomAction action, StaticDataAccessContext dacx, DynamicDataAccessContext ddacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepZoom";
+      rcxT_ = ddacx;
     }
     
     /***************************************************************************
@@ -268,11 +283,11 @@ public class Zoom extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, ZoomAction action, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ZoomAction action, ServerControlFlowHarness cfh, DynamicDataAccessContext ddacx) {
+      super(cfh);
       myAction_ = action;
       nextStep_ = "stepZoom";
-      rcxT_ = dacx;
+      rcxT_ = ddacx;
     }
     
     /***************************************************************************
@@ -293,35 +308,35 @@ public class Zoom extends AbstractControlFlow {
     private DialogAndInProcessCmd stepZoom() {
       switch (myAction_) {
         case ALL_MODELS:
-          appState_.getZoomCommandSupport().zoomToAllModels();
+          uics_.getZoomCommandSupport().zoomToAllModels();
           break;
         case CURRENT_MODEL:
-          appState_.getZoomCommandSupport().zoomToModel();
+          uics_.getZoomCommandSupport().zoomToModel();
           break; 
         case WORKSPACE:   
-          appState_.getZoomCommandSupport().zoomToFullWorksheet();
+          uics_.getZoomCommandSupport().zoomToFullWorksheet();
           break;
         case SELECTED:
-          appState_.getZoomCommandSupport().zoomToSelected();
+          uics_.getZoomCommandSupport().zoomToSelected();
           break; 
         case CURRENT_SELECTED:
-          appState_.getZoomCommandSupport().zoomToCurrentSelected();
+          uics_.getZoomCommandSupport().zoomToCurrentSelected();
           break;
         case CENTER_PREV_SELECTED: 
-          if (appState_.getZoomTarget().haveCurrentSelectionForBounds()) {
-            appState_.getZoomCommandSupport().centerToPreviousSelected();
+          if (dacx_.getZoomTarget().haveCurrentSelectionForBounds()) {
+            uics_.getZoomCommandSupport().centerToPreviousSelected();
           } else {
-            appState_.getZoomCommandSupport().zoomToPreviousSelected();
+            uics_.getZoomCommandSupport().zoomToPreviousSelected();
           }
-          appState_.getVirtualZoom().handleZoomToCurrentButton();
+          uics_.getVirtualZoom().handleZoomToCurrentButton();
           break;
         case CENTER_NEXT_SELECTED: 
-          if (appState_.getZoomTarget().haveCurrentSelectionForBounds()) {
-            appState_.getZoomCommandSupport().centerToNextSelected();
+          if (dacx_.getZoomTarget().haveCurrentSelectionForBounds()) {
+            uics_.getZoomCommandSupport().centerToNextSelected();
           } else {
-            appState_.getZoomCommandSupport().zoomToNextSelected();
+            uics_.getZoomCommandSupport().zoomToNextSelected();
           }
-          appState_.getVirtualZoom().handleZoomToCurrentButton();
+          uics_.getVirtualZoom().handleZoomToCurrentButton();
           break;
         case ZOOM_CURRENT_MOD: 
           zoomToCurrentMod();
@@ -330,10 +345,10 @@ public class Zoom extends AbstractControlFlow {
           zoomToModPopup();
           break;          
         case ZOOM_IN: 
-          appState_.getZoomCommandSupport().bumpZoomWrapper('+');
+          uics_.getZoomCommandSupport().bumpZoomWrapper('+');
           break;  
         case ZOOM_OUT: 
-          appState_.getZoomCommandSupport().bumpZoomWrapper('-');
+          uics_.getZoomCommandSupport().bumpZoomWrapper('-');
           break;
         case ZOOM_TO_GROUP: 
           zoomToGroup();
@@ -350,7 +365,7 @@ public class Zoom extends AbstractControlFlow {
     */
     
     private void zoomToCurrentMod() {
-      Zoom.zoomToCurrentMod(appState_, rcxT_);
+      Zoom.zoomToCurrentMod(uics_, rcxT_);
       return;
     } 
     
@@ -361,12 +376,12 @@ public class Zoom extends AbstractControlFlow {
     
     private void zoomToModPopup() {
       String modID = intersect_.getObjectID();
-      String ovrKey = rcxT_.oso.getCurrentOverlay();
+      String ovrKey = rcxT_.getOSO().getCurrentOverlay();
       TaggedSet modKeys = new TaggedSet();
       modKeys.set.add(modID);
       NetOverlayOwner noo = rcxT_.getCurrentOverlayOwner();
-      Rectangle bounds = rcxT_.getLayout().getLayoutBoundsForNetModules(noo, ovrKey, modKeys, false, rcxT_);
-      appState_.getZoomCommandSupport().zoomToRect(bounds);         
+      Rectangle bounds = rcxT_.getCurrentLayout().getLayoutBoundsForNetModules(noo, ovrKey, modKeys, false, rcxT_);
+      uics_.getZoomCommandSupport().zoomToRect(bounds);         
       return;        
     }
    
@@ -376,7 +391,7 @@ public class Zoom extends AbstractControlFlow {
     */
     
     private void zoomToGroup() {   
-      Zoom.zoomToGroup(appState_, intersect_.getObjectID(), rcxT_);
+      Zoom.zoomToGroup(uics_, intersect_.getObjectID(), rcxT_);
       return;
     }
   }
@@ -386,12 +401,12 @@ public class Zoom extends AbstractControlFlow {
   ** Exported version of zoom to group
   */  
    
-  public static void zoomToGroup(BTState appState, String groupID, DataAccessContext rcxT) {   
+  public static void zoomToGroup(UIComponentSource uics, String groupID, DataAccessContext rcxT) {   
 
-    if (!(rcxT.getGenome() instanceof GenomeInstance)) {
+    if (!rcxT.currentGenomeIsAnInstance()) {
       throw new IllegalStateException();
     }
-    GenomeInstance gi = rcxT.getGenomeAsInstance();  
+    GenomeInstance gi = rcxT.getCurrentGenomeAsInstance();  
     Group group = gi.getGroup(groupID);
     if (group == null) {
       throw new IllegalStateException();
@@ -399,9 +414,9 @@ public class Zoom extends AbstractControlFlow {
     // Use the root instance for this calculation!
     GenomeInstance rootInstance = (gi.isRootInstance()) ? gi : gi.getVfgParentRoot();
     Group grp = rootInstance.getGroup(Group.getBaseID(groupID)); 
-    DataAccessContext rcx2 = new DataAccessContext(rcxT, rootInstance);  
-    Rectangle bounds = rcx2.getLayout().getLayoutBoundsForGroup(grp, rcx2, true, false);     
-    appState.getZoomCommandSupport().zoomToRect(bounds);
+    StaticDataAccessContext rcx2 = new StaticDataAccessContext(rcxT, rootInstance);  
+    Rectangle bounds = rcx2.getCurrentLayout().getLayoutBoundsForGroup(grp, rcx2, true, false);     
+    uics.getZoomCommandSupport().zoomToRect(bounds);
     return;
   }
  
@@ -410,17 +425,17 @@ public class Zoom extends AbstractControlFlow {
   ** Exported version of current module zoom
   */
   
-  public static void zoomToCurrentMod(BTState appState, DataAccessContext rcxT) {
-    String ovrKey = rcxT.oso.getCurrentOverlay();
-    TaggedSet modKeys = rcxT.oso.getCurrentNetModules();
+  public static void zoomToCurrentMod(UIComponentSource uics, DataAccessContext rcxT) {
+    String ovrKey = rcxT.getOSO().getCurrentOverlay();
+    TaggedSet modKeys = rcxT.getOSO().getCurrentNetModules();
     if (modKeys.set.size() < 1) {
       return; // should not happen...
     }
     NetOverlayOwner noo = rcxT.getCurrentOverlayOwner();
     boolean showLinksToo = (modKeys.set.size() > 1);
  
-    Rectangle bounds = rcxT.getLayout().getLayoutBoundsForNetModules(noo, ovrKey, modKeys, showLinksToo, rcxT);
-    appState.getZoomCommandSupport().zoomToRect(bounds);         
+    Rectangle bounds = rcxT.getCurrentLayout().getLayoutBoundsForNetModules(noo, ovrKey, modKeys, showLinksToo, rcxT);
+    uics.getZoomCommandSupport().zoomToRect(bounds);         
     return;
   } 
 }

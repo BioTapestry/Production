@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -89,8 +89,8 @@ public class GeneInstance extends NodeInstance implements Gene {
   ** For UI-based creation
   */
 
-  public GeneInstance(BTState appState, DBGenomeItem backing, int instance, Double activityLevel, int activity) {
-    super(appState, backing, GENE, instance, activityLevel, activity);
+  public GeneInstance(DataAccessContext dacx, DBGenomeItem backing, int instance, Double activityLevel, int activity) {
+    super(dacx, backing, GENE, instance, activityLevel, activity);
   }  
   
   /***************************************************************************
@@ -98,9 +98,9 @@ public class GeneInstance extends NodeInstance implements Gene {
   ** For xml-based creation
   */
 
-  public GeneInstance(BTState appState, DBGenomeItem backing, String instance, String activityLevel, 
+  public GeneInstance(DataAccessContext dacx, DBGenomeItem backing, String instance, String activityLevel, 
                       String activityType, String override) throws IOException {      
-    super(appState, backing, null, instance, activityLevel, activityType, override);
+    super(dacx, backing, null, instance, activityLevel, activityType, override);
     nodeType_ = GENE;
   }
 
@@ -126,8 +126,8 @@ public class GeneInstance extends NodeInstance implements Gene {
   */
   
   public DBGenomeItem getBacking() {
-    GenomeSource gSrc = (altSrc_ == null) ? appState_.getDB() : altSrc_;
-    DBGenomeItem retval = (DBGenomeItem)gSrc.getGenome().getGene(myItemID_);
+    GenomeSource gSrc = (altSrc_ == null) ? dacx_.getGenomeSource() : altSrc_;
+    DBGenomeItem retval = (DBGenomeItem)gSrc.getRootDBGenome().getGene(myItemID_);
     if (retval == null) {
       throw new IllegalStateException();
       // May just be held in temporary holding storage:
@@ -154,7 +154,7 @@ public class GeneInstance extends NodeInstance implements Gene {
   */
 
   public String getDisplayString(Genome genome, boolean typePreface) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     GenomeInstance gi = (GenomeInstance)genome;
     GroupMembership member = gi.getNodeGroupMembership(this);
     String groupID = (member.mainGroups.isEmpty()) ? null : (String)member.mainGroups.iterator().next();
@@ -268,7 +268,7 @@ public class GeneInstance extends NodeInstance implements Gene {
   **
   */
   
-  public static GeneInstance buildFromXML(BTState appState, DBGenome rootGenome, Genome genome,
+  public static GeneInstance buildFromXML(DataAccessContext dacx, DBGenome rootGenome,
                                           Attributes attrs) throws IOException {
     String ref = null;
     String instance = null;
@@ -299,7 +299,7 @@ public class GeneInstance extends NodeInstance implements Gene {
     }    
 
     DBGene backing = (DBGene)rootGenome.getGene(ref);
-    return (new GeneInstance(appState, backing, instance, activityLevelStr, activity, name));
+    return (new GeneInstance(dacx, backing, instance, activityLevelStr, activity, name));
   }  
 
   /***************************************************************************

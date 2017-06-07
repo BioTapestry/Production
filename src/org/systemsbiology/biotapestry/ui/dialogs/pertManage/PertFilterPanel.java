@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,9 @@ import javax.swing.JPanel;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -103,7 +105,8 @@ public class PertFilterPanel extends JPanel {
   private Dimension savePref_;
   private Dimension saveMin_;
   private Client myClient_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -118,13 +121,14 @@ public class PertFilterPanel extends JPanel {
   ** Constructor 
   */ 
   
-  public PertFilterPanel(BTState appState, PerturbationData pd, Client myClient) {
-    appState_ = appState;
+  public PertFilterPanel(UIComponentSource uics, DataAccessContext dacx, PerturbationData pd, Client myClient) {
+    dacx_ = dacx;
+    uics_ = uics;
     pd_ = pd;
     myClient_ = myClient;
     myABC_ = new ApplyButtonControl();
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();  
     
@@ -138,7 +142,7 @@ public class PertFilterPanel extends JPanel {
   
     srcLabel_ = new JLabel(rMan.getString("pertManage.chooseSource"));
     srcCombo_ = new JComboBox();
-    srcRender_ = new PertManageHelper.FilterListRenderer(appState_, srcCombo_.getRenderer());
+    srcRender_ = new PertManageHelper.FilterListRenderer(uics_, srcCombo_.getRenderer());
     srcCombo_.setRenderer(srcRender_);
     srcCombo_.addActionListener(myABC_);
     UiUtil.gbcSet(gbc, colNum, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -150,7 +154,7 @@ public class PertFilterPanel extends JPanel {
  
     pertLabel_ = new JLabel(rMan.getString("pertManage.choosePert"));
     pertCombo_ = new JComboBox();
-    pertRender_ = new PertManageHelper.FilterListRenderer(appState_, pertCombo_.getRenderer());
+    pertRender_ = new PertManageHelper.FilterListRenderer(uics_, pertCombo_.getRenderer());
     pertCombo_.setRenderer(pertRender_);
     pertCombo_.addActionListener(myABC_);
     UiUtil.gbcSet(gbc, colNum, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -162,7 +166,7 @@ public class PertFilterPanel extends JPanel {
 
     targLabel_ = new JLabel(rMan.getString("pertManage.chooseTarg"));
     targCombo_ = new JComboBox();
-    targRender_ = new PertManageHelper.FilterListRenderer(appState_, targCombo_.getRenderer());
+    targRender_ = new PertManageHelper.FilterListRenderer(uics_, targCombo_.getRenderer());
     targCombo_.setRenderer(targRender_);
     targCombo_.addActionListener(myABC_);
     UiUtil.gbcSet(gbc, colNum, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -177,7 +181,7 @@ public class PertFilterPanel extends JPanel {
  
     timeLabel_ = new JLabel(rMan.getString("pertManage.chooseTime"));
     timeCombo_ = new JComboBox();
-    timeRender_ = new PertManageHelper.FilterListRenderer(appState_, timeCombo_.getRenderer());
+    timeRender_ = new PertManageHelper.FilterListRenderer(uics_, timeCombo_.getRenderer());
     timeCombo_.setRenderer(timeRender_);
     timeCombo_.addActionListener(myABC_);
     UiUtil.gbcSet(gbc, colNum, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -188,7 +192,7 @@ public class PertFilterPanel extends JPanel {
     // INVEST ---------------------
     investLabel_ = new JLabel(rMan.getString("pertManage.chooseInvest"));
     investCombo_ = new JComboBox();
-    investRender_ = new PertManageHelper.FilterListRenderer(appState_, investCombo_.getRenderer());
+    investRender_ = new PertManageHelper.FilterListRenderer(uics_, investCombo_.getRenderer());
     investCombo_.setRenderer(investRender_);
     investCombo_.addActionListener(myABC_);
     Vector fmo = getInvestOptions();
@@ -199,7 +203,7 @@ public class PertFilterPanel extends JPanel {
           myABC_.enableApply();
           stockInvestigatorChoices();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -215,7 +219,7 @@ public class PertFilterPanel extends JPanel {
  
     valLabel_ = new JLabel(rMan.getString("pertManage.chooseVal"));
     valCombo_ = new JComboBox();
-    valRender_ = new PertManageHelper.FilterListRenderer(appState_, valCombo_.getRenderer());
+    valRender_ = new PertManageHelper.FilterListRenderer(uics_, valCombo_.getRenderer());
     valCombo_.setRenderer(valRender_);
     valCombo_.addActionListener(myABC_);
     UiUtil.gbcSet(gbc, colNum, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -241,7 +245,7 @@ public class PertFilterPanel extends JPanel {
             customFilterExp_ = null;            
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -261,7 +265,7 @@ public class PertFilterPanel extends JPanel {
           myClient_.installNewFilter(pfe);
           myABC_.disableApply(true);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -277,7 +281,7 @@ public class PertFilterPanel extends JPanel {
           myClient_.installNewFilter(pfe);
           myABC_.disableApply(true);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -365,8 +369,8 @@ public class PertFilterPanel extends JPanel {
   
   public void setCurrentSettings(PertFilterExpression pfe) {
     clearAllFilters();
-    int pfeOp = pfe.getOperator();
-    if (pfeOp == PertFilterExpression.AND_OP) {
+    PertFilterExpression.Op pfeOp = pfe.getOperator();
+    if (pfeOp == PertFilterExpression.Op.AND_OP) {
       boolean match = setCurrentSingleSetting((PertFilterExpression)pfe.getTarget1());    
       match = match && setCurrentSingleSetting((PertFilterExpression)pfe.getTarget2());
       if (!match) {
@@ -374,10 +378,10 @@ public class PertFilterPanel extends JPanel {
       }     
       customFilterInstalled_.setSelected(false);
       customFilterInstalled_.setEnabled(false);
-    } else if (pfeOp != PertFilterExpression.ALWAYS_OP) {
+    } else if (pfeOp != PertFilterExpression.Op.ALWAYS_OP) {
       boolean match = setCurrentSingleSetting(pfe);
       if (!match) {
-        customFilterExp_ = (PertFilterExpression)pfe.clone();
+        customFilterExp_ = pfe.clone();
         customFilterInstalled_.setSelected(true);
         customFilterInstalled_.setEnabled(true);
       }
@@ -392,23 +396,23 @@ public class PertFilterPanel extends JPanel {
   */ 
   
   public boolean setCurrentSingleSetting(PertFilterExpression pfe) {   
-    if (pfe.getOperator() != PertFilterExpression.NO_OP) {
+    if (pfe.getOperator() != PertFilterExpression.Op.NO_OP) {
       return (false);
     }
     PertFilter filter = (PertFilter)pfe.getTarget1();
     String matchVal = filter.getStringValue();
-    int filtCat = filter.getCategory();
-    if (filter.getMatchType() != PertFilter.STR_EQUALS) {
+    PertFilter.Cat filtCat = filter.getCategory();
+    if (filter.getMatchType() != PertFilter.Match.STR_EQUALS) {
       throw new IllegalArgumentException();
     }
     JComboBox useCombo;
-    if (filtCat == PertFilter.SOURCE_NAME) {
+    if (filtCat == PertFilter.Cat.SOURCE_NAME) {
       useCombo = srcCombo_;
-    } else if (filtCat == PertFilter.TARGET) {
+    } else if (filtCat == PertFilter.Cat.TARGET) {
       useCombo = targCombo_;
-    } else if (filtCat == PertFilter.INVEST) {
+    } else if (filtCat == PertFilter.Cat.INVEST) {
       useCombo = investCombo_;
-    } else if (filtCat == PertFilter.PERT) {
+    } else if (filtCat == PertFilter.Cat.PERT) {
       useCombo = pertCombo_;  
     } else {
       return (false);
@@ -440,14 +444,14 @@ public class PertFilterPanel extends JPanel {
   
   public void stockFilterPanel() { 
   
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
     
     // SOURCES ---------------------
-    SortedSet srcCand = pd_.getCandidates(PertFilter.SOURCE_NAME);  
+    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(PertFilter.Cat.SOURCE_NAME);  
     srcCombo_.removeAllItems();
     srcCombo_.addItem(ncstr);
-    Iterator scit = srcCand.iterator();
+    Iterator<TrueObjChoiceContent> scit = srcCand.iterator();
     while (scit.hasNext()) {
       srcCombo_.addItem(scit.next());
     }
@@ -455,10 +459,10 @@ public class PertFilterPanel extends JPanel {
     srcRender_.setActive(srcCand);   
 
     // PERTS ---------------------
-    SortedSet pertCand = pd_.getCandidates(PertFilter.PERT);
+    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(PertFilter.Cat.PERT);
     pertCombo_.removeAllItems();
     pertCombo_.addItem(ncstr);
-    Iterator pit = pertCand.iterator();   
+    Iterator<TrueObjChoiceContent> pit = pertCand.iterator();   
     while (pit.hasNext()) {
       pertCombo_.addItem(pit.next());
     }
@@ -466,10 +470,10 @@ public class PertFilterPanel extends JPanel {
     pertRender_.setActive(pertCand);
  
     // TARGET ---------------------
-    SortedSet targCand = pd_.getCandidates(PertFilter.TARGET); 
+    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(PertFilter.Cat.TARGET); 
     targCombo_.removeAllItems();
     targCombo_.addItem(ncstr);
-    Iterator tcit = targCand.iterator();
+    Iterator<TrueObjChoiceContent> tcit = targCand.iterator();
     while (tcit.hasNext()) {
       targCombo_.addItem(tcit.next());
     }
@@ -477,10 +481,10 @@ public class PertFilterPanel extends JPanel {
     targRender_.setActive(targCand);
    
     // TIME ---------------------
-    SortedSet timeCand = pd_.getCandidates(PertFilter.TIME);
+    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(PertFilter.Cat.TIME);
     timeCombo_.removeAllItems();
     timeCombo_.addItem(ncstr);
-    Iterator tmit = timeCand.iterator();
+    Iterator<TrueObjChoiceContent> tmit = timeCand.iterator();
     while (tmit.hasNext()) {
       timeCombo_.addItem(tmit.next());
     }
@@ -491,10 +495,10 @@ public class PertFilterPanel extends JPanel {
     stockInvestigatorChoices();
     
     // VALS  ---------------------
-    SortedSet valCand = pd_.getCandidates(PertFilter.VALUE);
+    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(PertFilter.Cat.VALUE);
     valCombo_.removeAllItems();
     valCombo_.addItem(ncstr);
-    Iterator vcit = valCand.iterator();
+    Iterator<TrueObjChoiceContent> vcit = valCand.iterator();
     while (vcit.hasNext()) {
       valCombo_.addItem(vcit.next());
     }
@@ -511,13 +515,13 @@ public class PertFilterPanel extends JPanel {
   */ 
   
   public void stockInvestigatorChoices() {
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
     TrueObjChoiceContent tocc = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();
-    SortedSet investCand = pd_.getCandidates(((Integer)tocc.val).intValue()); 
+    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates((PertFilter.Cat)tocc.val); 
     investCombo_.removeAllItems();
     investCombo_.addItem(ncstr);
-    Iterator icit = investCand.iterator();
+    Iterator<TrueObjChoiceContent> icit = investCand.iterator();
     while (icit.hasNext()) {
       investCombo_.addItem(icit.next());
     }
@@ -531,38 +535,38 @@ public class PertFilterPanel extends JPanel {
   ** Update the filter renderers
   */ 
   
-  public void updateFilterRenderers(List filteredData) {
-    ResourceManager rMan = appState_.getRMan();
+  public void updateFilterRenderers(List<PertDataPoint> filteredData) {
+    ResourceManager rMan = dacx_.getRMan();
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
 
     // SOURCES ---------------------
-    SortedSet srcCand = pd_.getCandidates(filteredData, PertFilter.SOURCE_NAME);
+    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(filteredData, PertFilter.Cat.SOURCE_NAME);
     srcCand.add(ncstr);
     srcRender_.setActive(srcCand);
     srcCombo_.invalidate();
     // PERTS ---------------------
-    SortedSet pertCand = pd_.getCandidates(filteredData, PertFilter.PERT);
+    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(filteredData, PertFilter.Cat.PERT);
     pertCand.add(ncstr);
     pertRender_.setActive(pertCand);
     pertCombo_.invalidate();
     // TARGET ---------------------
-    SortedSet targCand = pd_.getCandidates(filteredData, PertFilter.TARGET);
+    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(filteredData, PertFilter.Cat.TARGET);
     targCand.add(ncstr);
     targRender_.setActive(targCand);
     targCombo_.invalidate();
     // TIME ---------------------
-    SortedSet timeCand = pd_.getCandidates(filteredData, PertFilter.TIME);
+    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(filteredData, PertFilter.Cat.TIME);
     timeCand.add(ncstr);
     timeRender_.setActive(timeCand);
     timeCombo_.invalidate();
     // INVEST ---------------------
     TrueObjChoiceContent tocc = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();
-    SortedSet investCand = pd_.getCandidates(filteredData, ((Integer)tocc.val).intValue()); 
+    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates(filteredData, (PertFilter.Cat)tocc.val); 
     investCand.add(ncstr);
     investRender_.setActive(investCand);
     investCombo_.invalidate();
     // VALS or something  ---------------------
-    SortedSet valCand = pd_.getCandidates(filteredData, PertFilter.VALUE);
+    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(filteredData, PertFilter.Cat.VALUE);
     valCand.add(ncstr);
     valRender_.setActive(valCand);
     valCombo_.invalidate();
@@ -585,64 +589,63 @@ public class PertFilterPanel extends JPanel {
     
     if (srcCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent useSrc = (TrueObjChoiceContent)srcCombo_.getSelectedItem();
-      PertFilter srcFilter = new PertFilter(PertFilter.SOURCE_NAME, PertFilter.STR_EQUALS, useSrc.val);
+      PertFilter srcFilter = new PertFilter(PertFilter.Cat.SOURCE_NAME, PertFilter.Match.STR_EQUALS, useSrc.val);
       retval = new PertFilterExpression(srcFilter);
     }
     
     if (pertCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent usePert = (TrueObjChoiceContent)pertCombo_.getSelectedItem();
-      PertFilter pertFilter = new PertFilter(PertFilter.PERT, PertFilter.STR_EQUALS, usePert.val);
+      PertFilter pertFilter = new PertFilter(PertFilter.Cat.PERT, PertFilter.Match.STR_EQUALS, usePert.val);
       if (retval == null) {
         retval = new PertFilterExpression(pertFilter);
       } else {
-        retval = new PertFilterExpression(PertFilterExpression.AND_OP, retval, pertFilter);
+        retval = new PertFilterExpression(PertFilterExpression.Op.AND_OP, retval, pertFilter);
       }
     }
 
     if (targCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent useTarg = (TrueObjChoiceContent)targCombo_.getSelectedItem();
-      PertFilter targFilter = new PertFilter(PertFilter.TARGET, PertFilter.STR_EQUALS, useTarg.val);
+      PertFilter targFilter = new PertFilter(PertFilter.Cat.TARGET, PertFilter.Match.STR_EQUALS, useTarg.val);
       if (retval == null) {
         retval = new PertFilterExpression(targFilter);
       } else {
-        retval = new PertFilterExpression(PertFilterExpression.AND_OP, retval, targFilter);
+        retval = new PertFilterExpression(PertFilterExpression.Op.AND_OP, retval, targFilter);
       }
     }
   
     if (timeCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent useTime = (TrueObjChoiceContent)timeCombo_.getSelectedItem();
-      PertFilter timeFilter = new PertFilter(PertFilter.TIME, PertFilter.RANGE_EQUALS, useTime.val);
+      PertFilter timeFilter = new PertFilter(PertFilter.Cat.TIME, PertFilter.Match.RANGE_EQUALS, useTime.val);
       if (retval == null) {
         retval = new PertFilterExpression(timeFilter);
       } else {
-        retval = new PertFilterExpression(PertFilterExpression.AND_OP, retval, timeFilter);
+        retval = new PertFilterExpression(PertFilterExpression.Op.AND_OP, retval, timeFilter);
       }
     }
     
     if (investCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent useInvest = (TrueObjChoiceContent)investCombo_.getSelectedItem();
-      TrueObjChoiceContent useInvestMode = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();
-      int cat = ((Integer)useInvestMode.val).intValue();       
-      PertFilter investFilter = new PertFilter(cat, PertFilter.STR_EQUALS, useInvest.val);
+      TrueObjChoiceContent useInvestMode = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();   
+      PertFilter investFilter = new PertFilter((PertFilter.Cat)useInvestMode.val, PertFilter.Match.STR_EQUALS, useInvest.val);
       if (retval == null) {
         retval = new PertFilterExpression(investFilter);
       } else {
-        retval = new PertFilterExpression(PertFilterExpression.AND_OP, retval, investFilter);
+        retval = new PertFilterExpression(PertFilterExpression.Op.AND_OP, retval, investFilter);
       }
     }
     
     if (valCombo_.getSelectedIndex() != 0) {
       TrueObjChoiceContent useVal = (TrueObjChoiceContent)valCombo_.getSelectedItem();
-      PertFilter valFilter = new PertFilter(PertFilter.VALUE, ((Integer)useVal.val).intValue(), null);
+      PertFilter valFilter = new PertFilter(PertFilter.Cat.VALUE, (PertFilter.Match)useVal.val, null);
       if (retval == null) {
         retval = new PertFilterExpression(valFilter);
       } else {
-        retval = new PertFilterExpression(PertFilterExpression.AND_OP, retval, valFilter);
+        retval = new PertFilterExpression(PertFilterExpression.Op.AND_OP, retval, valFilter);
       }
     }
 
     if (retval == null) {
-      retval = new PertFilterExpression(PertFilterExpression.ALWAYS_OP);
+      retval = new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP);
     }
     
     return (retval);
@@ -655,8 +658,8 @@ public class PertFilterPanel extends JPanel {
   
   public Vector<TrueObjChoiceContent> getInvestOptions() {
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
-    retval.add(getMatchOptionsChoice(PertFilter.INVEST));
-    retval.add(getMatchOptionsChoice(PertFilter.INVEST_LIST));
+    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST));
+    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST_LIST));
     return (retval);
   }  
   
@@ -665,8 +668,8 @@ public class PertFilterPanel extends JPanel {
   ** Get the choice
   */
   
-  public TrueObjChoiceContent getMatchOptionsChoice(int which) {
-    return (new TrueObjChoiceContent(appState_.getRMan().getString("pertFilt." + PertFilter.mapCategory(which)), new Integer(which)));
+  public TrueObjChoiceContent getMatchOptionsChoice(PertFilter.Cat which) {
+    return (new TrueObjChoiceContent(dacx_.getRMan().getString("pertFilt." + PertFilter.mapCategory(which)), which));
   } 
   
   /***************************************************************************

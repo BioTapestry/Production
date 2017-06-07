@@ -37,7 +37,8 @@ import javax.swing.JTextField;
 import javax.swing.ToolTipManager;
 
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 
@@ -67,7 +68,8 @@ public class ChartStack extends JPanel {
   private ChartStackLayoutManager lom_;
   private JPanel spacer_;
   private JTextField feedback_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,8 +82,9 @@ public class ChartStack extends JPanel {
   ** Null constructor
   */
   
-  public ChartStack(BTState appState, JTextField feedback) {
-    appState_ = appState;
+  public ChartStack(UIComponentSource uics, DataAccessContext dacx, JTextField feedback) {
+    uics_ = uics;
+    dacx_ = dacx;
     feedback_ = feedback;
     charts_ = new ArrayList<StackElement>();
     childPanel_ = new JPanel();
@@ -192,7 +195,7 @@ public class ChartStack extends JPanel {
             ToolTipManager.sharedInstance().unregisterComponent(msc);       
             if (element.handler != null) msc.removeMouseListener(element.handler);
           }
-          msc = new MultiStripTimeAxisChart(appState_);
+          msc = new MultiStripTimeAxisChart(dacx_);
           element.msc.setChart(msc);
           ToolTipManager.sharedInstance().registerComponent(msc);
           if (element.handler != null) msc.addMouseListener(element.handler);
@@ -203,7 +206,7 @@ public class ChartStack extends JPanel {
             ToolTipManager.sharedInstance().unregisterComponent(msc);
             if (element.handler != null) msc.removeMouseListener(element.handler);
           }
-          msc = new MultiStripGenericChart(appState_);
+          msc = new MultiStripGenericChart(dacx_);
           element.msc.setChart(msc);
           ToolTipManager.sharedInstance().registerComponent(msc);
           if (element.handler != null) msc.addMouseListener(element.handler);
@@ -387,7 +390,7 @@ public class ChartStack extends JPanel {
   private void addMsc(int addCount) {
     for (int i = 0; i < addCount; i++) {
       MultiStripChartWrapper msc = new MultiStripChartWrapper();
-      ChartStackTitleBar bar = new ChartStackTitleBar("", this, msc, null, appState_);
+      ChartStackTitleBar bar = new ChartStackTitleBar("", this, msc, null, uics_.getHandlerAndManagerSource());
       StackElement element = new StackElement(bar, msc, new MouseHandler());
       //ToolTipManager.sharedInstance().registerComponent(msc.getChart());        
       charts_.add(0, element);
@@ -408,8 +411,8 @@ public class ChartStack extends JPanel {
   
   private void addCsmv(int addCount) {
     for (int i = 0; i < addCount; i++) {
-      ChartStackableModelView csmv = new ChartStackableModelView(appState_);
-      ChartStackTitleBar bar = new ChartStackTitleBar("", this, csmv, null, appState_);
+      ChartStackableModelView csmv = new ChartStackableModelView(uics_, dacx_);
+      ChartStackTitleBar bar = new ChartStackTitleBar("", this, csmv, null, uics_.getHandlerAndManagerSource());
       StackElement element = new StackElement(bar, csmv);   
       ToolTipManager.sharedInstance().registerComponent(csmv.getToolTipTarget());        
       charts_.add(element);
@@ -520,7 +523,7 @@ public class ChartStack extends JPanel {
         String tttext = ((JComponent)me.getSource()).getToolTipText(me);
         feedback_.setText(tttext);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }

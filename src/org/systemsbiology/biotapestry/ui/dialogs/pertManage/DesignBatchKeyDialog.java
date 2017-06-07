@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,12 +21,12 @@
 package org.systemsbiology.biotapestry.ui.dialogs.pertManage;
 
 import java.awt.Dimension;
-import javax.swing.JFrame;
-import javax.swing.JCheckBox;
 
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -64,8 +64,8 @@ public class DesignBatchKeyDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public DesignBatchKeyDialog(BTState appState) {     
-    super(appState, "designBatchKey.title", new Dimension(500, 300), 6);
+  public DesignBatchKeyDialog(UIComponentSource uics, DataAccessContext dacx) {     
+    super(uics, dacx, "designBatchKey.title", new Dimension(500, 300), 6);
   
     useDateBox_ = new JCheckBox(rMan_.getString("designBatchKey.useDate"), true);   
     useInvestBox_ = new JCheckBox(rMan_.getString("designBatchKey.useInvest"), false);

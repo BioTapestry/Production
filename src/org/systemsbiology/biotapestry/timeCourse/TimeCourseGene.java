@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,7 @@
 
 package org.systemsbiology.biotapestry.timeCourse;
 
-import java.awt.Color;
+import java.util.HashMap;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.TreeSet;
@@ -34,7 +34,7 @@ import java.util.TreeMap;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
@@ -85,6 +85,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
 
   private String name_;
   private ArrayList<ExpressionEntry> data_;
+  private HashMap<String, List<ExpressionEntry>> simData_;
   private TreeMap<PertSources, PerturbedTimeCourseGene> pertGenes_;
   private boolean hasTimeCourse_;
   private String timeCourseNote_;  
@@ -92,21 +93,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   private boolean archival_;
   private boolean internalOnly_;
   private boolean isTemplate_;
-  private BTState appState_;
-  
-  private static final float[] inactiveHSV_;
-  private static final float[] activeHSV_;
-  private static final float[] activeRegionHSV_;
-  
-  
-  static {
-    inactiveHSV_ = new float[3];
-    Color.RGBtoHSB(0xFF, 0xFF, 0xFF, inactiveHSV_); 
-    activeHSV_ = new float[3];
-    Color.RGBtoHSB(0x66, 0xEE, 0x66, activeHSV_);
-    activeRegionHSV_ = new float[3];
-    Color.RGBtoHSB(0x66, 0x66, 0xEE, activeRegionHSV_);
-  }
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -129,7 +116,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   */
 
   public TimeCourseGene(TimeCourseGene other, boolean doData) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.name_ = other.name_;
     this.hasTimeCourse_ = other.hasTimeCourse_;
     this.timeCourseNote_ = other.timeCourseNote_;  
@@ -139,13 +126,28 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     this.isTemplate_ = other.isTemplate_;
     this.data_ = new ArrayList<ExpressionEntry>();
     this.pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
+    this.simData_ = new HashMap<String, List<ExpressionEntry>>();
     if (doData) {
       int size = other.data_.size();
       for (int i = 0; i < size; i++) {
         ExpressionEntry exp = other.data_.get(i);
         this.data_.add(exp.clone());
-      }    
+      }
     }
+    Iterator<String> sit = other.simData_.keySet().iterator();
+    while (sit.hasNext()) {
+      String sKey = sit.next();
+      List<ExpressionEntry> see = other.simData_.get(sKey);
+      List<ExpressionEntry> tsee = new ArrayList<ExpressionEntry>();
+      this.simData_.put(sKey, tsee);
+      if (doData) {
+        int ss = see.size();
+        for (int i = 0; i < ss; i++) {
+          ExpressionEntry exp = see.get(i);
+          tsee.add(exp.clone());
+        }
+      }
+    }  
     Iterator<PertSources> oit = other.pertGenes_.keySet().iterator();
     while (oit.hasNext()) {
       PertSources ops = oit.next();
@@ -159,14 +161,15 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(BTState appState, String name, int confidence, boolean archival, boolean internalOnly) {
-    appState_ = appState;
+  public TimeCourseGene(DataAccessContext dacx, String name, int confidence, boolean archival, boolean internalOnly) {
+    dacx_ = dacx;
     name_ = name;
     confidence_ = confidence;
     archival_ = archival;
     internalOnly_ = internalOnly;
     data_ = new ArrayList<ExpressionEntry>();
     pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
+    simData_ = new HashMap<String, List<ExpressionEntry>>(); 
   }
 
   /***************************************************************************
@@ -174,8 +177,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(BTState appState, String name, Iterator<GeneTemplateEntry> tempit) {
-    this(appState, name, tempit, false);
+  public TimeCourseGene(DataAccessContext dacx, String name, Iterator<GeneTemplateEntry> tempit) {
+    this(dacx, name, tempit, false);
   }
   
   /***************************************************************************
@@ -183,8 +186,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(BTState appState, String name, Iterator<GeneTemplateEntry> tempit, boolean isTemplate) {
-    appState_ = appState;
+  public TimeCourseGene(DataAccessContext dacx, String name, Iterator<GeneTemplateEntry> tempit, boolean isTemplate) {
+    dacx_ = dacx;
     name_ = name;
     confidence_ = TimeCourseGene.NORMAL_CONFIDENCE;
     archival_ = false;
@@ -199,6 +202,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
       data_.add(exp);
     }
     pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
+    simData_ = new HashMap<String, List<ExpressionEntry>>();
   }  
   
   /***************************************************************************
@@ -206,11 +210,11 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(BTState appState, String gene, String confidence, String timeCourse, 
+  public TimeCourseGene(DataAccessContext dacx, String gene, String confidence, String timeCourse, 
                         String note, String archival, String internalOnly) 
     throws IOException {
 
-    appState_ = appState;
+    dacx_ = dacx;
     name_ = gene;
 
     if (confidence == null) {
@@ -265,6 +269,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     timeCourseNote_ = note;
     data_ = new ArrayList<ExpressionEntry>();
     pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
+    simData_ = new HashMap<String, List<ExpressionEntry>>();
   }
 
   /***************************************************************************
@@ -272,12 +277,13 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor for the template.
   */
 
-  private TimeCourseGene(BTState appState, boolean isTemplate) throws IOException {
+  private TimeCourseGene(DataAccessContext dacx, boolean isTemplate) throws IOException {
 
     if (!isTemplate) {
       throw new IOException();
     }
-    appState_ = appState;
+    
+    dacx_ = dacx;
     name_ = "___Gene-For-BT-Template__";
     data_= new ArrayList<ExpressionEntry>();
     hasTimeCourse_ = false;
@@ -287,6 +293,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     internalOnly_ = true;
     isTemplate_ = true;
     pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
+    simData_ = new HashMap<String, List<ExpressionEntry>>();
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -295,6 +302,61 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  **
+  ** Needed for merge checks
+  */
+
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return (true);
+    }
+    if (other == null) {
+      return (false);
+    }
+    if (!(other instanceof TimeCourseGene)) {
+      return (false);
+    }
+    TimeCourseGene otherTCG = (TimeCourseGene)other;
+  
+    if (!DataUtil.stringsEqual(this.name_, otherTCG.name_)) {
+      return (false);
+    }
+    if (!DataUtil.stringsEqual(this.timeCourseNote_, otherTCG.timeCourseNote_)) {
+      return (false);
+    }
+       
+    if (this.hasTimeCourse_ != otherTCG.hasTimeCourse_) {
+      return (false);
+    }
+    if (this.confidence_ != otherTCG.confidence_) {
+      return (false);
+    }
+    if (this.archival_ != otherTCG.archival_) {
+      return (false);
+    }
+    if (this.internalOnly_ != otherTCG.internalOnly_) {
+      return (false);
+    }
+    if (this.isTemplate_ != otherTCG.isTemplate_) {
+      return (false);
+    }
+
+    if (!this.data_.equals(otherTCG.data_)) {
+      return (false);
+    }
+
+    if (!this.pertGenes_.equals(otherTCG.pertGenes_)) {
+      return (false);
+    }
+    
+    if (!this.simData_.equals(otherTCG.simData_)) {
+      return (false);
+    }
+    return (true);
+  } 
+ 
   /***************************************************************************
   **
   ** Clone
@@ -310,13 +372,26 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
         ExpressionEntry exp = this.data_.get(i);
         retval.data_.add(exp.clone());
       }
-      retval.pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene> ();
+      retval.pertGenes_ = new TreeMap<PertSources, PerturbedTimeCourseGene>();
       Iterator<PertSources> oit = this.pertGenes_.keySet().iterator();
       while (oit.hasNext()) {
         PertSources ops = oit.next();
         PerturbedTimeCourseGene ptcg = this.pertGenes_.get(ops);
         retval.pertGenes_.put(ops.clone(), ptcg.clone());
-      }    
+      }
+      retval.simData_ = new HashMap<String, List<ExpressionEntry>>();
+      Iterator<String> sit = this.simData_.keySet().iterator();
+      while (sit.hasNext()) {
+        String sKey = sit.next();
+        List<ExpressionEntry> see = this.simData_.get(sKey);
+        List<ExpressionEntry> tsee = new ArrayList<ExpressionEntry>();
+        retval.simData_.put(sKey, tsee);
+        int ss = see.size();
+        for (int i = 0; i < ss; i++) {
+          ExpressionEntry exp = see.get(i);
+          tsee.add(exp.clone());
+        }
+      }
       return (retval);
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
@@ -484,6 +559,21 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   
   /***************************************************************************
   **
+  ** Add an expression entry for a simulation
+  */
+  
+  public void addExpressionForSim(String simKey, ExpressionEntry expr) {
+    List<ExpressionEntry> see = simData_.get(simKey);
+    if (see == null) {
+      see = new ArrayList<ExpressionEntry>();
+      simData_.put(simKey, see);
+    }
+    see.add(expr);
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Add an expression entry
   */
   
@@ -505,19 +595,44 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
       PerturbedTimeCourseGene ptcg = pertGenes_.get(ops);
       ExpressionEntry ctrl = (ptcg.usingDistinctControlExpr()) ? expr.clone() : null;
       ptcg.addExpression(index, expr.clone(), ctrl);
-    }  
+    }
+    Iterator<String> sit = simData_.keySet().iterator();
+    while (sit.hasNext()) {
+      String sKey = sit.next();
+      List<ExpressionEntry> see = simData_.get(sKey);
+      see.add(index, expr.clone());
+    }
     return;
   }
   
   /***************************************************************************
   **
-  ** Delete an expression entry at the given index
+  ** Get the nth expression for the given simulation key
   */
   
-  public void deleteExpression(int i) {
-    data_.remove(i);
-    return;
+  public ExpressionEntry getExpressionForSim(String simKey, int n) {
+    List<ExpressionEntry> see = simData_.get(simKey);
+    return (see.get(n));
+  } 
+  
+  /***************************************************************************
+  **
+  ** Get an iterator over the expressions for the given simulation key
+  */
+  
+  public Iterator<ExpressionEntry> getExpressionsForSim(String simKey) {
+    List<ExpressionEntry> see = simData_.get(simKey);
+    return (see.iterator());
   }  
+  
+  /***************************************************************************
+  **
+  ** Get a set of all sim keys
+  */
+  
+  public Set<String> getAllSimKeys() {
+    return (new HashSet<String>(simData_.keySet()));
+  }
 
   /***************************************************************************
   **
@@ -559,6 +674,16 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
       ptcg.addExpression(i, new ExpressionEntry(oldPtcg.getExpression(mapVal)), ctrl);
       if (!isSame) {
         ptcg.updateExpression(i, newEntry);
+      }
+    }
+    Iterator<String> sit = simData_.keySet().iterator();
+    while (sit.hasNext()) {
+      String sKey = sit.next();
+      List<ExpressionEntry> see = simData_.get(sKey);
+      ExpressionEntry nee = new ExpressionEntry(oldGeneVersion.getExpressionForSim(sKey, mapVal));
+      see.add(i, nee);
+      if (!isSame) {
+        nee.updateRegionAndTime(newEntry.region, newEntry.time);
       }
     }
     return;
@@ -604,7 +729,20 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
         ptcg.addExpression(newee, newctrlee);
       }
     }
-      
+    Iterator<String> sit = simData_.keySet().iterator();
+    while (sit.hasNext()) {
+      String sKey = sit.next();
+      List<ExpressionEntry> see = simData_.get(sKey);
+      Iterator<ExpressionEntry> seit = oldGeneVersion.getExpressionsForSim(sKey);
+      while (seit.hasNext()) {
+        ExpressionEntry ee = seit.next();
+        ExpressionEntry newee = new ExpressionEntry(ee);
+        if (DataUtil.keysEqual(ee.getRegion(), oldName)) {
+          newee.updateRegion(newName);
+        }
+        see.add(newee);
+      }
+    }
     return;
   }
     
@@ -643,7 +781,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Get the set of source options
   */
   
-  public Set<Integer> getSourceOptions() {
+  public Set<ExpressionEntry.Source> getSourceOptions() {
     return (getSourceOptions(data_));
   }
 
@@ -700,7 +838,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the expression level for a given region and hour.
   */
   
-  public int getExpressionLevelForSource(String region, int hour, int exprSource, VariableLevel varLev) {
+  public int getExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, VariableLevel varLev) {
     
     //
     // If the request falls outside an active region, we need
@@ -715,11 +853,75 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     // Crank through all the expressions to find matching and
     // bounding entries. 
     //
-
-    ExpressionEntry greatestLower = null;
-    ExpressionEntry matchingEntry = null;
-    ExpressionEntry leastHigher = null;    
     Iterator<ExpressionEntry> eit = getExpressions();
+    ExpTriplet trip = findATrip(eit, region, hour);
+
+    //
+    // If we have a matching entry, figure out the expression level and return it
+    //
+    
+    if (trip.matchingEntry != null) {
+      return (calculateMatchingExpression(trip.matchingEntry, exprSource, varLev));
+    }
+   
+    //
+    // No exact match, so interpolate the results:
+    //
+    
+    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, exprSource, varLev));
+  }
+ 
+  /***************************************************************************
+  **
+  ** Return the expression level for a given region and hour and Simulation run
+  */
+  
+  public int getExpressionLevelForSimulation(String simKey, String region, int hour, VariableLevel varLev) {
+    
+    //
+    // If the request falls outside an active region, we need
+    // to return the code.
+    //
+    
+    if (!haveARegion(region, hour)) {
+      return (ExpressionEntry.NO_REGION);
+    }
+
+    //
+    // Crank through all the expressions to find matching and
+    // bounding entries. 
+    //
+    Iterator<ExpressionEntry> eit = getExpressionsForSim(simKey);
+    ExpTriplet trip = findATrip(eit, region, hour);
+
+    //
+    // If we have a matching entry, figure out the expression level and return it
+    //
+    
+    if (trip.matchingEntry != null) {
+      return (calculateMatchingExpression(trip.matchingEntry, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev));
+    }
+   
+    //
+    // No exact match, so interpolate the results:
+    //
+    
+    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev));
+  }
+
+  /***************************************************************************
+  **
+  ** Return the triple of bounding or matching entries
+  */
+  
+  private ExpTriplet findATrip(Iterator<ExpressionEntry> eit, String region, int hour) {
+    
+    //
+    // Crank through all the expressions to find matching and
+    // bounding entries. 
+    //
+    
+    ExpTriplet trip = new ExpTriplet();
     while (eit.hasNext()) {
       ExpressionEntry ee = eit.next();
       int time = ee.getTime();      
@@ -727,39 +929,26 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
         continue;
       }
       if (time == hour) {
-        matchingEntry = ee;
+        trip.matchingEntry = ee;
       } else if (time > hour) {
-        if ((leastHigher == null) || (time < leastHigher.getTime())) {
-          leastHigher = ee;
+        if ((trip.leastHigher == null) || (time < trip.leastHigher.getTime())) {
+          trip.leastHigher = ee;
         }
       } else if (time < hour) {
-        if ((greatestLower == null) || (time > greatestLower.getTime())) {
-          greatestLower = ee;
+        if ((trip.greatestLower == null) || (time > trip.greatestLower.getTime())) {
+          trip.greatestLower = ee;
         }        
       }
-    }
-    
-    //
-    // If we have a matching entry, figure out the expression level and return it
-    //
-    
-    if (matchingEntry != null) {
-      return (calculateMatchingExpression(matchingEntry, exprSource, varLev));
-    }
-   
-    //
-    // No exact match, so interpolate the results:
-    //
-    
-    return (interpolateExpression(hour, greatestLower, leastHigher, exprSource, varLev));
+    }  
+    return (trip);
   }
- 
+  
   /***************************************************************************
   **
   ** Return the edge status of an expression entry.
   */
   
-  private int edgeStatus(ExpressionEntry entry, int exprSource) {
+  private int edgeStatus(ExpressionEntry entry, ExpressionEntry.Source exprSource) {
     return (edgeStatus(entry, exprSource, getExpressions()));
   }
   
@@ -843,7 +1032,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the expression level for a direct match.
   */
   
-  private int calculateMatchingExpression(ExpressionEntry matchingEntry, int exprSource, VariableLevel varLev) { 
+  private int calculateMatchingExpression(ExpressionEntry matchingEntry, ExpressionEntry.Source exprSource, VariableLevel varLev) { 
 
     if (matchingEntry == null) {
       throw new IllegalArgumentException();
@@ -903,7 +1092,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   
   private boolean interpolateVariableExpression(int hour, ExpressionEntry greatestLower, 
                                                 ExpressionEntry leastHigher, 
-                                                int exprSource, VariableLevel varLev) {
+                                                ExpressionEntry.Source exprSource, VariableLevel varLev) {
     //
     // With variable expression, there is no edge strategy!  If mixed variable
     // and fixed, convert the fixed to a variable level:
@@ -974,7 +1163,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
         varLev.level = 0.0;
         break;
       case ExpressionEntry.WEAK_EXPRESSION:
-        varLev.level = appState_.getDisplayOptMgr().getDisplayOptions().getWeakExpressionLevel();
+        varLev.level = dacx_.getDisplayOptsSource().getDisplayOptions().getWeakExpressionLevel();
         break;
       case ExpressionEntry.EXPRESSED:        
         varLev.level = 1.0;
@@ -994,7 +1183,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   
   private int interpolateExpression(int hour, ExpressionEntry greatestLower, 
                                               ExpressionEntry leastHigher, 
-                                              int exprSource, VariableLevel varLev) {
+                                              ExpressionEntry.Source exprSource, 
+                                              VariableLevel varLev) {
 
     //
     // We have to have a greatest lower, since otherwise we would have
@@ -1167,7 +1357,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the expression source for a given region and time.
   */
   
-  public int getExprSource(String region, int time) {
+  public ExpressionEntry.Source getExprSource(String region, int time) {
     //
     // Crank through all the expressions to find ones that
     // match the region. 
@@ -1216,7 +1406,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public int getGlobalFirstExpression(int channel) {
+  public int getGlobalFirstExpression(ExpressionEntry.Source channel) {
     int retval = Integer.MAX_VALUE;
     Iterator<ExpressionEntry> exps = getExpressions();
     while (exps.hasNext()) {
@@ -1240,7 +1430,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public Integer getRegionFirstExpressionTime(String regionID, int channel) {
+  public Integer getRegionFirstExpressionTime(String regionID, ExpressionEntry.Source channel) {
     Integer retval = null;
     Iterator<ExpressionEntry> exps = getExpressions();
     while (exps.hasNext()) {
@@ -1266,7 +1456,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public Integer getLineageFirstExpressionTime(List<TimeCourseData.TimeBoundedRegion> lineage, int channel) {
+  public Integer getLineageFirstExpressionTime(List<TimeCourseData.TimeBoundedRegion> lineage, ExpressionEntry.Source channel) {
     Integer retval = null;
     Iterator<ExpressionEntry> exps = getExpressions();
     int numLin = lineage.size();
@@ -1297,7 +1487,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Get the set of regions where the gene expresses
   */
   
-  public Set<String> expressesInRegions(int channel) {
+  public Set<String> expressesInRegions(ExpressionEntry.Source channel, boolean varToo) {
     HashSet<String> retval = new HashSet<String>();
     Iterator<ExpressionEntry> exps = getExpressions();
     while (exps.hasNext()) {
@@ -1306,6 +1496,11 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
       if ((expression == ExpressionEntry.EXPRESSED) ||
           (expression == ExpressionEntry.WEAK_EXPRESSION)) {
         retval.add(exp.getRegion());
+      } else if (varToo && (expression == ExpressionEntry.VARIABLE)) {
+        double var = exp.getVariableLevelForSource(channel);
+        if (var > 0.0) {
+          retval.add(exp.getRegion());
+        }
       }
     }
     return (retval);
@@ -1317,7 +1512,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public boolean expressesInRegion(String regionID, int channel) {
+  public boolean expressesInRegion(String regionID, ExpressionEntry.Source channel, boolean varToo) {
     Iterator<ExpressionEntry> exps = getExpressions();
     while (exps.hasNext()) {
       ExpressionEntry exp = exps.next();
@@ -1326,6 +1521,11 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
         if ((expression == ExpressionEntry.EXPRESSED) ||
             (expression == ExpressionEntry.WEAK_EXPRESSION)) {
           return (true);
+        } else if (varToo && (expression == ExpressionEntry.VARIABLE)) {
+          double var = exp.getVariableLevelForSource(channel);
+          if (var > 0.0) {
+            return (true);
+          }
         }
       }
     }
@@ -1339,7 +1539,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public String expressesInOnlyAndOnlyOneRegion(int channel) {
+  public String expressesInOnlyAndOnlyOneRegion(ExpressionEntry.Source channel, boolean varToo) {
     HashSet<String> regions = new HashSet<String>();
     Iterator<ExpressionEntry> exps = getExpressions();
     while (exps.hasNext()) {
@@ -1349,6 +1549,12 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
           (expression == ExpressionEntry.WEAK_EXPRESSION)) {
          String reg = exp.getRegion();     
          regions.add(reg);
+      } else if (varToo && (expression == ExpressionEntry.VARIABLE)) {
+        double var = exp.getVariableLevelForSource(channel);
+        if (var > 0.0) {
+          String reg = exp.getRegion();  
+          regions.add(reg);
+        }
       }
     }
     return ((regions.size() == 1) ? regions.iterator().next() : null);
@@ -1398,8 +1604,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Get an HTML expression table suitable for display.
   */
   
-  public int getExpressionTable(PrintWriter out, TimeCourseData tcd, boolean showTree) {
-    return ((new TimeCourseTableDrawer(appState_, this)).getExpressionTable(out, tcd, showTree));
+  public int getExpressionTable(PrintWriter out, DataAccessContext dacx, TimeCourseData tcd, boolean showTree) {
+    return ((new TimeCourseTableDrawer(dacx, this)).getExpressionTable(out, tcd, showTree));
   }
 
   /***************************************************************************
@@ -1465,7 +1671,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     Iterator<ExpressionEntry> eit = getExpressions();
     while (eit.hasNext()) {
       ExpressionEntry ee = eit.next();
-      int expression = ee.getExpressionForSource(ExpressionEntry.NO_SOURCE_SPECIFIED);
+      int expression = ee.getExpressionForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
       if ((expression != ExpressionEntry.NO_DATA) && (expression != ExpressionEntry.NO_REGION)) {
         return (true);
       }
@@ -1478,7 +1684,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Answer if we have ANY data!
   */
   
-  public boolean haveDataForSource(int source) {
+  public boolean haveDataForSource(ExpressionEntry.Source source) {
     Iterator<ExpressionEntry> eit = getExpressions();
     while (eit.hasNext()) {
       ExpressionEntry ee = eit.next();
@@ -1541,6 +1747,30 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
       ind.down().indent();
       out.println("</perturbations>");
     } 
+    if (simData_.size() > 0) {
+      ind.indent();   
+      out.println("<simulations>");
+      ind.up();
+      Iterator<String> skit = new TreeSet<String>(simData_.keySet()).iterator();
+      while (skit.hasNext()) {
+        String sk = skit.next();
+        ind.indent();   
+        out.print("<simulation id=\"");
+        out.print(sk);
+        out.println("\">");
+        ind.up();
+        List<ExpressionEntry> sees = simData_.get(sk);
+        Iterator<ExpressionEntry> exps = sees.iterator();
+        while (exps.hasNext()) {
+          ExpressionEntry exp = exps.next();
+          exp.writeXML(out, ind);
+        }
+        ind.down().indent();
+        out.println("</simulation>");
+      }
+      ind.down().indent();
+      out.println("</simulations>");
+    } 
     ind.down().indent();       
     out.println("</timeCourse>");
     return;
@@ -1575,6 +1805,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("TimeCourseGene: name = " + name_ + " confidence = " + confidence_ +
             " hasTimeCourse = " + hasTimeCourse_ + " expressions = " + data_);
@@ -1661,6 +1892,16 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
+  public static String simDataKeywordOfInterest() {
+    return ("simulation");
+  }
+  
+  /***************************************************************************
+  **
+  ** Return the element keywords that we are interested in
+  **
+  */
+  
   public static String keywordOfInterest() {
     return ("timeCourse");
   }
@@ -1671,7 +1912,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public static TimeCourseGene buildFromXML(BTState appState, String elemName, 
+  public static TimeCourseGene buildFromXML(DataAccessContext dacx, String elemName, 
                                             Attributes attrs) throws IOException {
     if (!elemName.equals("timeCourse")) {
       return (null);
@@ -1712,15 +1953,14 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     }
     
     boolean makeTemplate = (new Boolean(isTemplate)).booleanValue();
+    
     if (makeTemplate) {
-      return (new TimeCourseGene(appState, true));
+      return (new TimeCourseGene(dacx, true));
     }
-
     if ((gene == null) || (confidence == null) || (timeCourse == null)) {
       throw new IOException();
     }
-    
-    return (new TimeCourseGene(appState, gene, confidence, timeCourse, note, archival, internalOnly));
+    return (new TimeCourseGene(dacx, gene, confidence, timeCourse, note, archival, internalOnly));
   }
   
   /***************************************************************************
@@ -1728,7 +1968,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Answer if there are strategy problems with an expression entry.
   */
   
-  public static boolean strategyProblems(ExpressionEntry entry, int exprSource, Iterator<ExpressionEntry> eit, Map<String, Integer> prevStates) {  
+  public static boolean strategyProblems(ExpressionEntry entry, ExpressionEntry.Source exprSource, Iterator<ExpressionEntry> eit, Map<String, Integer> prevStates) {  
    
     int startStrat = entry.getStartStrategy(exprSource);
     int endStrat = entry.getEndStrategy(exprSource);
@@ -1795,7 +2035,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the edge status of an expression entry.
   */
     
-  public static int edgeStatus(ExpressionEntry entry, int exprSource, Iterator<ExpressionEntry> eit) {
+  public static int edgeStatus(ExpressionEntry entry, ExpressionEntry.Source exprSource, Iterator<ExpressionEntry> eit) {
     
     if (entry == null) {
       throw new IllegalArgumentException();
@@ -1870,12 +2110,12 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Get the set of source options
   */
   
-  public static Set<Integer> getSourceOptions(Collection<ExpressionEntry> expr) {
-    HashSet<Integer> retval = new HashSet<Integer>();
+  public static Set<ExpressionEntry.Source> getSourceOptions(Collection<ExpressionEntry> expr) {
+    HashSet<ExpressionEntry.Source> retval = new HashSet<ExpressionEntry.Source>();
     Iterator<ExpressionEntry> eeit = expr.iterator();
     while (eeit.hasNext()) {
       ExpressionEntry ee = eeit.next();
-      Integer qualSrc = ee.getQualifiedSource();
+      ExpressionEntry.Source qualSrc = ee.getQualifiedSource();
       if (qualSrc != null) {    
         retval.add(qualSrc);
       }
@@ -1888,6 +2128,23 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   // INNER CLASSES
   //
   ////////////////////////////////////////////////////////////////////////////
+  
+  /***************************************************************************
+  **
+  ** For collecting up bounds or matches
+  */
+ 
+  private static class ExpTriplet {
+    ExpressionEntry greatestLower;
+    ExpressionEntry matchingEntry;
+    ExpressionEntry leastHigher;
+    
+    ExpTriplet() {
+      greatestLower = null;
+      matchingEntry = null;
+      leastHigher = null;     
+    }   
+  }
   
   /***************************************************************************
   **

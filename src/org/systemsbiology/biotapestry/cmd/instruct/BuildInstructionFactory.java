@@ -25,7 +25,7 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.parser.ParserClient;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -47,7 +47,7 @@ public class BuildInstructionFactory implements ParserClient {
   ////////////////////////////////////////////////////////////////////////////
   
   private Set<String> instKeys_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -60,9 +60,9 @@ public class BuildInstructionFactory implements ParserClient {
   ** Constructor for the model data factory
   */
 
-  public BuildInstructionFactory(BTState appState) {
+  public BuildInstructionFactory() {
     instKeys_ = BuildInstruction.keywordsOfInterest();
-    appState_ = appState;  
+    dacx_ = null;  
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -70,6 +70,16 @@ public class BuildInstructionFactory implements ParserClient {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Set the current context
+  */
+  
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    return;
+  }
 
   /***************************************************************************
   ** 
@@ -120,7 +130,7 @@ public class BuildInstructionFactory implements ParserClient {
     if (instKeys_.contains(elemName)) {
       BuildInstruction bi = BuildInstruction.buildFromXML(elemName, attrs);
       if (bi != null) {
-        appState_.getDB().addBuildInstruction(bi);
+        dacx_.getInstructSrc().addBuildInstruction(bi);
         return (bi);
       }
     }

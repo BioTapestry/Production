@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,14 +26,14 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -70,8 +70,7 @@ public class ChangeNodeType extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ChangeNodeType(BTState appState) {
-    super(appState);
+  public ChangeNodeType() {
     name = "nodePopup.ChangeType";
     desc = "nodePopup.ChangeType";
     mnem = "nodePopup.ChangeTypeMnem";  
@@ -90,8 +89,8 @@ public class ChangeNodeType extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    ChangeState retval = new ChangeState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    ChangeState retval = new ChangeState(dacx);
     return (retval);
   }
   
@@ -109,9 +108,7 @@ public class ChangeNodeType extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         ChangeState ans = (ChangeState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
           next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepChangeDialog")) {
@@ -136,33 +133,33 @@ public class ChangeNodeType extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class ChangeState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class ChangeState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
      
-    private String nodeID_;
-    
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
+    private String nodeID_;    
     private Integer newType_;
     private Node changeNode_;
     private int existingType_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public ChangeState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      dacx_ = dacx;
+    public ChangeState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepBiWarning";
     }
   
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public ChangeState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepBiWarning";
+    }
+
     /***************************************************************************
     **
     ** Preload init
@@ -181,8 +178,8 @@ public class ChangeNodeType extends AbstractControlFlow {
     private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
       if (dacx_.getInstructSrc().haveBuildInstructions()) {
-        String message = dacx_.rMan.getString("instructWarning.message");
-        String title = dacx_.rMan.getString("instructWarning.title");
+        String message = dacx_.getRMan().getString("instructWarning.message");
+        String title = dacx_.getRMan().getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
         daipc = new DialogAndInProcessCmd(suf, this);      
        } else {
@@ -199,11 +196,11 @@ public class ChangeNodeType extends AbstractControlFlow {
       
     private DialogAndInProcessCmd stepChangeDialog() { 
        
-      changeNode_ = dacx_.getGenome().getNode(nodeID_);
+      changeNode_ = dacx_.getCurrentGenome().getNode(nodeID_);
       existingType_ = changeNode_.getNodeType();
           
       ChangeNodeTypeDialogFactory.ChangeNodeBuildArgs ba = new ChangeNodeTypeDialogFactory.ChangeNodeBuildArgs(existingType_);
-      ChangeNodeTypeDialogFactory cntd = new ChangeNodeTypeDialogFactory(cfh);  
+      ChangeNodeTypeDialogFactory cntd = new ChangeNodeTypeDialogFactory(cfh_);  
       ServerControlFlowHarness.Dialog cfhd = cntd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractAndChange";
@@ -233,7 +230,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       }
       newType_ = crq.typeResult;
       
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.fgho.getGlobalNetModuleLinkPadNeeds();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
 
     //
     // While nodes can share names, they cannot share if they are genes
@@ -247,20 +244,20 @@ public class ChangeNodeType extends AbstractControlFlow {
           String root = ((NodeInstance)changeNode_).getRootName();
           empty = ((local != null) && local.trim().equals("")) ||
                   ((root == null) || root.trim().equals(""));        
-          collision = !empty && (((local != null) && dacx_.fgho.matchesExistingGeneOrNodeName(local, dacx_.getGenome(), nodeID_)) 
-                                  || dacx_.fgho.matchesExistingGeneOrNodeName(root, dacx_.getGenome(), nodeID_));               
+          collision = !empty && (((local != null) && dacx_.getFGHO().matchesExistingGeneOrNodeName(local, dacx_.getCurrentGenome(), nodeID_)) 
+                                  || dacx_.getFGHO().matchesExistingGeneOrNodeName(root, dacx_.getCurrentGenome(), nodeID_));               
         } else {
           String root = changeNode_.getName();
           empty = (root == null) || root.trim().equals("");        
-          collision = !empty && dacx_.fgho.matchesExistingGeneOrNodeName(root, dacx_.getGenome(), nodeID_);      
+          collision = !empty && dacx_.getFGHO().matchesExistingGeneOrNodeName(root, dacx_.getCurrentGenome(), nodeID_);      
         }
         if (empty) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rMan.getString("changeType.EmptyName"), rMan.getString("changeType.ErrorTitle"));
           nextStep_ = "stepWillExit";
           return (new DialogAndInProcessCmd(suf, this));
         } else if (collision) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rMan.getString("changeType.BadName"), rMan.getString("changeType.ErrorTitle"));
           nextStep_ = "stepWillExit";
           return (new DialogAndInProcessCmd(suf, this));
@@ -271,7 +268,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, "undo.changeNodeType");     
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeNodeType", dacx_);     
   
       //
       // Characterize node pads:
@@ -293,7 +290,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       // Change the node type in the root model
       //
                                                          
-      changeNodeTypeCore(appState_, dacx_, GenomeItemInstance.getBaseID(nodeID_), newType_.intValue(), 
+      changeNodeTypeCore(dacx_, GenomeItemInstance.getBaseID(nodeID_), newType_.intValue(), 
                          lim, rootGenome, support, idMap);  
    
       //
@@ -303,7 +300,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       Iterator<GenomeInstance> git = dacx_.getGenomeSource().getInstanceIterator();
       while (git.hasNext()) {
         GenomeInstance gi = git.next();
-        changeNodeTypeCore(appState_, dacx_, GenomeItemInstance.getBaseID(nodeID_), newType_.intValue(), lim, gi, 
+        changeNodeTypeCore(dacx_, GenomeItemInstance.getBaseID(nodeID_), newType_.intValue(), lim, gi, 
                            support, idMap);
       }
       Set<String> changed = idMap.keySet();
@@ -312,7 +309,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       // Fix up the layouts to handle the change.
       //
       
-      Iterator<Layout> lit = dacx_.lSrc.getLayoutIterator();
+      Iterator<Layout> lit = dacx_.getLayoutSource().getLayoutIterator();
       while (lit.hasNext()) {
         Layout lo = lit.next();
         if (changed.contains(lo.getTarget())) {
@@ -321,7 +318,7 @@ public class ChangeNodeType extends AbstractControlFlow {
           while (isit.hasNext()) {
             String nodeID = isit.next();
             Layout.PropChange lpc = lo.changeNodePropertiesType(nodeID, existingType_, newType_.intValue());
-            support.addEdit(new PropChangeCmd(appState_, dacx_, new Layout.PropChange[] {lpc}));
+            support.addEdit(new PropChangeCmd(dacx_, new Layout.PropChange[] {lpc}));
             //
             // Code for Issue #241. If node is white, and the target type is not happy with white, change it
             // to black so it does not disappear:
@@ -334,7 +331,7 @@ public class ChangeNodeType extends AbstractControlFlow {
                 NodeProperties npc = np.clone();
                 npc.setColor("black");
                 lpc = lo.setNodeProperties(nodeID, npc);
-                support.addEdit(new PropChangeCmd(appState_, dacx_, new Layout.PropChange[] {lpc}));
+                support.addEdit(new PropChangeCmd(dacx_, new Layout.PropChange[] {lpc}));
               }
             } 
           }
@@ -343,7 +340,7 @@ public class ChangeNodeType extends AbstractControlFlow {
         }
       }
       
-      ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, dacx_, globalPadNeeds, false, support);
+      ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds, false, support);
          
       //
       // Flush dynamic cache
@@ -369,12 +366,13 @@ public class ChangeNodeType extends AbstractControlFlow {
     ** Core ops for changing the node type
     */  
    
-    private static boolean changeNodeTypeCore(BTState appState, DataAccessContext dacx, String backingID, int newType, NodeProperties.PadLimits lim,
+    private static boolean changeNodeTypeCore(StaticDataAccessContext dacx, String backingID, int newType, NodeProperties.PadLimits lim,
                                               Genome genome, UndoSupport support, Map<String, Set<String>> idMap) {    
       //
       // Node not in genome -> skip it
       //
-                                                   
+            
+      
       Set<String> instances = null;
       if (genome instanceof GenomeInstance) {
         instances = ((GenomeInstance)genome).getNodeInstances(backingID);
@@ -390,7 +388,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       }
       idMap.put(genome.getID(), instances);
        
-      ModelChangeEvent mcev = new ModelChangeEvent(genome.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx.getGenomeSource().getID(), genome.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);       
       // 
       // Change the node type, for each instance 
@@ -400,7 +398,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       while (iit.hasNext()) {
         String id = iit.next();      
         GenomeChange gc = genome.changeNodeType(id, newType);
-        support.addEdit(new GenomeChangeCmd(appState, dacx, gc));
+        support.addEdit(new GenomeChangeCmd(dacx, gc));
   
         //
         // All linkages inbound and outbound may need landing and
@@ -409,7 +407,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       
         GenomeChange[] gca = genome.resolvePadChanges(id, lim);
         for (int i = 0; i < gca.length; i++) {
-          support.addEdit(new GenomeChangeCmd(appState, dacx, gca[i]));
+          support.addEdit(new GenomeChangeCmd(dacx, gca[i]));
         }
       }
       return (true);

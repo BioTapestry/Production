@@ -101,10 +101,22 @@ public class XPlatUIEvent {
 		}
 		return Collections.unmodifiableMap(this.parameters_);
 	}
+	
+	public Object getParameter(String key) {
+		if(this.parameters_ != null)
+			return this.parameters_.get(key);
+		return null;
+	}
 
 	public void setParameters(Map<String, Object> parameters_) {
 		this.parameters_ = parameters_;
-	}	
+	}
+	
+	public void setParameter(String key, Object value) {
+		if(this.parameters_ == null) 
+			this.parameters_ = new HashMap<String,Object>();
+		this.parameters_.put(key,value);
+	}
 	
 	public void addParameter(String name,Object value) {
 		if(this.parameters_ == null) {

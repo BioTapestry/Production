@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,6 +32,8 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.image.BufferedImage;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -47,40 +49,51 @@ import javax.swing.JMenuBar;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextPane;
 import javax.swing.JToolBar;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.border.LineBorder;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 import javax.swing.undo.UndoManager;
 
+import org.systemsbiology.biotapestry.cmd.GroupPanelCommands;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.MenuSource;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
+import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.TabNameData;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeListener;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.event.TreeNodeChangeEvent;
+import org.systemsbiology.biotapestry.event.TreeNodeChangeListener;
 import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.OverlayDisplayChange;
+import org.systemsbiology.biotapestry.nav.UserTreePathController;
+import org.systemsbiology.biotapestry.nav.ZoomCommandSupport;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.ui.GroupPanel;
 import org.systemsbiology.biotapestry.ui.ModelImagePanel;
 import org.systemsbiology.biotapestry.ui.SUPanel;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.pertManage.PerturbationsManagementWindow;
 import org.systemsbiology.biotapestry.ui.menu.DesktopMenuFactory;
 import org.systemsbiology.biotapestry.ui.menu.XPlatKeyBindings;
@@ -91,15 +104,16 @@ import org.systemsbiology.biotapestry.ui.menu.XPlatToolBar;
 import org.systemsbiology.biotapestry.util.BTToggleButton;
 import org.systemsbiology.biotapestry.util.BackgroundWorkerControlManager;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.JTabbedPaneWithPopup;
 import org.systemsbiology.biotapestry.util.UiUtil;
-
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
 ** The guts of the top-level BioTapestry window
 */
 
-public class CommonView implements ModelChangeListener, BackgroundWorkerControlManager { 
+public class CommonView implements ModelChangeListener, TreeNodeChangeListener, BackgroundWorkerControlManager, ChangeListener { 
                                                              
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -108,15 +122,17 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   ////////////////////////////////////////////////////////////////////////////  
 
   private BTState appState_;
-  private ModelImagePanel mip_;
-  private boolean mipVisible_;  
-  private JPanel ovrPanel_;
-  private boolean ovrVisible_; 
-  private CardLayout myCard_;
-  private JPanel hidingPanel_;
-  private JPanel sliderPanel_;
-  private JScrollPane jsp_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private TabSource tSrc_;
+  private HarnessBuilder hBld_;
+  private UndoFactory uFac_;
+  private PathAndFileSource pafs_;
+  
+  private HashMap<Integer, PerTab> pert_;
+  private boolean ignoreTabs_;
   private JDialog pullFrame_;
+  private JTabbedPane tabPanel_;
 
   private MainCommands.ChecksForEnabled undoAction_;
   private MainCommands.ChecksForEnabled redoAction_;
@@ -129,8 +145,13 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   private PerturbationsManagementWindow pmw_;
   
+  private ModelBuilder.Dashboard iw_;
+  private ModelBuilder.LinkDrawingTracker wldt_;
   
   private boolean accept_;
+  
+  private DynamicDataAccessContext ddacx_;
+  
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -143,9 +164,19 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   ** Constructor 
   */ 
   
-  public CommonView(BTState appState) {
-    appState_ = appState.setCommonView(this);  
+  public CommonView(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc) {
+    appState_ = appState;
+    uics_ = uics;
+    cSrc_ = cSrc;
+    tSrc_ = tSrc;
     accept_ = true;
+    ignoreTabs_ = false;
+    pert_ = new HashMap<Integer, PerTab>();
+    uFac_ = new UndoFactory(tSrc_, cSrc_, uics_);
+    pafs_ = appState_.getPathAndFileSource();
+    hBld_ = new HarnessBuilder(appState_, uics_, cSrc_, tSrc_, 
+                               appState_.getRememberSource(), pafs_, uFac_);
+    ddacx_ = new DynamicDataAccessContext(appState_);
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -156,17 +187,166 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
 
   /***************************************************************************
   **
+  ** Do setting of tab names and tips
+  */   
+  
+  public TabChange setTabTitleData(int index, TabNameData tnd) {
+	  TabChange tc = null;
+	  if (!uics_.isHeadless()) {
+		  PerTab curr = pert_.get(Integer.valueOf(index));
+		  tc = new TabChange(true);
+		  tc.oldPerTab = curr.clone();
+		  curr.tabNameData = tnd.clone();
+		  tc.newPerTab = curr.clone();
+		  if (tabPanel_.getTabCount() > 0) {
+		    tabPanel_.setTitleAt(index, tnd.getTitle());
+		    tabPanel_.setToolTipTextAt(index, tnd.getDesc());
+		  }
+	  }
+	  return (tc);
+  }
+
+  /***************************************************************************
+  **
+  ** Do adding of tab UI
+  */ 
+
+  public TabChange addTabUI(int index, int indexOldCurrent, TabNameData tnd) {
+    if (uics_.isHeadless()) {
+      PerTab newPerTab = new PerTab(index);
+      pert_.put(Integer.valueOf(index), newPerTab);
+      ignoreTabs_ = true;
+      buildTab(); // may be null if headless...
+      ignoreTabs_ = false;
+      return (null);
+    }
+    PerTab cpt = null;
+    if (tabPanel_.getTabCount() == 0) {
+      cpt = pert_.get(pert_.keySet().iterator().next());
+    }
+    
+    TabChange retval = new TabChange(true);
+    retval.didTabChange = false;
+    retval.newPerTab = new PerTab(index);
+    // The PENDING stuff is for Tabs loaded from IO; that will be filled in when we get it:
+    retval.newPerTab.tabNameData = (tnd == null) ? new TabNameData("PENDING", "PENDING", "PENDING") : tnd.clone();
+    retval.newCurrIndexPre = indexOldCurrent;
+    retval.newChangeIndex = index;
+    pert_.put(Integer.valueOf(index), retval.newPerTab);
+    
+    ignoreTabs_ = true;
+    retval.newTabUI = buildTab(); // may be null if headless...
+    retval.newPerTab.tabContents = retval.newTabUI;
+    if (tabPanel_.getTabCount() == 0) {
+      uics_.getContentPane().remove(cpt.tabContents);
+      uics_.getContentPane().add(tabPanel_, BorderLayout.CENTER);
+      tabPanel_.addTab(cpt.tabNameData.getTitle(), null, cpt.tabContents, cpt.tabNameData.getDesc());
+    }
+    tabPanel_.addTab(retval.newPerTab.tabNameData.getTitle(), null, retval.newTabUI, retval.newPerTab.tabNameData.getDesc());
+    uics_.getContentPane().revalidate();
+   
+    ignoreTabs_ = false;
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** Do removal of tab UI
+  */ 
+
+  public TabChange removeTabUI(int indexRem, int indexOldCurrent, int indexNewCurrent) {
+    if (uics_.isHeadless()) {
+      return (null);
+    }
+
+    TabChange retval = new TabChange(true);
+    retval.didTabChange = false;
+    retval.oldCurrIndexPre = indexOldCurrent;
+    retval.oldPerTab = pert_.remove(Integer.valueOf(indexRem));
+
+    // Fix the indices of the higher tabs:
+    HashMap<Integer, PerTab> moddie = new HashMap<Integer, PerTab>();
+    Iterator<Integer> kit = pert_.keySet().iterator();
+    while (kit.hasNext()) {
+      Integer testKey = kit.next();
+      PerTab pt = pert_.get(testKey);
+      if (pt.index > indexRem) {
+        pt.index--;
+      }
+      moddie.put(Integer.valueOf(pt.index), pt);
+    }
+    pert_ = moddie;
+       
+    retval.oldChangeIndex = indexRem;
+    ignoreTabs_ = true;
+    // Note we do NOT use getTabComponentAt(), which returns null:
+    retval.oldTabUI = (JPanel)tabPanel_.getComponentAt(indexRem);
+    tabPanel_.remove(indexRem);
+    retval.oldCurrIndexPost = indexNewCurrent;
+    tabPanel_.setSelectedIndex(indexNewCurrent);
+    if (tabPanel_.getTabCount() == 1) {
+      PerTab cpt = pert_.get(pert_.keySet().iterator().next());
+      tabPanel_.remove(0);
+      uics_.getContentPane().remove(tabPanel_);
+      uics_.getContentPane().add(cpt.tabContents, BorderLayout.CENTER);
+    }
+    uics_.getContentPane().revalidate();
+    ignoreTabs_ = false;
+    return (retval);
+  }
+
+  
+  /***************************************************************************
+  **
+  ** Set current tab
+  */ 
+
+  public TabChange setVisibleTab(int index, int prevIndex) {
+    if (uics_.isHeadless()) {
+      return (null);
+    }
+    TabChange retval = new TabChange(true);
+    retval.didTabChange = true;
+    retval.changeTabPreIndex = prevIndex;
+    retval.changeTabPostIndex = index;
+    ignoreTabs_ = true;
+    if (tabPanel_.getTabCount() > 0) { 
+      tabPanel_.setSelectedIndex(index);
+    }
+    ignoreTabs_ = false;
+    return (retval);
+  }
+
+  /***************************************************************************
+  **
+  ** Set current tab
+  */ 
+
+  public void setInternalVisibleTab(int oldIndex, int index) {
+    if (uics_.isHeadless()) {
+      return;
+    }
+    ignoreTabs_ = true;
+    if (tabPanel_.getTabCount() > 0) { 
+      tabPanel_.setSelectedIndex(index);
+    } 
+    ignoreTabs_ = false;
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Do window title
   */ 
 
   public void manageWindowTitle(String fileName) {
-    if (appState_.isHeadless() || !appState_.getIsEditor()) {
+    if (uics_.isHeadless() || !uics_.getIsEditor()) {
       return;
     }
-    if (appState_.getTopFrame() == null) {
+    if (uics_.getTopFrame() == null) {
       return;  // Don't mess with viewer title (huh??)
     }
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String title;
     if (fileName == null) {
       title = rMan.getString("window.editorTitle");  
@@ -174,7 +354,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
       String titleFormat = rMan.getString("window.editorTitleWithName");
       title = MessageFormat.format(titleFormat, new Object[] {fileName});
     }
-    appState_.getTopFrame().setTitle(title);
+    uics_.getTopFrame().setTitle(title);
     return;
   }  
   
@@ -215,9 +395,9 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   public void reenableControls() {
     // if we don't have something selected, better fix that:
-    if (appState_.getTree().getTreeSelectionPath() == null) {
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-      appState_.getTree().setTreeSelectionPath(dacx.getGenomeSource().getModelHierarchy().getVfgSelection());
+    if (uics_.getTree().getTreeSelectionPath() == null) {
+      DataAccessContext dacx = new StaticDataAccessContext(appState_);
+      uics_.getTree().setTreeSelectionPath(dacx.getGenomeSource().getModelHierarchy().getVfgSelection());
     }
     enableControls(true);
     return;
@@ -229,7 +409,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */  
   
   public void redraw() {
-    appState_.getSUPanel().drawModel(false);
+    uics_.getSUPanel().drawModel(false);
     return;
   }
 
@@ -275,12 +455,12 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   private void bindKeys() { 
     
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       throw new IllegalStateException();
     }
     
-    JComponent jcp = appState_.getContentPane();
-    MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
+    JComponent jcp = uics_.getContentPane();
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
     XPlatKeyBindings xpkb;
     try {
       xpkb = mSrc.getXPlatKeyBindings();
@@ -307,12 +487,10 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
             if (xpka.isBlockable() && !canAccept()) {
               return;
             }
-            ControlFlow cf = appState_.getFloM().getControlFlow(xpka.getKey(), xpka.getActionArg());
-            DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-            dcf.initFlow(cf, new DataAccessContext(appState_, appState_.getGenome()));
-            dcf.runFlow();
+            ControlFlow cf = cSrc_.getFloM().getControlFlow(xpka.getKey(), xpka.getActionArg());
+            hBld_.buildAndRunHarness(cf, new DynamicDataAccessContext(appState_), uics_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -326,7 +504,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */ 
   
   public void buildTheView() {
-    if (appState_.getIsEditor()) {
+    if (uics_.getIsEditor()) {
       buildEditorView();
     } else {
       buildViewOnlyView();
@@ -336,87 +514,45 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   /***************************************************************************
   **
-  ** Build an editor view
-  */ 
-  
-  private void buildEditorView() {
-    if (!appState_.isHeadless()) {
-      bindKeys();
-      appState_.getContentPane().setLayout(new BorderLayout());
-    }
-    
-    //
-    // Even the "Headless" commonView has lots of virtual controls that stand in for the Swing versions:
-    //
-    
-    new SUPanel(appState_);            
-    new MainCommands(appState_);
-    new VirtualRecentMenu(appState_);
-    new VirtualPathControls(appState_, new DynamicDataAccessContext(appState_));
-    new VirtualGaggleControls(appState_);  
-    NavTree navTree = appState_.getDB().getModelHierarchy();   
-    JTree jTree = (appState_.isHeadless()) ? null : new JTree(navTree);
-    new VirtualModelTree(appState_, jTree, navTree);
-       
-    //
-    // Build up the main menu bar.  Ask for the cross-platform editor menubar definition,
-    // supply prebuilt menus, build it, then extract tagged items and use then to finish
-    // the job:
-    //
-    
-    if (!appState_.isHeadless()) {
-      buildEditorUI();
-    }
-   
-    buildCore(toolBar_, jTree);  
-    TreePath dstp = navTree.getDefaultSelection();
-    navTree.setSkipFlag(NavTree.SKIP_EVENT);
-    appState_.getTree().setTreeSelectionPath(dstp);
-    navTree.setSkipFlag(NavTree.NO_FLAG);
-    appState_.getZoomTarget().fixCenterPoint(true, null, false);
-    return;
-  }
-
-  /***************************************************************************
-  **
   ** Build editor UI components
   */ 
   
   private void buildEditorUI() {
-    boolean doGaggle = appState_.getDoGaggle();  
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
+    boolean doGaggle = uics_.getDoGaggle();
+    
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
     XPlatMenuBar xpmbar = mSrc.defineEditorMenuBar(dacx);
     
-    DesktopMenuFactory dmFac = new DesktopMenuFactory(appState_);
+    DesktopMenuFactory dmFac = new DesktopMenuFactory(cSrc_, dacx.getRMan(), uics_, hBld_);
     MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
         
-    bifo.collected.put("SELECTED", appState_.getSUPanel().getSelectedMenu());
-    bifo.collected.put("CURRENT_MODEL", appState_.getTree().getCurrentModelMenu());
-    bifo.collected.put("RECENT", appState_.getRecentMenu().getJMenu());
-    bifo.collected.put("USER_PATH_CHOOSE", appState_.getPathControls().getJMenu());    
+    bifo.collected.put("SELECTED", uics_.getSUPanel().getSelectedMenu());
+    bifo.collected.put("CURRENT_MODEL", uics_.getTree().getCurrentModelMenu());
+    bifo.collected.put("RECENT", uics_.getRecentMenu().getJMenu());
+    bifo.collected.put("USER_PATH_CHOOSE", uics_.getPathControls().getJMenu());    
     if (doGaggle) {
-      bifo.collected.put("GOOSE_CHOOSE", appState_.getGaggleControls().getJMenu());
+      bifo.collected.put("GOOSE_CHOOSE", uics_.getGaggleControls().getJMenu());
     }   
     bifo.conditions.put("DO_GAGGLE", Boolean.valueOf(doGaggle));
 
-    JMenuBar menuBar = dmFac.buildDesktopMenuBar(xpmbar, new DesktopMenuFactory.ActionSource(appState_), bifo);
+    JMenuBar menuBar = dmFac.buildDesktopMenuBar(xpmbar, new DesktopMenuFactory.ActionSource(cSrc_), bifo);
     JMenu eMenu = bifo.collected.get("EMENU");
     undoAction_ = (MainCommands.ChecksForEnabled)bifo.taggedActions.get("UNDO");
     redoAction_ = (MainCommands.ChecksForEnabled)bifo.taggedActions.get("REDO");
     MainCommands.ChecksForEnabled pda = (MainCommands.ChecksForEnabled)bifo.taggedActions.get("PULLDOWN");
     JCheckBoxMenuItem jcb = (JCheckBoxMenuItem)bifo.components.get("PULLDOWN");
     
-
     eMenu.addMenuListener(new MenuListener() {
       public void menuCanceled(MenuEvent ev) {}
       public void menuDeselected(MenuEvent ev) {}
       public void menuSelected(MenuEvent ev) {
         try {
-          UndoManager undom = appState_.getUndoManager();
+          UndoManager undom = cSrc_.getUndoManager();
           boolean canUndo = undom.canUndo();
           boolean canRedo = undom.canRedo();
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           String desc;
           if (canUndo) {
             desc = undom.getUndoPresentationName();
@@ -432,10 +568,10 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
           }
           redoAction_.putValue(AbstractAction.NAME, desc);
           redoAction_.setEnabled(redoAction_.isPushed() ? false : canRedo);
-          appState_.getSUPanel().stockSelectedMenu(new DataAccessContext(appState_, appState_.getGenome()));
-          appState_.getTree().stockCurrentModelMenu();
+          uics_.getSUPanel().stockSelectedMenu(new StaticDataAccessContext(appState_));
+          uics_.getTree().stockCurrentModelMenu();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;      
       }      
@@ -465,7 +601,8 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     //
     // Wrap it up:
     //      
-    appState_.getTopFrame().setJMenuBar(menuBar);
+    uics_.getTopFrame().setJMenuBar(menuBar);
+    uics_.getContentPane().add(toolBar_, BorderLayout.NORTH);
     return;
   }
   
@@ -476,14 +613,15 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   private void stockEditorToolBar(boolean showPathControls, boolean showOverlayControls) {
     
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       throw new IllegalStateException();
     }
     
-    boolean doGaggle = appState_.getDoGaggle();
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
-    DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
+    boolean doGaggle = uics_.getDoGaggle();
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
+    DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, dacx.getRMan(), uics_, hBld_);
     XPlatToolBar toob = mSrc.defineEditorToolBar(dacx);   
     MenuSource.BuildInfo bifot = new MenuSource.BuildInfo();
     
@@ -491,10 +629,10 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     bifot.conditions.put("SHOW_PATH", Boolean.valueOf(showPathControls));
     bifot.conditions.put("SHOW_OVERLAY", Boolean.valueOf(showOverlayControls));  
     if (showPathControls) {
-      bifot.components.put("PATH_COMBO", appState_.getPathControls().getJCombo());
+      bifot.components.put("PATH_COMBO", uics_.getPathControls().getJCombo());
     }
      
-    appState_.getGaggleControls().stockToolBarPre(bifot);
+    uics_.getGaggleControls().stockToolBarPre(bifot);
     
     dmf.stockToolBar(toolBar_, toob, actionMap_, bifot);
     
@@ -503,7 +641,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
       tb_ = (BTToggleButton)bifot.components.get("PULLDOWN");
     }
     
-    appState_.getGaggleControls().stockToolBarPost(bifot);
+    uics_.getGaggleControls().stockToolBarPost(bifot);
   
     return;
   }
@@ -515,7 +653,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   public XPlatMaskingStatus calcDisableControls(int pushFlags, boolean displayToo) {
     XPlatMaskingStatus ms = new XPlatMaskingStatus();
-    appState_.getMainCmds().calcPushDisabled(pushFlags, ms); 
+    cSrc_.getMainCmds().calcPushDisabled(pushFlags, ms); 
     ms.setRecentMenuOn(false); 
     ms.setPathControlsOn(false);
     // any push disables the overlay control, though visibility may still be allowed:    
@@ -524,7 +662,8 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     ms.setMainOverlayControlsOn(false);
        
     if (displayToo) {
-      if (myCard_ != null) {
+      int currTab = tSrc_.getCurrentTabIndex();
+      if (pert_.get(currTab).myCard_ != null) {
         ms.setModelDisplayOn(false);
       }
       ms.setKeystrokesOn(false);
@@ -534,12 +673,57 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     }
     ms.setModelTreeOn(false);
     ms.setSliderOn(false);
-    VirtualGaggleControls vgc = appState_.getGaggleControls();
+    VirtualGaggleControls vgc = uics_.getGaggleControls();
     if (vgc != null) {
       ms.setGeeseOn(false);
     }
     return (ms);
   }  
+ 
+  /***************************************************************************
+  **
+  ** Show the group node panel or not
+  */ 
+  
+  public void showGroupNode(boolean showIt) {
+    int currTab = tSrc_.getCurrentTabIndex();
+    pert_.get(currTab).showGroup = showIt;
+    VirtualModelTree vmt = uics_.getTree();
+    TreePath tp = vmt.getTreeSelectionPath();
+    NavTree nt = ddacx_.getGenomeSource().getModelHierarchy();
+    String groupNodeID = nt.getGroupNodeID(tp);
+    installGroupNodeState(nt, groupNodeID, pert_.get(currTab).grp_);
+    if (pert_.get(currTab).myCard_ != null) {
+      String tag = (showIt) ? "GroupPanel" : "SUPanel";
+      pert_.get(currTab).myCard_.show(pert_.get(currTab).hidingPanel_, tag);   
+      uics_.getContentPane().validate();
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Install group node stuff
+  */ 
+  
+  public void installGroupNodeState(NavTree nt, String groupNodeID, GroupPanel grp) {
+    String imgID = null;
+    String mapID = null;
+    Map<Color, NavTree.GroupNodeMapEntry> modMap = null;
+    if (groupNodeID != null) {
+      TreeNode tn = nt.nodeForNodeID(groupNodeID);
+      imgID = nt.getImageKey(tn, false);
+      mapID = nt.getImageKey(tn, true);
+      modMap = nt.getGroupModelMap(tn);
+    }
+ 
+    grp.setDataContext(new StaticDataAccessContext(appState_).getContextForRoot());
+    BufferedImage bi = (imgID != null) ? uics_.getImageMgr().getImage(imgID) : null;
+    grp.setImage(bi);
+    bi = (mapID != null) ? uics_.getImageMgr().getImage(mapID) : null;
+    grp.setMap(bi, modMap);
+    return;
+  }
   
   /***************************************************************************
   **
@@ -550,30 +734,41 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     if (!ms.isMaskingActive()) {
       return;
     }
-    appState_.getMainCmds().pushDisabled(ms);     
-    appState_.getRecentMenu().pushDisabled(ms.isRecentMenuOn().booleanValue());
-    appState_.getPathControls().pushDisabled(ms.arePathControlsOn().booleanValue());
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
-    appState_.getNetOverlayController().pushDisabled(ms, ddacx);
-     
-    if ((myCard_ != null) && !ms.isModelDisplayOn()) {
-      myCard_.show(hidingPanel_, "Hiding");
+    cSrc_.getMainCmds().pushDisabled(ms);     
+    uics_.getRecentMenu().pushDisabled(ms.isRecentMenuOn().booleanValue());
+    uics_.getPathControls().pushDisabled(ms.arePathControlsOn().booleanValue());
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    uics_.getNetOverlayController().pushDisabled(ms, dacx);
+    
+    int currTab = tSrc_.getCurrentTabIndex();
+    if ((pert_.get(currTab).myCard_ != null) && !ms.isModelDisplayOn()) {
+      pert_.get(currTab).myCard_.show(pert_.get(currTab).hidingPanel_, "Hiding");
     }
-
+    
+    //
+    // Gotta disable all the other tab choices:
+    // 
+    int numTab = tSrc_.getNumTab();
+    for (int i = 0; i < numTab; i++) {
+      if (i != currTab) {
+        tabPanel_.setEnabledAt(i, false);
+      }
+    }
+    
     acceptKeystrokes(ms.areKeystrokesOn().booleanValue());
 
-    appState_.getTree().setTreeEnabled(ms.isModelTreeOn().booleanValue());
+    uics_.getTree().setTreeEnabled(ms.isModelTreeOn().booleanValue());
 
-    appState_.getVTSlider().setSliderEnabled(ms.isSliderOn().booleanValue());
+    uics_.getVTSlider().setSliderEnabled(ms.isSliderOn().booleanValue());
 
-    appState_.getPathControls().setPathsEnabled(ms.arePathControlsOn().booleanValue()); // Doesn't this duplicate part of the PathControl push above??
-    VirtualGaggleControls vgc = appState_.getGaggleControls();
+    uics_.getPathControls().setPathsEnabled(ms.arePathControlsOn().booleanValue()); // Doesn't this duplicate part of the PathControl push above??
+    VirtualGaggleControls vgc = uics_.getGaggleControls();
     if (vgc != null) {
       vgc.setGooseEnabled(ms.areGeeseOn().booleanValue());
     }
     
-    if (!appState_.isHeadless()) {  // not headless...
-      appState_.getContentPane().validate();
+    if (!uics_.isHeadless()) {  // not headless...
+      uics_.getContentPane().validate();
     }
     return;
   }  
@@ -594,25 +789,38 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */ 
   
   public void enableControls(boolean withFocus) {
-    appState_.getMainCmds().popDisabled();
-    if (myCard_ != null) {
-      myCard_.show(hidingPanel_, "SUPanel");
+    cSrc_.getMainCmds().popDisabled();
+    int currTab = tSrc_.getCurrentTabIndex();
+    if (pert_.get(currTab).myCard_ != null) {
+      String tag = (pert_.get(currTab).showGroup) ? "GroupPanel" : "SUPanel";      
+      pert_.get(currTab).myCard_.show(pert_.get(currTab).hidingPanel_, tag);
     }
+    
+    //
+    // Gotta re-enable all the other tab choices:
+    //
+    int numTab = tSrc_.getNumTab();
+    for (int i = 0; i < numTab; i++) {
+      if (i != currTab) {
+        tabPanel_.setEnabledAt(i, true);
+      }
+    }
+
     acceptKeystrokes(true);
-    appState_.getRecentMenu().popDisabled();
-    appState_.getPathControls().popDisabled();
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
-    appState_.getNetOverlayController().popDisabled(ddacx);
-    appState_.getTree().setTreeEnabled(true);
-    appState_.getVTSlider().setSliderEnabled(true);
-    appState_.getPathControls().setPathsEnabled(true);
-    VirtualGaggleControls vgc = appState_.getGaggleControls();
+    uics_.getRecentMenu().popDisabled();
+    uics_.getPathControls().popDisabled();
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    uics_.getNetOverlayController().popDisabled(dacx);
+    uics_.getTree().setTreeEnabled(true);
+    uics_.getVTSlider().setSliderEnabled(true);
+    uics_.getPathControls().setPathsEnabled(true);
+    VirtualGaggleControls vgc = uics_.getGaggleControls();
     if (vgc != null) {
       vgc.setGooseEnabled(true);
     }
     
-    if (!appState_.isHeadless()) {  // not headless...
-      appState_.getContentPane().validate();    
+    if (!uics_.isHeadless()) {  // not headless...
+      uics_.getContentPane().validate();    
     }
     
     //
@@ -624,7 +832,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     // TIME IT IS MOVED!!!!!!!
     
     if (withFocus) {
-      appState_.getSUPanel().requestFocusForModel();
+      uics_.getSUPanel().requestFocusForModel();
     }
     
     return;
@@ -653,7 +861,69 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     }
     return;
   }    
+  
+  /***************************************************************************
+  **
+  ** init
+  */ 
+  
+  private JPanel buildTab() {
+   
+    //
+    // Even the "Headless" commonView has lots of virtual controls that stand in for the Swing versions:
+    //
+
+    UiUtil.fixMePrintout("3/9/17: Somewhere we need to fix zoom buttons to match state when we switch tabs");
+    
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
+    
+    new SUPanel(appState_, uics_, cSrc_, tSrc_, hBld_, ddacx);
+    appState_.setGroupPanel(new GroupPanel(uics_, cSrc_));
+    cSrc_.setGroupPanelCmds(new GroupPanelCommands(hBld_));
+
+    VirtualZoomControls vzc = new VirtualZoomControls(uics_, cSrc_);
+    uics_.setVirtualZoom(vzc);
+    uics_.setZoomCommandSupport(new ZoomCommandSupport(vzc, uics_, tSrc_, -1));
  
+    uics_.setPathController(new UserTreePathController(uics_));
+
+    uics_.setNetOverlayController(new NetOverlayController(ddacx, uics_, cSrc_, uFac_, hBld_)); 
+    uics_.getNetOverlayController().resetControllerState(ddacx);
+    NavTree navTree = ddacx_.getGenomeSource().getModelHierarchy();   
+    JTree jTree = (uics_.isHeadless()) ? null : new JTree(navTree);  
+    uics_.setVmTree(new VirtualModelTree(jTree, navTree, cSrc_, uics_, ddacx, hBld_, tSrc_, uFac_));
+ 
+    if (!uics_.isHeadless()) {
+      buildUICore1();
+    }
+
+    uics_.setVTSlider(new VirtualTimeSlider(ddacx, uics_, hBld_, tSrc_, uFac_));
+    
+    // Kinda bogus: chicken and egg!
+    int currTab = tSrc_.getCurrentTabIndex();
+    uics_.getZoomCommandSupport().registerScrollPaneAndZoomTarget(pert_.get(currTab).jsp_, uics_.getZoomTarget());
+    uics_.getZoomCommandSupport().setTabNum(currTab);
+    
+    //
+    // Build the nav tree panel stuff:
+    //
+    
+    uics_.getTree().setupTree();
+    pert_.get(currTab).mip_ = new ModelImagePanel(uics_); 
+    pert_.get(currTab).mip_.setImage(null);
+    pert_.get(currTab).mipVisible_ = false;   
+    pert_.get(currTab).ovrVisible_ = false;
+
+    pert_.get(currTab).grp_ = uics_.getGroupPanel();
+
+    if (!uics_.isHeadless()) {
+      pert_.get(currTab).hidingPanel_.add(pert_.get(currTab).grp_.getPanel(), "GroupPanel");
+      return (buildUICore2(jTree));
+    }
+   
+    return (null);
+  }
+
   /***************************************************************************
   **
   ** Stock the viewer tool bar
@@ -661,20 +931,21 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   private void stockViewerToolBar(boolean showPathControls) {
     
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       throw new IllegalStateException();
     }
        
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
-    DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
+    DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, dacx.getRMan(), uics_, hBld_);
     XPlatToolBar toob = mSrc.defineViewerToolBar(dacx);   
     MenuSource.BuildInfo bifot = new MenuSource.BuildInfo();
  
     bifot.conditions.put("SHOW_PATH", Boolean.valueOf(showPathControls));
  
     if (showPathControls) {
-      bifot.components.put("PATH_COMBO", appState_.getPathControls().getJCombo());
+      bifot.components.put("PATH_COMBO", uics_.getPathControls().getJCombo());
     }
       
     dmf.stockToolBar(toolBar_, toob, actionMap_, bifot);   
@@ -683,29 +954,146 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
 
   /***************************************************************************
   **
+  ** Build an editor view
+  */ 
+  
+  private void buildEditorView() {
+    if (!uics_.isHeadless()) {
+      bindKeys();
+      JComponent cp = uics_.getContentPane();
+      cp.setLayout(new BorderLayout());
+      tabPanel_ = new JTabbedPaneWithPopup(uics_);   
+      tabPanel_.addChangeListener(this);   
+    }
+    
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
+
+  
+    MainCommands mc = new MainCommands(uics_, ddacx, cSrc_, hBld_); 
+    cSrc_.setMainCmds(mc);  
+    appState_.setLSSupport(new LoadSaveSupport(uics_, ddacx, tSrc_, uFac_, cSrc_, pafs_, mc.getClass()));
+  
+    appState_.setRecentMenu(new VirtualRecentMenu(uics_, cSrc_, pafs_, ddacx.getRMan()));    
+    appState_.setGaggleControls(new VirtualGaggleControls(uics_, cSrc_, ddacx.getRMan()));
+    
+  
+    List<JTabbedPaneWithPopup.InformedAction> aacts = new ArrayList<JTabbedPaneWithPopup.InformedAction>();
+    aacts.add(new MainCommands.TabPopupAction(ddacx, cSrc_.getMainCmds().getCachedFlow(FlowMeister.MainFlow.DROP_THIS_TAB), uics_, hBld_));
+    aacts.add(new MainCommands.TabPopupAction(ddacx, cSrc_.getMainCmds().getCachedFlow(FlowMeister.MainFlow.DROP_ALL_BUT_THIS_TAB), uics_, hBld_));
+    aacts.add(new MainCommands.TabPopupAction(ddacx, cSrc_.getMainCmds().getCachedFlow(FlowMeister.MainFlow.RETITLE_TAB), uics_, hBld_));
+    if (!uics_.isHeadless()) {
+      ((JTabbedPaneWithPopup)tabPanel_).setActions(aacts);
+    }
+    
+    PerTab npt = new PerTab(0);
+    pert_.put(Integer.valueOf(0), npt); // Gotta be before we build the tab...
+    npt.tabNameData = ddacx.getGenomeSource().getTabNameData();
+    npt.tabContents = buildTab();
+     
+    VirtualPathControls vpc = new VirtualPathControls(uics_, ddacx, uFac_, cSrc_);
+    appState_.setPathControls(vpc);
+    
+    
+    ignoreTabs_ = true;
+    if (!uics_.isHeadless()) {
+      uics_.getContentPane().add(npt.tabContents, BorderLayout.CENTER);
+    }
+    
+    ignoreTabs_ = false;
+
+    if (!uics_.isHeadless()) {
+      buildEditorUI();
+    }
+    
+    EventManager mgr = uics_.getEventMgr();
+    mgr.addModelChangeListener(this);
+    mgr.addTreeNodeChangeListener(this);
+
+    SelectionChangeEvent ev = new SelectionChangeEvent(null, null, SelectionChangeEvent.SELECTED_MODEL);
+    mgr.sendSelectionChangeEvent(ev);
+    
+    NavTree navTree = ddacx.getGenomeSource().getModelHierarchy();
+    TreePath dstp = navTree.getDefaultSelection();
+    navTree.setSkipFlag(NavTree.Skips.SKIP_EVENT);
+    uics_.getTree().setTreeSelectionPath(dstp);
+    navTree.setSkipFlag(NavTree.Skips.NO_FLAG);
+    uics_.getZoomTarget().fixCenterPoint(true, null, false);
+    return;
+  }
+   
+  /***************************************************************************
+  **
+  ** Build a viewer view for an application
+  */ 
+  
+  private JPanel buildTextPane() {
+  
+    JTextPane jtp = uics_.getTextBoxMgr().getTextPane();
+    if (uics_.doBig()) {
+      Font tpFont = jtp.getFont();
+      String fontName = tpFont.getName();
+      int fontType = tpFont.getStyle();
+      jtp.setFont(new Font(fontName, fontType, 20));
+    }
+    jtp.setMinimumSize(new Dimension(640,(uics_.doBig()) ? 75 : 50));    
+    jtp.setPreferredSize(new Dimension(640, (uics_.doBig()) ? 75 : 50));
+    jtp.setEditable(false);
+    JPanel textPanel = new JPanel();
+    textPanel.setLayout(new GridLayout());
+
+    JScrollPane txtsp = new JScrollPane(jtp, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, 
+                                             JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+    textPanel.add(txtsp);
+    return (textPanel);
+  } 
+  
+  /***************************************************************************
+  **
   ** Build a viewer view for an application
   */ 
   
   private void buildViewOnlyView() {
-    if (!appState_.isHeadless()) {
-      appState_.getContentPane().setLayout(new BorderLayout());
+    if (!uics_.isHeadless()) {
+      JComponent cp = uics_.getContentPane();
+      cp.setLayout(new BorderLayout());
+      tabPanel_ = new JTabbedPane();
+      tabPanel_.addChangeListener(this);
     }
-    new SUPanel(appState_);
-    new MainCommands(appState_);
-    new VirtualRecentMenu(appState_);
-    new VirtualPathControls(appState_, new DynamicDataAccessContext(appState_));
-   
+
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
+
+    MainCommands mc = new MainCommands(uics_, ddacx, cSrc_, hBld_); 
+    cSrc_.setMainCmds(mc);  
+    appState_.setLSSupport(new LoadSaveSupport(uics_, ddacx, tSrc_, uFac_, cSrc_, pafs_, mc.getClass()));  
+    appState_.setRecentMenu(new VirtualRecentMenu(uics_, cSrc_, pafs_, ddacx.getRMan()));
+       
+    PerTab npt = new PerTab(0);  
+    pert_.put(Integer.valueOf(0), npt);
+    npt.tabNameData = ddacx.getGenomeSource().getTabNameData();
+    npt.tabContents = buildTab();
+       
+    VirtualPathControls vpc = new VirtualPathControls(uics_, ddacx, uFac_, cSrc_);
+    appState_.setPathControls(vpc);
+     
+    ignoreTabs_ = true;
+    if (!uics_.isHeadless()) {
+      uics_.getContentPane().add(npt.tabContents, BorderLayout.CENTER);
+    }
+    ignoreTabs_ = false;
+  
     //
     // Build the tool bar, using actions with icons
     //
 
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       buildViewOnlyUI();
     }
-    NavTree navTree = appState_.getDB().getModelHierarchy();   
-    JTree jTree = (appState_.isHeadless()) ? null : new JTree(navTree);
-    new VirtualModelTree(appState_, jTree, navTree);
-    buildCore(toolBar_, jTree);
+    
+    EventManager mgr = uics_.getEventMgr();
+    mgr.addModelChangeListener(this);  
+    SelectionChangeEvent ev = new SelectionChangeEvent(null, null, SelectionChangeEvent.SELECTED_MODEL);
+    mgr.sendSelectionChangeEvent(ev);
+    
     return;
   }  
 
@@ -715,17 +1103,19 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */ 
   
   private void buildViewOnlyUI() {
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
     XPlatToolBar toob = mSrc.defineViewerToolBar(dacx);   
     MenuSource.BuildInfo bifot = new MenuSource.BuildInfo();       
     bifot.conditions.put("SHOW_PATH", Boolean.valueOf(true));
-    DesktopMenuFactory dmf = new DesktopMenuFactory(appState_); 
+    
+    DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, dacx.getRMan(), uics_,  hBld_); 
     actionMap_ = dmf.stockActionMap(toob, bifot);
     
     toolBar_ = new JToolBar();
     stockViewerToolBar(false);
     toolBar_.setFloatable(false);
+    uics_.getContentPane().add(toolBar_, BorderLayout.NORTH);
     return;
   }
 
@@ -734,68 +1124,30 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   ** init
   */ 
   
-  private void buildCore(JToolBar toolBar, JTree jtree) {
-    
-    new VirtualTimeSlider(appState_);
-    
-    if (!appState_.isHeadless()) {
-      buildUICore1(toolBar);
-    }
-    
-    // Kinda bogus: chicken and egg!
-    appState_.getZoomCommandSupport().registerScrollPaneAndZoomTarget(jsp_, appState_.getZoomTarget());
-    
-    //
-    // Build the nav tree panel stuff:
-    //
-    
-    appState_.getTree().setupTree();
-    mip_ = new ModelImagePanel(appState_); 
-    mip_.setImage(null);
-    mipVisible_ = false;   
-    ovrVisible_ = false;
- 
-    if (!appState_.isHeadless()) {
-      buildUICore2(jtree);
-    }
-    
-    appState_.getDisplayOptMgr().setForBigScreen(appState_.doBig());    
-    
-    EventManager mgr = appState_.getEventMgr();
-    mgr.addModelChangeListener(this);    
-
-    SelectionChangeEvent ev = new SelectionChangeEvent(null, null, SelectionChangeEvent.SELECTED_MODEL);
-    mgr.sendSelectionChangeEvent(ev);
-    return;
-  }
-
-  /***************************************************************************
-  **
-  ** init
-  */ 
-  
-  private void buildUICore1(JToolBar toolBar) {
- 
-    appState_.getContentPane().add(toolBar, BorderLayout.NORTH);
-    jsp_ = appState_.getSUPanel().getPanelInPane();
-    hidingPanel_ = new JPanel();
-    myCard_ = new CardLayout();
-    hidingPanel_.setLayout(myCard_);
-    hidingPanel_.add(jsp_, "SUPanel");
+  private void buildUICore1() { 
+    int currTab = tSrc_.getCurrentTabIndex();
+    pert_.get(currTab).jsp_ = uics_.getSUPanel().getPanelInPane();
+    pert_.get(currTab).showGroup = false;
+    pert_.get(currTab).hidingPanel_ = new JPanel();
+    pert_.get(currTab).myCard_ = new CardLayout();
+    pert_.get(currTab).hidingPanel_.setLayout(pert_.get(currTab).myCard_);
+    pert_.get(currTab).hidingPanel_.add(pert_.get(currTab).jsp_, "SUPanel");
     JPanel blankPanel = new JPanel();
     blankPanel.setBackground(Color.white);
-    hidingPanel_.add(blankPanel, "Hiding");
-    jsp_.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_ALWAYS);
-    jsp_.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+    pert_.get(currTab).hidingPanel_.add(blankPanel, "Hiding");
+    pert_.get(currTab).jsp_.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_ALWAYS);
+    pert_.get(currTab).jsp_.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
     return;
   }
+ 
+
   
   /***************************************************************************
   **
   ** init
   */ 
   
-  private void buildUICore2(JTree jtree) {
+  private JPanel buildUICore2(JTree jtree) {
 
     JScrollPane tjsp = new JScrollPane(jtree);
     JPanel controlPanel = new JPanel();
@@ -803,59 +1155,43 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     GridBagConstraints gbc = new GridBagConstraints();
     UiUtil.gbcSet(gbc, 0, 0, 1, 2, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.N, 1.0, 1.0);
     controlPanel.add(tjsp, gbc);
- 
-    JPanel mipPan = mip_.getPanel();
+    int currTab = tSrc_.getCurrentTabIndex();
+    
+    JPanel mipPan = pert_.get(currTab).mip_.getPanel();
     mipPan.setBorder(new LineBorder(Color.black, 1));
     mipPan.setMinimumSize(new Dimension(250,0));
     mipPan.setPreferredSize(new Dimension(250,0)); 
     DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
-    ovrPanel_ = appState_.getNetOverlayController().getNetOverlayNavigator(ddacx);
-    ovrPanel_.setBorder(new LineBorder(Color.black, 1));      
-    ovrPanel_.setMinimumSize(new Dimension(250,0));
-    ovrPanel_.setPreferredSize(new Dimension(250,0)); 
+    pert_.get(currTab).ovrPanel_ = uics_.getNetOverlayController().getNetOverlayNavigator(ddacx);
+    pert_.get(currTab).ovrPanel_.setBorder(new LineBorder(Color.black, 1));      
+    pert_.get(currTab).ovrPanel_.setMinimumSize(new Dimension(250,0));
+    pert_.get(currTab).ovrPanel_.setPreferredSize(new Dimension(250,0)); 
      
-    sliderPanel_ = appState_.getVTSlider().getSliderPanel();
+    pert_.get(currTab).sliderPanel_ = uics_.getVTSlider().getSliderPanel();
           
     UiUtil.gbcSet(gbc, 0, 2, 1, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);
-    controlPanel.add(sliderPanel_, gbc);
+    controlPanel.add(pert_.get(currTab).sliderPanel_, gbc);
     
     UiUtil.gbcSet(gbc, 0, 3, 1, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);
-    controlPanel.add(ovrPanel_, gbc);
+    controlPanel.add(pert_.get(currTab).ovrPanel_, gbc);
     
     UiUtil.gbcSet(gbc, 0, 4, 1, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);
     controlPanel.add(mipPan, gbc);  
 
-    JTextPane jtp = appState_.getTextBoxMgr().getTextPane();
-    if (appState_.doBig()) {
-      Font tpFont = jtp.getFont();
-      String fontName = tpFont.getName();
-      int fontType = tpFont.getStyle();
-      jtp.setFont(new Font(fontName, fontType, 20));
-    }
-    jtp.setMinimumSize(new Dimension(640,(appState_.doBig()) ? 75 : 50));    
-    jtp.setPreferredSize(new Dimension(640, (appState_.doBig()) ? 75 : 50));
-    jtp.setEditable(false);
-    JPanel textPanel = new JPanel();
-    textPanel.setLayout(new GridLayout());
-
-    JScrollPane txtsp = new JScrollPane(jtp, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, 
-                                             JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-    textPanel.add(txtsp);
-
-    JPanel topPanel = new JPanel();
-    jsp_.setMinimumSize(new Dimension(150, 150));
+    pert_.get(currTab).jsp_.setMinimumSize(new Dimension(150, 150));
     tjsp.setMinimumSize(new Dimension(250, 250));    
     jtree.setMinimumSize(new Dimension(250,250));
     controlPanel.setMinimumSize(new Dimension(250, 250));    
-      //myTree_.setPreferredSize(new Dimension(250, 250));  NO! Scroll bars don't work!
+    //myTree_.setPreferredSize(new Dimension(250, 250));  NO! Scroll bars don't work!
     //JSplitPane sp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, lsp, jsp);
-    JSplitPane sp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, controlPanel, hidingPanel_);
-    topPanel.setLayout(new GridLayout(1,1));
-    topPanel.add(sp);
-    JComponent cp = appState_.getContentPane();
-    cp.add(topPanel, BorderLayout.CENTER);
-    cp.add(textPanel, BorderLayout.SOUTH);
-    return;
+    JSplitPane jsp = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, controlPanel, pert_.get(currTab).hidingPanel_);
+    //  topPanel.setLayout(new GridLayout(1,1));
+    
+    JPanel returnPanel = new JPanel();
+    returnPanel.setLayout(new BorderLayout());
+    returnPanel.add(jsp, BorderLayout.CENTER);
+    returnPanel.add(buildTextPane(), BorderLayout.SOUTH);
+    return (returnPanel);
   }
 
   /***************************************************************************
@@ -864,13 +1200,14 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   public void updateDisplayForGenome(Genome currGenome) {
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
     String mi = currGenome.getGenomeImage();
-    BufferedImage bi = appState_.getImageMgr().getImage(mi);
-    makeImageVisible(appState_.getImageMgr().hasAnImage());
-    mip_.setImage(bi);
-    makeOverlayControlsVisible(appState_.getNetOverlayController().aModelHasOverlays(ddacx));
-    makeSliderVisible((new FullGenomeHierarchyOracle(appState_)).hourlyDynamicModelExists());    
+    BufferedImage bi = uics_.getImageMgr().getImage(mi);
+    makeImageVisible(dacx.getFGHO().modelImageExists());
+    int currTab = tSrc_.getCurrentTabIndex();
+    pert_.get(currTab).mip_.setImage(bi);
+    makeOverlayControlsVisible(uics_.getNetOverlayController().aModelHasOverlays(dacx));
+    makeSliderVisible(dacx.getFGHO().hourlyDynamicModelExists());    
     return;
   }
   
@@ -893,11 +1230,11 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   public void postLoadVisibility() {
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
-    makeImageVisible(appState_.getImageMgr().hasAnImage());
-    makePathControlsVisible(appState_.getPathMgr().getPathCount() > 0);
-    makeOverlayControlsVisible(appState_.getNetOverlayController().aModelHasOverlays(ddacx));
-    makeSliderVisible((new FullGenomeHierarchyOracle(appState_)).hourlyDynamicModelExists());
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    makeImageVisible(dacx.getFGHO().modelImageExists());
+    makePathControlsVisible(uics_.getPathMgr().getPathCount() > 0);
+    makeOverlayControlsVisible(uics_.getNetOverlayController().aModelHasOverlays(dacx));
+    makeSliderVisible(dacx.getFGHO().hourlyDynamicModelExists());
     return;
   }
   
@@ -907,19 +1244,20 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   private void makeImageVisible(boolean show) {
-    if (mipVisible_ == show) {
+    int currTab = tSrc_.getCurrentTabIndex();
+    if (pert_.get(currTab).mipVisible_ == show) {
       return;
     }
-    boolean isHeadless = appState_.isHeadless();
+    boolean isHeadless = uics_.isHeadless();
     if (!isHeadless) {
       int height = (show) ? 200 : 0;
-      JPanel mipPan = mip_.getPanel();
+      JPanel mipPan = pert_.get(currTab).mip_.getPanel();
       mipPan.setMinimumSize(new Dimension(250, height));
       mipPan.setPreferredSize(new Dimension(250, height));
       mipPan.invalidate();
-      appState_.getContentPane().validate();
+      uics_.getContentPane().validate();
     }
-    mipVisible_ = show;
+    pert_.get(currTab).mipVisible_ = show;
     return;
   }
   
@@ -929,30 +1267,31 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   private void makeOverlayControlsVisible(boolean show) {
-    if (!appState_.isHeadless()) {
-      JFrame topFrame = appState_.getTopFrame();
-      if (ovrVisible_ == show) {
+    int currTab = tSrc_.getCurrentTabIndex();
+    if (!uics_.isHeadless()) {
+      JFrame topFrame = uics_.getTopFrame();
+      if (pert_.get(currTab).ovrVisible_ == show) {
         if ((toolBar_ != null) && (topFrame != null)) {
           toolBar_.invalidate();
-          appState_.getContentPane().validate();
+          uics_.getContentPane().validate();
           toolBar_.repaint();
         }
         return;
       }
       
-      if (appState_.getIsEditor()) {
-        stockEditorToolBar(appState_.getPathControls().areControlsVisible(), show);
+      if (uics_.getIsEditor()) {
+        stockEditorToolBar(uics_.getPathControls().areControlsVisible(), show);
       } 
       
       int height = (show) ? 250 : 0;
-      ovrPanel_.setMinimumSize(new Dimension(250, height));
-      ovrPanel_.setPreferredSize(new Dimension(250, height));
-      ovrPanel_.invalidate();
+      pert_.get(currTab).ovrPanel_.setMinimumSize(new Dimension(250, height));
+      pert_.get(currTab).ovrPanel_.setPreferredSize(new Dimension(250, height));
+      pert_.get(currTab).ovrPanel_.invalidate();
       if (toolBar_ != null) toolBar_.invalidate();
-      if (topFrame != null) appState_.getContentPane().validate();
+      if (topFrame != null) uics_.getContentPane().validate();
       if (toolBar_ != null) toolBar_.repaint();
     }
-    ovrVisible_ = show;
+    pert_.get(currTab).ovrVisible_ = show;
     return;
   }        
   
@@ -962,7 +1301,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   private void makeSliderVisible(boolean show) {
-    appState_.getVTSlider().makeSliderVisible(show);
+    uics_.getVTSlider().makeSliderVisible(show);
     return;
   }    
 
@@ -972,32 +1311,66 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   */
   
   public void makePathControlsVisible(boolean show) {
-    VirtualPathControls vpc = appState_.getPathControls();
-    if (!appState_.isHeadless()) {
-      JFrame topFrame = appState_.getTopFrame();  
-      if (vpc.areControlsVisible() == show) {
+    VirtualPathControls vpc = uics_.getPathControls();
+    if ((vpc == null) && (toolBar_ == null)) {
+      return; // Startup!
+    } 
+    if (!uics_.isHeadless()) {
+      JFrame topFrame = uics_.getTopFrame();  
+      // Null at startup...
+      if ((vpc != null) && (vpc.areControlsVisible() == show)) {
         if ((toolBar_ != null) && (topFrame != null)) {
           toolBar_.invalidate();
-          appState_.getContentPane().validate();
+          uics_.getContentPane().validate();
           toolBar_.repaint();
         }
         return;
       }
-      if (appState_.getIsEditor()) {
-        stockEditorToolBar(show, ovrVisible_);
-      } else {
-        stockViewerToolBar(show);
-      }
-      if ((toolBar_ != null) && (topFrame != null)) {
-        toolBar_.invalidate();
-        appState_.getContentPane().validate();
-        toolBar_.repaint();
+      
+      if (toolBar_ != null) {
+        if (uics_.getIsEditor()) {
+          int currTab = tSrc_.getCurrentTabIndex();
+          stockEditorToolBar(show, pert_.get(currTab).ovrVisible_);
+        } else {
+          stockViewerToolBar(show);
+        }
+        if (topFrame != null) {
+          toolBar_.invalidate();
+          uics_.getContentPane().validate();
+          toolBar_.repaint();
+        }
       }
     }
     vpc.setControlsVisible(show);
     return;
   }  
 
+  /***************************************************************************
+  **
+  ** Notify listener of Node Tree change
+  */ 
+  
+  public void treeNodeHasChanged(TreeNodeChangeEvent tncev) {
+  
+    if (tncev.getChangeType() == TreeNodeChangeEvent.Change.NO_CHANGE) {
+      return;
+    } else if (tncev.getChangeType() == TreeNodeChangeEvent.Change.GROUP_NODE_CHANGE) {
+      int currTab = tSrc_.getCurrentTabIndex();
+      NavTree nt = ddacx_.getGenomeSource().getModelHierarchy();
+      VirtualModelTree vmt = uics_.getTree();
+      TreePath tp = vmt.getTreeSelectionPath();
+      String groupNodeID = nt.getGroupNodeID(tp);
+      if (groupNodeID == null) {
+        return;
+      } else if (groupNodeID.equals(tncev.getNodeID().nodeID)) {
+        installGroupNodeState(nt, groupNodeID, pert_.get(currTab).grp_);
+      }
+    } else {
+      throw new IllegalArgumentException();
+    }
+    return;
+  }
+ 
   /***************************************************************************
   **
   ** Called when model has changed
@@ -1007,70 +1380,215 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
     modelHasChanged(event);
     return;
   }      
-
+ 
   /***************************************************************************
   **
   ** Notify listener of model change
   */ 
   
   public void modelHasChanged(ModelChangeEvent mcev) {
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(appState_);
     if (mcev.getChangeType() == ModelChangeEvent.MODEL_DROPPED) {
-      appState_.getVTSlider().dropTheSlider();
-      makeImageVisible(appState_.getImageMgr().hasAnImage());
-      makeOverlayControlsVisible(appState_.getNetOverlayController().aModelHasOverlays(ddacx));
-      makeSliderVisible((new FullGenomeHierarchyOracle(appState_)).hourlyDynamicModelExists());
-      mip_.setImage(null);
+      uics_.getVTSlider().dropTheSlider();
+      makeImageVisible(dacx.getFGHO().modelImageExists());
+      makeOverlayControlsVisible(uics_.getNetOverlayController().aModelHasOverlays(dacx));
+      makeSliderVisible(dacx.getFGHO().hourlyDynamicModelExists());
+      int currTab = tSrc_.getCurrentTabIndex();
+      pert_.get(currTab).mip_.setImage(null);
       return;
     }
     if (mcev.getChangeType() == ModelChangeEvent.DYNAMIC_MODEL_ADDED) {
-      makeSliderVisible((new FullGenomeHierarchyOracle(appState_)).hourlyDynamicModelExists());
+      makeSliderVisible(dacx.getFGHO().hourlyDynamicModelExists());
     }    
-    makeOverlayControlsVisible(appState_.getNetOverlayController().aModelHasOverlays(ddacx));    
-    Database db = appState_.getDB();
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+    makeOverlayControlsVisible(uics_.getNetOverlayController().aModelHasOverlays(dacx));
     if (mcev.getChangeType() == ModelChangeEvent.PROPERTY_CHANGE) {     
-      if (!appState_.getTree().isCurrentlyDisplayed(mcev)) {
-        appState_.getVTSlider().ditchSliderIfStale(mcev);
+      if (!uics_.getTree().isCurrentlyDisplayed(mcev, dacx)) {
+        uics_.getVTSlider().ditchSliderIfStale(mcev);
       } else {  // Displayed
-        if (appState_.getTree().isDynamic(dacx)) {   
-          String id = appState_.getVTSlider().handleSliderModelChange(mcev);
+        if (uics_.getTree().isDynamic(dacx)) {   
+          String id = uics_.getVTSlider().handleSliderModelChange(mcev);
           //
           // We are handling an event notification. This means we are in the middle of another control flow execution, and 
           // we have no business launching another control flow.  So just use the guts of the switching operation from the
           // SetCurrentModel.StepState flow state:
           //
-          SetCurrentModel.StepState agis = new SetCurrentModel.StepState(appState_, SetCurrentModel.SettingAction.FOR_EVENT, dacx);
+          SetCurrentModel.StepState agis = new SetCurrentModel.StepState(SetCurrentModel.SettingAction.FOR_EVENT, dacx);
+          agis.setAppState(appState_, new DynamicDataAccessContext(appState_));
           agis.coreSwitchingSupport(id, null);
         } else {
-          appState_.getTextBoxMgr().checkForChanges(mcev);
+          uics_.getTextBoxMgr().checkForChanges(mcev);
           String id = mcev.getGenomeKey();
-          Genome currGenome = db.getGenome(id);
+          Genome currGenome = dacx.getGenomeSource().getGenome(id);
           String mi = currGenome.getGenomeImage();
-          BufferedImage bi = appState_.getImageMgr().getImage(mi);
-          makeImageVisible(appState_.getImageMgr().hasAnImage());
-          mip_.setImage(bi);
-          appState_.getSUPanel().drawModel(true);
+          BufferedImage bi = uics_.getImageMgr().getImage(mi);
+          makeImageVisible(uics_.getImageMgr().hasAnImage());
+          int currTab = tSrc_.getCurrentTabIndex();
+          pert_.get(currTab).mip_.setImage(bi);
+          uics_.getSUPanel().drawModel(true);
         }
       }
-      appState_.getTree().updateNavTreeNames(mcev, dacx);
+      // NavTree tracks name changes through THIS one call:
+      uics_.getTree().updateNavTreeNames(mcev, dacx);
     }
+    return;
+  }  
+  
+  /***************************************************************************
+  **
+  ** Undo a tab edit change
+  */  
+  
+  public void editTabUndo(PerTab undo) {
+		setTabTitleData(undo.index, undo.tabNameData);
     return;
   }
   
   /***************************************************************************
   **
+  ** Redo a tab edit change
+  */
+  
+  public void editTabRedo(PerTab redo) {
+    setTabTitleData(redo.index, redo.tabNameData);
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Undo a tab change
+  */
+  
+  public void changeTabUndo(TabChange undo) {
+    // We only handle UI undo operations
+    if (!undo.forUI) {
+      return;
+    }
+    // If headless, we are not involved in tab management
+    if (uics_.isHeadless()) {
+      return;
+    }
+    ignoreTabs_ = true;  
+    
+    // First case: switch of visible tab:
+    if (undo.didTabChange) {
+      tabPanel_.setSelectedIndex(undo.changeTabPreIndex);
+    // Next case: removal of tab:
+    } else if (undo.oldPerTab != null) {
+      if (tabPanel_.getTabCount() == 0) {
+        PerTab cpt = pert_.get(pert_.keySet().iterator().next());
+        uics_.getContentPane().remove(cpt.tabContents);
+        uics_.getContentPane().add(tabPanel_, BorderLayout.CENTER);
+        tabPanel_.addTab(cpt.tabNameData.getTitle(), null, cpt.tabContents, cpt.tabNameData.getDesc());
+      }
+      tabPanel_.insertTab(undo.oldPerTab.tabNameData.getTitle(), null, undo.oldTabUI, 
+                          undo.oldPerTab.tabNameData.getDesc(), undo.oldChangeIndex);        
+      // Fix the indices of the higher tabs:
+      HashMap<Integer, PerTab> moddie = new HashMap<Integer, PerTab>();
+      Iterator<Integer> kit = pert_.keySet().iterator();
+      while (kit.hasNext()) {
+        Integer testKey = kit.next();
+        PerTab pt = pert_.get(testKey);
+        if (pt.index >= undo.oldChangeIndex) {
+          pt.index++;
+        }
+        moddie.put(Integer.valueOf(pt.index), pt);
+      }      
+      pert_ = moddie;
+      // All fixed; insert the deleted info back, reset to old current tab.
+      pert_.put(Integer.valueOf(undo.oldChangeIndex), undo.oldPerTab);
+      tabPanel_.setSelectedIndex(undo.oldCurrIndexPre);
+      uics_.getContentPane().revalidate();
+    // Next case: addition of tab:
+    } else if (undo.newPerTab != null) {
+      pert_.remove(Integer.valueOf(undo.newChangeIndex));     
+      tabPanel_.remove(undo.newChangeIndex);
+      tabPanel_.setSelectedIndex(undo.newCurrIndexPre);
+      if (tabPanel_.getTabCount() == 1) {
+        PerTab cpt = pert_.get(pert_.keySet().iterator().next());
+        tabPanel_.remove(0);
+        uics_.getContentPane().remove(tabPanel_);
+        uics_.getContentPane().add(cpt.tabContents, BorderLayout.CENTER);
+      }  
+      uics_.getContentPane().revalidate();
+    }
+    ignoreTabs_ = false;
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Redo a tab change
+  */
+  
+  public void changeTabRedo(TabChange redo) {
+    // We only handle UI undo operations
+    if (!redo.forUI) {
+      return;
+    }
+    // If headless, we are not involved in tab management
+    if (uics_.isHeadless()) {
+      return;
+    }
+    ignoreTabs_ = true;  
+    
+    // First case: switch of visible tab:
+    if (redo.didTabChange) {
+      tabPanel_.setSelectedIndex(redo.changeTabPostIndex);
+    // Next case: removal of tab, so we need to re-remove  
+    } else if (redo.oldPerTab != null) {
+      pert_.remove(Integer.valueOf(redo.oldChangeIndex));
+      // Fix the indices of the higher tabs:
+      HashMap<Integer, PerTab> moddie = new HashMap<Integer, PerTab>();
+      Iterator<Integer> kit = pert_.keySet().iterator();
+      while (kit.hasNext()) {
+        Integer testKey = kit.next();
+        PerTab pt = pert_.get(testKey);
+        if (pt.index > redo.oldChangeIndex) {
+          pt.index--;
+        }
+        moddie.put(Integer.valueOf(pt.index), pt);
+      }
+      pert_ = moddie;
+      // Note we do NOT use getTabComponentAt(), which returns null:
+      tabPanel_.remove(redo.oldChangeIndex);      
+      tabPanel_.setSelectedIndex(redo.oldCurrIndexPost);
+      if (tabPanel_.getTabCount() == 1) {
+        PerTab cpt = pert_.get(pert_.keySet().iterator().next());
+        tabPanel_.remove(0);
+        uics_.getContentPane().remove(tabPanel_);
+        uics_.getContentPane().add(cpt.tabContents, BorderLayout.CENTER);
+      }
+      uics_.getContentPane().revalidate();
+    // Next case: addition of tab, so we need to re-add  
+    } else if (redo.newPerTab != null) {
+      System.out.println("gonna add tab");
+      pert_.put(Integer.valueOf(redo.newChangeIndex), redo.newPerTab);
+      if (tabPanel_.getTabCount() == 0) {
+        PerTab cpt = pert_.get(pert_.keySet().iterator().next());
+        uics_.getContentPane().remove(cpt.tabContents);
+        uics_.getContentPane().add(tabPanel_, BorderLayout.CENTER);
+        tabPanel_.addTab(cpt.tabNameData.getTitle(), null, cpt.tabContents, cpt.tabNameData.getDesc());
+      }
+      tabPanel_.addTab(redo.newPerTab.tabNameData.getTitle(), null, redo.newTabUI, redo.newPerTab.tabNameData.getDesc());
+      uics_.getContentPane().revalidate();
+    }
+    ignoreTabs_ = false;
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Undo a change
   */
   
-  public void changeUndo(NavigationChange undo) {
+  public void changeUndo(NavigationChange undo, StaticDataAccessContext dacx) {
     if (undo.userPathSelection || undo.userPathSync) {
-      appState_.getPathController().changeUndo(undo);
+      uics_.getPathController().changeUndo(undo);
     }
     
     if (undo.odc != null) {
       OverlayDisplayChange odc = undo.odc;
-      NetOverlayController noc = appState_.getNetOverlayController();
+      NetOverlayController noc = uics_.getNetOverlayController();
       if ((odc.oldOvrKey != null) || (odc.newOvrKey != null)) {
         boolean differentModel;
         if (odc.oldGenomeID == null) {
@@ -1081,18 +1599,17 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
         if (differentModel) {
           noc.preloadForNextGenome(odc.oldGenomeID, odc.oldOvrKey, odc.oldModKeys, odc.oldRevealedKeys);     
         } else {
-          DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
           noc.setFullOverlayState(odc.oldOvrKey, odc.oldModKeys, odc.oldRevealedKeys, null, dacx);
         }
       }
     }
       
     if (undo.oldPath != null) {
-      NavTree navTree = appState_.getDB().getModelHierarchy();
+      NavTree navTree = ddacx_.getGenomeSource().getModelHierarchy();
       DefaultMutableTreeNode root = (DefaultMutableTreeNode)navTree.getRoot();
-      appState_.getTree().setTreeSelectionPathForUndo(navTree.mapPath(undo.oldPath, root));
+      uics_.getTree().setTreeSelectionPathForUndo(navTree.mapPath(undo.oldPath, root), dacx);
     } else if (undo.sliderID != null) {
-      appState_.getVTSlider().handleSliderUndo(undo);
+      uics_.getVTSlider().handleSliderUndo(undo);
     }
     return;
   }  
@@ -1102,14 +1619,14 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   ** Redo a change
   */
   
-  public void changeRedo(NavigationChange undo) {
+  public void changeRedo(NavigationChange undo, StaticDataAccessContext dacx) {
     if (undo.userPathSelection || undo.userPathSync) {
-      appState_.getPathController().changeRedo(undo);
+      uics_.getPathController().changeRedo(undo);
     }
     
     if (undo.odc != null) {
       OverlayDisplayChange odc = undo.odc;
-      NetOverlayController noc = appState_.getNetOverlayController();
+      NetOverlayController noc = uics_.getNetOverlayController();
       if ((odc.oldOvrKey != null) || (odc.newOvrKey != null)) {
         boolean differentModel;
         if (odc.newGenomeID == null) {
@@ -1120,22 +1637,60 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
         if (differentModel) {
           noc.preloadForNextGenome(odc.newGenomeID, odc.newOvrKey, odc.newModKeys, odc.newRevealedKeys);     
         } else {
-          DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
           noc.setFullOverlayState(odc.newOvrKey, odc.newModKeys, odc.newRevealedKeys, null, dacx);
         }
       }
     }    
     
     if (undo.newPath != null) {
-      NavTree navTree = appState_.getDB().getModelHierarchy();
+      NavTree navTree = ddacx_.getGenomeSource().getModelHierarchy();
       DefaultMutableTreeNode root = (DefaultMutableTreeNode)navTree.getRoot();
-      appState_.getTree().setTreeSelectionPathForUndo(navTree.mapPath(undo.newPath, root));
+      uics_.getTree().setTreeSelectionPathForUndo(navTree.mapPath(undo.newPath, root), dacx);
     } else if (undo.sliderID != null) {
-      appState_.getVTSlider().handleSliderRedo(undo);
+      uics_.getVTSlider().handleSliderRedo(undo);
     }
     return;
   }
-   
+ 
+
+  /***************************************************************************
+  **
+  ** UI inputs or programmatic changes of current tab trigger this. Ignore it if
+  ** we are currently messing around, else we use this to trigger the control flow 
+  ** to switch the current tab. 
+  */ 
+  
+  public void stateChanged(ChangeEvent e) {
+    if (ignoreTabs_) {
+      return;
+    }
+    TabChange tc = new TabChange(true);
+    tc.didTabChange = true;
+    tc.changeTabPreIndex = tSrc_.getCurrentTabIndex();
+    tc.changeTabPostIndex = tabPanel_.getSelectedIndex();
+    tabChange(tabPanel_.getSelectedIndex(), true, tc);
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Record tab changes
+  */ 
+  
+  private void tabChange(int newTab, boolean viaUI, TabChange tc) {
+    if (ignoreTabs_) {
+      return;
+    }
+    if (viaUI) {
+      ControlFlow myFlow = cSrc_.getMainCmds().getCachedFlow(FlowMeister.MainFlow.CHANGE_TAB);
+      HarnessBuilder.PreHarness pH = hBld_.buildHarness(myFlow);
+      DialogAndInProcessCmd.TabPopupCmdState agis = (DialogAndInProcessCmd.TabPopupCmdState)pH.getCmdState();
+      agis.setTab(newTab, viaUI, tc);
+      hBld_.runHarness(pH);
+    }
+    return;
+  }
+  
   /***************************************************************************
   **
   ** Do init steps for embedded panel
@@ -1143,14 +1698,13 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   
   public void embeddedPanelInit() {
 
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    Database db = appState_.getDB();
+    StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_);
     dacx.drop();
-    db.setWorkspaceNeedsCenter();
-    db.installLegacyTimeAxisDefinition();
-    appState_.getGroupMgr().drop(); 
-    appState_.getLSSupport().newModelOperations(dacx);
-    appState_.getSUPanel().drawModel(true);
+    dacx.getWorkspaceSource().setWorkspaceNeedsCenter();
+    dacx.getExpDataSrc().installLegacyTimeAxisDefinition(dacx);
+    dacx.getGSM().drop();
+    uics_.getLSSupport().newModelOperations(dacx);
+    uics_.getSUPanel().drawModel(true);
     return;  
   }
  
@@ -1183,7 +1737,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
   ** Launch the Perturbations Window
   */
   
-   public void launchPerturbationsManagementWindow(PertFilterExpression pfe, DataAccessContext dacx) {
+   public void launchPerturbationsManagementWindow(PertFilterExpression pfe, DataAccessContext dacx, UIComponentSource uics, UndoFactory uFac) {
      if (pmw_ != null) {   
        pmw_.setExtendedState(JFrame.NORMAL);
        pmw_.toFront();
@@ -1191,11 +1745,11 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
        return;
      }
               
-     if (!appState_.getLSSupport().prepTimeAxisForDataImport(dacx)) {
+     if (!uics_.getLSSupport().prepTimeAxisForDataImport(dacx)) {
        return;
      }    
      PerturbationData pd = dacx.getExpDataSrc().getPertData();  
-     pmw_ = new PerturbationsManagementWindow(appState_, dacx, pd, pfe);
+     pmw_ = new PerturbationsManagementWindow(uics, dacx, pd, pfe, uFac);
      pmw_.setVisible(true);
      return;
   }
@@ -1234,10 +1788,148 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
       pmw_.dispose();
       pmw_ = null;
     } 
+    if (iw_ != null) {
+      iw_.dropDashboard();
+      iw_ = null;
+    }
     return;
   }
  
+  /***************************************************************************
+  **
+  ** Clear the builder dashboard
+  */ 
+  
+  public void clearBuilderDashboard() {
+    iw_ = null;
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Answer if builder dashboard is there
+  */ 
+  
+  public boolean builderDashboardIsPresent() {
+    return (iw_ != null);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get builder dashboard
+  */ 
+  
+  public ModelBuilder.Dashboard getBuilderDashboard() {
+    return (iw_);
+  }
+
+  /***************************************************************************
+  **
+  ** Pop the builder dashboard to the front
+  */ 
+  
+  public void bringBuilderDashboardToFront() {
+    if (iw_ != null) {
+      iw_.pullToFront();
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Install the builder dashboard
+  */ 
+  
+  public void installBuilderDashboard(ModelBuilder.Dashboard dashboard) {
+    if (iw_ != null) {
+      throw new IllegalStateException();         
+    }
+    iw_ = dashboard;
+    return;
+  }
    
+  /***************************************************************************
+  **
+  ** Clear the link drawing tracker
+  */ 
+  
+  public void clearWorksheetLinkDrawingTracker() {
+    wldt_ = null;
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Get the link drawing tracker (null if not active)
+  */ 
+  
+  public ModelBuilder.LinkDrawingTracker getWorksheetLinkDrawingTracker() {
+    return (wldt_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Answer if we have the link drawing tracker 
+  */ 
+  
+  public boolean haveWorksheetLinkDrawingTracker() {
+    return (wldt_ != null);
+  }
+  
+  /***************************************************************************
+  **
+  ** Create the link drawing tracker 
+  */ 
+  
+  public void installLinkDrawingTracker(ModelBuilder.LinkDrawingTracker ldt) {
+    if (wldt_ != null) {
+      throw new IllegalStateException();
+    }     
+    wldt_ = ldt;
+    return;
+  }   
+   
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PUBLIC INNER CLASSES
+  //
+  ////////////////////////////////////////////////////////////////////////////  
+  
+  /***************************************************************************
+  **
+  ** Handles per-tab state
+  */ 
+    
+  public static class PerTab implements Cloneable {
+    int index; // Per tab
+    ModelImagePanel mip_; // Per tab
+    boolean mipVisible_; // Per tab 
+    JPanel ovrPanel_; // Per tab
+    boolean ovrVisible_; // Per tab
+    CardLayout myCard_; // Per tab
+    JPanel hidingPanel_; // Per tab
+    JPanel sliderPanel_; // Per tab
+    JScrollPane jsp_; // Per tab
+    GroupPanel grp_; // Per tab
+    boolean showGroup;
+    TabNameData tabNameData;
+    JPanel tabContents;
+  
+    public PerTab(int index) {
+      this.index = index;
+    }    
+    
+    @Override
+    public PerTab clone() {
+      try {
+        PerTab newVal = (PerTab)super.clone();
+        return (newVal);            
+      } catch (CloneNotSupportedException ex) {
+        throw new IllegalStateException();     
+      }
+    }    
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE INNER CLASSES
@@ -1296,7 +1988,7 @@ public class CommonView implements ModelChangeListener, BackgroundWorkerControlM
         }
         ignore_ = false;
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }

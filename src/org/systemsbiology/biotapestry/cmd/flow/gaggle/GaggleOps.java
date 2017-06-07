@@ -27,10 +27,10 @@ import java.util.Map;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.gaggle.GooseAppInterface;
@@ -123,8 +123,7 @@ public class GaggleOps extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public GaggleOps(BTState appState, GaggleAction action) {
-    super(appState);
+  public GaggleOps(GaggleAction action) {
     if (action.equals(GaggleAction.SET_CURRENT)) {
       throw new IllegalArgumentException();
     }
@@ -141,8 +140,7 @@ public class GaggleOps extends AbstractControlFlow {
   ** Constructor 
   */ 
    
-  public GaggleOps(BTState appState, GaggleAction action, GaggleArg args) {
-    super(appState);
+  public GaggleOps(GaggleAction action, GaggleArg args) {
     if (!action.equals(GaggleAction.SET_CURRENT)) {
       throw new IllegalArgumentException();
     }
@@ -205,9 +203,10 @@ public class GaggleOps extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, name, gooseIndex_);
+        ans = new StepState(cfh, action_, name, gooseIndex_);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -226,26 +225,20 @@ public class GaggleOps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
     private GaggleAction myAction_;
-    private BTState appState_;
     private String myGooseName_;
     private int myGooseIndex_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, GaggleAction action, String gooseName, int gooseIndex) {
+    public StepState(ServerControlFlowHarness cfh, GaggleAction action, String gooseName, int gooseIndex) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
       myGooseName_ = gooseName;
       myGooseIndex_ = gooseIndex;
@@ -258,7 +251,7 @@ public class GaggleOps extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToProcess() {
       
-      GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+      GooseAppInterface goose = uics_.getGooseMgr().getGoose();
       if ((goose != null) && goose.isActivated()) {
         switch (myAction_) {
           case SEND_NET:
@@ -276,7 +269,7 @@ public class GaggleOps extends AbstractControlFlow {
             goose.transmitSelections();
             break;
           case GOOSE_UPDATE:
-            appState_.getGaggleControls().updateGaggleTargetActions();
+            uics_.getGaggleControls().updateGaggleTargetActions();
             break;
           case PROCESS_INBOUND:
             // Will be on background thread for awhile; don't lose incoming commands
@@ -285,12 +278,12 @@ public class GaggleOps extends AbstractControlFlow {
             Iterator<InboundGaggleOp> pit = pending.iterator();
             while (pit.hasNext()) {
               InboundGaggleOp op = pit.next();
-              op.executeOp();
+              op.executeOp(uics_, uFac_, dacx_);
             }
             break;
           case SET_CURRENT:
             goose.setCurrentGaggleTarget(myGooseName_);
-            appState_.getGaggleControls().setCurrentGaggleTarget(myGooseIndex_);
+            uics_.getGaggleControls().setCurrentGaggleTarget(myGooseIndex_);
             break;                  
           default:
             throw new IllegalStateException();
@@ -312,8 +305,8 @@ public class GaggleOps extends AbstractControlFlow {
       }
       int choice = JOptionPane.NO_OPTION;          
       if (net.haveDupNames()) {
-        ResourceManager rMan = appState_.getRMan(); 
-        choice = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan(); 
+        choice = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                rMan.getString("gaggle.dupNames"), 
                                                rMan.getString("gaggle.dupNamesTitle"),
                                                JOptionPane.YES_NO_OPTION);
@@ -323,8 +316,8 @@ public class GaggleOps extends AbstractControlFlow {
       }                   
       choice = JOptionPane.NO_OPTION;          
       if (net.haveOptionalLinks()) {
-        ResourceManager rMan = appState_.getRMan(); 
-        choice = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan(); 
+        choice = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                rMan.getString("gaggle.networkChoice"), 
                                                rMan.getString("gaggle.networkChoiceTitle"),
                                                JOptionPane.YES_NO_CANCEL_OPTION);

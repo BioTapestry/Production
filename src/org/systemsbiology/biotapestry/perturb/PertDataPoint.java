@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.perturb.PerturbationData.RegionRestrict;
@@ -335,8 +335,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the value for the point per the given parameters
   */
   
-  public void getDataValuePerParams(BTState appState, Parameters params, List<ValueAndUnits> results, SourceSrc ss) {
-    Double nsd = params.getNotSigDoub(appState);
+  public void getDataValuePerParams(DataAccessContext dacx, Parameters params, List<ValueAndUnits> results, SourceSrc ss) {
+    Double nsd = params.getNotSigDoub(dacx);
     Experiment prs = ss.getExperiment(experimentKey_);
     DoubMinMax dmm = prs.getThresholds(measureTypeKey_, ss);
     if (legacyVal_ != null) {
@@ -503,8 +503,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   **
   */ 
   
-  @SuppressWarnings("unused")
-  public String getDecoratedBatchKey(SourceSrc ss, boolean superKey) {
+  public String getDecoratedBatchKey(boolean superKey) {
     StringBuffer buf = new StringBuffer();
     buf.append(experimentKey_);
     buf.append(":_:");
@@ -687,33 +686,33 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the candidate values for the given single filter category
   */
   
-  public void getCandidates(BTState appState, int filterCat, SortedSet<TrueObjChoiceContent> fillUp, SourceSrc sources) {
+  public void getCandidates(DataAccessContext dacx, PertFilter.Cat filterCat, SortedSet<TrueObjChoiceContent> fillUp, SourceSrc sources) {
     Experiment prs = sources.getExperiment(experimentKey_);
     switch (filterCat) {
-      case PertFilter.EXPERIMENT:
+      case EXPERIMENT:
         prs.addToExperimentSet(fillUp, sources);
         return;
-      case PertFilter.SOURCE:
+      case SOURCE:
         prs.addToSourceSet(fillUp, sources);
         return;
-      case PertFilter.SOURCE_NAME:
-      case PertFilter.SOURCE_OR_PROXY_NAME:
-        prs.addToSourceNameSet(fillUp, sources, (filterCat == PertFilter.SOURCE_OR_PROXY_NAME));
+      case SOURCE_NAME:
+      case SOURCE_OR_PROXY_NAME:
+        prs.addToSourceNameSet(fillUp, sources, (filterCat == PertFilter.Cat.SOURCE_OR_PROXY_NAME));
         return;    
-      case PertFilter.PERT:
+      case PERT:
         prs.addToPertSet(fillUp, sources, sources.getPertDictionary());
         return;
-      case PertFilter.TARGET:
+      case TARGET:
         fillUp.add(new TrueObjChoiceContent(sources.getTarget(target_), target_));
         return;
-      case PertFilter.TIME:
+      case TIME:
         int min = prs.getTime();
         int legMax = prs.getLegacyMaxTime();
         int max = (legMax != Experiment.NO_TIME) ? legMax : min;
         MinMax times = new MinMax(min, max);
         fillUp.add(new TrueObjChoiceContent(prs.getTimeDisplayString(true, true), times));
         return;
-      case PertFilter.INVEST:
+      case INVEST:
         List<String> invests = prs.getInvestigators();
         int numI = invests.size();
         for (int i = 0; i < numI; i++) {
@@ -722,25 +721,25 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
           fillUp.add(new TrueObjChoiceContent(invest, investKey));
         }
         return;
-      case PertFilter.INVEST_LIST:
+      case INVEST_LIST:
         String dispStr = prs.getInvestigatorDisplayString(sources);
         fillUp.add(new TrueObjChoiceContent(dispStr, dispStr));
         return;        
-      case PertFilter.VALUE:
+      case VALUE:
         if (aboveThresholds(sources)) {
-          String above = appState.getRMan().getString("pertCand.aboveThresh");
-          fillUp.add(new TrueObjChoiceContent(above, new Integer(PertFilter.ABOVE_THRESH)));
+          String above = dacx.getRMan().getString("pertCand.aboveThresh");
+          fillUp.add(new TrueObjChoiceContent(above, PertFilter.Match.ABOVE_THRESH));
         } 
         if (isSignificant(sources)) {
-          String above = appState.getRMan().getString("pertCand.significant");
-          fillUp.add(new TrueObjChoiceContent(above, new Integer(PertFilter.IS_SIGNIFICANT))); 
+          String above = dacx.getRMan().getString("pertCand.significant");
+          fillUp.add(new TrueObjChoiceContent(above, PertFilter.Match.IS_SIGNIFICANT)); 
         }
         return;
-      case PertFilter.EXP_CONTROL:
-      case PertFilter.EXP_CONDITION:
-      case PertFilter.MEASURE_SCALE:
-      case PertFilter.ANNOTATION:
-      case PertFilter.MEASURE_TECH:
+      case EXP_CONTROL:
+      case EXP_CONDITION:
+      case MEASURE_SCALE:
+      case ANNOTATION:
+      case MEASURE_TECH:
       default:
         throw new IllegalArgumentException();
     }    
@@ -762,40 +761,40 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   
   public boolean matchesFilter(PertFilter pf, SourceSrc sources) {    
     switch (pf.getCategory()) {
-      case PertFilter.SOURCE:
-      case PertFilter.SOURCE_NAME:
-      case PertFilter.SOURCE_OR_PROXY_NAME:
-      case PertFilter.PERT:
-      case PertFilter.TIME:
-      case PertFilter.INVEST:
-      case PertFilter.INVEST_LIST:
-      case PertFilter.EXPERIMENT:   
-      case PertFilter.EXP_CONDITION:   
+      case SOURCE:
+      case SOURCE_NAME:
+      case SOURCE_OR_PROXY_NAME:
+      case PERT:
+      case TIME:
+      case INVEST:
+      case INVEST_LIST:
+      case EXPERIMENT:   
+      case EXP_CONDITION:   
         Experiment prs = sources.getExperiment(experimentKey_);
         return (prs.matchesFilter(pf, sources));
-      case PertFilter.TARGET:
+      case TARGET:
         String filterTarget = pf.getStringValue();
         return (filterTarget.equals(target_));
-      case PertFilter.VALUE:
-        if (pf.getMatchType() == PertFilter.ABOVE_THRESH) {
+      case VALUE:
+        if (pf.getMatchType() == PertFilter.Match.ABOVE_THRESH) {
           return (aboveThresholds(sources));
-        } else if (pf.getMatchType() == PertFilter.IS_SIGNIFICANT) {
+        } else if (pf.getMatchType() == PertFilter.Match.IS_SIGNIFICANT) {
           return (isSignificant(sources));
         }
-      case PertFilter.EXP_CONTROL:
-        if (pf.getMatchType() != PertFilter.STR_EQUALS) {
+      case EXP_CONTROL:
+        if (pf.getMatchType() != PertFilter.Match.STR_EQUALS) {
           throw new IllegalArgumentException();
         }
         return ((control_ != null) && control_.equals(pf.getStringValue()));
-      case PertFilter.MEASURE_SCALE:
-      case PertFilter.MEASURE_TECH:
-        if (pf.getMatchType() != PertFilter.STR_EQUALS) {
+      case MEASURE_SCALE:
+      case MEASURE_TECH:
+        if (pf.getMatchType() != PertFilter.Match.STR_EQUALS) {
           throw new IllegalArgumentException();
         }
         MeasureDictionary md = sources.getMeasureDictionary();
         MeasureProps mp = md.getMeasureProps(measureTypeKey_);
-        return (mp.matchesFilter(pf, sources));
-      case PertFilter.ANNOTATION:
+        return (mp.matchesFilter(pf));
+      case ANNOTATION:
         //
         // Three possible matches: this point, the target, or one of the sources.
         //
@@ -1091,8 +1090,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the significance choice
   */
   
-  public TrueObjChoiceContent getForcedSignificanceChoice(BTState appState) {
-    return (getSignificanceChoice(appState, isSignificant_));
+  public TrueObjChoiceContent getForcedSignificanceChoice(DataAccessContext dacx) {
+    return (getSignificanceChoice(dacx, isSignificant_));
   } 
   
   /***************************************************************************
@@ -1214,6 +1213,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("PertDataPoint: value = " + value_ + " target = " + target_);
   }
@@ -1461,11 +1461,11 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the choices for significance
   */
   
-  public static Vector<TrueObjChoiceContent> getSignificanceOptions(BTState appState) {
+  public static Vector<TrueObjChoiceContent> getSignificanceOptions(DataAccessContext dacx) {
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
-    retval.add(getSignificanceChoice(appState, null));
-    retval.add(getSignificanceChoice(appState, new Boolean(false)));
-    retval.add(getSignificanceChoice(appState, new Boolean(true)));
+    retval.add(getSignificanceChoice(dacx, null));
+    retval.add(getSignificanceChoice(dacx, new Boolean(false)));
+    retval.add(getSignificanceChoice(dacx, new Boolean(true)));
     return (retval);
   }  
   
@@ -1474,8 +1474,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the choice for significance
   */
   
-  public static TrueObjChoiceContent getSignificanceChoice(BTState appState, Boolean sig) {
-    ResourceManager rMan = appState.getRMan();
+  public static TrueObjChoiceContent getSignificanceChoice(DataAccessContext dacx, Boolean sig) {
+    ResourceManager rMan = dacx.getRMan();
     if (sig == null) {
       return (new TrueObjChoiceContent(rMan.getString("pertData.sigNotSet"), null));
     } else if (!sig.booleanValue()) {
@@ -1499,14 +1499,14 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   public static class Parameters {
     private String convKey_;
 
-    public Parameters(BTState appState) {
-      MeasureDictionary md = appState.getDB().getPertData().getMeasureDictionary();
+    public Parameters(DataAccessContext dacx) {
+      MeasureDictionary md = dacx.getExpDataSrc().getPertData().getMeasureDictionary();
       // All data goes out as DDCT!!!
       convKey_ = md.getStandardScaleKeys()[MeasureDictionary.DDCT_INDEX];     
     }
     
-    public Double getNotSigDoub(BTState appState) {
-      MeasureDictionary md = appState.getDB().getPertData().getMeasureDictionary();
+    public Double getNotSigDoub(DataAccessContext dacx) {
+      MeasureDictionary md = dacx.getExpDataSrc().getPertData().getMeasureDictionary();
       return (md.getMeasureScale(convKey_).getUnchanged());
     }
     

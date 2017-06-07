@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,10 +24,11 @@ import java.io.IOException;
 import java.util.Map;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -49,6 +50,8 @@ public class ExportPathModel extends AbstractControlFlow {
   //
   ////////////////////////////////////////////////////////////////////////////    
   
+  private BTState appState_;
+    
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -61,7 +64,7 @@ public class ExportPathModel extends AbstractControlFlow {
   */ 
    
   public ExportPathModel(BTState appState) {
-    super(appState);
+    appState_ = appState;
     name = "command.ExportPathJSON";
     desc = "command.ExportPathJSON";
     mnem = "command.ExportPathJSONMnem";
@@ -80,8 +83,8 @@ public class ExportPathModel extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx, appState_);
     return (retval);
   }
   
@@ -101,6 +104,7 @@ public class ExportPathModel extends AbstractControlFlow {
         throw new IllegalArgumentException();
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -119,29 +123,23 @@ public class ExportPathModel extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
-    private BTState appState_;
     private String genomeID_;
-    private DataAccessContext dacx_;
     private double zoom_;
     private String holdKey_;
     private boolean swapOut_;
+    private BTState appState_;
 
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
+    public StepState(StaticDataAccessContext dacx, BTState appState) {
+      super(dacx);
       appState_ = appState;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
  
     /***************************************************************************
@@ -150,8 +148,8 @@ public class ExportPathModel extends AbstractControlFlow {
     */ 
         
     public void setParams(String genomeID) {
-      String currGenome = dacx_.getGenomeID();
-      zoom_ = appState_.getZoomTarget().getZoomFactor();
+      String currGenome = dacx_.getCurrentGenomeID();
+      zoom_ = uics_.getZoomTarget().getZoomFactor();
       if ((currGenome != null) && currGenome.equals(genomeID)) {
         swapOut_ = false;
         return;
@@ -172,21 +170,22 @@ public class ExportPathModel extends AbstractControlFlow {
     	
       try {
         if (swapOut_) {
-          String layoutID = appState_.getLayoutMgr().getLayout(genomeID_);
+          String layoutID = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID_);
+          
           appState_.setGraphLayout(layoutID);
           // Catch selection clear to undo queue the first time through:        
-          UndoSupport fakeSupport_ = new UndoSupport(appState_, "neverClosed");
+          UndoSupport fakeSupport_ = uFac_.provideUndoSupport("neverClosed", dacx_);
           appState_.setGenome(genomeID_, fakeSupport_, dacx_);
         }
         
-        modelMap = appState_.getSUPanel().exportModelMap(true, 1.0, null, appState_);
+        modelMap = uics_.getSUPanel().exportModelMap(uics_, dacx_, true, 1.0, null);
         
         if (swapOut_) {
-          String layoutID = appState_.getLayoutMgr().getLayout(holdKey_);
+          String layoutID = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(holdKey_);
           appState_.setGraphLayout(layoutID);
           appState_.setGenomeForUndo(holdKey_, dacx_);
         }
-        appState_.getZoomTarget().setZoomFactor(zoom_);       
+        uics_.getZoomTarget().setZoomFactor(zoom_);       
       } catch (IOException ioe) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,10 +34,11 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.PropagateSupport;
@@ -47,12 +48,10 @@ import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.DBNode;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
@@ -63,6 +62,7 @@ import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.timeCourse.ExpressionEntry;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.Grid;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.InstanceEngine;
@@ -149,8 +149,7 @@ public class SimpleBuilds extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SimpleBuilds(BTState appState, SimpleType action) {
-    super(appState);
+  public SimpleBuilds(SimpleType action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -197,9 +196,10 @@ public class SimpleBuilds extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -218,15 +218,19 @@ public class SimpleBuilds extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
     private SimpleType myAction_;
-    private BTState appState_;
-    private DataAccessContext dacx_;
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
     
-    public String getNextStep() {
-      return (nextStep_);
+    public StepState(SimpleType action, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -234,26 +238,24 @@ public class SimpleBuilds extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, SimpleType action, DataAccessContext dacx) {
+    public StepState(SimpleType action, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
-     
+
     /***************************************************************************
     **
     ** Do the step
     */ 
        
-    private DialogAndInProcessCmd stepToProcess() {
-      DataAccessContext rcxR = dacx_.getContextForRoot();
+    private DialogAndInProcessCmd stepToProcess() {     
       switch (myAction_) {
         case PERT_TO_ROOT_INST:      
-          p2RI(rcxR);
+          p2RI();
           break;  
         case PROP_ROOT:      
-          pr(rcxR);
+          pr();
           break;
         default:
           throw new IllegalStateException();
@@ -266,14 +268,15 @@ public class SimpleBuilds extends AbstractControlFlow {
     ** Do the step
     */ 
     
-    private void p2RI(DataAccessContext rcxR) {
-      int sliceMode = (new BuildSupport(appState_)).getSliceMode(appState_.getTopFrame());
+    private void p2RI() {
+      StaticDataAccessContext rcxR = dacx_.getContextForRoot();
+      int sliceMode = (new BuildSupport(uics_, rcxR, uFac_)).getSliceMode(uics_.getTopFrame());
       if (sliceMode == TimeCourseData.NO_SLICE) {
         return;
       }  
-      addNewQPCRGenesToRootInstances(appState_, rcxR, sliceMode);
+      addNewQPCRGenesToRootInstances(rcxR, sliceMode);
       // Now zoom it to center:
-      appState_.getZoomCommandSupport().zoomToWorksheetCenter();
+      uics_.getZoomCommandSupport().zoomToWorksheetCenter();
       return;
     }
          
@@ -282,15 +285,16 @@ public class SimpleBuilds extends AbstractControlFlow {
     ** Do the step
     */ 
       
-    private void pr(DataAccessContext rcxR) {
-      LayoutOptions lopt = appState_.getLayoutOptMgr().getLayoutOptions();
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = new FullGenomeHierarchyOracle(appState_).getGlobalNetModuleLinkPadNeeds();
-      UndoSupport support = new UndoSupport(appState_, "undo.propagateRootUsingExpressionData");
-      propagateRootUsingExpressionData(appState_, rcxR, lopt, globalPadNeeds, support, null, 0.1, 1.0);
-      ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxR, globalPadNeeds, false, support); 
+    private void pr() {
+      StaticDataAccessContext rcxR = dacx_.getContextForRoot();
+      LayoutOptions lopt = rcxR.getLayoutOptMgr().getLayoutOptions();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
+      UndoSupport support = uFac_.provideUndoSupport("undo.propagateRootUsingExpressionData", rcxR);
+      propagateRootUsingExpressionData(rcxR, lopt, globalPadNeeds, support, null, 0.1, 1.0);
+      ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, support); 
       support.finish();
       // Now zoom it to center:
-      appState_.getZoomCommandSupport().zoomToWorksheetCenter();
+      uics_.getZoomCommandSupport().zoomToWorksheetCenter();
       return;
     }
     
@@ -301,8 +305,7 @@ public class SimpleBuilds extends AbstractControlFlow {
     ** use of moduleShapeChange data (not supported at the moment; is this a problem?)
     */  
    
-    private boolean propagateRootUsingExpressionData(BTState appState, 
-                                                     DataAccessContext rcxR,
+    private boolean propagateRootUsingExpressionData(StaticDataAccessContext rcxR,
                                                      LayoutOptions options,
                                                      Map<String, Layout.PadNeedsForLayout> globalPadNeeds, UndoSupport support,
                                                      BTProgressMonitor monitor, 
@@ -310,7 +313,7 @@ public class SimpleBuilds extends AbstractControlFlow {
   
    
       try {
-        Point2D center = appState.getCanvasCenter(); 
+        Point2D center = rcxR.getWorkspaceSource().getWorkspace().getCanvasCenter(); 
         
         // FIX ME ?? Are we doing any eventing??
        // ModelChangeEvent mcev = null;
@@ -320,18 +323,19 @@ public class SimpleBuilds extends AbstractControlFlow {
         // Figure out the regions and times for importing:
         //
         TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
+        TimeCourseDataMaps tcdm = rcxR.getDataMapSrc().getTimeCourseDataMaps();
         List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(TimeCourseData.SLICE_BY_TIMES, null);
         Map<String, Integer> regAndTimes = tcd.getRegionsWithMinTimes();
   
-        DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(appState, regAndTimes);
+        DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(uics_, regAndTimes, rcxR);
         dsd.setVisible(true);
         if (!dsd.haveResult()) {
           return (false);
         }    
   
-        LayoutRubberStamper lrs = new LayoutRubberStamper(appState);
+        LayoutRubberStamper lrs = new LayoutRubberStamper();
         NavTree nt = rcxR.getGenomeSource().getModelHierarchy();
-        DefaultTreeModel dtm = appState.getTree().getTreeModel();
+        DefaultTreeModel dtm = uics_.getTree().getTreeModel();
         DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)dtm.getRoot();
        // HashMap newNodeTypes = new HashMap();
         //HashMap instanceContents = new HashMap();
@@ -342,14 +346,15 @@ public class SimpleBuilds extends AbstractControlFlow {
           // Create genome instance:
           //
           String nextKey = rcxR.getGenomeSource().getNextKey();
-          GenomeInstance gi = new GenomeInstance(appState, ris.heavyToString(), nextKey, null);
+          GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
           rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
           String nextloKey = rcxR.getGenomeSource().getNextKey();
-          Layout lo = new Layout(appState, nextloKey, nextKey);
-          rcxR.lSrc.addLayout(nextloKey, lo);
-          nt.addNode(ris.heavyToString(), null, nextKey);
+          Layout lo = new Layout(nextloKey, nextKey);
+          rcxR.getLayoutSource().addLayout(nextloKey, lo);
+          TreeNode parNode = nt.nodeForModel(rcxR.getGenomeSource().getRootDBGenome().getID());
+          nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
           dtm.nodeStructureChanged(rootNode);
-          DataAccessContext rcxI = new DataAccessContext(rcxR, gi, lo);
+          StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi, lo);
           
           //instanceContents.put(nextKey, regions);
           //
@@ -359,18 +364,18 @@ public class SimpleBuilds extends AbstractControlFlow {
           while (rit.hasNext()) {
             String region = rit.next();
             String regionKey = rcxI.getDBGenome().getNextKey();   
-            Group newGroup = new Group(rcxI.rMan, regionKey, region);
+            Group newGroup = new Group(rcxI.getRMan(), regionKey, region);
             GenomeChange gc = gi.addGroupWithExistingLabel(newGroup); 
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxI, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
               support.addEdit(gcc);
             }
             int groupCount = gi.groupCount();
             int order = lo.getTopGroupOrder() + 1;
             Layout.PropChange lpc = 
-              lo.setGroupProperties(regionKey, new GroupProperties(groupCount, regionKey, lo, center, order, rcxI.cRes));
+              lo.setGroupProperties(regionKey, new GroupProperties(groupCount, regionKey, center, order, rcxI.getColorResolver()));
             if (lpc != null) {
-              PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, new Layout.PropChange[] {lpc});
+              PropChangeCmd pcc = new PropChangeCmd(rcxI, new Layout.PropChange[] {lpc});
               support.addEdit(pcc);
             }
   
@@ -381,18 +386,18 @@ public class SimpleBuilds extends AbstractControlFlow {
             Iterator<Integer> tiit = ris.times.iterator();
             while (tiit.hasNext()) {
               int time = tiit.next().intValue();
-              tcd.getExpressedGenes(region, time, ExpressionEntry.ZYGOTIC_SOURCE, regionMembers);
+              tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers);
             }
             Iterator<Node> anit = rcxI.getDBGenome().getAllNodeIterator();
             while (anit.hasNext()) {
               Node node = anit.next();
-              List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(node.getID());
+              List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(node.getID(), rcxI.getGenomeSource());
               if (dataKeys != null) {
-                Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
+                Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
                 while (dkit.hasNext()) {
-                  TimeCourseData.TCMapping tcm = dkit.next();
+                  TimeCourseDataMaps.TCMapping tcm = dkit.next();
                   if (regionMembers.contains(tcm.name)) {
-                    PropagateSupport.propagateNodeNoLayout(appState, (node.getNodeType() == Node.GENE), 
+                    PropagateSupport.propagateNodeNoLayout((node.getNodeType() == Node.GENE), 
                                                            rcxI, (DBNode)node, newGroup, support, null);
                   }
                 }
@@ -412,10 +417,10 @@ public class SimpleBuilds extends AbstractControlFlow {
               if (trgInst == -1) {
                 continue;
               }          
-              PropagateSupport.propagateLinkageNoLayout(appState, rcxI, (DBLinkage)link, rcxR, grpTup, support, null);
+              PropagateSupport.propagateLinkageNoLayout(rcxI, (DBLinkage)link, rcxR, grpTup, support, null);
             }
           }
-          DatabaseChange dc = rcxI.lSrc.startLayoutUndoTransaction(nextloKey);
+          DatabaseChange dc = rcxI.getLayoutSource().startLayoutUndoTransaction(nextloKey);
           Layout origLayout = new Layout(lo);
           try {
             // FIX ME? Does this application benefit from module shape changes--if so gather
@@ -427,20 +432,20 @@ public class SimpleBuilds extends AbstractControlFlow {
             lrs.setRSD(rsd);
             lrs.rubberStampLayout();
           } catch (AsynchExitRequestException ex) {
-            rcxI.lSrc.rollbackLayoutUndoTransaction(dc);
+            rcxI.getLayoutSource().rollbackLayoutUndoTransaction(dc);
             throw ex;
           }
-          dc = rcxI.lSrc.finishLayoutUndoTransaction(dc);
-          support.addEdit(new DatabaseChangeCmd(appState, rcxI, dc));
+          dc = rcxI.getLayoutSource().finishLayoutUndoTransaction(dc);
+          support.addEdit(new DatabaseChangeCmd(rcxI, dc));
         }
   
         DefaultMutableTreeNode rootChild = (DefaultMutableTreeNode)rootNode.getChildAt(0);
         TreeNode[] tn = rootChild.getPath();
         TreePath tp = new TreePath(tn);
-        appState.getTree().expandTreePath(tp);    
-        appState.getTree().setTreeSelectionPath(tp); 
+        uics_.getTree().expandTreePath(tp);    
+        uics_.getTree().setTreeSelectionPath(tp); 
   
-        appState.getZoomTarget().fixCenterPoint(true, support, false);
+        rcxR.getZoomTarget().fixCenterPoint(true, support, false);
    
       
       } catch (AsynchExitRequestException ex) {
@@ -456,22 +461,22 @@ public class SimpleBuilds extends AbstractControlFlow {
     ** Create multiple root instances from QPCR data and temporal expression data.
     */  
    
-    private boolean addNewQPCRGenesToRootInstances(BTState appState, DataAccessContext rcxR, int sliceMode) {
+    private boolean addNewQPCRGenesToRootInstances(StaticDataAccessContext rcxR, int sliceMode) {
   
-      Point2D center = appState.getCanvasCenter(); 
-      Dimension size = appState.getCanvasSize();
+      Point2D center = rcxR.getWorkspaceSource().getWorkspace().getCanvasCenter(); 
+      Dimension size = rcxR.getWorkspaceSource().getWorkspace().getCanvasSize();
       
       if (sliceMode == TimeCourseData.NO_SLICE) {
         return (false);
       }
        
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.fgho.getGlobalNetModuleLinkPadNeeds();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
         
       //
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState, "undo.addNewQPCRGenesToRootInstances"); 
+      UndoSupport support = uFac_.provideUndoSupport("undo.addNewQPCRGenesToRootInstances", rcxR); 
    
       // FIX ME ?? Are we doing any eventing??
       //ModelChangeEvent mcev = null;
@@ -484,7 +489,7 @@ public class SimpleBuilds extends AbstractControlFlow {
       TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
       List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(sliceMode, null);
       NavTree nt = rcxR.getGenomeSource().getModelHierarchy();
-      DefaultTreeModel dtm = appState.getTree().getTreeModel();
+      DefaultTreeModel dtm = uics_.getTree().getTreeModel();
       DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)dtm.getRoot();
       HashMap<String, Integer> newNodeTypes = new HashMap<String, Integer>();
       HashMap<String, Map<String, Set<String>>> instanceContents = new HashMap<String, Map<String, Set<String>>>();
@@ -495,18 +500,19 @@ public class SimpleBuilds extends AbstractControlFlow {
         // Create genome instance:
         //
         String nextKey = rcxR.getGenomeSource().getNextKey();
-        GenomeInstance gi = new GenomeInstance(appState, ris.heavyToString(), nextKey, null);
+        GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
         // FIX ME!! None of these changes are being added to undo support!<<<<<<<<
         gi.setTimes(ris.minTime, ris.maxTime);
         rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
         String nextloKey = rcxR.getGenomeSource().getNextKey();
-        Layout lo = new Layout(appState, nextloKey, nextKey);
-        rcxR.lSrc.addLayout(nextloKey, lo);
-        nt.addNode(ris.heavyToString(), null, nextKey);
+        Layout lo = new Layout(nextloKey, nextKey);
+        rcxR.getLayoutSource().addLayout(nextloKey, lo);
+        TreeNode parNode = nt.nodeForModel(rcxR.getGenomeSource().getRootDBGenome().getID());
+        nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
         dtm.nodeStructureChanged(rootNode);
         Map<String, Set<String>> regions = new HashMap<String, Set<String>>();
         instanceContents.put(nextKey, regions);
-        DataAccessContext rcxI = new DataAccessContext(rcxR, gi, lo);
+        StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi, lo);
         //
         // Iterate for each TCD region:
         //
@@ -519,7 +525,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           // Build a group for each region in the current instance:
           //
           Point2D groupCenter = new Point2D.Double(400.0 * count, 500.0);
-          String regionKey = (new BuildSupport(appState_)).buildRegion(rcxI, region, groupCenter, support);
+          String regionKey = (new BuildSupport(uics_, rcxR, uFac_)).buildRegion(rcxI, region, groupCenter, support);
           HashSet<String> regionMembers = new HashSet<String>();        
           //
           // Create nodes in root genome:
@@ -527,9 +533,9 @@ public class SimpleBuilds extends AbstractControlFlow {
           Iterator<Integer> tiit = ris.times.iterator();
           while (tiit.hasNext()) {
             int time = tiit.next().intValue();
-            tcd.getExpressedGenes(region, time, ExpressionEntry.ZYGOTIC_SOURCE, regionMembers);
+            tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers);
           }
-          Set<String> newNodeIDs = processExpressedGenes(appState, rcxR, regionMembers, newNodeTypes, support);
+          Set<String> newNodeIDs = processExpressedGenes(rcxR, regionMembers, newNodeTypes, support);
           regions.put(regionKey, newNodeIDs);
         }
       }
@@ -537,8 +543,8 @@ public class SimpleBuilds extends AbstractControlFlow {
       DefaultMutableTreeNode rootChild = (DefaultMutableTreeNode)rootNode.getChildAt(0);
       TreeNode[] tn = rootChild.getPath();
       TreePath tp = new TreePath(tn);
-      appState.getTree().expandTreePath(tp);    
-      appState.getTree().setTreeSelectionPath(tp); 
+      uics_.getTree().expandTreePath(tp);    
+      uics_.getTree().setTreeSelectionPath(tp); 
       
       //
       // Now layout the nodes:
@@ -552,7 +558,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         String geneID = positions[i];
         boolean first = true;
         NodeProperties np = null;
-        Iterator<Layout> loit = rcxR.lSrc.getLayoutIterator();
+        Iterator<Layout> loit = rcxR.getLayoutSource().getLayoutIterator();
         while (loit.hasNext()) {
           Layout lo = loit.next();
           String loTarg = lo.getTarget();
@@ -560,13 +566,13 @@ public class SimpleBuilds extends AbstractControlFlow {
             int nodeType = newNodeTypes.get(geneID).intValue();          
             if (first) {
               Point2D loc = ce.placePoint(i, positions, center, size, Grid.FIXED_RECTANGLE);
-              np = new NodeProperties(rcxR.cRes, lo, nodeType, geneID, loc.getX(), loc.getY(), false);
+              np = new NodeProperties(rcxR.getColorResolver(), nodeType, geneID, loc.getX(), loc.getY(), false);
               first = false;
             }
             Layout.PropChange[] lpc = new Layout.PropChange[1];    
-            lpc[0] = lo.setNodeProperties(geneID, new NodeProperties(np, lo, nodeType));
+            lpc[0] = lo.setNodeProperties(geneID, new NodeProperties(np, nodeType));
             if (lpc[0] != null) {
-              PropChangeCmd pcc = new PropChangeCmd(appState, rcxR, lpc);
+              PropChangeCmd pcc = new PropChangeCmd(rcxR, lpc);
               support.addEdit(pcc);
               LayoutChangeEvent lcev = new LayoutChangeEvent(lo.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
               support.addEvent(lcev);            
@@ -596,8 +602,8 @@ public class SimpleBuilds extends AbstractControlFlow {
             DBGene gene = (DBGene)rcxR.getDBGenome().getGene(GenomeItemInstance.getBaseID(nodeID));
             // Catch cases where no nodes imported - icky!
             if (gene != null) {
-              DataAccessContext rcxI = new DataAccessContext(rcxR, gi);
-              PropagateSupport.propagateNode(appState, true, rcxI, gene, rcxR.getLayout(), new Vector2D(0.0, 0.0), group, support);
+              StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi);
+              PropagateSupport.propagateNode(true, rcxI, gene, rcxR.getCurrentLayout(), new Vector2D(0.0, 0.0), group, support);
             }
           }
         }
@@ -607,17 +613,17 @@ public class SimpleBuilds extends AbstractControlFlow {
       // Now fixup the instance region layouts
       //
       
-      InstanceEngine ie = new InstanceEngine(appState);
+      InstanceEngine ie = new InstanceEngine();
       
       giit = instanceContents.keySet().iterator();
       while (giit.hasNext()) {
         String gikey = giit.next();
         GenomeInstance gi = (GenomeInstance)rcxR.getGenomeSource().getGenome(gikey);
-        DataAccessContext rcxI = new DataAccessContext(rcxR, gi);
+        StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi);
         Map<String, Set<String>> regions = instanceContents.get(gikey);
-        Map<String, Point2D> giPositions = ie.layout(regions, gikey);
+        Map<String, Point2D> giPositions = ie.layout(regions, rcxI);
         Map<String, List<Point2D>> groupPoints = new HashMap<String, List<Point2D>>();
-        Layout.PadNeedsForLayout loPadNeeds = globalPadNeeds.get(rcxI.getLayoutID());
+        Layout.PadNeedsForLayout loPadNeeds = globalPadNeeds.get(rcxI.getCurrentLayoutID());
         Iterator<String> nit = giPositions.keySet().iterator();
         while (nit.hasNext()) {
           String nKey = nit.next();
@@ -634,12 +640,12 @@ public class SimpleBuilds extends AbstractControlFlow {
             groupPoints.put(grid, points);
           }
           points.add(newPos);
-          Point2D oldPos = rcxI.getLayout().getNodeProperties(nKey).getLocation();
+          Point2D oldPos = rcxI.getCurrentLayout().getNodeProperties(nKey).getLocation();
           Layout.PropChange[] lpc = new Layout.PropChange[1];        
-          lpc[0] = rcxI.getLayout().moveNode(nKey, newPos.getX() - oldPos.getX(), 
+          lpc[0] = rcxI.getCurrentLayout().moveNode(nKey, newPos.getX() - oldPos.getX(), 
                                         newPos.getY() - oldPos.getY(), loPadNeeds, rcxI);
           if (lpc[0] != null) {
-            PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, lpc);
+            PropChangeCmd pcc = new PropChangeCmd(rcxI, lpc);
             support.addEdit(pcc);
           }
         }
@@ -652,18 +658,18 @@ public class SimpleBuilds extends AbstractControlFlow {
           List<Point2D> points = groupPoints.get(grid);
           Set<Point2D> pointSet = new HashSet<Point2D>(points);
           Point2D newPos = AffineCombination.combination(pointSet, 10.0);
-          Point2D oldPos = rcxI.getLayout().getGroupProperties(grid).getLabelLocation();        
+          Point2D oldPos = rcxI.getCurrentLayout().getGroupProperties(grid).getLabelLocation();        
           Layout.PropChange[] lpc = new Layout.PropChange[1];        
-          lpc[0] = rcxI.getLayout().moveGroup(grid, newPos.getX() - oldPos.getX(), newPos.getY() - oldPos.getY());
+          lpc[0] = rcxI.getCurrentLayout().moveGroup(grid, newPos.getX() - oldPos.getX(), newPos.getY() - oldPos.getY());
           if (lpc[0] != null) {
-            PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, lpc);
+            PropChangeCmd pcc = new PropChangeCmd(rcxI, lpc);
             support.addEdit(pcc);
           }        
         }      
       }
       
-      ModificationCommands.repairNetModuleLinkPadsGlobally(appState, rcxR, globalPadNeeds, false, support);
-      appState.getZoomTarget().fixCenterPoint(true, support, false);
+      ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, support);
+      rcxR.getZoomTarget().fixCenterPoint(true, support, false);
       support.finish();
       return (true);
     }
@@ -673,7 +679,7 @@ public class SimpleBuilds extends AbstractControlFlow {
    ** Process expressed genes
    */  
    
-    private Set<String> processExpressedGenes(BTState appState, DataAccessContext rcxR, Set<String> expressed, 
+    private Set<String> processExpressedGenes(StaticDataAccessContext rcxR, Set<String> expressed, 
                                               HashMap<String, Integer> newNodeTypes, UndoSupport support) {
       
       HashSet<String> retval = new HashSet<String>();
@@ -682,10 +688,11 @@ public class SimpleBuilds extends AbstractControlFlow {
       //
       
       TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = rcxR.getDataMapSrc().getTimeCourseDataMaps();
       Iterator<String> exit = expressed.iterator();
       while (exit.hasNext()) {
         String name = exit.next();
-        Set<String> inverses = tcd.getTimeCourseDataKeyInverses(name);
+        Set<String> inverses = tcdm.getTimeCourseDataKeyInverses(name);
         if (!inverses.isEmpty()) {  // has existing mapped node(s); skip it.
           retval.addAll(inverses);
           continue;
@@ -699,7 +706,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         int onSize = oldNodes.size();
         if (oldGene != null) {
           nodeID = oldGene.getID();
-          if (tcd.haveDataForNode(nodeID)) {
+          if (tcdm.haveDataForNode(tcd, nodeID, rcxR.getGenomeSource())) {
             continue;  // skip this gene; it's mapped to somebody else!
             // FIX ME?  Pop up a dialog window?
           }
@@ -708,7 +715,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           if (onSize == 1) {
             DBNode oldNode = (DBNode)oldNodes.iterator().next();
             nodeID = oldNode.getID();
-            if (tcd.haveDataForNode(nodeID)) {
+            if (tcdm.haveDataForNode(tcd, nodeID, rcxR.getGenomeSource())) {
               continue;  // skip this node; it's mapped to somebody else!
               // FIX ME?  Pop up a dialog window?
             }
@@ -719,11 +726,11 @@ public class SimpleBuilds extends AbstractControlFlow {
         } else {
           nodeID = rcxR.getNextKey();
           retval.add(nodeID);
-          DBGene newGene = new DBGene(appState, name, nodeID);
+          DBGene newGene = new DBGene(rcxR, name, nodeID);
           GenomeChange gc = rcxR.getDBGenome().addGeneWithExistingLabel(newGene);
           newNodeTypes.put(nodeID, new Integer(Node.GENE));
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxR, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
             support.addEdit(gcc);
           }
         }
@@ -731,12 +738,12 @@ public class SimpleBuilds extends AbstractControlFlow {
         //
         // Add mapping to time course data:
         //
-        List<TimeCourseData.TCMapping> targIDs = new ArrayList<TimeCourseData.TCMapping>();
+        List<TimeCourseDataMaps.TCMapping> targIDs = new ArrayList<TimeCourseDataMaps.TCMapping>();
         // FIX ME???  01/23/11 Is this mapp addition stuff obsolete?  Ditch it, correct?
-        targIDs.add(new TimeCourseData.TCMapping(name));
-        TimeCourseChange tcc = tcd.addTimeCourseTCMMap(nodeID, targIDs, true);      
+        targIDs.add(new TimeCourseDataMaps.TCMapping(name));
+        TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(nodeID, targIDs, true);      
         if (tcc != null) {
-          support.addEdit(new TimeCourseChangeCmd(appState, rcxR, tcc, false));
+          support.addEdit(new TimeCourseChangeCmd(rcxR, tcc, false));
         }   
       }
       return (retval);

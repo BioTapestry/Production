@@ -186,6 +186,22 @@ public abstract class LinkBusDrop implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+
+   if (dropDrawStyle_ != null) {
+      dropDrawStyle_.mapColorTags(ctm);
+   }
+   if (linkDrawStyle_ != null) {
+     linkDrawStyle_.mapColorTags(ctm);
+   }
+   return;
+  }  
+  
  /***************************************************************************
   **
   ** Transfer across special styles

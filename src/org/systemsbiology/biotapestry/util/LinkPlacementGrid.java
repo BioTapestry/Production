@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,9 +43,9 @@ import org.systemsbiology.biotapestry.ui.LinkProperties;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.analysis.GraphColorer;
 import org.systemsbiology.biotapestry.analysis.Link;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
 import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -1584,7 +1584,7 @@ public class LinkPlacementGrid {
         // fix for V6 release.  FIX ME!
         //
         if (currentCrossings == -2) {
-          Node node = gSrc.getGenome().getNode(GenomeItemInstance.getBaseID(trg));
+          Node node = gSrc.getRootDBGenome().getNode(GenomeItemInstance.getBaseID(trg));
           if (node.getNodeType() != Node.INTERCELL) {
             return (false);
           }
@@ -2582,7 +2582,7 @@ public class LinkPlacementGrid {
   ** Get a valid track.  If no track can be found, returns an empty list.
   */
 
-  public NewCorner recoverValidAddOnTrack(DataAccessContext icx, String src, String trg, String linkID,
+  public NewCorner recoverValidAddOnTrack(StaticDataAccessContext icx, String src, String trg, String linkID,
                                           TerminalRegion arrival, List<Point2D> points, 
                                           LinkPlacementGrid.GoodnessParams goodness,
                                           Set<String> okGroups, 
@@ -2660,7 +2660,7 @@ public class LinkPlacementGrid {
         nextTry = la.extractNextAlternative();
       }
       if (nextTry == null) {
-        lastDitch = lastDitchForRecovery(src, linkID, icx.getLayout(), arrival, okGroups, recoverForLink, linksFromSource, 0);
+        lastDitch = lastDitchForRecovery(src, linkID, icx.getCurrentLayout(), arrival, okGroups, recoverForLink, linksFromSource, 0);
       }
     }
     
@@ -3069,7 +3069,7 @@ public class LinkPlacementGrid {
   ** Get a valid track.  If no track can be found, returns an empty list.
   */
 
-  public NewCorner getValidAddOnTrack(DataAccessContext icx, String src, String trg, String linkID, 
+  public NewCorner getValidAddOnTrack(StaticDataAccessContext icx, String src, String trg, String linkID, 
                                       TerminalRegion arrival, List<Point2D> points, 
                                       LinkPlacementGrid.GoodnessParams goodness,
                                       Set<String> okGroups, 
@@ -3118,7 +3118,7 @@ public class LinkPlacementGrid {
         continue;
       }
       
-      BusProperties bp = icx.getLayout().getLinkProperties(linkID);
+      BusProperties bp = icx.getCurrentLayout().getLinkProperties(linkID);
       Point2D chooseConv = new Point2D.Double(choose.point.getX() * 10.0, choose.point.getY() * 10.0);
       LinkProperties.DistancedLinkSegID dlsegID = bp.intersectBusSegment(icx, chooseConv, omitted, 5.0);    
       if (dlsegID == null) {  // May happen if we have serious mismatch of grid and reality!
@@ -3187,7 +3187,7 @@ public class LinkPlacementGrid {
   ** Generate launch alternatives. 
   */
 
-  private LaunchAnalysis generateLaunchAlternatives(DataAccessContext icx, Point2D targPt, String src, String linkID, Set<String> okGroups,                                                
+  private LaunchAnalysis generateLaunchAlternatives(StaticDataAccessContext icx, Point2D targPt, String src, String linkID, Set<String> okGroups,                                                
                                                     Set<String> omitted, Set<String> linksFromSource) {
     //
     // Find the link segments from the source that we are happy with (placed, orthogonal).
@@ -3198,9 +3198,9 @@ public class LinkPlacementGrid {
     // an end.
     //
 
-    BusProperties bp = icx.getLayout().getLinkProperties(linkID);
+    BusProperties bp = icx.getCurrentLayout().getLinkProperties(linkID);
     
-    Set<String> candidateStarts = icx.getGenome().getOutboundLinks(src);
+    Set<String> candidateStarts = icx.getCurrentGenome().getOutboundLinks(src);
     candidateStarts.removeAll(omitted);
     
     Set<LinkSegmentID> candSegs = new HashSet<LinkSegmentID>();

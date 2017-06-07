@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,10 +24,12 @@ import java.awt.Point;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -64,8 +66,7 @@ public class SwapPads extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SwapPads(BTState appState) {
-    super(appState);
+  public SwapPads() {
     name = "linkPopup.SwapPads";
     desc = "linkPopup.SwapPads";
     mnem = "linkPopup.SwapPadsMnem";
@@ -84,7 +85,8 @@ public class SwapPads extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }   
@@ -98,8 +100,8 @@ public class SwapPads extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    SwapPadState retval = new SwapPadState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    SwapPadState retval = new SwapPadState(dacx);
     return (retval);
   }
   
@@ -117,6 +119,7 @@ public class SwapPads extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         SwapPadState ans = (SwapPadState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetToMode")) {
           next = ans.stepSetToMode();      
         } else if (ans.getNextStep().equals("stepSwapPads")) {   
@@ -142,9 +145,9 @@ public class SwapPads extends AbstractControlFlow {
     SwapPadState ans = (SwapPadState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = "stepSwapPads"; 
+    ans.setNextStep("stepSwapPads"); 
     return (retval);
   }
   
@@ -153,35 +156,33 @@ public class SwapPads extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class SwapPadState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class SwapPadState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
     private Intersection intersect;
-    private DataAccessContext rcxT_;
     private int x;
     private int y;
-    private String nextStep_;   
-    private BTState appState_;
+
 
     /***************************************************************************
     **
     ** Constructor
     */
      
-    private SwapPadState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    private SwapPadState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepSetToMode";
     }
     
     /***************************************************************************
     **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
+    ** Constructor
+    */
      
+    private SwapPadState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepSetToMode";
+    }
+
     /***************************************************************************
     **
     ** mouse masking
@@ -257,7 +258,7 @@ public class SwapPads extends AbstractControlFlow {
     private DialogAndInProcessCmd stepSetToMode() {  
       
       // Legacy belt-and-supenders code:
-      if (!LinkSupport.amIValidForTargetOrSource(intersect, LinkSupport.IS_FOR_SWAP, false, rcxT_)) {
+      if (!LinkSupport.amIValidForTargetOrSource(intersect, LinkSupport.IS_FOR_SWAP, false, dacx_)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       } 
       
@@ -281,8 +282,8 @@ public class SwapPads extends AbstractControlFlow {
       LinkSegmentID[] segIDs = intersect.segmentIDsFromIntersect();
       String oid = intersect.getObjectID(); // May not be for link we want...
             
-      String linkID = rcxT_.getLayout().segmentSynonymousWithTargetDrop(oid, segIDs[0]);
-      boolean startOK = rcxT_.getLayout().segmentSynonymousWithStartDrop(oid, segIDs[0]);
+      String linkID = dacx_.getCurrentLayout().segmentSynonymousWithTargetDrop(oid, segIDs[0]);
+      boolean startOK = dacx_.getCurrentLayout().segmentSynonymousWithStartDrop(oid, segIDs[0]);
       
       if ((linkID != null) && startOK) {
         if (segIDs[0].isForEndDrop()) {
@@ -304,8 +305,8 @@ public class SwapPads extends AbstractControlFlow {
       // Go and find if we intersect anything.
       //
 
-      List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+      List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       
       //
@@ -322,7 +323,7 @@ public class SwapPads extends AbstractControlFlow {
       }
 
       String id = inter.getObjectID();
-      Node node = rcxT_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       if (node == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
@@ -338,14 +339,14 @@ public class SwapPads extends AbstractControlFlow {
       
       String myLinkId = null;
       if (swapMode != LinkSupport.SwapType.SOURCE_SWAP) {
-        BusProperties bp = rcxT_.getLayout().getLinkProperties(oid);
+        BusProperties bp = dacx_.getCurrentLayout().getLinkProperties(oid);
         Set<String> throughSeg = bp.resolveLinkagesThroughSegment(segIDs[0]);
         if (throughSeg.size() != 1) {
           throw new IllegalStateException();
         }
         myLinkId = throughSeg.iterator().next();
         if (swapMode == LinkSupport.SwapType.EITHER_SWAP) {
-          Linkage link = rcxT_.getGenome().getLinkage(myLinkId);
+          Linkage link = dacx_.getCurrentGenome().getLinkage(myLinkId);
           String src = link.getSource();
           String trg = link.getTarget();
           if (id.equals(src)) {
@@ -379,7 +380,7 @@ public class SwapPads extends AbstractControlFlow {
         if (winner == null) {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         } 
-        Linkage link = rcxT_.getGenome().getLinkage(myLinkId);
+        Linkage link = dacx_.getCurrentGenome().getLinkage(myLinkId);
         if (!link.getTarget().equals(id)) {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         }
@@ -397,9 +398,9 @@ public class SwapPads extends AbstractControlFlow {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         }
         String lid = intersect.getObjectID();    
-        Set<String> allLinks = rcxT_.getLayout().getSharedItems(lid);
+        Set<String> allLinks = dacx_.getCurrentLayout().getSharedItems(lid);
         myLinkId = allLinks.iterator().next();
-        Linkage firstLink = rcxT_.getGenome().getLinkage(myLinkId);
+        Linkage firstLink = dacx_.getCurrentGenome().getLinkage(myLinkId);
         if (!firstLink.getSource().equals(id)) {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         }
@@ -407,7 +408,7 @@ public class SwapPads extends AbstractControlFlow {
         throw new IllegalArgumentException();
       }
 
-      if (LinkSupport.swapLinkPads(appState_, intersect, inter, winner, id, rcxT_, swapMode, myLinkId)) {
+      if (LinkSupport.swapLinkPads(winner, id, dacx_, swapMode, myLinkId, uFac_)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));

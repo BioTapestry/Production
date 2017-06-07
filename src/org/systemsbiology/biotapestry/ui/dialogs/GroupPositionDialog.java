@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,8 +34,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -63,7 +63,7 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
   private Point2D directPoint_;
   private OverviewPanel op_;
   private FixedJButton buttonO_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -78,11 +78,11 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
   ** Constructor 
   */ 
   
-  public GroupPositionDialog(BTState appState, DataAccessContext rcx, 
+  public GroupPositionDialog(UIComponentSource uics, StaticDataAccessContext dacx, 
                              Rectangle rect, Point2D directPoint) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("groupPos.title"), true);
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();    
+    super(uics.getTopFrame(), dacx.getRMan().getString("groupPos.title"), true);
+    uics_ = uics;
+    ResourceManager rMan = dacx.getRMan();    
     setSize(640, 520);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -95,8 +95,8 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
     // Build the position panel:
     //
 
-    op_ = new OverviewPanel(appState_, rect, (directPoint != null), this);
-    op_.setRenderingContext(rcx);
+    op_ = new OverviewPanel(uics_, rect, (directPoint != null), this);
+    op_.setRenderingContext(dacx);
     op_.setMinimumSize(new Dimension(200, 200));
     op_.setPreferredSize(new Dimension(200, 200));
     JScrollPane jsp = new JScrollPane(op_);
@@ -119,7 +119,7 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
           try {
             op_.setChosenPoint(directPoint_); 
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -138,7 +138,7 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
           GroupPositionDialog.this.setVisible(false);
           GroupPositionDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -150,7 +150,7 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
           GroupPositionDialog.this.setVisible(false);
           GroupPositionDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -169,7 +169,7 @@ public class GroupPositionDialog extends JDialog implements ActionListener {
     //
     UiUtil.gbcSet(gbc, 0, 10, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
   /***************************************************************************

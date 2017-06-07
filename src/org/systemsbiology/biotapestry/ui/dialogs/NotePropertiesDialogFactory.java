@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,9 +26,12 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.Vector;
 
 import javax.swing.JCheckBox;
@@ -39,18 +42,31 @@ import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.ui.FontManager;
+import org.systemsbiology.biotapestry.ui.FontManager.FontOverride;
+import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.NoteProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatLayoutFactory;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatPrimitiveElementFactory;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatUICollectionElement;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatUIElement;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatLayoutFactory.RegionType;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatUIElement.XPlatUIElementType;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatUIPrimitiveElement;
 import org.systemsbiology.biotapestry.ui.xplat.dialog.XPlatUIDialog;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.ColorSelectionWidget;
@@ -150,7 +166,9 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     private JComboBox justCombo_;
     private FontSettingPanel fsp_;
     private ColorSelectionWidget colorWidget_;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext dacx_;
+    private UIComponentSource uics_;
+    private HarnessBuilder hBld_;
     
     private static final long serialVersionUID = 1L;
     
@@ -168,7 +186,9 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     DesktopDialog(ServerControlFlowHarness cfh, Note noteToEdit, NoteProperties props) {
       super(cfh, (noteToEdit == null) ? "ntprops.newTitle" : "ntprops.modTitle", new Dimension(600, 500), 1, new NoteRequest(), false);
       dacx_ = cfh.getDataAccessContext();
-      ResourceManager rMan = appState_.getRMan();
+      uics_ = cfh.getUI();
+      hBld_ = cfh.getHarnessBuilder();
+      ResourceManager rMan = dacx_.getRMan();
       
       String defaultName;
       String defaultText;
@@ -194,6 +214,10 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       finishConstruction();
     }
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -210,7 +234,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       NoteRequest crq = (NoteRequest)request_; 
       crq.nameResult = nameField_.getText().trim();
       if (crq.nameResult.equals("")) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("ntprops.badName");
         String title = rMan.getString("ntprops.badNameTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
@@ -223,7 +247,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       crq.textResult = (crq.interactiveResult) ? textField_.getText().trim() : "";
       ChoiceContent justSelection = (ChoiceContent)justCombo_.getSelectedItem();
       crq.justResult = justSelection.val;          
-      crq.haveResult = true;
+      crq.setHasResults();
       return (true);
     }
   
@@ -238,7 +262,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       JPanel retval = new JPanel();
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints(); 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       //
       // Build the name panel:
       //
@@ -262,7 +286,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
             textField_.setEnabled(doInteractiveBox_.isSelected());
             textLabel_.setEnabled(doInteractiveBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -301,13 +325,13 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       JPanel retval = new JPanel();
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints(); 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
     
       //
       // Build the color panel.
       //
   
-      colorWidget_ = new ColorSelectionWidget(appState_, dacx_, null, true, "ntprops.color", true, false);
+      colorWidget_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "ntprops.color", true, false);
       UiUtil.gbcSet(gbc, 0, 0, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
       retval.add(colorWidget_, gbc);     
         
@@ -316,10 +340,10 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       //
        
       JLabel label = new JLabel(rMan.getString("ntprops.justType"));
-      Vector<ChoiceContent> choices = MultiLineRenderSupport.getJustifyTypes(appState_.getRMan());
+      Vector<ChoiceContent> choices = MultiLineRenderSupport.getJustifyTypes(dacx_.getRMan());
       justCombo_ = new JComboBox(choices);
       int currJust = (nProps == null) ? MultiLineRenderSupport.DEFAULT_JUST : nProps.getJustification();
-      justCombo_.setSelectedItem(MultiLineRenderSupport.justForCombo(appState_.getRMan(), currJust));        
+      justCombo_.setSelectedItem(MultiLineRenderSupport.justForCombo(dacx_.getRMan(), currJust));        
        
       UiUtil.gbcSet(gbc, 0, 1, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
       retval.add(label, gbc);
@@ -340,7 +364,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
           try {
             enableOverFont(doOverFontBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -348,7 +372,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       UiUtil.gbcSet(gbc, 0, 2, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);       
       retval.add(doOverFontBox_, gbc);    
     
-      fsp_ = new FontSettingPanel(appState_);
+      fsp_ = new FontSettingPanel(dacx_);
       fsp_.setEnabled(fo != null);
   
       UiUtil.gbcSet(gbc, 1, 2, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
@@ -356,7 +380,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
        
       colorWidget_.setCurrentColor((nProps == null) ? NoteProperties.DEFAULT_COLOR : nProps.getColorName());
        
-      FontManager fmgr = appState_.getFontMgr();
+      FontManager fmgr = dacx_.getFontManager();
       Font bFont = fmgr.getOverrideFont(FontManager.NOTES, fo).getFont();
       fsp_.displayProperties(bFont);
   
@@ -388,11 +412,15 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     // PRIVATE INSTANCE MEMBERS
     //
     ////////////////////////////////////////////////////////////////////////////  
-  
-     private String defaultName_;
-     private String defaultText_;
-     private boolean defaultInteractive_;
-     private ServerControlFlowHarness scfh_;
+	  
+	  // The dialog box
+	 private XPlatUIDialog xplatDialog_;
+
+	 private ServerControlFlowHarness scfh_;
+	 private ResourceManager rMan_; 
+	 private XPlatPrimitiveElementFactory primElemFac_;
+	 private Note noteToEdit_;
+	 private NoteProperties nprops_;
     
     ////////////////////////////////////////////////////////////////////////////
     //
@@ -406,17 +434,250 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     */ 
     
     public SerializableDialog(ServerControlFlowHarness cfh, Note noteToEdit, NoteProperties props) { 
-      scfh_ = cfh;
-      if (noteToEdit == null) {
-        ResourceManager rMan = scfh_.getBTState().getRMan();
-        defaultName_ = rMan.getString("addNote.defaultName");
-        defaultText_ = "";
-        defaultInteractive_ = false;
-      } else {
-        defaultName_ = noteToEdit.getName();
-        defaultText_ = noteToEdit.getText();
-        defaultInteractive_ = noteToEdit.isInteractive();     
-      }
+    	this.scfh_ = cfh;
+        this.rMan_ = scfh_.getDataAccessContext().getRMan();
+        this.primElemFac_ = new XPlatPrimitiveElementFactory(this.rMan_);
+        this.noteToEdit_ = noteToEdit;
+        this.nprops_ = props;
+        
+        buildDialog((noteToEdit == null ? "ntprops.newTitle" : "ntprops.modTitle" ), 400, 650);
+    }
+    
+    private void buildDialog(String title, int height, int width) {
+    	
+    	this.xplatDialog_ = new XPlatUIDialog(title,height,width);
+    	
+    	String noteID = this.nprops_ != null ? this.nprops_.getReference() : "newNote";
+    	
+    	this.xplatDialog_.setParameter("id", noteID.replaceAll("\\s+", "_").toLowerCase());
+    	
+		XPlatUICollectionElement layoutCollection = this.xplatDialog_.createCollection("main", XPlatUIElementType.LAYOUT_CONTAINER);
+		layoutCollection.setParameter("style", "height: " + height + "px; width: " + width + "px;");
+		layoutCollection.setParameter("gutters", "false");
+		  
+		this.xplatDialog_.createCollectionList("main", "center");
+		this.xplatDialog_.createCollectionList("main", "bottom");
+		  
+		// Set up the Tab container
+	
+		XPlatUICollectionElement tabContainer = new XPlatUICollectionElement(XPlatUIElementType.TAB_CONTAINER);
+		tabContainer.setParameter("style", "height: " + (height - 30)+ "px; width: " + (width - 10) + "px;");
+		tabContainer.setParameter(
+			"id", this.primElemFac_.generateId("noteEditorTabCtrl", XPlatUIElementType.TAB_CONTAINER)
+		);
+		tabContainer.setParameter("gutters", "false");
+		tabContainer.setLayout(XPlatLayoutFactory.makeRegionalLayout(RegionType.CENTER, 0));
+		
+		this.xplatDialog_.addElementToCollection("main", "center", tabContainer);
+
+		String modelProps = this.rMan_.getString("ntprops.modelProp");
+		String layoutProps = this.rMan_.getString("ntprops.layoutProp");
+
+		tabContainer.createList(modelProps);
+		tabContainer.createList(layoutProps);
+
+		tabContainer.addGroupOrder(modelProps, new Integer(0));
+		tabContainer.addGroupOrder(layoutProps, new Integer(1));
+
+		tabContainer.addElementGroupParam(modelProps, "index", "0");
+		tabContainer.addElementGroupParam(layoutProps, "index", "1");
+
+		tabContainer.setSelected(modelProps);
+		
+		XPlatUICollectionElement modelPropsLayout = new XPlatUICollectionElement(XPlatUIElementType.LAYOUT_CONTAINER);
+		modelPropsLayout.createList("center");
+		tabContainer.addElement(modelProps, modelPropsLayout);
+
+		buildModelPropsTab(modelPropsLayout);
+
+		XPlatUICollectionElement layoutPropsLayout = new XPlatUICollectionElement(XPlatUIElementType.LAYOUT_CONTAINER);
+		layoutPropsLayout.createList("center");
+		tabContainer.addElement(layoutProps, layoutPropsLayout);
+
+		buildLayoutPropsTab(layoutPropsLayout);
+		this.xplatDialog_.setUserInputs(new NoteRequest(true));
+    }
+    
+    /////////////////////////
+    // buildModelPropsTab
+    /////////////////////////
+    //
+    //
+    private void buildModelPropsTab(XPlatUICollectionElement container) {
+    	String currName = (this.noteToEdit_ != null ? this.noteToEdit_.getName() : this.rMan_.getString("addNote.defaultName"));
+    	String currTxt = (this.noteToEdit_ != null ? this.noteToEdit_.getText() : "      ");
+    	
+    	XPlatUIElement nameTxt = this.primElemFac_.makeTextBox("nameTxt", true, currName, null, true, this.rMan_.getString("ntprops.name"), false);
+    	nameTxt.setParameter("style", "width: 95%; min-height: 7em;");
+    	nameTxt.setParameter("justifiedLabel", true);
+    	nameTxt.setParameter("bundleAs", "nameResult");
+    	
+    	container.addElement("center",nameTxt);
+    	
+    	XPlatUIPrimitiveElement chkBx = this.primElemFac_.makeCheckbox(
+			this.rMan_.getString("ntprops.interactive"), "CLIENT_SET_ELEMENT_CONDITION", "isInteractive", (this.noteToEdit_ != null ? this.noteToEdit_.isInteractive() : false)
+		);
+    	chkBx.setParameter("bundleAs", "interactiveResult");
+    	
+		Map<String,Object> onChangeParams = new HashMap<String,Object>();
+		onChangeParams.put("conditionValueLoc", "ELEMENT_VALUES");
+		  
+		chkBx.getEvent("change").setParameters(onChangeParams);
+		    	
+    	container.addElement("center",chkBx);
+    	
+    	XPlatUIPrimitiveElement displayTxt = this.primElemFac_.makeTextBox("displayTxt", true, currTxt, null, true, this.rMan_.getString("ntprops.text"), false);
+    	container.addElement("center",displayTxt);
+    	
+    	displayTxt.setParameter("disabled", (this.noteToEdit_ != null ? !(this.noteToEdit_.isInteractive()) : true));
+    	displayTxt.setParameter("style", "width: 95%; min-height: 7em;");
+    	displayTxt.setParameter("justifiedLabel", true);
+    	displayTxt.setValidity("isInteractive", "true");
+    	displayTxt.setParameter("bundleAs", "textResult");
+    	
+    	this.xplatDialog_.addDefaultState_("isInteractive", (this.noteToEdit_ != null ? new Boolean(this.noteToEdit_.isInteractive()).toString() : "false"));
+    	
+    }
+    
+    
+    //////////////////////////
+    // buildLayoutPropsTab
+    //////////////////////////
+    //
+    //
+    private void buildLayoutPropsTab(XPlatUICollectionElement container) {
+    	List<NamedColor> ncList = new ArrayList<NamedColor>();
+    	DataAccessContext dacx = scfh_.getDataAccessContext();
+        Iterator<String> ckit = dacx.getColorResolver().getColorKeys();
+                
+        while (ckit.hasNext()) {
+        	String colorKey = ckit.next();
+        	NamedColor nc = dacx.getColorResolver().getNamedColor(colorKey);
+        	ncList.add(new NamedColor(nc));
+        }
+        
+        Collections.sort(ncList); 
+        
+        Map<String,Object> colorVals = new HashMap<String,Object>();
+        int count = 0; 
+        
+        for(NamedColor nc : ncList) {
+        	Map<String,String> colorMap = new HashMap<String,String>();
+        	colorMap.put("id", nc.key);
+        	colorMap.put("label", nc.name);
+        	colorMap.put("index",Integer.toString(count));
+        	colorMap.put("color", "#"+Integer.toHexString(nc.color.getRGB()).substring(2));
+        	colorVals.put(nc.key,colorMap);
+        	count++;
+        }
+        
+        XPlatUIPrimitiveElement colorCombo = this.primElemFac_.makeColorChooserComboBox(
+    		"note_color", (this.nprops_ == null) ? NoteProperties.DEFAULT_COLOR : this.nprops_.getColorName(), 
+			null, this.rMan_.getString("ntprops.color"), colorVals
+		);
+        colorCombo.setFloat(true);
+        colorCombo.setParameter("bundleAs", "colorResult");
+        
+        XPlatUIPrimitiveElement colorEdBtn = this.primElemFac_.makeBasicButton(this.rMan_.getString("colorSelector.colorNew"), "launch_color_ed", "CLIENT_LAUNCH_COLOR_EDITOR", null);
+        colorEdBtn.setFloat(true);
+        colorEdBtn.setParameter("colorChoices", ncList);
+        
+        Map<String,Object> txtJustVals = new HashMap<String,Object>();
+        Vector<ChoiceContent> choices = MultiLineRenderSupport.getJustifyTypes(this.rMan_);
+        
+        for(ChoiceContent tj : choices) {
+        	txtJustVals.put(new Integer(tj.val).toString(),tj.name);
+        }
+        
+        XPlatUIPrimitiveElement txtJust = this.primElemFac_.makeTxtComboBox(
+        	"txt_just"
+    		, Integer.toString((this.nprops_ == null) ? MultiLineRenderSupport.DEFAULT_JUST : this.nprops_.getJustification())
+    		, null, this.rMan_.getString("ntprops.justType"), txtJustVals
+		);
+        txtJust.setParameter("bundleAs", "justResult");
+        
+        FontOverride fontOverride = (this.nprops_ != null ? this.nprops_.getFontOverride() : null);
+        
+        XPlatUIPrimitiveElement fontOvr = this.primElemFac_.makeCheckbox(
+    		this.rMan_.getString("ntprops.overFont"), "CLIENT_SET_ELEMENT_CONDITION", "fontOverride",fontOverride != null
+		);
+		Map<String,Object> onChangeParams = new HashMap<String,Object>();
+		onChangeParams.put("conditionValueLoc", "ELEMENT_VALUES");
+		  
+		fontOvr.getEvent("change").setParameters(onChangeParams);
+        fontOvr.setFloat(true);
+        // Special CSS layout
+        fontOvr.setParameter("class","FontOverride");
+
+        int min = FontManager.MIN_SIZE;
+        int max = FontManager.MAX_SIZE;
+        Map<String,Object> fontSizes = new HashMap<String,Object>();
+        for (int i = min; i <= max; i++) {
+          fontSizes.put(new Integer(i).toString(),new Integer(i).toString() + " pt");
+        }
+        
+        Font bFont = this.scfh_.getDataAccessContext().getFontManager().getOverrideFont(FontManager.NOTES, fontOverride).getFont();
+        
+        XPlatUIPrimitiveElement fontSize = this.primElemFac_.makeTxtComboBox(
+    		"note_font_size", new Integer(bFont.getSize()).toString(), null, this.rMan_.getString("fontDialog.sizeLabel"), fontSizes
+		);
+        fontSize.setFloat(true);
+        // Special CSS class because this is a small combo box
+        fontSize.setParameter("class","FontOverrideSize");
+        fontSize.setParameter("bundleAs", "size");
+        fontSize.setParameter("bundleIn", "fontOverrideResult");
+        
+        XPlatUIPrimitiveElement fontSerif = this.primElemFac_.makeCheckbox(
+    		this.rMan_.getString("fontDialog.serifLabel"), null, "note_font_serif"
+    		,(fontOverride != null ? (!fontOverride.makeSansSerif) : false)
+		);
+        fontSerif.setFloat(true);
+        fontSerif.setParameter("bundleAs", "makeSansSerif");
+        fontSerif.setParameter("bundleIn", "fontOverrideResult");
+        
+        XPlatUIPrimitiveElement fontBold = this.primElemFac_.makeCheckbox(
+    		this.rMan_.getString("fontDialog.boldLabel"), null, "note_font_bold"
+    		,(fontOverride != null ? (fontOverride.makeBold) : false)
+		);
+        fontBold.setFloat(true);
+        fontBold.setParameter("bundleAs", "makeBold");
+        fontBold.setParameter("bundleIn", "fontOverrideResult");
+        
+        XPlatUIPrimitiveElement fontItal = this.primElemFac_.makeCheckbox(
+    		this.rMan_.getString("fontDialog.italicLabel"), null, "note_font_italics"
+    		,(fontOverride != null ? (fontOverride.makeItalic) : false)
+		);
+        fontItal.setFloat(true);
+        fontItal.setParameter("bundleAs", "makeItalic");
+        fontItal.setParameter("bundleIn", "fontOverrideResult");
+        
+        XPlatUICollectionElement topCenter = new XPlatUICollectionElement(XPlatUIElementType.PANE);
+        topCenter.createList("main");
+        container.addElement("center", topCenter);
+        XPlatUICollectionElement midCenter = new XPlatUICollectionElement(XPlatUIElementType.PANE);
+        midCenter.createList("main");
+        container.addElement("center", midCenter);
+        XPlatUICollectionElement btmCenter = new XPlatUICollectionElement(XPlatUIElementType.PANE);
+        btmCenter.createList("main");
+        container.addElement("center", btmCenter);
+        
+        topCenter.addElement("main", colorCombo);
+        topCenter.addElement("main", colorEdBtn);
+            	
+    	midCenter.addElement("main", txtJust);
+    	
+    	btmCenter.addElement("main", fontOvr);
+    	btmCenter.addElement("main", fontSize);
+    	btmCenter.addElement("main", fontSerif);
+    	btmCenter.addElement("main", fontBold);
+    	btmCenter.addElement("main", fontItal);
+    	
+    	fontSize.setValidity("fontOverride", "true");
+    	fontSerif.setValidity("fontOverride", "true");
+    	fontBold.setValidity("fontOverride", "true");
+    	fontItal.setValidity("fontOverride", "true");
+    	
+    	this.xplatDialog_.addDefaultState_("fontOverride", (this.noteToEdit_ != null ? new Boolean(fontOverride != null).toString() : "false"));
     }
   
     ////////////////////////////////////////////////////////////////////////////
@@ -426,97 +687,72 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     ////////////////////////////////////////////////////////////////////////////
      
     
-    //TODO: Implement XPlatDialogs
-    public XPlatUIDialog getDialog() {
-    	return null;
-    }
+	  public XPlatUIDialog getDialog() {
+		  
+		  Map<String,String> clickActions = new HashMap<String,String>();
+		  clickActions.put("cancel", "CLIENT_CANCEL_COMMAND");
+		  clickActions.put("ok", "DO_NOTHING");
+		  
+		  List<XPlatUIElement> btns = this.primElemFac_.makeOkCancelButtons(clickActions.get("ok"),clickActions.get("cancel"),false); 
+		  
+		  this.xplatDialog_.setCancel(clickActions.get("cancel"));
+		  
+		  this.xplatDialog_.replaceElementsInCollection("main","bottom",btns);
+		  
+		  return xplatDialog_;
+	  }	  
+	  
+	  
+	  public XPlatUIDialog getDialog(FlowKey okKeyVal) {
+		  
+		  Map<String,String> clickActions = new HashMap<String,String>();
+		  clickActions.put("cancel", "CLIENT_CANCEL_COMMAND");
+		  clickActions.put("ok", okKeyVal.toString());
+		  
+		  List<XPlatUIElement> btns = this.primElemFac_.makeOkCancelButtons(clickActions.get("ok"),clickActions.get("cancel"),false); 
+		  
+		  this.xplatDialog_.setCancel(clickActions.get("cancel"));
+		  
+		  this.xplatDialog_.replaceElementsInCollection("main","bottom",btns);
+		  
+		  return xplatDialog_;
+	  }
     
-    public XPlatUIDialog getDialog(FlowKey keyVal) {
-    	return null;
-    }
     
-    
-    public boolean isModal() {
+	  public boolean dialogIsModal() {
       return (true);
     }
     
-    /***************************************************************************
-    **
-    ** Get Html
-    */
-    
-    public String getHTML(String hiddenForm) {
-      StringBuffer buf = new StringBuffer();
-      buf.append("<html>\n");
-      buf.append("<body>\n");
-      buf.append("<center>\n");
-      buf.append("  <form method=\"get\" action=\"");
-      String servPath = ((SerializableDialogPlatform)scfh_.getDialogPlatform()).getServletPath();
-      buf.append(servPath);
-      buf.append("\">\n");
-      buf.append("    <p>Note Text: <input type=\"text\" name=\"note\" value=\"" + defaultName_ + "\"></p>");
-      buf.append("    <p>FIX ME LOTS OF FIELDS MISSING</p>");
-      buf.append("    <p><input type=\"submit\" name=\"formButton\" value=\"OK\"><input type=\"submit\" name=\"formButton\" value=\"Cancel\"></p>");
-      buf.append(hiddenForm);
-      buf.append("  </form>");
-      buf.append("</center>\n");
-      buf.append("</body>");
-      buf.append("</html>");
-      return (buf.toString());
-    }   
-    
-    /***************************************************************************
-    **
-    ** Return the parameters we are interested in:
-    */
-    
-    public Set<String> getRequiredParameters() {
-      HashSet<String> retval = new HashSet<String>();
-      retval.add("note");
-      retval.add("action");
-      return (retval);
-    } 
+	  // Stub to satisfy interface
+	  public String getHTML(String hiddenForm) {
+		  return null;
+	  }   
+        
+	  // We require the 'name' field to not be null/empty
+	  // All other values can be blank
+	  public SimpleUserFeedback checkForErrors(UserInputs ui) { 
+	      NoteRequest crq = (NoteRequest)ui; 
 
-    /***************************************************************************
-    **
-    ** Talk to the expert!
-    ** 
-    */
+	      if (crq.nameResult.equals("")) {
+	        String message = this.rMan_.getString("ntprops.badName");
+	        String title = this.rMan_.getString("ntprops.badNameTitle");
+	        crq.clearHaveResults();
+	        return (new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title));
+	      } 
+	      // A -1 size means there is no font override, therefor we need to
+	      // null this out
+	      if(crq.fontOverrideResult != null && crq.fontOverrideResult.size <= 0) {
+	    	  crq.fontOverrideResult = null;
+	      }
+	      crq.setHasResults();
+		  return null;
+	  }
       
-    public SimpleUserFeedback checkForErrors(Map<String, String> params) {
-      String val = params.get("note");
-      if ((val == null) || val.trim().equals("")) {
-        ResourceManager rMan = scfh_.getBTState().getRMan();
-        String message = rMan.getString("ntprops.badName");
-        String title = rMan.getString("ntprops.badNameTitle");
-        SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
-        return (suf);
-      }
-      return (null);
-    }
-    
-    public SimpleUserFeedback checkForErrors(UserInputs ui) { 	
-    	return null;
-    }
-      
-    /***************************************************************************
-    **
-    ** Do the bundle 
-    */
-    
-    public ServerControlFlowHarness.UserInputs bundleForExit(Map<String, String> params) {
-      String val = params.get("note");  
-      NoteRequest crq = new NoteRequest();
-      crq.nameResult = val;
-    //  crq.colorResult = colorWidget_.getCurrentColor(); 
-    //  crq.fontOverrideResult = (doOverFontBox_.isSelected()) ? fsp_.getFontResult() : null;
-    //  crq.interactiveResult = doInteractiveBox_.isSelected();
-    //  crq.textResult = (crq.interactiveResult) ? textField_.getText().trim() : "";
-    //  ChoiceContent justSelection = (ChoiceContent)justCombo_.getSelectedItem();
-    //  crq.justResult = justSelection.val;          
-   //   crq.haveResult = true;
-      return (crq);
-    }
+	  // Stub to satisfy interface
+	  public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+		  // TODO Auto-generated method stub
+		  return null;
+	  }
   }
   
   /***************************************************************************
@@ -526,7 +762,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
   */
 
   public static class NoteRequest implements ServerControlFlowHarness.UserInputs {
-    private boolean haveResult;
+    
     public String textResult;
     public String nameResult;
     public int justResult;
@@ -534,15 +770,48 @@ public class NotePropertiesDialogFactory extends DialogFactory {
     public boolean interactiveResult;
     public FontManager.FontOverride fontOverrideResult;
     
+    private boolean haveResult;
+    
+    public NoteRequest() {
+
+    }
+    
+    // For serialization when null fields are excluded
+    public NoteRequest(boolean forTransit) {
+    	haveResult = true;
+    	textResult = "";
+    	nameResult = "";
+    	justResult = -1;
+    	colorResult = "";
+    	interactiveResult = false;
+    	fontOverrideResult = new FontManager.FontOverride(-1,false,false,false);	
+    }
+    
     public void clearHaveResults() {
       haveResult = false;
       return;
-    }   
+    }
+    
+    public void setHasResults() {
+    	haveResult = true;
+    	return;
+    }
+    
     public boolean haveResults() {
-      return (haveResult);
+        return (haveResult);
     }  
+      
     public boolean isForApply() {
-      return (false);
+        return (false);
+    }
+    
+    // setter/getter required for serialization
+    public void setHaveResult(boolean result) {
+    	this.haveResult = result;
+    	return;
+    }
+    public boolean getHaveResult() {
+    	return this.haveResult;
     }
   }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -45,6 +46,7 @@ import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.ItemRenderBase;
 import org.systemsbiology.biotapestry.ui.LinkBusDrop;
@@ -152,11 +154,11 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   */
   
   public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, 
-                     DataAccessContext rcx, Object miscInfo) {
+                     DataAccessContext rcx, IRenderer.Mode mode, Object miscInfo) {
   	
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -165,24 +167,24 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   	
   	Integer majorLayer = DrawTree.ACTIVE_PATH_LAYER;
   	Integer minorLayer = DrawTree.MINOR_TEXT_LAYER;
-    BusProperties bp = rcx.getLayout().getLinkProperties(item.getID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(item.getID());
    
     DrawTree dTree = new DrawTree(bp, this, selected, rcx);
     
     LinkageExportForWeb lefw = new LinkageExportForWeb();
     
-    LinkageCacheGroup group = new LinkageCacheGroup(item, lefw, bp.getSourceTag(), rcx.getLayout().getSharedItems(item.getID()));
+    LinkageCacheGroup group = new LinkageCacheGroup(item, lefw, bp.getSourceTag(), rcx.getCurrentLayout().getSharedItems(item.getID()));
     
-    DataAccessContext rcxNO = new DataAccessContext(rcx);
-    rcxNO.oso = null;
-    dTree.renderToCache(group, this, bp, ((AugmentedDisplayOptions)miscInfo).skipDrops, rcxNO);
+    StaticDataAccessContext rcxNO = new StaticDataAccessContext(rcx);
+    rcxNO.setOSO(null);
+    dTree.renderToCache(group, this, bp, ((AugmentedDisplayOptions)miscInfo).skipDrops, rcxNO, mode);
     
     // Call exportLinkages after renderToCache, so that the resolved draw styles are set for all DrawTreeSegments
     dTree.exportLinkages(lefw, rcxNO, bp);
     
-    Font mFont = rcx.fmgr.getFont(FontManager.LINK_LABEL);
+    Font mFont = rcx.getFontManager().getFont(FontManager.LINK_LABEL);
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    String label = bp.getLabel(rcx.getGenome());       
+    String label = bp.getLabel(rcx.getCurrentGenome());       
     if ((label != null) && (!label.trim().equals(""))) {
       Point2D txtLoc = bp.getTextPosition();
       float txtX = (txtLoc == null) ? 0.0F : (float)txtLoc.getX();
@@ -200,11 +202,11 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
       }
       AffineTransform trans = new AffineTransform();
       trans.rotate(radians, txtX, txtY);
-      Color textCol = (rcx.isGhosted()) ? dop.getInactiveGray() : bp.getColor(rcx.cRes);
+      Color textCol = (rcx.isGhosted()) ? dop.getInactiveGray() : bp.getColor(rcx.getColorResolver());
 
       // In the web application, push the same transformation to the shape stream,
       // because the transform will NOT be serialized from the TextShape in ModalShapeJSONizer..
-      if (rcx.forWeb) {
+      if (rcx.isForWeb()) {
     	  ModelObjectCache.PushTransformOperation pushTrans = new ModelObjectCache.PushTransformOperation(trans);    	  
     	  group.addShape(pushTrans, majorLayer, minorLayer);
       }
@@ -215,7 +217,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
 
       // In the web application, push a pop transformation to the shape stream,
       // so that the above transform for the TextShape will be popped in the web client.
-      if (rcx.forWeb) {
+      if (rcx.isForWeb()) {
     	  ModelObjectCache.PopTransformOperation popTrans = new ModelObjectCache.PopTransformOperation();    	  
     	  group.addShape(popTrans, majorLayer, minorLayer);
       }
@@ -243,8 +245,8 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   public Intersection intersectBusForSelectedDrops(GenomeItem item, DataAccessContext rcx,                                              
                                                    Point2D pt, Set<String> omittedDrops) {
 
-    BusProperties bp = rcx.getLayout().getLinkProperties(item.getID());
-    double useDiam = ((2.0 * rcx.pixDiam) > INTERSECT_TOL) ? 2.0 * rcx.pixDiam : INTERSECT_TOL;
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(item.getID());
+    double useDiam = ((2.0 * rcx.getPixDiam()) > INTERSECT_TOL) ? 2.0 * rcx.getPixDiam() : INTERSECT_TOL;
     LinkProperties.DistancedLinkSegID dslsid = bp.intersectBusSegment(rcx, pt, omittedDrops, useDiam);
     return ((dslsid == null) ? null : new Intersection(item.getID(), new MultiSubID(dslsid.segID), dslsid.distance, true));
   }
@@ -257,7 +259,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   
   public boolean intersectsLabel(GenomeItem item, LinkProperties lp, DataAccessContext rcx, Point2D pt) {
 
-    Rectangle2D bounds = labelBounds(rcx.getGenome(), item, lp, rcx.getFrc(), rcx.fmgr);    
+    Rectangle2D bounds = labelBounds(rcx.getCurrentGenome(), item, lp, rcx.getFrc(), rcx.getFontManager());    
     if (bounds == null) {
       return (false);
     }
@@ -272,7 +274,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   
   public boolean intersectsLabel(GenomeItem item, LinkProperties lp, DataAccessContext rcx, Rectangle rect) {
 
-    Rectangle2D bounds = labelBounds(rcx.getGenome(), item, lp, rcx.getFrc(), rcx.fmgr);    
+    Rectangle2D bounds = labelBounds(rcx.getCurrentGenome(), item, lp, rcx.getFrc(), rcx.getFontManager());    
     if (bounds == null) {
       return (false);
     }
@@ -348,7 +350,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     MultiSubID retSub = null;
     
     String itemID = item.getID();
-    BusProperties bp = rcx.getLayout().getLinkProperties(itemID);    
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(itemID);    
     List<LinkSegmentID> segs = bp.intersectBusSegmentsWithRect(rcx, null, testRect, false);
     Iterator<LinkSegmentID> sit = segs.iterator();
     while (sit.hasNext()) {
@@ -370,7 +372,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   
   public Rectangle getBoundsOfSegments(GenomeItem item, DataAccessContext irx,  MultiSubID subIDs, boolean doLinkLabels) {
                                                                         
-    BusProperties bp = irx.getLayout().getLinkProperties(item.getID());
+    BusProperties bp = irx.getCurrentLayout().getLinkProperties(item.getID());
     double minX = Double.POSITIVE_INFINITY;
     double minY = Double.POSITIVE_INFINITY;
     double maxX = Double.NEGATIVE_INFINITY;
@@ -423,7 +425,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     // rotate and bound the text):
     //
     if ((subIDs == null) && doLinkLabels) {
-      String label = bp.getLabel(irx.getGenome());       
+      String label = bp.getLabel(irx.getCurrentGenome());       
       if ((label != null) && (!label.trim().equals(""))) {
         Point2D txtLoc = bp.getTextPosition();
         double txtX = (txtLoc == null) ? 0.0 : (double)txtLoc.getX();
@@ -458,7 +460,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   
   public Rectangle getBoundsForSinglePath(GenomeItem item, DataAccessContext irx) {
                                                                         
-    LinkProperties lp = irx.getLayout().getLinkProperties(item.getID());
+    LinkProperties lp = irx.getCurrentLayout().getLinkProperties(item.getID());
     if (lp == null) {
       System.err.println("No props for " + item.getID());
     }
@@ -532,7 +534,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
       new DrawTreeModelDataSource.ModelLineStyleModulation();
     DisplayOptions dop = icx.getDisplayOptsSource().getDisplayOptions();
     retval.linkModulation = (dop == null) ? DisplayOptions.NO_LINK_ACTIVITY_DISPLAY : dop.getLinkActivity();
-    retval.checkForActive = (icx.getGenome() instanceof GenomeInstance);
+    retval.checkForActive = (icx.getCurrentGenome() instanceof GenomeInstance);
     retval.branchRenderMode = (dop == null) ? DisplayOptions.NO_BUS_BRANCHES : dop.getBranchMode();
     retval.forModules = false;
 
@@ -548,9 +550,9 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     getLinkLineStyleModulation(DataAccessContext icx, String linkID, LinkProperties lp, 
                                ModelLineStyleModulation modulationInfo) {
     
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
-    if (!lp.linkIsInModel(icx.getGenomeSource(), genome, icx.oso, linkID)) {
+    if (!lp.linkIsInModel(icx.getGenomeSource(), genome, icx.getOSO(), linkID)) {
       return (null);
     }
     
@@ -571,6 +573,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
           (linkageActivity == LinkageInstance.VARIABLE)) {
         retval.perLinkActivity = new Double(li.getActivityLevel(gi));
       }
+      retval.simDiff = li.getSimulationLevel();
     }
     retval.targetOffset = (retval.sign == Linkage.POSITIVE) ? POSITIVE_DROP_OFFSET_ : 0.0;  
     
@@ -584,16 +587,16 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
   
   public DrawTreeModelDataSource.ModelDataForTip getModelDataForTip(DataAccessContext icx, String linkID, LinkProperties lp) {    
    
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     DrawTreeModelDataSource.ModelDataForTip retval = new DrawTreeModelDataSource.ModelDataForTip();
     Linkage link = genome.getLinkage(linkID);
     retval.sign = link.getSign();
     Node node = genome.getNode(link.getTarget());
-    NodeProperties nProp = icx.getLayout().getNodeProperties(node.getID());
+    NodeProperties nProp = icx.getCurrentLayout().getNodeProperties(node.getID());
     INodeRenderer render = nProp.getRenderer();
     int land = link.getLandingPad();
-    retval.padWidth = render.getLandingPadWidth(land, node, icx.getLayout());
-    retval.arrival = render.getArrivalDirection(land, node, icx.getLayout());
+    retval.padWidth = render.getLandingPadWidth(land, node, icx.getCurrentLayout());
+    retval.arrival = render.getArrivalDirection(land, node, icx.getCurrentLayout());
     Point2D trgLoc = nProp.getLocation();
     Vector2D lanPO = render.getLandingPadOffset(land, node, retval.sign, icx);
     retval.lanLoc = lanPO.add(trgLoc);

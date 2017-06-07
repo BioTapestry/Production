@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,8 @@ import java.util.TreeSet;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -64,6 +65,7 @@ import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -110,7 +112,7 @@ public class LinkSupport {
   ** Answer if source pad can accept a link
   */  
   
-  public static boolean sourcePadIsClear(BTState appState, Genome genome, String id, int padNum, boolean shared) {
+  public static boolean sourcePadIsClear(UIComponentSource uics, DataAccessContext dacx, Genome genome, String id, int padNum, boolean shared) {
     //
     // Crank all the links looking for the node as source, and reject if the
     // launch pad matches ours.
@@ -123,16 +125,16 @@ public class LinkSupport {
       // must init the link off a tree corner, not the node.
       //
       if (lnk.getSource().equals(id)) { // && (lnk.getLaunchPad() == padNum)) {
-        ResourceManager rMan = appState.getRMan();
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        ResourceManager rMan = dacx.getRMan();
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("addLink.onlyOneSourcePad"), 
                                       rMan.getString("addLink.placementErrorTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
       }
       if (shared && lnk.getTarget().equals(id) && (lnk.getLandingPad() == padNum)) {
-        ResourceManager rMan = appState.getRMan();
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        ResourceManager rMan = dacx.getRMan();
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("addLink.cannotShareSourcePad"), 
                                       rMan.getString("addLink.placementErrorTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -236,8 +238,8 @@ public class LinkSupport {
   ** Do pad swaps for specialty layouts
   */  
   
-   public static void specialtyPadChanges(BTState appState, Map<String, PadCalculatorToo.PadResult> padChanges, 
-                                          DataAccessContext rcx, // GenomeSource gSrc, String genomeID, 
+   public static void specialtyPadChanges(Map<String, PadCalculatorToo.PadResult> padChanges, 
+                                          StaticDataAccessContext rcx,
                                           UndoSupport support, InvertedSrcTrg ist) {
      //
      // Wiggle pad assignments based on node locations:
@@ -247,7 +249,7 @@ public class LinkSupport {
      while (pcit.hasNext()) {
        String linkID = pcit.next();
        PadCalculatorToo.PadResult pres = padChanges.get(linkID);
-       Linkage link = rcx.getGenome().getLinkage(linkID);
+       Linkage link = rcx.getCurrentGenome().getLinkage(linkID);
        // Have to make changes to all shared source links! (YUK)
        String src = link.getSource();
        HashSet<String> allLinks = new HashSet<String>();
@@ -255,7 +257,7 @@ public class LinkSupport {
        Iterator<String> alit = forSrc.iterator();
        while (alit.hasNext()) {
          String nlID = alit.next(); 
-         Linkage nextLink = rcx.getGenome().getLinkage(nlID);
+         Linkage nextLink = rcx.getCurrentGenome().getLinkage(nlID);
          if (pres.launch != nextLink.getLaunchPad()) {
            allLinks.add(nextLink.getID());
          }
@@ -265,11 +267,11 @@ public class LinkSupport {
        // So we now gotta make sure _all_ subset models are kept consistent!
        //
   
-       changeLinkSourceCore(appState, pres.launch, rcx, support, allLinks);
+       changeLinkSourceCore(pres.launch, rcx, support, allLinks);
            
-       link = rcx.getGenome().getLinkage(linkID);  // may have changed in above operation: handle is stale        
+       link = rcx.getCurrentGenome().getLinkage(linkID);  // may have changed in above operation: handle is stale        
        if (pres.landing != link.getLandingPad()) {      
-         changeLinkTargetCore(appState, pres.landing, rcx, support, linkID);
+         changeLinkTargetCore(pres.landing, rcx, support, linkID);
        }
      }
      return;
@@ -280,9 +282,8 @@ public class LinkSupport {
   ** Swap link pads
   */  
  
-  public static boolean swapLinkPads(BTState appState, Intersection cro, Intersection inter, 
-                                     Intersection.PadVal newPad, String id, DataAccessContext rcx, 
-                                     SwapType swapMode, String myLinkId) {
+  public static boolean swapLinkPads(Intersection.PadVal newPad, String id, StaticDataAccessContext rcx, 
+                                     SwapType swapMode, String myLinkId, UndoFactory uFac) {
     
     //
     // Fix for BT-10-28-09:1. Figure out if we need to mess with source/target swap 
@@ -290,7 +291,7 @@ public class LinkSupport {
     // are shared.  Same with source swap!
     //
     
-    INodeRenderer nodeRenderer = rcx.getLayout().getNodeProperties(id).getRenderer();
+    INodeRenderer nodeRenderer = rcx.getCurrentLayout().getNodeProperties(id).getRenderer();
     boolean swapNodeShared = nodeRenderer.sharedPadNamespaces();
 
     //
@@ -299,7 +300,7 @@ public class LinkSupport {
     // do for sources.
     //
     
-    Linkage myLink = rcx.getGenome().getLinkage(myLinkId);
+    Linkage myLink = rcx.getCurrentGenome().getLinkage(myLinkId);
     int oldPad = (swapMode == SwapType.TARGET_SWAP) ? myLink.getLandingPad() : myLink.getLaunchPad();
        
     HashSet<String> targLinksToSwapForward = new HashSet<String>();
@@ -307,7 +308,7 @@ public class LinkSupport {
     String aSrcLinkToSwapForward = (swapMode == SwapType.SOURCE_SWAP) ? myLinkId : null;  
     String aSrcLinkToSwapBack = null;      
 
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       if ((swapMode == SwapType.TARGET_SWAP) || swapNodeShared) {
@@ -337,7 +338,7 @@ public class LinkSupport {
     // both must be holders):
     //
     
-    Node targNode = rcx.getGenome().getNode(id);
+    Node targNode = rcx.getCurrentGenome().getNode(id);
     if (targNode.getNodeType() == Node.GENE) {
       Gene targGene = (Gene)targNode;
       if (targGene.getNumRegions() > 0) {
@@ -358,25 +359,25 @@ public class LinkSupport {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState, "undo.swapLinkPads"); 
+    UndoSupport support = uFac.provideUndoSupport("undo.swapLinkPads", rcx); 
     
     Iterator<String> tfit = targLinksToSwapForward.iterator();
     while (tfit.hasNext()) {
       String linkID = tfit.next();
-      changeLinkTargetCore(appState, newPad.padNum, rcx, support, linkID);      
+      changeLinkTargetCore(newPad.padNum, rcx, support, linkID);      
     }
     Iterator<String> tbit = targLinksToSwapBack.iterator();
     while (tbit.hasNext()) {
       String linkID = tbit.next();
-      changeLinkTargetCore(appState, oldPad, rcx, support, linkID);      
+      changeLinkTargetCore(oldPad, rcx, support, linkID);      
     }
     if (aSrcLinkToSwapForward != null) {
-      Set<String> allLinks = rcx.getLayout().getSharedItems(aSrcLinkToSwapForward);
-      changeLinkSourceCore(appState, newPad.padNum, rcx, support, allLinks);
+      Set<String> allLinks = rcx.getCurrentLayout().getSharedItems(aSrcLinkToSwapForward);
+      changeLinkSourceCore(newPad.padNum, rcx, support, allLinks);
     }
     if (aSrcLinkToSwapBack != null) {
-      Set<String> allLinks = rcx.getLayout().getSharedItems(aSrcLinkToSwapBack);
-      changeLinkSourceCore(appState, oldPad, rcx, support, allLinks);
+      Set<String> allLinks = rcx.getCurrentLayout().getSharedItems(aSrcLinkToSwapBack);
+      changeLinkSourceCore(oldPad, rcx, support, allLinks);
     }    
     support.finish();     
     return (true); 
@@ -387,18 +388,18 @@ public class LinkSupport {
   ** Change the link target. Shared because it is used by a couple different control flows
   */  
  
-  public static boolean changeLinkTarget(BTState appState, Intersection cro, Intersection inter, 
-                                         List<Intersection.PadVal> padCand, String id, DataAccessContext rcxT) {
+  public static boolean changeLinkTarget(Intersection cro, List<Intersection.PadVal> padCand, String id, 
+                                         StaticDataAccessContext rcxT, UndoFactory uFac) {
     
 
     
     String lid = cro.getObjectID();  // Remember... this may not be the link we want!
-    BusProperties bp = rcxT.getLayout().getLinkProperties(lid);
+    BusProperties bp = rcxT.getCurrentLayout().getLinkProperties(lid);
     LinkSegmentID[] linkIDs = cro.segmentIDsFromIntersect();
     // Only allowed to perform this op if there is only one link through the segment! 
     Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
     String myLinkId = throughSeg.iterator().next();
-    Linkage link = rcxT.getGenome().getLinkage(myLinkId);
+    Linkage link = rcxT.getCurrentGenome().getLinkage(myLinkId);
     int targPad = link.getLandingPad();
     
     //
@@ -418,7 +419,7 @@ public class LinkSupport {
     DBGeneRegion targReg = null;
     Gene targGene = null;
     boolean needModCheck = false;
-    Node targNode = rcxT.getGenome().getNode(id);
+    Node targNode = rcxT.getCurrentGenome().getNode(id);
     if (targNode.getNodeType() == Node.GENE) {
       targGene = (Gene)targNode;
       if (targGene.getNumRegions() > 0) {
@@ -439,7 +440,7 @@ public class LinkSupport {
       if (!pad.okEnd) {
         continue;
       }  
-      if (!targPadIsClear(rcxT.getGenome(), rcxT.getLayout(), id, pad.padNum)) {
+      if (!targPadIsClear(rcxT.getCurrentGenome(), rcxT.getCurrentLayout(), id, pad.padNum)) {
         continue;
       }
       
@@ -466,13 +467,10 @@ public class LinkSupport {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState, "undo.changeLinkTarget");     
+    UndoSupport support = uFac.provideUndoSupport("undo.changeLinkTarget", rcxT);     
+    changeLinkTargetCore(winner.padNum, rcxT, support, myLinkId);   
+    support.finish();
     
- 
-        
-    changeLinkTargetCore(appState, winner.padNum, rcxT, support, myLinkId);   
-
-    support.finish();     
     return (true); 
   }
   
@@ -481,16 +479,16 @@ public class LinkSupport {
   ** Change the link target gene module.
   */  
  
-  public static boolean changeLinkTargetGeneModule(BTState appState, Intersection cro,
-                                                   List<Intersection.PadVal> padCand, String id, DataAccessContext rcxT) {
+  public static boolean changeLinkTargetGeneModule(Intersection cro, List<Intersection.PadVal> padCand, String id, 
+                                                   StaticDataAccessContext rcxT, UndoFactory uFac) {
     
     String lid = cro.getObjectID();  // Remember... this may not be the link we want!
-    BusProperties bp = rcxT.getLayout().getLinkProperties(lid);
+    BusProperties bp = rcxT.getCurrentLayout().getLinkProperties(lid);
     LinkSegmentID[] linkIDs = cro.segmentIDsFromIntersect();
     // Only allowed to perform this op if there is only one link through the segment! 
     Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
     String myLinkId = throughSeg.iterator().next();
-    Linkage link = rcxT.getGenome().getLinkage(myLinkId);
+    Linkage link = rcxT.getCurrentGenome().getLinkage(myLinkId);
     int targPad = link.getLandingPad();
     
     //
@@ -506,7 +504,7 @@ public class LinkSupport {
     // We must actually be switching modules, or we reject the change. Might be removing from all modules, however:
     //
     
-    Node targNode = rcxT.getGenome().getNode(id);
+    Node targNode = rcxT.getCurrentGenome().getNode(id);
     if (targNode.getNodeType() != Node.GENE) {
       return (false);
     }
@@ -531,7 +529,7 @@ public class LinkSupport {
       if (!pad.okEnd) {
         continue;
       }  
-      if (!targPadIsClear(rcxT.getGenome(), rcxT.getLayout(), id, pad.padNum)) {
+      if (!targPadIsClear(rcxT.getCurrentGenome(), rcxT.getCurrentLayout(), id, pad.padNum)) {
         continue;
       }
       
@@ -562,8 +560,8 @@ public class LinkSupport {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState, "undo.changeLinkTarget");      
-    switchLinkRegion(appState, support, myLinkId, winner.padNum, rcxT);
+    UndoSupport support = uFac.provideUndoSupport("undo.changeLinkTarget", rcxT);      
+    switchLinkRegion(support, myLinkId, winner.padNum, rcxT);
     support.finish();     
     return (true); 
   }
@@ -573,23 +571,23 @@ public class LinkSupport {
   ** Move all links in all modules to new cis-reg region
   */
        
-  public static void switchLinkRegion(BTState appState, UndoSupport support, String linkKey, int newPad, DataAccessContext rcxT) {
+  public static void switchLinkRegion(UndoSupport support, String linkKey, int newPad, StaticDataAccessContext rcxT) {
 
     String baseLinkID = GenomeItemInstance.getBaseID(linkKey);
-    DataAccessContext rcxR = rcxT.getContextForRoot();
+    StaticDataAccessContext rcxR = rcxT.getContextForRoot();
   
     //
     // Go through each link, get its PadOffset, reposition it 
     //
   
-    changeLinkTargetCore(appState, newPad, rcxR, support, baseLinkID);
+    changeLinkTargetCore(newPad, rcxR, support, baseLinkID);
       
     Iterator<GenomeInstance> iit = rcxT.getGenomeSource().getInstanceIterator();
     while (iit.hasNext()) {
       GenomeInstance gi = iit.next();
       for (String liid : gi.returnLinkInstanceIDsForBacking(baseLinkID)) {
-        DataAccessContext daci = new DataAccessContext(rcxT, gi.getID());
-        changeLinkTargetCore(appState, newPad, daci, support, liid);
+        StaticDataAccessContext daci = new StaticDataAccessContext(rcxT, gi.getID());
+        changeLinkTargetCore(newPad, daci, support, liid);
       }  
     }   
     return;
@@ -600,12 +598,12 @@ public class LinkSupport {
   ** Change the link target: core routine
   */  
  
-  public static void changeLinkTargetCore(BTState appState, int padNum, DataAccessContext rcx, 
+  public static void changeLinkTargetCore(int padNum, StaticDataAccessContext rcx, 
                                           UndoSupport support, String myLinkId) {
     
-    Linkage link = rcx.getGenome().getLinkage(myLinkId);
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      GenomeInstance rootInstance = rcx.getGenomeAsInstance();
+    Linkage link = rcx.getCurrentGenome().getLinkage(myLinkId);
+    if (rcx.currentGenomeIsAnInstance()) {
+      GenomeInstance rootInstance = rcx.getCurrentGenomeAsInstance();
       Iterator<GenomeInstance> giit = rcx.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
@@ -614,18 +612,18 @@ public class LinkSupport {
           if (childLink != null) {
             GenomeChange undo = gi.changeLinkageTarget(childLink, padNum);
             if (support != null) {
-              support.addEdit(new GenomeChangeCmd(appState, rcx, undo));
-              ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+              support.addEdit(new GenomeChangeCmd(rcx, undo));
+              ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
               support.addEvent(mcev);
             }
           }
         }
       }
     } else {
-      GenomeChange undo = rcx.getGenome().changeLinkageTarget(link, padNum);
+      GenomeChange undo = rcx.getCurrentGenome().changeLinkageTarget(link, padNum);
       if (support != null) {
-        support.addEdit(new GenomeChangeCmd(appState, rcx, undo));                
-        ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+        support.addEdit(new GenomeChangeCmd(rcx, undo));                
+        ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }
     }
@@ -637,8 +635,9 @@ public class LinkSupport {
   ** Change the link source
   */  
  
-  public static boolean changeLinkSource(BTState appState, Intersection cro, Intersection inter, 
-                                          List<Intersection.PadVal> padCand, String id, DataAccessContext rcx) {
+  public static boolean changeLinkSource(UIComponentSource uics, Intersection cro,
+                                         List<Intersection.PadVal> padCand, String id, 
+                                         StaticDataAccessContext dacx, UndoFactory uFac) {
     
     int numCand = padCand.size();
     Intersection.PadVal winner = null;
@@ -648,7 +647,7 @@ public class LinkSupport {
       if (!pad.okStart) {
         continue;
       }  
-      if (!sourcePadIsClear(rcx.getGenome(), rcx.getLayout(), id, pad.padNum)) {
+      if (!sourcePadIsClear(dacx.getCurrentGenome(), dacx.getCurrentLayout(), id, pad.padNum)) {
         continue;
       }
       
@@ -667,14 +666,14 @@ public class LinkSupport {
     //
 
     String lid = cro.getObjectID();    
-    Set<String> allLinks = rcx.getLayout().getSharedItems(lid);
+    Set<String> allLinks = dacx.getCurrentLayout().getSharedItems(lid);
     Iterator<String> alit = allLinks.iterator();
     while (alit.hasNext()) {
       String nextLinkID = alit.next();
-      Linkage nextLink = rcx.getGenome().getLinkage(nextLinkID);
+      Linkage nextLink = dacx.getCurrentGenome().getLinkage(nextLinkID);
       if (!nextLink.getSource().equals(id)) {
-        ResourceManager rMan = appState.getRMan(); 
-        JOptionPane.showMessageDialog(appState.getTopFrame(),
+        ResourceManager rMan = dacx.getRMan(); 
+        JOptionPane.showMessageDialog(uics.getTopFrame(),
                                       rMan.getString("linkSrcChange.useNodeSwitch"),
                                       rMan.getString("linkSrcChange.useNodeSwitchTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -686,10 +685,10 @@ public class LinkSupport {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState, "undo.changeLinkSource");         
-      
-    changeLinkSourceCore(appState, winner.padNum, rcx, support, allLinks);    
-    support.finish();    
+    UndoSupport support = uFac.provideUndoSupport("undo.changeLinkSource", dacx);          
+    changeLinkSourceCore(winner.padNum, dacx, support, allLinks);    
+    support.finish();
+    
     return (true); 
   }
   
@@ -698,7 +697,7 @@ public class LinkSupport {
   ** Change the link source
   */  
  
-  public static void changeLinkSourceCore(BTState appState, int padNum, DataAccessContext rcxG,
+  public static void changeLinkSourceCore(int padNum, StaticDataAccessContext rcxG,
                                           UndoSupport support, Set<String> allLinks) {
    
     //
@@ -706,14 +705,14 @@ public class LinkSupport {
     //
     
     GenomeInstance rootInstance = null;
-    if (rcxG.getGenome() instanceof GenomeInstance) {
-      rootInstance = rcxG.getGenomeAsInstance();
+    if (rcxG.currentGenomeIsAnInstance()) {
+      rootInstance = rcxG.getCurrentGenomeAsInstance();
     }
     
     Iterator<String> alit = allLinks.iterator();
     while (alit.hasNext()) {
       String nextLinkID = alit.next();
-      Linkage nextLink = rcxG.getGenome().getLinkage(nextLinkID);
+      Linkage nextLink = rcxG.getCurrentGenome().getLinkage(nextLinkID);
       if (rootInstance != null) {
         Iterator<GenomeInstance> giit = rcxG.getGenomeSource().getInstanceIterator();
         while (giit.hasNext()) {
@@ -724,18 +723,18 @@ public class LinkSupport {
             if (childLink != null) {
               GenomeChange undo = gi.changeLinkageSource(childLink, padNum);
               if (support != null) {
-                support.addEdit(new GenomeChangeCmd(appState, rcxG, undo));
-                ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+                support.addEdit(new GenomeChangeCmd(rcxG, undo));
+                ModelChangeEvent mcev = new ModelChangeEvent(rcxG.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
                 support.addEvent(mcev);
               }
             }
           }
         }
       } else {
-        GenomeChange undo = rcxG.getGenome().changeLinkageSource(nextLink, padNum);
+        GenomeChange undo = rcxG.getCurrentGenome().changeLinkageSource(nextLink, padNum);
         if (support != null) {
-          support.addEdit(new GenomeChangeCmd(appState, rcxG, undo));                
-          ModelChangeEvent mcev = new ModelChangeEvent(rcxG.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+          support.addEdit(new GenomeChangeCmd(rcxG, undo));                
+          ModelChangeEvent mcev = new ModelChangeEvent(rcxG.getGenomeSource().getID(), rcxG.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
           support.addEvent(mcev);
         }
       }
@@ -760,10 +759,10 @@ public class LinkSupport {
     
     String oid = selected.getObjectID();
 
-    String ovrID = rcx.oso.getCurrentOverlay();
+    String ovrID = rcx.getOSO().getCurrentOverlay();
     
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    if (rcx.currentGenomeIsAnInstance()) {
+      GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
       if (parent != null) {
         return (false);
       }
@@ -771,7 +770,7 @@ public class LinkSupport {
     
     if (forModules) {
       if (type == IS_FOR_TARGET) {
-        String targDrop = rcx.getLayout().segmentSynonymousWithModLinkTargetDrop(oid, ids[0], ovrID);
+        String targDrop = rcx.getCurrentLayout().segmentSynonymousWithModLinkTargetDrop(oid, ids[0], ovrID);
         if (targDrop == null) {
           return (false);
         }
@@ -781,7 +780,7 @@ public class LinkSupport {
           return (false);
         }
       } else if (type == IS_FOR_SOURCE) {
-        Set<String> allLinks = rcx.getLayout().segmentSynonymousWithModLinkStartDrop(oid, ids[0], rcx.oso.getCurrentOverlay());
+        Set<String> allLinks = rcx.getCurrentLayout().segmentSynonymousWithModLinkStartDrop(oid, ids[0], rcx.getOSO().getCurrentOverlay());
         if (allLinks == null) {
           return (false);
         }
@@ -808,7 +807,7 @@ public class LinkSupport {
     
     
     if (type == IS_FOR_TARGET) {
-      String linkID = rcx.getLayout().segmentSynonymousWithTargetDrop(oid, ids[0]);
+      String linkID = rcx.getCurrentLayout().segmentSynonymousWithTargetDrop(oid, ids[0]);
       if (linkID == null) {
         return (false);
       }
@@ -820,15 +819,15 @@ public class LinkSupport {
         return (false);
       }
     } else if (type == IS_FOR_SOURCE) {
-      if (!rcx.getLayout().segmentSynonymousWithStartDrop(oid, ids[0])) {
+      if (!rcx.getCurrentLayout().segmentSynonymousWithStartDrop(oid, ids[0])) {
         return (false);
       }
       if (!haveSourceDOFs(rcx, oid)) {
         return (false);
       }
     } else if (type == IS_FOR_SWAP) {
-      String linkID = rcx.getLayout().segmentSynonymousWithTargetDrop(oid, ids[0]);
-      boolean startOK = rcx.getLayout().segmentSynonymousWithStartDrop(oid, ids[0]);
+      String linkID = rcx.getCurrentLayout().segmentSynonymousWithTargetDrop(oid, ids[0]);
+      boolean startOK = rcx.getCurrentLayout().segmentSynonymousWithStartDrop(oid, ids[0]);
       if ((linkID == null) && !startOK) {
         return (false);
       }
@@ -855,7 +854,7 @@ public class LinkSupport {
       
       if ((linkID != null) && startOK) {
         if (!ids[0].isForEndDrop() && !ids[0].isForStartDrop()) {
-          Linkage link = rcx.getGenome().getLinkage(linkID);
+          Linkage link = rcx.getCurrentGenome().getLinkage(linkID);
           String src = link.getSource();
           String trg = link.getTarget();
           if (src.equals(trg)) {
@@ -879,9 +878,9 @@ public class LinkSupport {
   */ 
   
   private static boolean haveSourceDOFs(DataAccessContext rcx, String linkID) {
-    Linkage link = rcx.getGenome().getLinkage(linkID);
+    Linkage link = rcx.getCurrentGenome().getLinkage(linkID);
     String source = link.getSource();
-    NodeProperties np = rcx.getLayout().getNodeProperties(source);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(source);
     INodeRenderer rend = np.getRenderer();
     boolean shared = rend.sharedPadNamespaces();
     int launchMax = rend.getFixedLaunchPadMax();
@@ -897,10 +896,10 @@ public class LinkSupport {
   */ 
   
   private static boolean haveTargetDOFs(DataAccessContext rcx, String linkID) {
-    Linkage link = rcx.getGenome().getLinkage(linkID);
+    Linkage link = rcx.getCurrentGenome().getLinkage(linkID);
     String target = link.getTarget();
-    NodeProperties np = rcx.getLayout().getNodeProperties(target);
-    Node targNode = rcx.getGenome().getNode(target);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(target);
+    Node targNode = rcx.getCurrentGenome().getNode(target);
     INodeRenderer rend = np.getRenderer();
     boolean shared = rend.sharedPadNamespaces();
     int numPads = targNode.getPadCount();
@@ -916,7 +915,7 @@ public class LinkSupport {
   */ 
   
   public static boolean haveModLinkDOFs(DataAccessContext rcx, Set<String> linkIDs, String ovrKey) {
-    NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID()); 
+    NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID()); 
     DynamicInstanceProxy dip = (owner.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)owner 
                                                                                              : null;          
     NetworkOverlay nov = owner.getNetworkOverlay(ovrKey);
@@ -939,22 +938,22 @@ public class LinkSupport {
       return (true);
     }
     NetModule mod = nov.getModule(linkSrc);
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrKey);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(linkSrc);
     //
     // We use the rootInstance to drive rendering, so that non-included nodes are not
     // shown as part of the module (important for dynamic instances!)
     //
     
-    Genome useGenome = rcx.getGenome();
-    if (useGenome instanceof GenomeInstance) {
-      GenomeInstance gi = (GenomeInstance)useGenome;
+    Genome useGenome = rcx.getCurrentGenome();
+    if (rcx.currentGenomeIsAnInstance()) {
+      GenomeInstance gi = rcx.getCurrentGenomeAsInstance();
       GenomeInstance rootGI = gi.getVfgParentRoot();
       useGenome = (rootGI == null) ? gi : rootGI;
     }
     Set<String> useGroups = owner.getGroupsForOverlayRendering();
-    DataAccessContext rcxU = new DataAccessContext(rcx, useGenome);
-    int pads =  nmp.getRenderer().getPadCountForModule(dip, useGroups, mod, ovrKey, nmp, rcxU);
+    StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx, useGenome);
+    int pads =  nmp.getRenderer().getPadCountForModule(dip, useGroups, mod, nmp, rcxU);
     return (pads > 2);
   }
   
@@ -965,7 +964,7 @@ public class LinkSupport {
        
   public static List<String> fixCisModLinks(UndoSupport support,
                                             Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla, 
-                                            BTState appState, DataAccessContext dacx, String theGeneID, boolean logFixes) {
+                                            StaticDataAccessContext dacx, String theGeneID, boolean logFixes) {
 
     
     TreeSet<String> retval = (logFixes) ? new TreeSet<String>() : null;
@@ -994,9 +993,9 @@ public class LinkSupport {
         if (!GenomeItemInstance.getBaseID(geneID).equals(baseID)) { // only care about instances of base gene
           continue;
         }
-        DataAccessContext daci = new DataAccessContext(dacx, gi.getID());
+        StaticDataAccessContext daci = new StaticDataAccessContext(dacx, gi.getID());
         DBGeneRegion.LinkAnalysis lsi = glaI.get(geneID); 
-        arrange(support, appState, daci, lsi, canonls, minPad, maxPad, gi, retval);
+        arrange(support, daci, lsi, canonls, minPad, maxPad, gi, retval);
       }
     }
     return ((retval == null) ? null : new ArrayList<String>(retval));
@@ -1010,8 +1009,7 @@ public class LinkSupport {
   ** try to use empty space first before doubling up on pads.
   */
        
-  public static void arrange(UndoSupport support,
-                             BTState appState, DataAccessContext daci,
+  public static void arrange(UndoSupport support, StaticDataAccessContext daci,
                              DBGeneRegion.LinkAnalysis lsiToFix,
                              DBGeneRegion.LinkAnalysis canonls, 
                              int minPad, int maxPad, GenomeInstance gi, SortedSet<String> fixLog) {
@@ -1020,7 +1018,7 @@ public class LinkSupport {
     // Let's find where we have empty space!
     //
     
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = daci.getRMan();
     SortedSet<Integer> freePads = new TreeSet<Integer>();
     freePads.add(Integer.valueOf(minPad));
     freePads.add(Integer.valueOf(maxPad));
@@ -1061,7 +1059,7 @@ public class LinkSupport {
           String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.orphaned"), new Object[] {src, targ, regName});  
           fixLog.add(msg);   
         }
-        LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, lsikey);
+        LinkSupport.changeLinkTargetCore(newPadi, daci, support, lsikey);
         
       } else if (lms == DBGeneRegion.LinkModStatus.TRESSPASS) {
         DBGeneRegion.PadOffset poffi = canonls.offsets.get(GenomeItemInstance.getBaseID(lsikey));
@@ -1081,7 +1079,7 @@ public class LinkSupport {
             String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.tresspass"), new Object[] {src, targ, fromReg.getName(), regName});  
             fixLog.add(msg);   
            }
-           LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, lsikey);
+           LinkSupport.changeLinkTargetCore(newPadi, daci, support, lsikey);
         } else if (!freePads.isEmpty()) {
           Integer usePad = freePads.first();
           freePads.remove(usePad);
@@ -1096,7 +1094,7 @@ public class LinkSupport {
             String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.tresspassBanish"), new Object[] {src, targ, fromReg.getName()});  
             fixLog.add(msg);   
            }
-           LinkSupport.changeLinkTargetCore(appState, lastPad, daci, support, lsikey);      
+           LinkSupport.changeLinkTargetCore(lastPad, daci, support, lsikey);      
         } else if (firstTime) { 
           throw new IllegalStateException();
         }
@@ -1171,7 +1169,7 @@ public class LinkSupport {
                                         Map<DBGeneRegion.DBRegKey, DBGeneRegion.DBRegKey> o2nMap,
                                         Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla,
                                         Map<DBGeneRegion.DBRegKey, SortedSet<Integer>> lhr,                                       
-                                        BTState appState, DataAccessContext dacx, String theGeneID, 
+                                        StaticDataAccessContext dacx, String theGeneID, 
                                         Set<String> skipLinks) {
 
     String baseID = GenomeItemInstance.getBaseID(theGeneID);
@@ -1230,7 +1228,7 @@ public class LinkSupport {
       
       Integer offsetObj = padSqueeze.get(Integer.valueOf(poff.offset));
       int newPad = reg.getStartPad() + offsetObj.intValue();
-      LinkSupport.changeLinkTargetCore(appState, newPad, dacx, support, lkey);
+      LinkSupport.changeLinkTargetCore(newPad, dacx, support, lkey);
       
       Iterator<GenomeInstance> iit = dacx.getGenomeSource().getInstanceIterator();
       while (iit.hasNext()) {
@@ -1252,8 +1250,8 @@ public class LinkSupport {
             DBGeneRegion.PadOffset poffi = lsi.offsets.get(linkID);
             Integer offsetObji = padSqueeze.get(Integer.valueOf(poffi.offset));
             int newPadi = reg.getStartPad() + offsetObji.intValue();
-            DataAccessContext daci = new DataAccessContext(dacx, gi.getID());
-            LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, linkID);  
+            StaticDataAccessContext daci = new StaticDataAccessContext(dacx, gi.getID());
+            LinkSupport.changeLinkTargetCore(newPadi, daci, support, linkID);  
           }
         }
       }

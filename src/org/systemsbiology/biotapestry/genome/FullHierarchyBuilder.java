@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,12 +26,12 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.HashSet;
 
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.db.InstructionSource;
 import org.systemsbiology.biotapestry.util.DataUtil;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
 import org.systemsbiology.biotapestry.cmd.instruct.InstructionRegions;
@@ -61,7 +61,7 @@ public class FullHierarchyBuilder {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -74,8 +74,8 @@ public class FullHierarchyBuilder {
   ** Constructor
   */
 
-  public FullHierarchyBuilder(BTState appState) {
-    appState_ = appState;
+  public FullHierarchyBuilder(DataAccessContext dacx) {
+    dacx_ = dacx;
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -196,7 +196,7 @@ public class FullHierarchyBuilder {
   
   public List<BuildInstruction> unifyInstructions(Map<String, List<BuildInstruction>> buildCmds, 
                                                   Map<String, Map<BuildInstruction, List<BuildInstruction>>> cmdMapByID) {
-    Database db = appState_.getDB();
+    InstructionSource isrc = dacx_.getInstructSrc();
     Iterator<String> bit = buildCmds.keySet().iterator();
     Map<BuildInstruction.BIWrapper, List<BuildInstruction>> biwrmap = new HashMap<BuildInstruction.BIWrapper, List<BuildInstruction>>();
     while (bit.hasNext()) {
@@ -212,7 +212,7 @@ public class FullHierarchyBuilder {
         int diff = need - have;
         for (int j = 0; j < diff; j++) {
           BuildInstruction newBI = bi.clone();
-          newBI.setID(db.getNextInstructionLabel());
+          newBI.setID(isrc.getNextInstructionLabel());
           newBI.setRegions(null);
           List<BuildInstruction> bbiw = biwrmap.get(biw);
           if (bbiw == null) {
@@ -402,14 +402,14 @@ public class FullHierarchyBuilder {
   public void populateParentInstances(List<String> bottomUp, Map<String, List<BuildInstruction>> buildCmds,
                                                              Map<String, Map<BuildInstruction, List<BuildInstruction>>> bcMap,
                                                              Map<String, List<InstanceInstructionSet.RegionInfo>> regions) {
-    Database db = appState_.getDB();    
-    //
+    GenomeSource gSrc = dacx_.getGenomeSource();
+    
     // Ordered list is bottom to top.
     //
     int num = bottomUp.size();
     for (int i = 0; i < num; i++) {
       String id = bottomUp.get(i);
-      Genome genome = db.getGenome(id);
+      Genome genome = gSrc.getGenome(id);
       if (!(genome instanceof GenomeInstance)) {
         continue;
       }

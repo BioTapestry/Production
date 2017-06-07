@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,8 @@ import java.util.List;
 
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
@@ -44,7 +44,7 @@ public class TreeSupport {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private BTState appState_;
+  private UIComponentSource uics_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -57,8 +57,8 @@ public class TreeSupport {
   ** Constructor 
   */ 
   
-  public TreeSupport(BTState appState) {
-    appState_ = appState;
+  public TreeSupport(UIComponentSource uics) {
+    uics_ = uics;
   }
 
   /***************************************************************************
@@ -67,7 +67,7 @@ public class TreeSupport {
   */
   
   public ExpansionChange buildExpansionChange(boolean forUndo, DataAccessContext dacx) {
-    VirtualModelTree vmTree = appState_.getTree();
+    VirtualModelTree vmTree = uics_.getTree();
     NavTree nt = dacx.getGenomeSource().getModelHierarchy();      
     List<TreePath> nonleafPaths = nt.getAllPathsToNonLeaves();
     Iterator<TreePath> nlpit = nonleafPaths.iterator();

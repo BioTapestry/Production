@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,8 +38,9 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.StartupView;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -48,7 +49,6 @@ import org.systemsbiology.biotapestry.nav.ImageChange;
 import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.nav.UserTreePathChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.TaggedSet;
 
@@ -65,7 +65,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
+  private DataAccessContext dacx_;
   private String vfgParent_;  
   private String name_;
   private String id_;
@@ -79,7 +79,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   private ArrayList<Group> groups_;
   private ArrayList<AddedNode> addedNodes_;
   private ArrayList<Note> notes_;
-  private UniqueLabeller labels_;  
+  private UniqueLabeller labels_;
+  private boolean forSimDiff_;
+  private String simKey_;
  
   private static final String KEY_PREF_ = ":";
 
@@ -94,10 +96,10 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** Constructor for UI-based creation
   */
 
-  public DynamicInstanceProxy(BTState appState, String name, String id, 
+  public DynamicInstanceProxy(DataAccessContext dacx, String name, String id, 
                               GenomeInstance vfgParent, boolean isSingle, 
-                              int minTime, int maxTime) {
-    appState_ = appState;
+                              int minTime, int maxTime, boolean forSimDiff, String simKey) {
+    dacx_ = dacx;
     name_ = name;
     id_ = id;
     vfgParent_ = vfgParent.getID();
@@ -108,10 +110,12 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     labels_ = new UniqueLabeller();
     labels_.setFixedPrefix(id_ + KEY_PREF_);
     imageKeys_ = new HashMap<Integer, String>();
-    ovrops_ = new OverlayOpsSupport(appState_, NetworkOverlay.DYNAMIC_PROXY, id_);
+    ovrops_ = new OverlayOpsSupport(dacx_, NetworkOverlay.DYNAMIC_PROXY, id_);
     isSingle_ = isSingle;
     min_ = minTime;
     max_ = maxTime;
+    forSimDiff_ = forSimDiff;
+    simKey_ = simKey;
   }  
 
   /***************************************************************************
@@ -119,10 +123,11 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** Constructor
   */
 
-  public DynamicInstanceProxy(BTState appState, String name, String id, 
+  public DynamicInstanceProxy(DataAccessContext dacx, String name, String id, 
                               GenomeInstance vfgParent, String isSingle, 
-                              String minTime, String maxTime) throws IOException {
-    appState_ = appState;
+                              String minTime, String maxTime, String isSimDiff, 
+                              String simKey) throws IOException {
+    dacx_ = dacx;
     name_ = name;
     id_ = id;
     vfgParent_ = vfgParent.getID();
@@ -133,9 +138,15 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     labels_ = new UniqueLabeller();
     labels_.setFixedPrefix(id_ + KEY_PREF_);    
     imageKeys_ = new HashMap<Integer, String>();
-    ovrops_ = new OverlayOpsSupport(appState_, NetworkOverlay.DYNAMIC_PROXY, id_);
+    ovrops_ = new OverlayOpsSupport(dacx_, NetworkOverlay.DYNAMIC_PROXY, id_);
 
     isSingle_ = (isSingle == null) ? false : Boolean.valueOf(isSingle).booleanValue();    
+    forSimDiff_ = (isSimDiff == null) ? false : Boolean.valueOf(isSimDiff).booleanValue();
+    simKey_ = simKey;   
+    
+    if (forSimDiff_ && (simKey_ == null)) {
+      throw new IOException();
+    }
         
     try {
       if (minTime != null) {
@@ -159,11 +170,13 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   */
 
   private DynamicInstanceProxy(DynamicInstanceProxy other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.name_ = other.name_;
     this.id_ = other.id_;
     this.vfgParent_ = other.vfgParent_;
     this.cache_ = new HashMap<String, DynamicGenomeInstance>();  // keep empty
+    this.forSimDiff_ = other.forSimDiff_;
+    this.simKey_ = other.simKey_;
     
     this.groups_ = new ArrayList<Group>();
     int numGrp = other.groups_.size();
@@ -223,13 +236,15 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
                               String newVfgParentID, String newID, 
                               Map<String, String> groupIDMap, Map<String, String> noteIDMap, 
                               Map<String, String> ovrIDMap, Map<String, String> modIDMap, 
-                              Map<String, String> modLinkIDMap, List<ImageChange> imageChanges) {
+                              Map<String, String> modLinkIDMap, List<ImageChange> imageChanges, ImageManager imgr) {
     this(other);
     this.name_ = newName;
     this.id_ = newID;
     // Part of Issue 195 Fix
     this.ovrops_.resetOwner(this.id_);
     this.vfgParent_ = newVfgParentID;
+    this.forSimDiff_ = other.forSimDiff_;
+    this.simKey_ = other.simKey_;
 
     this.labels_ = other.labels_.mappedPrefixCopy(other.id_ + KEY_PREF_, this.id_ + KEY_PREF_);
 
@@ -246,7 +261,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     // Groups require wierdo, two-pass handling:
     //
     
-    DBGenome rootGenome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome rootGenome = dacx_.getDBGenome();
     this.groups_ = new ArrayList<Group>();
     int numGrp = other.groups_.size();
     for (int i = 0; i < numGrp; i++) {
@@ -295,7 +310,6 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     // Bump image key ref counts while duping
     //
     
-    ImageManager imgr = appState_.getImageMgr();
     this.imageKeys_ = new HashMap<Integer, String>();
     Iterator<Integer> ikit = other.imageKeys_.keySet().iterator();
     while (ikit.hasNext()) {
@@ -321,6 +335,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** 
   */  
   
+  @Override
   public DynamicInstanceProxy clone() { 
     try {
       DynamicInstanceProxy retval = (DynamicInstanceProxy)super.clone();
@@ -358,7 +373,30 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       throw new IllegalStateException();
     }
   }    
-   
+  
+  /***************************************************************************
+  **
+  ** Answer if we are to be shown as a diff display
+  **
+  */
+  
+  public boolean showAsSimDiff() {
+    return (forSimDiff_);
+  } 
+  
+  /***************************************************************************
+  **
+  ** Answer sim key for sim diff
+  **
+  */
+  
+  public String getSimKey() {
+    if (!forSimDiff_) {
+      throw new IllegalStateException();
+    }
+    return (simKey_);
+  }   
+  
   /***************************************************************************
   **
   ** Get the id
@@ -385,8 +423,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   */
   
   public GenomeInstance getVfgParent() {
-    Database db = appState_.getDB();
-    return ((GenomeInstance)db.getGenome(vfgParent_));
+    return ((GenomeInstance)dacx_.getGenomeSource().getGenome(vfgParent_));
   }
 
  /***************************************************************************
@@ -396,10 +433,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   */
   
   public GenomeInstance getStaticVfgParent() {
-    Database db = appState_.getDB();
     String currParent = vfgParent_;
     while (true) {
-      GenomeInstance gi = (GenomeInstance)db.getGenome(currParent);
+      GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(currParent);
       if (!isDynamicInstance(gi.getID())) {
         return (gi);
       }
@@ -423,18 +459,17 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     //
 
     String parent = vfgParent_;
-    Database db = appState_.getDB();
     String staticParent = null;
     while (true) {
       if (isDynamicInstance(parent)) {
-        DynamicInstanceProxy pdip = db.getDynamicProxy(extractProxyID(parent));
+        DynamicInstanceProxy pdip = dacx_.getGenomeSource().getDynamicProxy(extractProxyID(parent));
         parent = pdip.vfgParent_;
       } else {
         staticParent = vfgParent_;
         break;
       }
     }
-    GenomeInstance gifirst = (GenomeInstance)db.getGenome(staticParent);
+    GenomeInstance gifirst = (GenomeInstance)dacx_.getGenomeSource().getGenome(staticParent);
     return (gi.isAncestor(gifirst));
   }  
   
@@ -449,14 +484,13 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       return (true);
     }
     String parent = vfgParent_;
-    Database db = appState_.getDB();
     while (true) {
       if (isDynamicInstance(parent)) {
         String pid = extractProxyID(parent);
         if (pid.equals(target)) {
           return (true);
         }
-        DynamicInstanceProxy pdip = db.getDynamicProxy(pid);
+        DynamicInstanceProxy pdip = dacx_.getGenomeSource().getDynamicProxy(pid);
         parent = pdip.vfgParent_;
       } else {
         return (false);
@@ -471,10 +505,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   */
   
   public DynamicInstanceProxy getProxyParent() {
-    Database db = appState_.getDB();
     if (isDynamicInstance(vfgParent_)) {
       String pid = extractProxyID(vfgParent_);
-      return (db.getDynamicProxy(pid));
+      return (dacx_.getGenomeSource().getDynamicProxy(pid));
     }
     return (null);
   }  
@@ -691,8 +724,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */
   
-  public ChangeBundle changeProperties(BTState appState, String name, boolean perTime, 
-                                       int min, int max) {
+  public ChangeBundle changeProperties(ImageManager mgr, UserTreePathController utpc, 
+                                       String name, boolean perTime, 
+                                       int min, int max, boolean isForDiff, String simKey) {
     
     ChangeBundle retval = new ChangeBundle();
             
@@ -704,20 +738,26 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     retval.proxyChange.minOld = min_;
     retval.proxyChange.maxOld = max_;
     retval.proxyChange.oldImageKeys = new HashMap<Integer, String>(imageKeys_);
+    retval.proxyChange.oldForSimDiff = forSimDiff_;
+    retval.proxyChange.oldSimKey = simKey_;
     
-    retval.imageChanges = doImageChangesForPropertyChange(appState, perTime, min, max);
-    retval.pathChanges = doPathChangesForPropertyChange(appState, perTime, min, max);
-    retval.dc = doStartupViewChangesForPropertyChange(appState, perTime, min, max);
+    retval.imageChanges = doImageChangesForPropertyChange(mgr, perTime, min, max);
+    retval.pathChanges = doPathChangesForPropertyChange(utpc, perTime, min, max);
+    retval.dc = doStartupViewChangesForPropertyChange(perTime, min, max);
     name_ = name;
     isSingle_ = !perTime;
     min_ = min;
     max_ = max;
+    forSimDiff_ = isForDiff;
+    simKey_ = simKey;
     
     retval.proxyChange.nameNew = name_;
     retval.proxyChange.hourlyNew = !isSingle_;
     retval.proxyChange.minNew = min_;
     retval.proxyChange.maxNew = max_;
     retval.proxyChange.newImageKeys = new HashMap<Integer, String>(imageKeys_);
+    retval.proxyChange.newForSimDiff = forSimDiff_;
+    retval.proxyChange.newSimKey = simKey_;
 
     sortedTimes_ = null;
     return (retval);
@@ -730,10 +770,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */
   
-  public ImageChange[] doImageChangesForPropertyChange(BTState appState, boolean newPerTime, int newMin, int newMax) {  
+  public ImageChange[] doImageChangesForPropertyChange(ImageManager mgr, boolean newPerTime, int newMin, int newMax) {  
 
     boolean newIsSingle = !newPerTime;
-    ImageManager mgr = appState.getImageMgr();
     
     //
     // If the proxy stays for a single model, nothing is lost, though the
@@ -760,7 +799,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       //
       // Going multi to single, we drop all images:
       //
-      ImageChange[] ics = dropGenomeImages();
+      ImageChange[] ics = dropGenomeImages(mgr);
       return ((ics == null) ? new ImageChange[0] : ics);
     } else if (!isSingle_ && !newIsSingle) {
       //
@@ -801,9 +840,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */
   
-  public UserTreePathChange[] doPathChangesForPropertyChange(BTState appState, boolean newPerTime, int newMin, int newMax) {  
+  public UserTreePathChange[] doPathChangesForPropertyChange(UserTreePathController utpc, boolean newPerTime, int newMin, int newMax) {  
 
-    UserTreePathController utpc = appState.getPathController();
     boolean newIsSingle = !newPerTime;
     ArrayList<UserTreePathChange> retval = new ArrayList<UserTreePathChange>();
 
@@ -869,9 +907,9 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */  
     
-  public DatabaseChange doStartupViewChangesForPropertyChange(BTState appState, boolean newPerTime, int newMin, int newMax) {    
-    Database db = appState.getDB();
-    StartupView sView = db.getStartupView();
+  public DatabaseChange doStartupViewChangesForPropertyChange(boolean newPerTime, int newMin, int newMax) {
+    GenomeSource gs = dacx_.getGenomeSource();
+    StartupView sView = gs.getStartupView();
     if (sView == null) {
       return (null);
     }
@@ -898,7 +936,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         String oldModelKey = getFirstProxiedKey();
         if (oldModelKey.equals(modelId)) {
           String newMinKey = getKeyForTime(newMin, false);
-          return (db.setStartupView(new StartupView(newMinKey, null, null, null)));
+          return (gs.setStartupView(new StartupView(newMinKey, null, null, null,null)));
         }
       }
     } else { // (!isSingle_)
@@ -912,7 +950,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           String oldModelKey = lkit.next();        
           if (oldModelKey.equals(modelId)) {
             String newKey = getSingleKey(false);
-            return (db.setStartupView(new StartupView(newKey, null, null, null)));
+            return (gs.setStartupView(new StartupView(newKey, null, null, null,null)));
           } 
         }
       } else { //!newIsSingle
@@ -937,7 +975,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           String oldModelKey = getKeyForTime(lostKey.intValue(), true);
           if (oldModelKey.equals(modelId)) {
             String newKey = getKeyForTime(newMin, true);
-            return (db.setStartupView(new StartupView(newKey, null, null, null)));
+            return (gs.setStartupView(new StartupView(newKey, null, null, null,null)));
           } 
         }
       }
@@ -990,7 +1028,28 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     }
     return (retval);
   }
-
+  
+  /***************************************************************************
+  **
+  ** Modify the image key for IO Tab Appending
+  **
+  */
+  
+  public void mapImageKeyForAppend(Map<String, String> daMap) {
+    if (!imageKeys_.isEmpty()) {
+      Iterator<Integer> ikit = (new HashSet<Integer>(imageKeys_.keySet())).iterator();
+      while (ikit.hasNext()) {
+        Integer timeKey = ikit.next();
+        String imgKey = imageKeys_.get(timeKey);
+        String newKey = daMap.get(imgKey);
+        if (newKey != null) {
+          imageKeys_.put(timeKey, newKey);
+        }
+      }
+    }
+    return;
+  }
+  
   /***************************************************************************
   **
   ** Set the genome image for a time.  Null key used for deletion.
@@ -1021,7 +1080,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** Undo an image change
   */
   
-  public void imageChangeUndo(ImageChange undo) {
+  public void imageChangeUndo(ImageManager mgr, ImageChange undo) {
     if (undo.timeKey == null) {
       return;
     }
@@ -1040,7 +1099,6 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     //
     
     if (undo.proxyKey != null) {
-      ImageManager mgr = appState_.getImageMgr();
       mgr.changeUndo(undo);
     }
     return;
@@ -1051,7 +1109,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** Redo an image change
   */
   
-  public void imageChangeRedo(ImageChange redo) {
+  public void imageChangeRedo(ImageManager mgr, ImageChange redo) {
     if (redo.timeKey == null) {
       return;
     }
@@ -1070,7 +1128,6 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     //
     
     if (redo.proxyKey != null) {
-      ImageManager mgr = appState_.getImageMgr();
       mgr.changeRedo(redo);
     }
     return;
@@ -1081,9 +1138,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   ** Drop all genome images
   */
 
-  public ImageChange[] dropGenomeImages() {
+  public ImageChange[] dropGenomeImages(ImageManager imgr) {
     ArrayList<ImageChange> allChanges = new ArrayList<ImageChange>();
-    ImageManager imgr = appState_.getImageMgr();
     Iterator<Integer> ikit = (new HashSet<Integer>(imageKeys_.keySet())).iterator();
     while (ikit.hasNext()) {
       Integer timeKey = ikit.next();
@@ -1124,6 +1180,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       isSingle_ = !undo.hourlyOld;
       min_ = undo.minOld;
       max_ = undo.maxOld;
+      simKey_ = undo.oldSimKey;
+      forSimDiff_ = undo.oldForSimDiff;
       imageKeys_ = new HashMap<Integer, String>(undo.oldImageKeys);
       sortedTimes_ = null;
     } else {
@@ -1172,6 +1230,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       isSingle_ = !undo.hourlyNew;
       min_ = undo.minNew;
       max_ = undo.maxNew;
+       simKey_ = undo.newSimKey;
+      forSimDiff_ = undo.newForSimDiff;
       imageKeys_ = new HashMap<Integer, String>(undo.newImageKeys);
       sortedTimes_ = null;
     } else {
@@ -1890,7 +1950,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     if (ti.equals("ALL")) {
       Iterator<Integer> imgKit = imageKeys_.keySet().iterator();
       String imgKey = (imgKit.hasNext()) ? imageKeys_.get(imgKit.next()) : null;
-      retval = new DynamicGenomeInstance(appState_, name_, key, parent, id_, imgKey);
+      String simKey = (forSimDiff_) ? simKey_ : null; 
+      retval = new DynamicGenomeInstance(dacx_, name_, key, parent, id_, imgKey, simKey);
       retval.setTime(getSortedTimes());
     } else {
       int time;
@@ -1900,15 +1961,16 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         System.err.println(key + " " + ti);      
         throw new IllegalArgumentException();
       }
-      TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
       boolean namedStages = tad.haveNamedStages();
       String displayUnits = tad.unitDisplayString(); 
       String stageName = (namedStages) ? tad.getNamedStageForIndex(time).name : Integer.toString(time);
       String format = (tad.unitsAreASuffix()) ? "dgi.titleFormat" : "dgi.titleFormatPrefix";
-      String dgiTitle = MessageFormat.format(appState_.getRMan().getString(format), 
+      String dgiTitle = MessageFormat.format(dacx_.getRMan().getString(format), 
                                              new Object[] {name_, stageName, displayUnits});
-      String imgKey = imageKeys_.get(new Integer(time));                        
-      retval = new DynamicGenomeInstance(appState_, dgiTitle, key, parent, id_, imgKey);
+      String imgKey = imageKeys_.get(new Integer(time)); 
+      String simKey = (forSimDiff_) ? simKey_ : null; 
+      retval = new DynamicGenomeInstance(dacx_, dgiTitle, key, parent, id_, imgKey, simKey);
       HashSet<Integer> singleton = new HashSet<Integer>();
       singleton.add(new Integer(time));
       retval.setTime(singleton);
@@ -1938,12 +2000,12 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         System.err.println(key + " " + hr);
         throw new IllegalArgumentException();
       }
-      TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
       boolean namedStages = tad.haveNamedStages();
       String displayUnits = tad.unitDisplayString(); 
       String stageName = (namedStages) ? tad.getNamedStageForIndex(time).name : Integer.toString(time);
       String format = (tad.unitsAreASuffix()) ? "dgi.nameFormat" : "dgi.nameFormatPrefix";
-      String dgiName = MessageFormat.format(appState_.getRMan().getString(format), 
+      String dgiName = MessageFormat.format(dacx_.getRMan().getString(format), 
                                              new Object[] {name_, stageName, displayUnits});            
       return (dgiName);
     }
@@ -1979,7 +2041,12 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     }
     if (isSingle_) {
       out.print("\" isSingle=\"true");
-    }    
+    } 
+    if (forSimDiff_) {
+      out.print("\" simDiff=\"true");
+      out.print("\" simID=\"");
+      out.print(simKey_);
+    } 
     out.print("\" id=\"");
     out.print(id_);
     out.print("\" vfgParent=\"");
@@ -2299,7 +2366,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       this.nodeName = other.nodeName;
       this.groupToUse = other.groupToUse;
     }
-     
+   
+    @Override 
     public AddedNode clone() { 
       try {
         return ((AddedNode)super.clone());
@@ -2425,7 +2493,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */
   
-  public static DynamicInstanceProxy buildFromXML(BTState appState, String elemName, 
+  public static DynamicInstanceProxy buildFromXML(DataAccessContext dacx, String elemName, 
                                                   Attributes attrs) throws IOException {
     if (!elemName.equals("dynamicProxy")) {
       return (null);
@@ -2436,6 +2504,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     String minHour = null;
     String maxHour = null;
     String isSingle = null;
+    String isSimDiff = null;
+    String simKey = null;
     if (attrs != null) {
       int count = attrs.getLength();
       for (int i = 0; i < count; i++) {
@@ -2456,6 +2526,10 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           maxHour = val;          
         } else if (key.equals("isSingle")) {
           isSingle = val;          
+        } else if (key.equals("simDiff")) {
+          isSimDiff = val;          
+        } else if (key.equals("simID")) {
+          simKey = val;          
         }
       }
     }
@@ -2463,9 +2537,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     if ((name == null) || (id == null) || (parentVfg == null)) {
       throw new IOException();
     }
-    Database db = appState.getDB();
-    GenomeInstance vfg = (GenomeInstance)db.getGenome(parentVfg);
-    return (new DynamicInstanceProxy(appState, name, id, vfg, isSingle, minHour, maxHour));
+    GenomeInstance vfg = (GenomeInstance)dacx.getGenomeSource().getGenome(parentVfg);
+    return (new DynamicInstanceProxy(dacx, name, id, vfg, isSingle, minHour, maxHour, isSimDiff, simKey));
   }  
 
   /***************************************************************************

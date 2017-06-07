@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,6 +32,8 @@ import java.awt.Color;
 import java.util.Map;
 import javax.swing.SwingUtilities;
 
+import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.gaggle.DeadGoose;
 
 /****************************************************************************
@@ -49,6 +51,9 @@ public class ViewerApplication {
   
   private JWindow splash_;
   private final BTState appState_;
+  private final UIComponentSource uics_;
+  private final CmdSource cSrc_;
+  private final TabSource tSrc_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -65,12 +70,15 @@ public class ViewerApplication {
     ArgParser ap = new ArgParser();
     final Map<String, Object> argMap = ap.parse(ArgParser.AppType.VIEWER, argv);
     if (argMap == null) {
-      System.err.print(ap.getUsage(new BTState(), ArgParser.AppType.VIEWER));
+      System.err.print(ap.getUsage((new BTState()).getUIComponentSource().getRMan(), ArgParser.AppType.VIEWER));
       System.exit(0);
     }
     
     BTState appState = new BTState("WJRL", argMap, false, false);
-    final ViewerApplication va = new ViewerApplication(appState);
+    UIComponentSource uics = appState.getUIComponentSource();
+    CmdSource cSrc = appState.getCmdSource();
+    TabSource tSrc = appState.getTabSource();
+    final ViewerApplication va = new ViewerApplication(appState, uics, cSrc, tSrc);
 
     //
     // Gotta wait to give splash screen a chance to get painted:
@@ -93,7 +101,7 @@ public class ViewerApplication {
     } catch (InterruptedException iex) {
     }
     
-    boolean ok = appState.getPlugInMgr().loadDataDisplayPlugIns(argMap);   
+    boolean ok = uics.getPlugInMgr().loadDataDisplayPlugIns(argMap);   
     if (!ok) {
       System.err.println("Problems loading plugins");
     }
@@ -117,9 +125,12 @@ public class ViewerApplication {
   //
   ////////////////////////////////////////////////////////////////////////////    
         
-  private ViewerApplication(BTState appState) {
+  private ViewerApplication(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc) {
     appState_ = appState;
-    appState_.setIsEditor(false);
+    uics_ = uics;
+    cSrc_ = cSrc;
+    tSrc_ = tSrc;
+    uics_.setIsEditor(false);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -129,9 +140,14 @@ public class ViewerApplication {
   //////////////////////////////////////////////////////////////////////////// 
   
   private void launch(Map<String, Object> args) {
-    appState_.getDB().newModelViaDACX(); // Bogus, but no DACX yet
-    new ViewerWindow(appState_);
-    appState_.getGooseMgr().setGoose(new DeadGoose());
+    Metabase mb = appState_.getMetabase();
+    mb.newModelViaDACX();
+    String tabID = tSrc_.getDbIdForIndex(tSrc_.getCurrentTabIndex());
+    Database newDB = mb.getDB(tabID);
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState()); 
+    newDB.newModelViaDACX(ddacx.getTabContext(tabID));
+    new ViewerWindow(appState_, uics_, cSrc_, tSrc_);
+    uics_.getGooseMgr().setGoose(new DeadGoose());
   }
   
   private void splash() {

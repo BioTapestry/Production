@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GroupSettingChangeCmd;
@@ -53,13 +54,15 @@ import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.genome.ProxyChange;
 import org.systemsbiology.biotapestry.nav.GroupSettingChange;
-import org.systemsbiology.biotapestry.nav.GroupSettingManager;
+import org.systemsbiology.biotapestry.nav.GroupSettingSource;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.Layout;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -101,8 +104,8 @@ public class RemoveGroupSupport {
   ** Delete a group from the model
   */  
   
-  public static boolean deleteGroupFromModel(BTState appState, String groupKey, DataAccessContext rcx,
-                                             UndoSupport support, boolean keepEmptyMemOnly) {                                           
+  public static boolean deleteGroupFromModel(String groupKey, UIComponentSource uics, StaticDataAccessContext rcx,
+                                             UndoSupport support, boolean keepEmptyMemOnly, UndoFactory uFac) {                                           
     //
     // * If the genome is not a genome instance, we have an illegal argument
     // * Need to delete all the nodes in the group, and all linkages to or
@@ -122,9 +125,9 @@ public class RemoveGroupSupport {
     boolean isRoot;
     boolean isDynamic;
     
-    if (rcx.getGenome() instanceof GenomeInstance) {
+    if (rcx.currentGenomeIsAnInstance()) {
       isRoot = false;
-      isDynamic = (rcx.getGenome() instanceof DynamicGenomeInstance);
+      isDynamic = rcx.currentGenomeIsADynamicInstance();
     } else {
       isRoot = true;
       isDynamic = false;
@@ -134,7 +137,7 @@ public class RemoveGroupSupport {
       throw new IllegalArgumentException();
     }    
     
-    Layout.PadNeedsForLayout padNeeds = rcx.fgho.getLocalNetModuleLinkPadNeeds(rcx.getGenomeID());
+    Layout.PadNeedsForLayout padNeeds = rcx.getFGHO().getLocalNetModuleLinkPadNeeds(rcx.getCurrentGenomeID());
     
     
     //
@@ -144,7 +147,7 @@ public class RemoveGroupSupport {
     boolean localUndo = false;
     if (support == null) {
       localUndo = true;
-      support = new UndoSupport(appState, "undo.groupDelete");
+      support = uFac.provideUndoSupport("undo.groupDelete", rcx);
     }  
 
     //
@@ -153,12 +156,12 @@ public class RemoveGroupSupport {
     //
     
     if (isDynamic) {
-      deleteDynamicGroup(appState, rcx, groupKey, support);
+      deleteDynamicGroup(uics, rcx, groupKey, support);
     } else {
-      deleteStaticGroup(appState, rcx, groupKey, support, keepEmptyMemOnly);
+      deleteStaticGroup(uics, rcx, groupKey, support, keepEmptyMemOnly);
     }
      
-    ModificationCommands.repairNetModuleLinkPadsLocally(appState, padNeeds, rcx, false, support);
+    ModificationCommands.repairNetModuleLinkPadsLocally(padNeeds, rcx, false, support);
  
     if (localUndo) {support.finish();}
     return (true);
@@ -169,7 +172,8 @@ public class RemoveGroupSupport {
   ** Delete a sub group from the parent group
   */  
   
-  public static boolean deleteSubGroupFromModel(BTState appState, String groupKey, DataAccessContext rcx, UndoSupport support) {                          
+  public static boolean deleteSubGroupFromModel(UIComponentSource uics, String groupKey, 
+                                                StaticDataAccessContext rcx, UndoSupport support, UndoFactory uFac) {                          
 
     //
     // HOW THIS WORKS WITH CHILD MODEL
@@ -198,10 +202,10 @@ public class RemoveGroupSupport {
     boolean isDynamic;
     GenomeInstance inst;
     
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      inst = rcx.getGenomeAsInstance();
+    if (rcx.currentGenomeIsAnInstance()) {
+      inst = rcx.getCurrentGenomeAsInstance();
       isRoot = false;
-      isDynamic = (rcx.getGenome() instanceof DynamicGenomeInstance);
+      isDynamic = rcx.currentGenomeIsADynamicInstance();
     } else {
       inst = null;
       isRoot = true;
@@ -219,7 +223,7 @@ public class RemoveGroupSupport {
     boolean localUndo = false;
     if (support == null) {
       localUndo = true;
-      support = new UndoSupport(appState, "undo.groupDelete");
+      support = uFac.provideUndoSupport("undo.groupDelete", rcx);
     }    
 
     //
@@ -228,9 +232,9 @@ public class RemoveGroupSupport {
     //
     
     if (isDynamic) {
-      deleteDynamicSubGroup(appState, rcx, groupKey, support);
+      deleteDynamicSubGroup(rcx, groupKey, support);
     } else {
-      deleteStaticSubGroup(appState, rcx, groupKey, support);
+      deleteStaticSubGroup(rcx, groupKey, support);
     }
     
     
@@ -244,7 +248,7 @@ public class RemoveGroupSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteIllegalExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         needGeneral = true;
       }
     }
@@ -261,7 +265,7 @@ public class RemoveGroupSupport {
         if (dip.instanceIsAncestor(inst)) {
           ProxyChange[] pca = dip.deleteExtraNodesForGroup(Group.getBaseID(groupKey));       
           for (int i = 0; i < pca.length; i++) {
-            support.addEdit(new ProxyChangeCmd(appState, rcx, pca[i]));
+            support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
             needGeneral = true;
           }
         }
@@ -273,12 +277,12 @@ public class RemoveGroupSupport {
       DynamicInstanceProxy dip = dit.next();
       ProxyChange[] pca = dip.deleteOrphanedExtraNodes();
       for (int i = 0; i < pca.length; i++) {
-        support.addEdit(new ProxyChangeCmd(appState, rcx, pca[i]));
+        support.addEdit(new ProxyChangeCmd(rcx, pca[i]));
         needGeneral = true;
       }
     } 
     
-    RemoveNode.proxyPostExtraNodeDeletionSupport(appState, rcx, support);
+    RemoveNode.proxyPostExtraNodeDeletionSupport(uics, rcx, support);
    
     if (needGeneral) {
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
@@ -293,9 +297,9 @@ public class RemoveGroupSupport {
   ** Delete a dynamic group from the model
   */  
   
-  private static void deleteDynamicGroup(BTState appState, DataAccessContext rcx, String groupKey, UndoSupport support) {  
+  private static void deleteDynamicGroup(UIComponentSource uics, StaticDataAccessContext rcx, String groupKey, UndoSupport support) {  
        
-    String proxID = ((DynamicGenomeInstance)rcx.getGenome()).getProxyID();
+    String proxID = ((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID();
     Iterator<DynamicInstanceProxy> dpit = rcx.getGenomeSource().getDynamicProxyIterator();
     while (dpit.hasNext()) {
       DynamicInstanceProxy dip = dpit.next();
@@ -304,12 +308,12 @@ public class RemoveGroupSupport {
         DynamicGenomeInstance kid = dip.getAnInstance();
         String inherit = Group.buildInheritedID(groupKey, kid.getGeneration());
         if (kid.getGroup(inherit) != null) {
-          DataAccessContext rcxK = new DataAccessContext(rcx, kid);
-          deleteGroupDetails(appState, rcxK, inherit, support);
+          StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, kid);
+          deleteGroupDetails(uics, rcxK, inherit, support);
           NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers(kid);
           if (nmca != null) {
             for (int i = 0; i < nmca.length; i++) {
-              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxK, nmca[i]);
+              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcxK, nmca[i]);
               support.addEdit(gcc);
             }
           }
@@ -321,12 +325,12 @@ public class RemoveGroupSupport {
     
     // Now delete from the instance:
     
-    deleteGroupDetails(appState, rcx, groupKey, support);
+    deleteGroupDetails(uics, rcx, groupKey, support);
     DynamicInstanceProxy dip = rcx.getGenomeSource().getDynamicProxy(proxID);
-    NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers((DynamicGenomeInstance)rcx.getGenome());
+    NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers((DynamicGenomeInstance)rcx.getCurrentGenome());
     if (nmca != null) {
       for (int i = 0; i < nmca.length; i++) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcx, nmca[i]);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmca[i]);
         support.addEdit(gcc);
       }
     }
@@ -338,7 +342,7 @@ public class RemoveGroupSupport {
   ** Delete a group from the model
   */  
   
-  private static void deleteStaticGroup(BTState appState, DataAccessContext rcx,
+  private static void deleteStaticGroup(UIComponentSource uics, StaticDataAccessContext rcx,
                                         String groupKey, UndoSupport support, boolean keepEmptyMemOnly) {
                                   
     // * Need to delete all the nodes in the group, and all linkages to or
@@ -356,10 +360,10 @@ public class RemoveGroupSupport {
     //
 
     HashSet<GenomeItemInstance> deadSet = new HashSet<GenomeItemInstance>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       LinkageInstance li = (LinkageInstance)lit.next();
-      GroupMembership memb = rcx.getGenomeAsInstance().getLinkGroupMembership(li); 
+      GroupMembership memb = rcx.getCurrentGenomeAsInstance().getLinkGroupMembership(li); 
       if (memb.contains(groupKey)) {
         deadSet.add(li);
       }
@@ -367,7 +371,7 @@ public class RemoveGroupSupport {
     Iterator<GenomeItemInstance> dsit = deadSet.iterator();
     while (dsit.hasNext()) {
       LinkageInstance li = (LinkageInstance)dsit.next();
-      RemoveLinkage.doLinkDelete(appState, li.getID(), rcx, support);  // FIX ME!! Eventing!!
+      RemoveLinkage.doLinkDelete(li.getID(), rcx, support);  // FIX ME!! Eventing!!
     }
 
     //
@@ -375,19 +379,19 @@ public class RemoveGroupSupport {
     //
     
     deadSet.clear();
-    Iterator<Node> nit = rcx.getGenome().getNodeIterator();
+    Iterator<Node> nit = rcx.getCurrentGenome().getNodeIterator();
     while (nit.hasNext()) {
       NodeInstance ni = (NodeInstance)nit.next();
-      GroupMembership memb = rcx.getGenomeAsInstance().getNodeGroupMembership(ni);
+      GroupMembership memb = rcx.getCurrentGenomeAsInstance().getNodeGroupMembership(ni);
       if (memb.contains(groupKey)) {
         deadSet.add(ni); 
       }
     }
     
-    Iterator<Gene> git = rcx.getGenome().getGeneIterator();
+    Iterator<Gene> git = rcx.getCurrentGenome().getGeneIterator();
     while (git.hasNext()) {
       NodeInstance gi = (NodeInstance)git.next();
-      GroupMembership memb = rcx.getGenomeAsInstance().getNodeGroupMembership(gi);
+      GroupMembership memb = rcx.getCurrentGenomeAsInstance().getNodeGroupMembership(gi);
       if (memb.contains(groupKey)) {
         deadSet.add(gi); 
       }
@@ -396,13 +400,13 @@ public class RemoveGroupSupport {
     dsit = deadSet.iterator();
     while (dsit.hasNext()) {
       NodeInstance ni = (NodeInstance)dsit.next();
-      RemoveNode.doNodeDelete(appState, ni.getID(), rcx, support, null, keepEmptyMemOnly); 
+      RemoveNode.doNodeDelete(uics, ni.getID(), rcx, support, null, keepEmptyMemOnly); 
     }
     
     //
     // Grab this info now so we can delete the properties later:
     
-    Set<String> subsets = rcx.getGenomeAsInstance().getGroup(groupKey).getSubsets(rcx.getGenomeAsInstance());
+    Set<String> subsets = rcx.getCurrentGenomeAsInstance().getGroup(groupKey).getSubsets(rcx.getCurrentGenomeAsInstance());
     
     //
     // All groups in child models should now be empty after the above operations,
@@ -414,23 +418,23 @@ public class RemoveGroupSupport {
     boolean needGeneral = false;
     while (dpit.hasNext()) {
       DynamicInstanceProxy dip = dpit.next();
-      if (dip.instanceIsAncestor(rcx.getGenomeAsInstance())) {
+      if (dip.instanceIsAncestor(rcx.getCurrentGenomeAsInstance())) {
         // Kinda a hack, going through a proxied dynamic instance!  FIX ME!
         DynamicGenomeInstance kid = dip.getAnInstance();
         String inherit = Group.buildInheritedID(groupKey, kid.getGeneration());
-        DataAccessContext rcxK = new DataAccessContext(rcx, kid);
+        StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, kid);
         if (kid.getGroup(inherit) != null) {        
-          deleteGroupDetails(appState, rcxK, inherit, support);
+          deleteGroupDetails(uics, rcxK, inherit, support);
         }
         ProxyChange[] pca = dip.deleteExtraNodesForGroup(Group.getBaseID(groupKey));       
         for (int i = 0; i < pca.length; i++) {
-          support.addEdit(new ProxyChangeCmd(appState, rcxK, pca[i]));
+          support.addEdit(new ProxyChangeCmd(rcxK, pca[i]));
           needGeneral = true;
         }
         NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers(kid);
         if (nmca != null) {
           for (int i = 0; i < nmca.length; i++) {
-            NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxK, nmca[i]);
+            NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcxK, nmca[i]);
             support.addEdit(gcc);
           }
         }       
@@ -439,7 +443,7 @@ public class RemoveGroupSupport {
     
     // Check for modules emptying out:
     
-    RemoveNode.proxyPostExtraNodeDeletionSupport(appState, rcx, support);   
+    RemoveNode.proxyPostExtraNodeDeletionSupport(uics, rcx, support);   
     
     if (needGeneral) {
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
@@ -448,18 +452,18 @@ public class RemoveGroupSupport {
     Iterator<GenomeInstance> dit = rcx.getGenomeSource().getInstanceIterator();
     while (dit.hasNext()) {
       GenomeInstance gi = dit.next();
-      if ((gi != rcx.getGenome()) && rcx.getGenomeAsInstance().isAncestor(gi)) {
+      if ((gi != rcx.getCurrentGenome()) && rcx.getCurrentGenomeAsInstance().isAncestor(gi)) {
         String inherit = Group.buildInheritedID(groupKey, gi.getGeneration());
         if (gi.getGroup(inherit) != null) {
-          DataAccessContext rcxI = new DataAccessContext(rcx, gi);
-          deleteGroupDetails(appState, rcxI, inherit, support);
+          StaticDataAccessContext rcxI = new StaticDataAccessContext(rcx, gi);
+          deleteGroupDetails(uics, rcxI, inherit, support);
         }
       }
     }
     
     // Now delete from the instance:
     
-    deleteGroupDetails(appState, rcx, groupKey, support);
+    deleteGroupDetails(uics, rcx, groupKey, support);
     
     //
     // Now if we have the top instance, delete the group properties and the mappings!
@@ -468,9 +472,9 @@ public class RemoveGroupSupport {
     Iterator<String> ssit = subsets.iterator();
     while (ssit.hasNext()) {
       String subkey = ssit.next();
-      doTopInstanceGroupCleanup(appState, rcx, subkey, support);
+      doTopInstanceGroupCleanup(rcx, subkey, support);
     } 
-    doTopInstanceGroupCleanup(appState, rcx, groupKey, support);
+    doTopInstanceGroupCleanup(rcx, groupKey, support);
     return;
   }  
 
@@ -479,10 +483,9 @@ public class RemoveGroupSupport {
   ** Delete a dynamic subgroup from the model
   */  
   
-  private static void deleteDynamicSubGroup(BTState appState, DataAccessContext rcx,
-                                            String subKey, UndoSupport support) {
+  private static void deleteDynamicSubGroup(StaticDataAccessContext rcx, String subKey, UndoSupport support) {
                                        
-    String proxID = ((DynamicGenomeInstance)rcx.getGenome()).getProxyID();
+    String proxID = ((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID();
     Iterator<DynamicInstanceProxy> dpit = rcx.getGenomeSource().getDynamicProxyIterator();
     while (dpit.hasNext()) {
       DynamicInstanceProxy dip = dpit.next();
@@ -491,12 +494,12 @@ public class RemoveGroupSupport {
         DynamicGenomeInstance kid = dip.getAnInstance();
         String inherit = Group.buildInheritedID(subKey, kid.getGeneration());
         if (kid.getGroup(inherit) != null) {
-          DataAccessContext rcxK = new DataAccessContext(rcx, kid);
-          deleteSubGroupDetails(appState, rcxK, inherit, support);          
+          StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, kid);
+          deleteSubGroupDetails(rcxK, inherit, support);          
           NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers(kid);
           if (nmca != null) {
             for (int i = 0; i < nmca.length; i++) {
-              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxK, nmca[i]);
+              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcxK, nmca[i]);
               support.addEdit(gcc);
             }
           }
@@ -507,11 +510,11 @@ public class RemoveGroupSupport {
     // Now delete from the instance:
 
     DynamicInstanceProxy dip = rcx.getGenomeSource().getDynamicProxy(proxID);
-    deleteSubGroupDetails(appState, rcx, subKey, support); 
-    NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers((DynamicGenomeInstance)rcx.getGenome());
+    deleteSubGroupDetails(rcx, subKey, support); 
+    NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers((DynamicGenomeInstance)rcx.getCurrentGenome());
     if (nmca != null) {
       for (int i = 0; i < nmca.length; i++) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcx, nmca[i]);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmca[i]);
         support.addEdit(gcc);
       }
     }
@@ -524,24 +527,24 @@ public class RemoveGroupSupport {
   ** Delete a subgroup from the model
   */  
   
-  private static void deleteStaticSubGroup(BTState appState, DataAccessContext rcx, String groupKey, UndoSupport support) {
+  private static void deleteStaticSubGroup(StaticDataAccessContext rcx, String groupKey, UndoSupport support) {
     //
     // Delete from dynamic children, then static children, then from parent instance:
     //
     Iterator<DynamicInstanceProxy> dpit = rcx.getGenomeSource().getDynamicProxyIterator();
     while (dpit.hasNext()) {
       DynamicInstanceProxy dip = dpit.next();
-      if (dip.instanceIsAncestor(rcx.getGenomeAsInstance())) {
+      if (dip.instanceIsAncestor(rcx.getCurrentGenomeAsInstance())) {
         // Kinda a hack, going through a proxied dynamic instance!  FIX ME!
         DynamicGenomeInstance kid = dip.getAnInstance();
         String inherit = Group.buildInheritedID(groupKey, kid.getGeneration());
         if (kid.getGroup(inherit) != null) {
-          DataAccessContext rcxK = new DataAccessContext(rcx, kid);
-          deleteSubGroupDetails(appState, rcxK, inherit, support);
+          StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, kid);
+          deleteSubGroupDetails(rcxK, inherit, support);
           NetModuleChange[] nmca = dip.adjustDynamicGroupModuleMembers(kid);
           if (nmca != null) {
             for (int i = 0; i < nmca.length; i++) {
-              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxK, nmca[i]);
+              NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcxK, nmca[i]);
               support.addEdit(gcc);
             }
           }         
@@ -551,24 +554,24 @@ public class RemoveGroupSupport {
     Iterator<GenomeInstance> dit = rcx.getGenomeSource().getInstanceIterator();
     while (dit.hasNext()) {
       GenomeInstance gi = dit.next();
-      if ((gi != rcx.getGenome()) && rcx.getGenomeAsInstance().isAncestor(gi)) {
+      if ((gi != rcx.getCurrentGenome()) && rcx.getCurrentGenomeAsInstance().isAncestor(gi)) {
         String inherit = Group.buildInheritedID(groupKey, gi.getGeneration());
         if (gi.getGroup(inherit) != null) {
-          DataAccessContext rcxI = new DataAccessContext(rcx, gi);
-          deleteSubGroupDetails(appState, rcxI, inherit, support);
+          StaticDataAccessContext rcxI = new StaticDataAccessContext(rcx, gi);
+          deleteSubGroupDetails(rcxI, inherit, support);
         }
       }
     }
 
     // Now delete from the instance:
     
-    deleteSubGroupDetails(appState, rcx, groupKey, support);
+    deleteSubGroupDetails(rcx, groupKey, support);
  
     //
     // Now if we have the top instance, delete the group properties and the mappings!
     //
     
-    doTopInstanceGroupCleanup(appState, rcx, groupKey, support);
+    doTopInstanceGroupCleanup(rcx, groupKey, support);
     return;
   }
   
@@ -577,21 +580,21 @@ public class RemoveGroupSupport {
   ** Delete a subgroup from the model
   */  
   
-  private static void deleteSubGroupDetails(BTState appState, DataAccessContext rcx, String subKey, UndoSupport support) {
-    GenomeChange[] retval = rcx.getGenomeAsInstance().removeSubGroup(subKey);
+  private static void deleteSubGroupDetails(StaticDataAccessContext rcx, String subKey, UndoSupport support) {
+    GenomeChange[] retval = rcx.getCurrentGenomeAsInstance().removeSubGroup(subKey);
     if (retval != null) {
       for (int i = 0; i < retval.length; i++) {
         if (retval[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, retval[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, retval[i]);
           support.addEdit(gcc);
-          support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+          support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         }              
       }
     }
        
-    GroupSettingChange gsc = rcx.gsm.dropGroupVisibility(rcx.getGenomeID(), subKey);  
+    GroupSettingChange gsc = rcx.getGSM().dropGroupVisibility(rcx.getCurrentGenomeID(), subKey);  
     if (gsc != null) {
-      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState, rcx, gsc);
+      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(rcx, gsc);
       support.addEdit(gscc);
     }
     return;
@@ -602,15 +605,15 @@ public class RemoveGroupSupport {
   ** Delete a group from the model
   */  
   
-  private static void deleteGroupDetails(BTState appState, DataAccessContext rcx, String groupKey, UndoSupport support) {
+  private static void deleteGroupDetails(UIComponentSource uics, DataAccessContext rcx, String groupKey, UndoSupport support) {
     
     //
     // If there are any modules attached to the group, delete them too:
     //
     
-    Map<String, Set<String>> moduleMap = rcx.getGenomeAsInstance().findModulesOwnedByGroup(groupKey);
+    Map<String, Set<String>> moduleMap = rcx.getCurrentGenomeAsInstance().findModulesOwnedByGroup(groupKey);
     if (!moduleMap.isEmpty()) {
-      NetOverlayController noc = appState.getNetOverlayController();
+      NetOverlayController noc = uics.getNetOverlayController();
       Iterator<String> mmkit = moduleMap.keySet().iterator();
       while (mmkit.hasNext()) {
         String nokey = mmkit.next();
@@ -618,7 +621,7 @@ public class RemoveGroupSupport {
         Iterator<String> msit = modSet.iterator();
         while (msit.hasNext()) {
           String modID = msit.next();
-          OverlaySupport.deleteNetworkModule(appState, rcx, nokey, modID, support);
+          OverlaySupport.deleteNetworkModule(uics, rcx, nokey, modID, support);
         }
       }
       noc.cleanUpDeletedModules(moduleMap, support, rcx);
@@ -628,21 +631,20 @@ public class RemoveGroupSupport {
     // Now remove the empty group
     //
     
-    GenomeChange[] retval = rcx.getGenomeAsInstance().removeEmptyGroup(groupKey);
+    GenomeChange[] retval = rcx.getCurrentGenomeAsInstance().removeEmptyGroup(groupKey);
     if (retval != null) {
       for (int i = 0; i < retval.length; i++) {
         if (retval[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, retval[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, retval[i]);
           support.addEdit(gcc);
-          support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+          support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         }              
       }
     }
-    
-    GroupSettingManager gsm = (GroupSettingManager)rcx.gsm;          
-    GroupSettingChange gsc = gsm.dropGroupVisibility(rcx.getGenomeID(), groupKey);  
+           
+    GroupSettingChange gsc = rcx.getGSM().dropGroupVisibility(rcx.getCurrentGenomeID(), groupKey);  
     if (gsc != null) {
-      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState, rcx, gsc);
+      GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(rcx, gsc);
       support.addEdit(gscc);
     }
     return;
@@ -653,25 +655,24 @@ public class RemoveGroupSupport {
   ** If we have the top instance, delete the group properties and the mappings!
   */  
   
-  private static void doTopInstanceGroupCleanup(BTState appState, DataAccessContext rcx, 
-                                                String key, UndoSupport support) {   
+  private static void doTopInstanceGroupCleanup(StaticDataAccessContext rcx, String key, UndoSupport support) {   
     //
     // Now if we have the top instance, delete the group properties and the mappings!
     //
                  
-    GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
     if (parent != null) {
       return;
     }
             
-    String topInstID = rcx.getGenomeID();
-    Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+    String topInstID = rcx.getCurrentGenomeID();
+    Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
     while (layit.hasNext()) {
       Layout layout = layit.next();
       if (layout.haveGroupMetadataDependency(topInstID, key)) {
         Layout.PropChange lpc = layout.dropGroupMetadataDependency(topInstID, key);
         if (lpc != null) {
-          PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+          PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
           support.addEdit(pcc);        
         }
       } 
@@ -679,14 +680,14 @@ public class RemoveGroupSupport {
         Layout.PropChange[] lpc = new Layout.PropChange[1];             
         lpc[0] = layout.removeGroupProperties(key);        
         if (lpc[0] != null) {
-          PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+          PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
           support.addEdit(pcc);
           support.addEvent(new LayoutChangeEvent(layout.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
         }
       }
     }
     
-    doTopInstanceGroupMapCleanup(appState, rcx, key, support);
+    doTopInstanceGroupMapCleanup(rcx, key, support);
     
     return;
   }
@@ -696,32 +697,32 @@ public class RemoveGroupSupport {
   ** If we have the top instance, delete the mappings!
   */  
   
-  public static void doTopInstanceGroupMapCleanup(BTState appState, DataAccessContext rcx, 
-                                                  String key, UndoSupport support) {   
+  public static void doTopInstanceGroupMapCleanup(StaticDataAccessContext rcx, String key, UndoSupport support) {   
     //
     // Now if we have the top instance, delete the group mappings!
     //
                     
-    GenomeInstance parent = rcx.getGenomeAsInstance().getVfgParent();
+    GenomeInstance parent = rcx.getCurrentGenomeAsInstance().getVfgParent();
     if (parent != null) {
       return;
     }
     
     TimeCourseData tcd = rcx.getExpDataSrc().getTimeCourseData();
+    TimeCourseDataMaps tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
     if (tcd != null) {
-      TimeCourseChange tchg = tcd.dropGroupMap(key);
+      TimeCourseChange tchg = tcdm.dropGroupMap(key);
       if (tchg != null) {
-        TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(appState, rcx, tchg, false);
+        TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(rcx, tchg, false);
         support.addEdit(cmd);
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       }
     }
     
-    TemporalInputRangeData tird = rcx.getExpDataSrc().getTemporalInputRangeData();
+    TemporalInputRangeData tird = rcx.getTemporalRangeSrc().getTemporalInputRangeData();
     if (tird != null) {
       TemporalInputChange tichg = tird.dropGroupMap(key);
       if (tichg != null) {
-        TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(appState, rcx, tichg, false);
+        TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(rcx, tichg, false);
         support.addEdit(cmd);
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       }
@@ -736,7 +737,7 @@ public class RemoveGroupSupport {
   ** orphaned.
   */  
  
-   public static void cleanupDanglingGroupData(BTState appState, DataAccessContext rcx, UndoSupport support) {  
+   public static void cleanupDanglingGroupData(StaticDataAccessContext rcx, UndoSupport support) {  
      //
      // Go through the time course region maps, temporal input region maps,
      // and region visibility settings, and delete any that are no longer needed.
@@ -764,8 +765,9 @@ public class RemoveGroupSupport {
      
      HashSet<String> deadGroups = new HashSet<String>();
      TimeCourseData tcd = rcx.getExpDataSrc().getTimeCourseData();
+     TimeCourseDataMaps tcdm = rcx.getDataMapSrc().getTimeCourseDataMaps();
      if (tcd != null) {
-       Iterator<String> tcgmkit = tcd.getGroupMapKeys();
+       Iterator<String> tcgmkit = tcdm.getGroupMapKeys();
        while (tcgmkit.hasNext()) {
          String key = tcgmkit.next();  
          if (!liveGroups.contains(key)) {
@@ -777,8 +779,8 @@ public class RemoveGroupSupport {
      Iterator<String> dgit = deadGroups.iterator();
      while (dgit.hasNext()) {
        String dgKey = dgit.next();
-       TimeCourseChange tcc = tcd.dropGroupMap(dgKey);
-       TimeCourseChangeCmd tccc = new TimeCourseChangeCmd(appState, rcx, tcc);
+       TimeCourseChange tcc = tcdm.dropGroupMap(dgKey);
+       TimeCourseChangeCmd tccc = new TimeCourseChangeCmd(rcx, tcc);
        support.addEdit(tccc);
      }
      
@@ -787,7 +789,7 @@ public class RemoveGroupSupport {
      //
      
      deadGroups.clear();
-     TemporalInputRangeData tird = rcx.getExpDataSrc().getTemporalInputRangeData();
+     TemporalInputRangeData tird = rcx.getTemporalRangeSrc().getTemporalInputRangeData();
      if (tird != null) {
        Iterator<String> kit = tird.getGroupMapKeys();
        while (kit.hasNext()) {
@@ -802,11 +804,11 @@ public class RemoveGroupSupport {
      while (dgit.hasNext()) {
        String dgKey = dgit.next();
        TemporalInputChange tic = tird.dropGroupMap(dgKey);
-       TemporalInputChangeCmd ticc = new TemporalInputChangeCmd(appState, rcx, tic);
+       TemporalInputChangeCmd ticc = new TemporalInputChangeCmd(rcx, tic);
        support.addEdit(ticc);
      } 
      
-     cleanupDanglingVisibility(appState, rcx, support);     
+     cleanupDanglingVisibility(rcx, support);     
   
      return;
    } 
@@ -817,9 +819,9 @@ public class RemoveGroupSupport {
   ** orphaned.
   */  
  
-   public static void cleanupDanglingVisibility(BTState appState, DataAccessContext rcx, UndoSupport support) {  
+   public static void cleanupDanglingVisibility(StaticDataAccessContext rcx, UndoSupport support) {  
 
-     GroupSettingManager gsm = appState.getGroupMgr();
+     GroupSettingSource gsm = rcx.getGSM();
      
      HashSet<String> liveGroups = new HashSet<String>();     
 

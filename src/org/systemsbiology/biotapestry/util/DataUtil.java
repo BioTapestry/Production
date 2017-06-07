@@ -63,6 +63,61 @@ public class DataUtil {
   //
   ////////////////////////////////////////////////////////////////////////////
  
+  
+  /***************************************************************************
+  **
+  ** Path name generator:
+  */   
+  
+  public static  String pathToString(List<String> path) {
+    StringBuffer buf = new StringBuffer();
+    int skipit = path.size() - 1;
+    for (int i = 0; i < path.size(); i++) {
+      String mName = path.get(i);
+      buf.append(mName);
+      if (i < skipit) {
+        buf.append("::");
+      }
+    }
+    return (buf.toString());
+  }
+  
+  /***************************************************************************
+  **
+  ** Path name generator:
+  */   
+  
+  public static  String pathToString(String[] path) {
+    StringBuffer buf = new StringBuffer();
+    int skipit = path.length - 1;
+    for (int i = 0; i < path.length; i++) {
+      String mName = path[i];
+      buf.append(mName);
+      if (i < skipit) {
+        buf.append("::");
+      }
+    }
+    return (buf.toString());
+  }
+  
+  /***************************************************************************
+  **
+  ** Handle object equality with nulls taken into account
+  */  
+  
+  public static boolean objsEqual(Object obj1, Object obj2) {
+    return ((obj1 == null) ? (obj2 == null) : obj1.equals(obj2));
+  }
+
+  /***************************************************************************
+  **
+  ** Handle string equality with nulls taken into account
+  */  
+  
+  public static boolean stringsEqual(String str1, String str2) {
+    return ((str1 == null) ? (str2 == null) : str1.equals(str2));
+  }
+
   /***************************************************************************
   **
   ** Build a list when all we have is an iterator
@@ -366,7 +421,7 @@ public class DataUtil {
       double val = Math.abs(val0bj.doubleValue());
       sum += val;
     }
-    return (sum / (double)num); 
+    return (sum / num); 
   }
   
   /***************************************************************************
@@ -384,7 +439,7 @@ public class DataUtil {
       Double val0bj = vals.get(i);
       sum += val0bj.doubleValue();
     }
-    return (sum / (double)num); 
+    return (sum / num); 
   }
  
   /***************************************************************************
@@ -436,7 +491,7 @@ public class DataUtil {
       sum += valv;
       count++;
     }
-    double avg = sum / (double)count;
+    double avg = sum / count;
     return ((avg <= negThresh) || (avg >= posThresh));
   }
   
@@ -610,7 +665,7 @@ public class DataUtil {
   public static boolean hasANaN(List<Double> vals) {
     int numVals = vals.size();
     for (int i = 0; i < numVals; i++) {
-      Double val = (Double)vals.get(i);
+      Double val = vals.get(i);
       if (val.isNaN()) {
         return (true);
       }
@@ -655,7 +710,7 @@ public class DataUtil {
       }
       product *= Math.abs(dval);
     }
-    return (Math.pow(product, 1.0 / (double)numVals));
+    return (Math.pow(product, 1.0 / numVals));
   }
   
   /***************************************************************************
@@ -833,7 +888,7 @@ public class DataUtil {
   ** Set intersection helper
   */  
  
-  public static <N> Set<N> intersection(Set<N> one, Set<N> two, Set<N> result) {
+  public static <N, T extends Set<N>> T intersection(T one, T two, T result) {
     result.clear();
     result.addAll(one);
     result.retainAll(two);
@@ -845,7 +900,7 @@ public class DataUtil {
   ** Set union helper
   */  
  
-  public static <N> Set<N> union(Set<N> one, Set<N> two, Set<N> result) {
+  public static <N, T extends Set<N>> T union(T one, T two, T result) {
     result.clear();
     result.addAll(one);
     result.addAll(two);
@@ -1075,7 +1130,7 @@ public class DataUtil {
       sum += val.doubleValue();
       count++;
     }
-    return (sum / (double)count); 
+    return (sum / count); 
   } 
   
   /***************************************************************************

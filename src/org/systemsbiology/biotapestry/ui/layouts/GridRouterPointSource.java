@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2015 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.ui.Grid;
 
 /***************************************************************************
@@ -54,7 +53,6 @@ public class GridRouterPointSource {
   private String srcID_;
   private int rootCol_;
   private int rootRow_;
-  private BTState appState_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -86,9 +84,8 @@ public class GridRouterPointSource {
   ** Constructor
   */
         
-  public GridRouterPointSource(BTState appState, TrackedGrid grid, TrackedGrid.TrackPosRC rootPos, 
+  public GridRouterPointSource(TrackedGrid grid, TrackedGrid.TrackPosRC rootPos, 
                                Grid.RowAndColumn srcRC, String srcID) {
-    appState_ = appState;
     grid_ = grid;
     srcID_ = srcID;
     rootPos_ = rootPos.clone();
@@ -113,8 +110,7 @@ public class GridRouterPointSource {
   ** Constructor for inbound tracks
   */
         
-  public GridRouterPointSource(BTState appState, TrackedGrid grid, TrackedGrid.TrackPosRC rootPos, String srcID) {
-    appState_ = appState;
+  public GridRouterPointSource(TrackedGrid grid, TrackedGrid.TrackPosRC rootPos, String srcID) {
     grid_ = grid;
     srcID_ = srcID;
     rootPos_ = rootPos.clone();
@@ -179,9 +175,9 @@ public class GridRouterPointSource {
       TrackedGrid.TrackSpec colSpec = colTrack.getCol();
       if (!direct) {
         TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(rowNum, srcID_);
-        rowLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+        rowLoc = grid_.buildRCTrack(rowSpec, colSpec);
       } else {
-        rowLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, padNum, nodeID, linkID,
+        rowLoc = grid_.buildRCTrackForRowMidline(colSpec, padNum, nodeID, linkID,
                                                  true, linkSign, rowNum);      
       }
       posForRow = new TrackedGrid.TrackPosRC(rowLoc);
@@ -204,7 +200,7 @@ public class GridRouterPointSource {
         TrackedGrid.TrackPosRC posForLastRow = perLastRow.get(outKey);
         retval.path.add(posForLastRow.clone());        
       }      
-    } else {  // got points on the row
+    } else {  // got points on the row (perRow != null)
       Integer outKey = (colNum <= rootCol_) ? perRow.firstKey() : perRow.lastKey();
       posForRow = perRow.get(outKey);
       // If column matches, we just differ by a pad number (or maybe not, if no multipads...)
@@ -225,11 +221,11 @@ public class GridRouterPointSource {
         return (retval);
       }
     }
-  
+    
     TrackedGrid.TrackPosRC lastPos;
     if (!direct) {
       TrackedGrid.TrackSpec rowSpec = posForRow.getRCTrack().getRow();
-      TrackedGrid.RCTrack lastLoc = grid_.buildRCTrackForColMidline(appState_, rowSpec, padNum, nodeID, linkID,
+      TrackedGrid.RCTrack lastLoc = grid_.buildRCTrackForColMidline(rowSpec, padNum, nodeID, linkID,
                                                                     true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
       lastPos = new TrackedGrid.TrackPosRC(lastLoc); 
     } else if (rowLoc == null) {
@@ -285,7 +281,7 @@ public class GridRouterPointSource {
       TrackedGrid.RCTrack colTrack = rootPos_.getRCTrack();      
       TrackedGrid.TrackSpec colSpec = colTrack.getCol();
    
-      rowLoc = grid_.buildRCTrackForRowMidline(appState_, colSpec, tPadNum, nodeID, linkID, true, linkSign, rowNum);      
+      rowLoc = grid_.buildRCTrackForRowMidline(colSpec, tPadNum, nodeID, linkID, true, linkSign, rowNum);      
       posForRow = new TrackedGrid.TrackPosRC(rowLoc);
       perRow.put(new Integer(rootCol_), posForRow.clone());
       if (wasNoRows) { // no rows even, so start from root
@@ -315,7 +311,7 @@ public class GridRouterPointSource {
     TrackedGrid.RCTrack lastLoc;
     
     if (rowLoc == null) {
-      lastLoc = grid_.buildRCTrackForDualMidline(appState_, tPadNum, nodeID, true, sPadNum, 
+      lastLoc = grid_.buildRCTrackForDualMidline(tPadNum, nodeID, true, sPadNum, 
                                                  srcID_, false, linkSign, linkID, 
                                                  TrackedGrid.RCTrack.NO_TRACK, rowNum); 
 
@@ -455,7 +451,7 @@ public class GridRouterPointSource {
     TrackedGrid.RCTrack lastLoc;
     if (!direct) {
       TrackedGrid.TrackSpec rowSpec = posForRow.getRCTrack().getRow();
-      lastLoc = grid_.buildRCTrackForColMidline(appState_, rowSpec, padNum, nodeID, linkID,
+      lastLoc = grid_.buildRCTrackForColMidline(rowSpec, padNum, nodeID, linkID,
                                                 true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
     } else {
       lastLoc = rowLoc.clone();
@@ -615,7 +611,7 @@ public class GridRouterPointSource {
       posPerRow_.put(useRowNumObj, perRow);
       TrackedGrid.TrackSpec colSpec = rootPos_.getRCTrack().getCol();
       TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(useRowNumObj.intValue(), srcID_);
-      rowTrack = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+      rowTrack = grid_.buildRCTrack(rowSpec, colSpec);
       TrackedGrid.TrackPosRC posForRow = new TrackedGrid.TrackPosRC(rowTrack);
       perRow.put(new Integer(rootCol_), posForRow.clone());
       pap.path.add(posForRow.clone());          
@@ -625,7 +621,7 @@ public class GridRouterPointSource {
       posPerRow_.put(useRowNumObj, perRow);
       TrackedGrid.TrackSpec colSpec = rootPos_.getRCTrack().getCol();
       TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(rootRow_, srcID_);
-      rowTrack = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+      rowTrack = grid_.buildRCTrack(rowSpec, colSpec);
       TrackedGrid.TrackPosRC posForRow = new TrackedGrid.TrackPosRC(rowTrack);
       perRow.put(new Integer(rootCol_), posForRow.clone());
       pap.path.add(rootPos_.clone()); 
@@ -675,7 +671,7 @@ public class GridRouterPointSource {
       posPerRow_.put(useRowNumObj, perRow);
       TrackedGrid.TrackSpec colSpec = rootPos_.getRCTrack().getCol();
       TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(rootRow_, srcID_);
-      rowTrack = grid_.buildRCTrack(appState_, rowSpec, colSpec);
+      rowTrack = grid_.buildRCTrack(rowSpec, colSpec);
       TrackedGrid.TrackPosRC posForRow = new TrackedGrid.TrackPosRC(rowTrack);
       perRow.put(new Integer(rootCol_), posForRow.clone());
       pap.path.add(rootPos_.clone()); 

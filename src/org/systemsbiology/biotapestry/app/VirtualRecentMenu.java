@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@ import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveOps;
 import org.systemsbiology.biotapestry.nav.RecentFilesManager;
 import org.systemsbiology.biotapestry.ui.menu.XPlatAction;
-import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMenu;
 import org.systemsbiology.biotapestry.ui.menu.XPlatSeparator;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -56,9 +55,12 @@ public class VirtualRecentMenu {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
   private JMenu recentMenu_;
   private XPlatMenu recentXPlatMenu_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private PathAndFileSource pafs_;
+  private ResourceManager rMan_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,19 +73,20 @@ public class VirtualRecentMenu {
   ** Constructor 
   */ 
   
-  public VirtualRecentMenu(BTState appState) {   
-    appState_ = appState;
-    appState_.setRecentMenu(this);
-    if (!appState_.getIsEditor()) {
+  public VirtualRecentMenu(UIComponentSource uics, CmdSource cSrc, PathAndFileSource pafs, ResourceManager rMan) {   
+    uics_ = uics;
+    cSrc_ = cSrc;
+    pafs_ = pafs;
+    rMan_ = rMan;
+    if (!uics_.getIsEditor()) {
       return;
     }   
-    ResourceManager rMan = appState_.getRMan();
-    if (!appState_.isHeadless()) {    
-      recentMenu_ = new JMenu(rMan.getString("command.recentMenu"));
-      recentMenu_.setMnemonic(rMan.getChar("command.recentMenuMnem"));
+    if (!uics_.isHeadless()) {    
+      recentMenu_ = new JMenu(rMan_.getString("command.recentMenu"));
+      recentMenu_.setMnemonic(rMan_.getChar("command.recentMenuMnem"));
     } else {
       // Placeholder for non-nullness
-      recentXPlatMenu_ = new XPlatMenu(rMan.getString("command.recentMenu"), rMan.getChar("command.recentMenuMnem")); 
+      recentXPlatMenu_ = new XPlatMenu(rMan_.getString("command.recentMenu"), rMan_.getChar("command.recentMenuMnem")); 
     }
     updateRecentMenu();
   }  
@@ -129,7 +132,7 @@ public class VirtualRecentMenu {
           item.setEnabled(true);
         }
       }
-      MainCommands.ChecksForEnabled cra = appState_.getMainCmds().getCachedAction(FlowMeister.MainFlow.CLEAR_RECENT, false);
+      MainCommands.ChecksForEnabled cra = cSrc_.getMainCmds().getCachedAction(FlowMeister.MainFlow.CLEAR_RECENT, false);
       cra.setEnabled((recentMenu_.getMenuComponentCount() > 2));
     }
     return;
@@ -159,7 +162,7 @@ public class VirtualRecentMenu {
   */ 
     
   public boolean haveRecentMenu() {
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       return (recentMenu_ != null);
     } else {    
       return (recentXPlatMenu_ != null);
@@ -173,11 +176,11 @@ public class VirtualRecentMenu {
     
   public void updateRecentMenu() {
     
-    RecentFilesManager rfm = appState_.getRecentFilesMgr();
+    RecentFilesManager rfm = pafs_.getRecentFilesMgr();
     Iterator<String> rfit = rfm.getRecentFiles();
-    MainCommands mcmd = appState_.getMainCmds();
+    MainCommands mcmd = cSrc_.getMainCmds();
     
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       if (recentMenu_ == null) {
         return;
       }      
@@ -196,19 +199,18 @@ public class VirtualRecentMenu {
       if (recentXPlatMenu_ == null) {
         return;
       }    
-      FlowMeister flom = appState_.getFloM();
-      ResourceManager rMan = appState_.getRMan();
-      recentXPlatMenu_ = new XPlatMenu(rMan.getString("command.recentMenu"), rMan.getChar("command.recentMenuMnem"));
+      FlowMeister flom = cSrc_.getFloM();
+      recentXPlatMenu_ = new XPlatMenu(rMan_.getString("command.recentMenu"), rMan_.getChar("command.recentMenuMnem"));
       boolean needClear = false;
       while (rfit.hasNext()) {
         String path = rfit.next();
         LoadSaveOps.FileArg args = new LoadSaveOps.FileArg(rfm.getRecentFileName(path), path);
         ControlFlow scupa = flom.getControlFlow(FlowMeister.MainFlow.LOAD_RECENT, args);
-        XPlatAction xpa  = new XPlatAction(flom, rMan, FlowMeister.MainFlow.LOAD_RECENT, scupa.getName(), null, args);
+        XPlatAction xpa  = new XPlatAction(flom, rMan_, FlowMeister.MainFlow.LOAD_RECENT, scupa.getName(), null, args);
         recentXPlatMenu_.addItem(xpa);
         needClear = true;
       }
-      XPlatAction xpa  = new XPlatAction(flom, rMan, FlowMeister.MainFlow.CLEAR_RECENT);
+      XPlatAction xpa  = new XPlatAction(flom, rMan_, FlowMeister.MainFlow.CLEAR_RECENT);
       xpa.setEnabled(needClear);
       recentXPlatMenu_.addItem(new XPlatSeparator());
       recentXPlatMenu_.addItem(xpa);
@@ -222,23 +224,22 @@ public class VirtualRecentMenu {
   */ 
     
   public void clearRecentMenu() {
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       if (recentMenu_ == null) {
         return;
       }
       recentMenu_.removeAll();    
       recentMenu_.add(new JSeparator());
-      MainCommands.ChecksForEnabled cra = appState_.getMainCmds().getCachedAction(FlowMeister.MainFlow.CLEAR_RECENT, false);
+      MainCommands.ChecksForEnabled cra = cSrc_.getMainCmds().getCachedAction(FlowMeister.MainFlow.CLEAR_RECENT, false);
       cra.setEnabled(false);
       recentMenu_.add(cra);
     } else {
       if (recentXPlatMenu_ == null) {
         return;
       }
-      ResourceManager rMan = appState_.getRMan();
-      FlowMeister flom = appState_.getFloM();
-      recentXPlatMenu_ = new XPlatMenu(rMan.getString("command.recentMenu"), rMan.getChar("command.recentMenuMnem"));   
-      XPlatAction xpa  = new XPlatAction(flom, rMan, FlowMeister.MainFlow.CLEAR_RECENT);
+      FlowMeister flom = cSrc_.getFloM();
+      recentXPlatMenu_ = new XPlatMenu(rMan_.getString("command.recentMenu"), rMan_.getChar("command.recentMenuMnem"));   
+      XPlatAction xpa  = new XPlatAction(flom, rMan_, FlowMeister.MainFlow.CLEAR_RECENT);
       xpa.setEnabled(false);
       recentXPlatMenu_.addItem(new XPlatSeparator());
       recentXPlatMenu_.addItem(xpa);

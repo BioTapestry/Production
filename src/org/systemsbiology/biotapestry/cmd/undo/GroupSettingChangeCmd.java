@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,10 +20,9 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.GroupSettingChange;
-import org.systemsbiology.biotapestry.nav.GroupSettingManager;
+import org.systemsbiology.biotapestry.nav.GroupSettingSource;
 
 /****************************************************************************
 **
@@ -52,8 +51,8 @@ public class GroupSettingChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GroupSettingChangeCmd(BTState appState, DataAccessContext dacx, GroupSettingChange restore) {
-    super(appState, dacx);
+  public GroupSettingChangeCmd(DataAccessContext dacx, GroupSettingChange restore) {
+    super(dacx);
     if (restore == null) {
       throw new IllegalArgumentException();
     }
@@ -94,7 +93,7 @@ public class GroupSettingChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    GroupSettingManager gsm = (GroupSettingManager)dacx_.gsm;
+    GroupSettingSource gsm = dacx_.getGSM();
     gsm.changeUndo(restore_);     
     return;
   }  
@@ -107,7 +106,7 @@ public class GroupSettingChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    GroupSettingManager gsm = (GroupSettingManager)dacx_.gsm;
+    GroupSettingSource gsm = dacx_.getGSM();
     gsm.changeRedo(restore_);  
     return;
   }

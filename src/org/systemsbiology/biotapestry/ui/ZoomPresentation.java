@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,12 +22,17 @@ package org.systemsbiology.biotapestry.ui;
 import java.awt.Rectangle;
 import java.util.Map;
 
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.TaggedSet;
 
 /****************************************************************************
 **
-** Interface for zoom presentation
+** Interface for zoom presentation.
+**
+** NOTE: The DataAccessContexts passed through this interface are both DynamicDataAccessContexts and
+** StaticDataAccessContexts! Thus the base class appears in the signature!
+**
 */
 
 public interface ZoomPresentation {

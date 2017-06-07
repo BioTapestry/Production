@@ -150,6 +150,7 @@ public class ExperimentControl implements Cloneable {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("ExperimentControl: " + id_ + " " + description_ );
   }

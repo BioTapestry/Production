@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.prefs.Preferences;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 
 /****************************************************************************
@@ -51,7 +51,7 @@ public class RecentFilesManager {
 
   private ArrayList<String> absPaths_;
   private HashMap<String, String> names_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -64,8 +64,8 @@ public class RecentFilesManager {
   ** Null constructor
   */
 
-  public RecentFilesManager(BTState appState) {
-    appState_ = appState;
+  public RecentFilesManager(UIComponentSource uics) {
+    uics_ = uics;
     absPaths_ = new ArrayList<String>();
     names_ = new HashMap<String, String>();
     loadFromPrefs();
@@ -157,7 +157,7 @@ public class RecentFilesManager {
   */
 
   private void commitToPrefs() {
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       return;
     }
     Preferences prefs = Preferences.userNodeForPackage(MainCommands.class);
@@ -184,7 +184,7 @@ public class RecentFilesManager {
   */
 
   private boolean canLoadFromPrefs() {
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       return (false);
     }
     Preferences prefs = Preferences.userNodeForPackage(MainCommands.class);
@@ -198,7 +198,7 @@ public class RecentFilesManager {
   */
 
   private void loadFromPrefs() {
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       return;
     }
     absPaths_.clear();

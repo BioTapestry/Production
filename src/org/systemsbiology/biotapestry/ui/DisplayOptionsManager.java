@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ import java.io.PrintWriter;
 import java.util.Map;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UndoSupport;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
@@ -49,8 +49,6 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
   ////////////////////////////////////////////////////////////////////////////
 
   private DisplayOptions options_;
-  private boolean bigScreen_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -63,10 +61,8 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
   ** constructor
   */
     
-  public DisplayOptionsManager(BTState appState) {
-    appState_ = appState;
-    options_ = new DisplayOptions(appState_);
-    bigScreen_ = false;
+  public DisplayOptionsManager(DynamicDataAccessContext dacx) {
+    options_ = new DisplayOptions(dacx);
   }
    
   ////////////////////////////////////////////////////////////////////////////
@@ -74,26 +70,6 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-
-  /***************************************************************************
-  ** 
-  ** set for big screen
-  */
-
-  public void setForBigScreen(boolean bigScreen) {
-    bigScreen_ = bigScreen;
-    return;
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Answer for big screen
-  */
-
-  public boolean isForBigScreen() {
-    return (bigScreen_);
-  }
-  
   /***************************************************************************
   ** 
   ** Get the display options
@@ -145,7 +121,7 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
         revDO.setPerturbDataDisplayScaleKey(revSTag);
       }
       DisplayOptionsChange doc = setDisplayOptions(revDO);
-      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(appState_, dacx, doc);
+      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx, doc);
       support.addEdit(docc);
     }
     return;   
@@ -163,9 +139,9 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
     newOpts.setBranchMode(DisplayOptions.OUTLINED_BUS_BRANCHES);
     DisplayOptionsChange doc = setDisplayOptions(newOpts);
     if (support != null) {
-      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(appState_, dacx, doc);
+      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx, doc);
       support.addEdit(docc);
-      LayoutChangeEvent lcev = new LayoutChangeEvent(dacx.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent lcev = new LayoutChangeEvent(dacx.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);
       if (doFinish) {
         support.finish();

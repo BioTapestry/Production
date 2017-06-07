@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,11 +33,13 @@ import java.util.Set;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.ui.ViewExporter;
@@ -64,6 +66,8 @@ public class ExportWeb extends AbstractControlFlow  {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
+  private BTState appState_;
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -76,7 +80,7 @@ public class ExportWeb extends AbstractControlFlow  {
   */ 
   
   public ExportWeb(BTState appState) {
-    super(appState);
+    appState_ = appState;
     name = "command.Web";
     desc = "command.Web";
     mnem = "command.WebMnem";
@@ -105,8 +109,8 @@ public class ExportWeb extends AbstractControlFlow  {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx, appState_);
     return (retval);
   }
   
@@ -122,13 +126,10 @@ public class ExportWeb extends AbstractControlFlow  {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh; 
+        ans = new StepState(cfh, appState_);
       } else {
         ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("oneStep")) {
         next = ans.oneStep();      
@@ -147,12 +148,8 @@ public class ExportWeb extends AbstractControlFlow  {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, BackgroundWorkerOwner {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
-    
+  public static class StepState extends AbstractStepState implements BackgroundWorkerOwner {
+       
     private Boolean doFile_;
     private File targetDir_;
   
@@ -165,29 +162,50 @@ public class ExportWeb extends AbstractControlFlow  {
     private String holdKey_;
     private double zoom_;
     private UndoSupport support_;
-    private DataAccessContext dacx_;
- 
+    private StaticDataAccessContext rcx_;
+    private BTState appState_;
+     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx, BTState appState) {
+      super(dacx);
       nextStep_ = "oneStep";
-      myLsSup_ = appState_.getLSSupport();
-      dacx_ = dacx.getContextForRoot();
+      // myLsSup_: uics_ not initialized yet!
+      rcx_ = dacx.getContextForRoot();
+      appState_ = appState;
     }
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public StepState(ServerControlFlowHarness cfh, BTState appState) {
+      super(cfh);
+      nextStep_ = "oneStep";
+      myLsSup_ = uics_.getLSSupport();
+      rcx_ = dacx_.getContextForRoot();
+      appState_ = appState;
     }
     
+    /***************************************************************************
+    **
+    ** Gotta override to make sure myLsSup_ can get initialized.
+    */
+    
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      myLsSup_ = uics_.getLSSupport();
+      return;
+    }
+
     /***************************************************************************
     **
     ** Set the popup params
@@ -212,14 +230,14 @@ public class ExportWeb extends AbstractControlFlow  {
        
     private DialogAndInProcessCmd oneStep() { 
       boolean skipRoot = false;
-     
-      if (!appState_.isHeadless()) {      
+      
+      if (!uics_.isHeadless()) {      
         //
         // See if user wants the root:
         //        
-        ResourceManager rMan = appState_.getRMan();          
+        ResourceManager rMan = dacx_.getRMan();          
         int doRoot = 
-          JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+          JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                         rMan.getString("webPublish.wantRoot"), 
                                         rMan.getString("webPublish.wantRootTitle"),
                                         JOptionPane.YES_NO_CANCEL_OPTION);        
@@ -228,19 +246,19 @@ public class ExportWeb extends AbstractControlFlow  {
         }
         skipRoot = (doRoot == JOptionPane.NO_OPTION);
         
-        targetDir_ = myLsSup_.getFprep().getExistingWritableDirectory("WebDirectory");
+        targetDir_ = myLsSup_.getFprep(dacx_).getExistingWritableDirectory("WebDirectory");
         if (targetDir_ == null) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
         }
         
-        myLsSup_.getFprep().setPreference("WebDirectory", targetDir_.getAbsolutePath());
+        myLsSup_.getFprep(dacx_).setPreference("WebDirectory", targetDir_.getAbsolutePath());
         nos_ = new DirectoryNamedOutputStreamSource(targetDir_);
         wantHtmlSkeleton_ = true;
         intersectionMap_ = null;
         publishKeys_ = null;
       } else {
         if (doFile_.booleanValue()) {
-          if (!myLsSup_.getFprep().checkExistingWritableDirectory(targetDir_)) {          
+          if (!myLsSup_.getFprep(dacx_).checkExistingWritableDirectory(targetDir_)) {          
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
           }
           nos_ = new DirectoryNamedOutputStreamSource(targetDir_);
@@ -252,61 +270,61 @@ public class ExportWeb extends AbstractControlFlow  {
         }
       }
       
-      zoom_ = appState_.getZoomTarget().getZoomFactor();
-      holdKey_ = appState_.getGenome();
+      zoom_ = rcx_.getZoomTarget().getZoomFactor();
+      holdKey_ = rcx_.getCurrentGenomeID();
 
-      NavTree navTree = dacx_.getGenomeSource().getModelHierarchy();
+      NavTree navTree = rcx_.getGenomeSource().getModelHierarchy();
       List<String> ordered = navTree.getPreorderListing(skipRoot);
       Iterator<String> oit = ordered.iterator();
       support_ = null;
       if (oit.hasNext()) {
         String gkey = oit.next();
-        String layoutID = appState_.getLayoutMgr().getLayout(gkey);
+        String layoutID = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(gkey);
         appState_.setGraphLayout(layoutID);
         // Catch selection clear to undo queue the first time through:        
-        support_ = new UndoSupport(appState_, "undo.selection");
-        appState_.setGenome(gkey, support_, dacx_);
-        WebRunner runner = new WebRunner(appState_, nos_, skipRoot, gkey, wantHtmlSkeleton_, intersectionMap_, publishKeys_, dacx_);
+        support_ = uFac_.provideUndoSupport("undo.selection", rcx_);
+        appState_.setGenome(gkey, support_, rcx_);
+        WebRunner runner = new WebRunner(appState_, uics_, nos_, skipRoot, gkey, wantHtmlSkeleton_, intersectionMap_, publishKeys_, rcx_);
         
         BackgroundWorkerClient bwc;     
-        if (!appState_.isHeadless()) { // not headless, true background thread
-          bwc = new BackgroundWorkerClient(appState_, this, runner, "webPublish.waitTitle", "webPublish.wait", support_, true);    
+        if (!uics_.isHeadless()) { // not headless, true background thread
+          bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, "webPublish.waitTitle", "webPublish.wait", support_, true);    
         } else { // headless; on this thread
-          bwc = new BackgroundWorkerClient(appState_, this, runner, support_);
+          bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, support_);
         }        
         runner.setClient(bwc);
         bwc.launchWorker();
       }
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
-                                                                                       : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done    
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+                                                                                   : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done    
       return (daipc);  
     }
  
     public boolean handleRemoteException(Exception remoteEx) {
       if (remoteEx instanceof IOException) {
-        myLsSup_.getFprep().displayFileOutputError();
+        myLsSup_.getFprep(dacx_).displayFileOutputError();
         return (true);
       }
       return (false);
     }    
         
     public void cleanUpPreEnable(Object result) {
-      String layoutID = appState_.getLayoutMgr().getLayout(holdKey_);
+      String layoutID = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(holdKey_);
       appState_.setGraphLayout(layoutID);
-      appState_.setGenomeForUndo(holdKey_, dacx_);
-      appState_.getZoomTarget().setZoomFactor(zoom_);
+      appState_.setGenomeForUndo(holdKey_, rcx_);
+      rcx_.getZoomTarget().setZoomFactor(zoom_);
       return;
     }
     
     public void handleCancellation() {
-      String layoutID = appState_.getLayoutMgr().getLayout(holdKey_);
+      String layoutID = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(holdKey_);
       appState_.setGraphLayout(layoutID);
-      appState_.setGenomeForUndo(holdKey_, dacx_);
+      appState_.setGenomeForUndo(holdKey_, rcx_);
       if (support_ != null) {
         support_.finish();
       }
-      appState_.getZoomTarget().setZoomFactor(zoom_);
+      rcx_.getZoomTarget().setZoomFactor(zoom_);
       return;
     } 
     
@@ -329,19 +347,21 @@ public class ExportWeb extends AbstractControlFlow  {
     private NamedOutputStreamSource streamSrc_;
     private boolean skipRoot_;
     private String topID_;
-    private BTState myAppState_;
+    private UIComponentSource uics_;
     private Map<WebPublisher.ModelScale, ViewExporter.BoundsMaps> mapRepository_;
     private boolean needHtmlSkeleton_;
     private List<WebPublisher.ModelScale> keyList_;
-    private DataAccessContext myDacx_;
+    private StaticDataAccessContext myDacx_;
+    private BTState myAppState_;
        
-    public WebRunner(BTState appState, NamedOutputStreamSource streamSrc,
+    public WebRunner(BTState appState, UIComponentSource uics, NamedOutputStreamSource streamSrc,
                      boolean skipRoot, String topID, 
                      boolean needHtmlSkeleton, Map<WebPublisher.ModelScale, ViewExporter.BoundsMaps> mapRepository, 
-                     Set<WebPublisher.ModelScale> publishKeys, DataAccessContext dacx) {
+                     Set<WebPublisher.ModelScale> publishKeys, StaticDataAccessContext dacx) {
       super(null);
-      streamSrc_ = streamSrc;
       myAppState_ = appState;
+      streamSrc_ = streamSrc;
+      uics_ = uics;
       skipRoot_ = skipRoot;
       topID_ = topID; 
       needHtmlSkeleton_ = needHtmlSkeleton;
@@ -355,7 +375,7 @@ public class ExportWeb extends AbstractControlFlow  {
     }
     
     public Object runCore() throws AsynchExitRequestException {      
-      SUPanel sup = myAppState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       HashMap<WebPublisher.ModelScale, ViewExporter.BoundsMaps> boundsMap = new HashMap<WebPublisher.ModelScale, ViewExporter.BoundsMaps>();
       Map<Integer, Double> scaleMap = buildScaleMap();
       
@@ -369,7 +389,7 @@ public class ExportWeb extends AbstractControlFlow  {
           WebPublisher.ModelScale scaleKey = oit.next();
           String gkey = scaleKey.getModelID();
           if ((lastKey == null) || !gkey.equals(lastKey)) {
-            String layoutID = myAppState_.getLayoutMgr().getLayout(gkey);
+            String layoutID = myDacx_.getLayoutSource().mapGenomeKeyToLayoutKey(gkey);
             myAppState_.setGraphLayout(layoutID);
             myAppState_.setGenomeForUndo(gkey, myDacx_);
           }
@@ -410,7 +430,7 @@ public class ExportWeb extends AbstractControlFlow  {
                                Map<WebPublisher.ModelScale, ViewExporter.BoundsMaps> boundsMap, int done, int total) throws AsynchExitRequestException, IOException {          
       Double zoomFacObj = scaleMap.get(new Integer(scaleKey.getSize()));
       OutputStream namedStream = streamSrc_.getNamedStream(scaleKey.getFileName());
-      ViewExporter.BoundsMaps smallBounds = sup.exportToStream(namedStream, true, "PNG", null, zoomFacObj.doubleValue(), null, myAppState_);
+      ViewExporter.BoundsMaps smallBounds = sup.exportToStream(uics_, myDacx_, namedStream, true, "PNG", null, zoomFacObj.doubleValue(), null);
       boundsMap.put(scaleKey, smallBounds);
       double currProg = ((double)++done / (double)total);
       boolean keepGoing = updateProgress((int)(currProg * 100.0));

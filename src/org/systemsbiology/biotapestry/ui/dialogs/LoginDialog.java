@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,8 @@ import javax.swing.JPasswordField;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -56,7 +57,8 @@ public class LoginDialog extends JDialog {
   private boolean haveResult_;
   private String userName_;
   private char[] passChars_;
-  private BTState appState_;
+  private UIComponentSource uics_; 
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -71,12 +73,13 @@ public class LoginDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public LoginDialog(BTState appState) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("login.title"), true);
-    appState_ = appState;
+  public LoginDialog(UIComponentSource uics, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("login.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     haveResult_ = false;
     
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 400);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -121,7 +124,7 @@ public class LoginDialog extends JDialog {
           LoginDialog.this.setVisible(false);
           LoginDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -133,7 +136,7 @@ public class LoginDialog extends JDialog {
           LoginDialog.this.setVisible(false);
           LoginDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -148,7 +151,7 @@ public class LoginDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 9, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   /***************************************************************************

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,6 @@ package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.Dimension;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,7 +30,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -93,7 +92,7 @@ public class GeneCreationDialogFactory extends DialogFactory {
       return (new DesktopDialog(cfh, dniba.defaultName, dniba.overlayKey, dniba.modKeys, needModOpt));
     } else if (platform.getPlatform() == DialogPlatform.Plat.WEB) {
       //return (new SimpleWebDialog(cfh, dniba.defaultName));   
-    	return (new SerializableDialog(cfh, dniba.defaultName,dniba.defaultName));
+    	return (new SerializableDialog(cfh, null, dniba.defaultName));
     }
     throw new IllegalArgumentException();
   }
@@ -175,6 +174,10 @@ public class GeneCreationDialogFactory extends DialogFactory {
       finishConstruction();
     }
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -191,7 +194,7 @@ public class GeneCreationDialogFactory extends DialogFactory {
       CreateRequest crq = (CreateRequest)request_;           
       crq.nameResult = nameField_.getText().trim();   
       if (crq.nameResult.equals("")) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("addGene.EmptyName");
         String title = rMan.getString("addGene.CreationErrorTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
@@ -235,7 +238,6 @@ public class GeneCreationDialogFactory extends DialogFactory {
   // XPlat Implementation of this dialog
   
   public static class SerializableDialog implements SerializableDialogPlatform.Dialog {
-	  protected BTState appState_;
 	  private XPlatUIDialog xplatDialog_;
 	  private ServerControlFlowHarness scfh_;
 	  private XPlatPrimitiveElementFactory primElemFac_; 
@@ -247,18 +249,18 @@ public class GeneCreationDialogFactory extends DialogFactory {
 		  String defaultGeneName
 	  ){
 		  this.scfh_ = cfh;
-		  this.appState_ = cfh.getBTState();
-		  this.rMan_ = this.appState_.getRMan();
+		  this.rMan_ = this.scfh_.getDataAccessContext().getRMan();
+		  dialogTitle = dialogTitle == null ? this.rMan_.getString("addGene.ChooseTitle") : dialogTitle;
 		  this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan_);		  
 		  buildDialog(dialogTitle,300,300,defaultGeneName);  
 	  }
 	  
-	  public boolean isModal() {
-	    return (true);
-	  }
+	  public boolean dialogIsModal() {
+      return (true);
+    }
 	  
 	  private void buildDialog(String title, int height, int width, String defaultGeneName) {
-		  ResourceManager rMan = appState_.getRMan();
+		  ResourceManager rMan = this.scfh_.getDataAccessContext().getRMan();
 	  
 		  this.xplatDialog_ = new XPlatUIDialog(title,height,width);
 		  
@@ -275,7 +277,7 @@ public class GeneCreationDialogFactory extends DialogFactory {
 			  true
 		  );
 		  geneNameTxtBox.setParameter("required", new Boolean(true));
-		  geneNameTxtBox.setParameter("missingMessage", scfh_.getBTState().getRMan().getString("addGene.EmptyName"));
+		  geneNameTxtBox.setParameter("missingMessage", rMan.getString("addGene.EmptyName"));
 		  geneNameTxtBox.setParameter("bundleAs", "nameResult");
 		  
 		  
@@ -332,17 +334,7 @@ public class GeneCreationDialogFactory extends DialogFactory {
 		  return xplatDialog_;
 	  }
 	  
-	  /***************************************************************************
-	   **
-	   ** Return the parameters we are interested in:
-	   */
-	    
-	  public Set<String> getRequiredParameters() {
-		  HashSet<String> retval = new HashSet<String>();
-	      retval.add("gene");
-	      retval.add("action");
-	      return (retval);
-	  }   
+  
 	      
 	  /***************************************************************************
 	   **
@@ -355,14 +347,13 @@ public class GeneCreationDialogFactory extends DialogFactory {
 	    	RemoteRequest.Result dbres = scfh_.receiveRemoteRequest(daBomb);
 	    	return (dbres.getSimpleUserFeedback());
 	    }
+
+	public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+		// TODO Auto-generated method stub
+		return null;
+	}
 	 
-	  /***************************************************************************
-	   **
-	   ** Do the bundle 
-	   */  
-	  public ServerControlFlowHarness.UserInputs bundleForExit(Map<String, String> params) {
-		  return null;
-	  }	  
+  
   } // Serializable Dialog
   
   
@@ -393,7 +384,12 @@ public class GeneCreationDialogFactory extends DialogFactory {
 	   }      
 	   public boolean isForApply() {
 		   return (false);
-	   }   
+	   }
+
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}   
   }
   
 }

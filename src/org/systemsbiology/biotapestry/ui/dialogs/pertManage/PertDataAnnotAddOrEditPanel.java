@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.List;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
@@ -51,9 +51,9 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private List currAnnots_;
+  private List<String> currAnnots_;
   private String parentCurrKey_;
-  private List annotsResult_;
+  private List<String> annotsResult_;
   private PerturbationData pd_;
   private List annotList_;
   private EditableTable estAnnot_;
@@ -72,11 +72,11 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertDataAnnotAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd,
+  public PertDataAnnotAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd,
                                      PendingEditTracker pet, String myKey) {
-    super(appState, dacx, parent, pet, myKey, 1);
+    super(uics, dacx, parent, pet, myKey, 1);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);
   
     annotList_ = new ArrayList(); 
     
@@ -84,7 +84,7 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
     // Build the values table tabs.
     //
 
-    estAnnot_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "psAddEditDataAnnot.annot", annotList_), parent_);
+    estAnnot_ = new EditableTable(uics, dacx, new EditableTable.OneEnumTableModel(uics, dacx, "psAddEditDataAnnot.annot", annotList_), parent_);
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);
     JPanel annotTablePan = estAnnot_.buildEditableTable(etp);
     JPanel annotTableWithButton = pmh_.addEditButton(annotTablePan, "psAddEditDataAnnot.annotEdit", true, new ActionListener() {
@@ -93,7 +93,7 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
           String who = pmh_.getSelectedEnumVal(estAnnot_);        
           pet_.jumpToRemoteEdit(PertAnnotManagePanel.MANAGER_KEY, PertAnnotManagePanel.ANNOT_KEY, who);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -132,7 +132,7 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  public void setAnnots(String parentKey, List annots, int mode) {
+  public void setAnnots(String parentKey, List<String> annots, int mode) {
     mode_ = mode;
     currAnnots_ = annots;
     parentCurrKey_ = parentKey;
@@ -146,7 +146,7 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  public List getResult() {
+  public List<String> getResult() {
     return (annotsResult_);
   }
  
@@ -173,8 +173,8 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   
   protected void updateOptions() {
     annotList_ = pmh_.buildAnnotEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_, EnumCell.class));      
     estAnnot_.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)estAnnot_.getModel()).setCurrentEnums(annotList_);   
     return;
@@ -187,10 +187,10 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   */
   
    protected boolean stashResults() { 
-    Iterator tdit = estAnnot_.getModel().getValuesFromTable().iterator();
-    annotsResult_ = (tdit.hasNext()) ? new ArrayList() : null;
+    Iterator<EditableTable.OneEnumTableModel.TableRow> tdit = estAnnot_.getModel().getValuesFromTable().iterator();
+    annotsResult_ = (tdit.hasNext()) ? new ArrayList<String>() : null;
     while (tdit.hasNext()) {
-      EditableTable.OneEnumTableModel.TableRow ent = (EditableTable.OneEnumTableModel.TableRow)tdit.next();
+      EditableTable.OneEnumTableModel.TableRow ent = tdit.next();
       EnumCell ec = ent.enumChoice;
       annotsResult_.add(ec.internal);
     }

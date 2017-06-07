@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,6 +33,10 @@ import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache;
 
 public interface IRenderer {
 
+  // Rendering modes
+
+  public enum Mode {NORMAL, DELTA};
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC METHODS
@@ -44,7 +48,7 @@ public interface IRenderer {
   ** Render the item 
   */
 
-	public void render(ModelObjectCache moc, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo);
+	public void render(ModelObjectCache moc, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo);
 
   /***************************************************************************
   **

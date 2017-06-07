@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,8 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
@@ -54,8 +54,8 @@ public class GenomeChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GenomeChangeCmd(BTState appState, DataAccessContext dacx, GenomeChange restore) {
-    this(appState, dacx, restore, false);
+  public GenomeChangeCmd(DataAccessContext dacx, GenomeChange restore) {
+    this(dacx, restore, false);
   }
 
   /***************************************************************************
@@ -63,8 +63,8 @@ public class GenomeChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GenomeChangeCmd(BTState appState, DataAccessContext dacx, GenomeChange restore, boolean doEvent) {
-    super(appState, dacx);
+  public GenomeChangeCmd(DataAccessContext dacx, GenomeChange restore, boolean doEvent) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = doEvent;
   }  
@@ -93,11 +93,12 @@ public class GenomeChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    Genome genome = dacx_.getGenomeSource().getGenome(restore_.genomeKey);
+    GenomeSource gs = dacx_.getGenomeSource();
+    Genome genome = gs.getGenome(restore_.genomeKey);
     genome.changeUndo(restore_);
     if (doEvent_) {
-      ModelChangeEvent ev = new ModelChangeEvent(restore_.genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE);
-      appState_.getEventMgr().sendModelChangeEvent(ev); 
+      ModelChangeEvent ev = new ModelChangeEvent(gs.getID(), restore_.genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE);
+      uics_.getEventMgr().sendModelChangeEvent(ev); 
     }
     return;
   }  
@@ -110,11 +111,12 @@ public class GenomeChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    Genome genome = dacx_.getGenomeSource().getGenome(restore_.genomeKey);
+    GenomeSource gs = dacx_.getGenomeSource();
+    Genome genome = gs.getGenome(restore_.genomeKey);
     genome.changeRedo(restore_);
     if (doEvent_) {
-      ModelChangeEvent ev = new ModelChangeEvent(restore_.genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE);
-      appState_.getEventMgr().sendModelChangeEvent(ev); 
+      ModelChangeEvent ev = new ModelChangeEvent(gs.getID(), restore_.genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE);
+      uics_.getEventMgr().sendModelChangeEvent(ev); 
     }
     return;
   }

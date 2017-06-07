@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,9 @@ import javax.swing.JCheckBox;
 import javax.swing.Box;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -61,17 +63,15 @@ public class YesNoShutupDialog extends JDialog {
   private boolean haveResult_;
   private boolean confirm_;
   private boolean shutup_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   
-  private static final long serialVersionUID = 1L;
-
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE CLASS MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////  
-
- 
+  
+  private static final long serialVersionUID = 1L;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -84,12 +84,12 @@ public class YesNoShutupDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public YesNoShutupDialog(BTState appState, JFrame parent, String titleKey, String message) {     
-    super(parent, appState.getRMan().getString(titleKey), true);
-    appState_ = appState;
+  public YesNoShutupDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, String titleKey, String message) {     
+    super(parent, dacx.getRMan().getString(titleKey), true);
     haveResult_ = false;
+    uics_ = uics;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx.getRMan();    
     setSize(600, 250);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -126,7 +126,7 @@ public class YesNoShutupDialog extends JDialog {
             YesNoShutupDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -139,7 +139,7 @@ public class YesNoShutupDialog extends JDialog {
             YesNoShutupDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -168,23 +168,23 @@ public class YesNoShutupDialog extends JDialog {
   ** 
   */
   
-  public static boolean launchIfNeeded(BTState appState, JFrame parent, String titleKey, String message, String clientKey) {
+  public static boolean launchIfNeeded(UIComponentSource uics, DataAccessContext dacx, RememberSource rSrc, JFrame parent, String titleKey, String message, String clientKey) {
     try {
-      Boolean shutup = appState.getStatus(clientKey);
+      Boolean shutup = rSrc.getStatus(clientKey);
       if ((shutup != null) && shutup.booleanValue()) {
         return (true);
       }
       
-      YesNoShutupDialog yns = new YesNoShutupDialog(appState, parent, titleKey, message);
+      YesNoShutupDialog yns = new YesNoShutupDialog(uics, dacx, parent, titleKey, message);
       yns.setVisible(true);
       
       if (!yns.haveResult()) {
         return (false);  // Don't stash shutup result; window was dismissed
       }
-      appState.setStatus(clientKey, yns.pleaseShutup());
+      rSrc.setStatus(clientKey, yns.pleaseShutup());
       return (yns.confirmed());
     } catch (Exception ex) {
-      appState.getExceptionHandler().displayException(ex);
+      uics.getExceptionHandler().displayException(ex);
     }
     return (false);
   }

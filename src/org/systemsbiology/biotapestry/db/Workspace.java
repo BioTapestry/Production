@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@ import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.FactoryUtilWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
-
 
 /****************************************************************************
 **
@@ -144,6 +143,7 @@ public class Workspace implements Cloneable {
   ** Clone
   */
 
+  @Override
   public Workspace clone() {
     try {
       Workspace retval = (Workspace)super.clone();
@@ -268,6 +268,34 @@ public class Workspace implements Cloneable {
   
   /***************************************************************************
   **
+  ** Get aspectRatio drawing canvas
+  */
+  
+  public double getCanvasAspectRatio() {
+    return (Workspace.ASPECT_RATIO);
+  }  
+  
+  /***************************************************************************
+  **
+  ** Get center of drawing canvas (wrt canvas origin)
+  */
+  
+  public Point2D getCanvasCenter() {
+    return (new Point2D.Double(workspace_.getWidth() / 2.0, workspace_.getHeight() / 2.0));
+  }
+  
+  
+  /***************************************************************************
+  **
+  ** Get bounds of drawing canvas
+  */
+  
+  public Dimension getCanvasSize() {
+    return (new Dimension(workspace_.width, workspace_.height));
+  }
+
+  /***************************************************************************
+  **
   ** Answer if we contain the given rectangle
   */
   
@@ -318,8 +346,8 @@ public class Workspace implements Cloneable {
   public static Workspace setToModelBounds(Rectangle modelSize) {        
     FixedAspectDim modelFad = calcBoundedFit(modelSize, PADDING, ASPECT_RATIO);
     Point2D centerPt = getAllModelCenter(modelSize);
-    int x = (int)Math.round(centerPt.getX() - ((double)modelFad.getWidth() / 2.0));
-    int y = (int)Math.round(centerPt.getY() - ((double)modelFad.getHeight() / 2.0));    
+    int x = (int)Math.round(centerPt.getX() - (modelFad.getWidth() / 2.0));
+    int y = (int)Math.round(centerPt.getY() - (modelFad.getHeight() / 2.0));    
     return (new Workspace(new Rectangle(x, y, modelFad.getWidth(), modelFad.getHeight())));
   }
   
@@ -362,34 +390,34 @@ public class Workspace implements Cloneable {
     Dimension maxDim;
     if (fixedAspect >= 1.0) {  // wide...
       int minHeight = MIN_DIMENSION;
-      int minWidth = (int)Math.round((double)MIN_DIMENSION * fixedAspect);
+      int minWidth = (int)Math.round(MIN_DIMENSION * fixedAspect);
       minDim = new Dimension(minWidth, minHeight);
       int maxWidth = MAX_DIMENSION;
-      int maxHeight = (int)Math.round((double)MAX_DIMENSION / fixedAspect);
+      int maxHeight = (int)Math.round(MAX_DIMENSION / fixedAspect);
       // For huge/tiny aspect ratios, these may be inconsistent.  Break the max if necessary:
       // since fixedAspect >= 1.0, only maxHeight can be too small:
       if (maxHeight < MIN_DIMENSION) {
         maxHeight = MIN_DIMENSION;
-        maxWidth = (int)Math.round((double)MIN_DIMENSION * fixedAspect);
+        maxWidth = (int)Math.round(MIN_DIMENSION * fixedAspect);
       }
       maxDim = new Dimension(maxWidth, maxHeight);
     } else { // tall;
       int minWidth = MIN_DIMENSION;
-      int minHeight = (int)Math.round((double)MIN_DIMENSION / fixedAspect);
+      int minHeight = (int)Math.round(MIN_DIMENSION / fixedAspect);
       minDim = new Dimension(minWidth, minHeight);      
       int maxHeight = MAX_DIMENSION;
-      int maxWidth = (int)Math.round((double)MAX_DIMENSION * fixedAspect);
+      int maxWidth = (int)Math.round(MAX_DIMENSION * fixedAspect);
       // For huge/tiny aspect ratios, these may be inconsistent.  Break the max if necessary:
       // since fixedAspect < 1.0, only maxWidth can be too small:
       if (maxWidth < MIN_DIMENSION) {
         maxWidth = MIN_DIMENSION;
-        maxHeight = (int)Math.round((double)MIN_DIMENSION / fixedAspect);
+        maxHeight = (int)Math.round(MIN_DIMENSION / fixedAspect);
       }
       maxDim = new Dimension(maxWidth, maxHeight);      
     }
        
-    int paddedWidth = (int)UiUtil.forceToGridValueMax((double)(modelSize.width + padding), UiUtil.GRID_SIZE);
-    int paddedHeight = (int)UiUtil.forceToGridValueMax((double)(modelSize.height + padding), UiUtil.GRID_SIZE);
+    int paddedWidth = (int)UiUtil.forceToGridValueMax(modelSize.width + padding, UiUtil.GRID_SIZE);
+    int paddedHeight = (int)UiUtil.forceToGridValueMax(modelSize.height + padding, UiUtil.GRID_SIZE);
     double modelAspect = (double)paddedWidth / (double)paddedHeight;
     FixedAspectDim retval = new FixedAspectDim(new Dimension(paddedWidth, paddedHeight), fixedAspect);    
  
@@ -510,7 +538,7 @@ public class Workspace implements Cloneable {
     public void changeHeight(int newHeight, boolean force) {    
       if ((dim_.height != newHeight) || force) {
         dim_.height = newHeight;
-        dim_.width = (int)Math.round((double)dim_.height * aspect_);
+        dim_.width = (int)Math.round(dim_.height * aspect_);
       }
       return;
     }
@@ -518,7 +546,7 @@ public class Workspace implements Cloneable {
     public void changeWidth(int newWidth, boolean force) {        
       if ((dim_.width != newWidth) || force) {
         dim_.width = newWidth;
-        dim_.height = (int)Math.round((double)dim_.width / aspect_);
+        dim_.height = (int)Math.round(dim_.width / aspect_);
       }
       return;
     }    

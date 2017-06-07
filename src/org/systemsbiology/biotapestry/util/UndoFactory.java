@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -17,33 +17,31 @@
 **    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-package org.systemsbiology.biotapestry.ui;
+package org.systemsbiology.biotapestry.util;
 
-import java.util.Set;
-import java.io.IOException;
-
-import org.xml.sax.Attributes;
-
-import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
-** Currently stocks fonts and Display Options; should also be used for COLORS  FIX ME
+** Provides UndoSupport supplied with global sources under the covers
 */
 
-public class GlobalDataFactory extends AbstractFactoryClient {
-
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // PRIVATE INSTANCE VARIABLES
-  //
-  ////////////////////////////////////////////////////////////////////////////
-
-  private String fontKey_;
-  private BTState appState_;
+public class UndoFactory {
   
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PRIVATE VARIABLES
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  
+  private TabSource tSrc_;
+  private CmdSource cSrc_;
+  private UIComponentSource uics_;
+  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -52,26 +50,16 @@ public class GlobalDataFactory extends AbstractFactoryClient {
 
   /***************************************************************************
   **
-  ** Constructor
+  ** Constructor.
+  **
   */
 
-  public GlobalDataFactory(BTState appState) { 
-    super(new FactoryWhiteboard());
-    appState_ = appState;
-    
-    Set<String> fontMgrKeys = FontManager.keywordsOfInterest();
-    fontKey_ = FontManager.getFontKeyword();        
-    
-    FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
-    AbstractFactoryClient dow = new DisplayOptions.DisplayOptionsWorker(appState_, whiteboard);
-    installWorker(dow, null);
-    // Kinda bogus, but we have no DisplayOptionsManager tag to work with, and no glue stick:
-    myKeys_.addAll(dow.keywordsOfInterest());
- 
-    myKeys_.addAll(fontMgrKeys);
-    myKeys_.add(fontKey_); 
-  }
-
+  public UndoFactory(TabSource tSrc, CmdSource cSrc, UIComponentSource uics) {
+    tSrc_ = tSrc;
+    cSrc_ = cSrc;
+    uics_ = uics;
+  }  
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC METHODS
@@ -80,20 +68,10 @@ public class GlobalDataFactory extends AbstractFactoryClient {
 
   /***************************************************************************
   **
-  ** Handle the attributes for the keyword
-  **
+  ** Get a fresh UndoSupport
   */
   
-  protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
-
-    if ((attrs == null) || (elemName == null)) {
-      return (null);
-    }  
-    if (elemName.equals(fontKey_)) {
-      FontManager.installFromXML(appState_, elemName, attrs);
-      return (null);
-    }
-    return (null);
-  }
+  public UndoSupport provideUndoSupport(String undoTag, DataAccessContext dacx) {
+    return (new UndoSupport(undoTag, dacx, tSrc_, cSrc_, uics_));
+  }  
 }
-

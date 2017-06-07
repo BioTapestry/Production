@@ -135,6 +135,7 @@ public class BusDrop extends LinkBusDrop {
       return (retval);     
     }
     
+    @SuppressWarnings("unused")
     private BusDrop buildFromXML(String elemName, Attributes attrs) throws IOException { 
       FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;      
       BusProperties bus = board.busProps;

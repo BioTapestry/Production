@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -67,7 +67,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   private String conditionKey_;
   private int legacyMaxTime_; // Used for legacy data with no specific time point
   private ArrayList<String> invest_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,8 +80,8 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Constructor
   */
 
-  public Experiment(BTState appState, String id, PertSources sources, int time, List<String> investigators, String condKey) {
-    appState_ = appState;
+  public Experiment(DataAccessContext dacx, String id, PertSources sources, int time, List<String> investigators, String condKey) {
+    dacx_ = dacx;
     id_ = id;
     sources_ = sources;
     time_ = time;
@@ -95,10 +95,10 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Constructor
   */
 
-  public Experiment(BTState appState, String id, int time, int legacyMaxTime, String condKey) {
-    appState_ = appState;
+  public Experiment(DataAccessContext dacx, String id, int time, int legacyMaxTime, String condKey) {
+    dacx_ = dacx;
     id_ = id;
-    sources_ = new PertSources(appState_);
+    sources_ = new PertSources(dacx);
     time_ = time;
     legacyMaxTime_= legacyMaxTime;
     conditionKey_ = condKey;
@@ -313,6 +313,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Clone
   */
 
+  @Override
   public Experiment clone() {
     try {
       Experiment newVal = (Experiment)super.clone();     
@@ -331,6 +332,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
+  @Override
   public int hashCode() {  
     return (id_.hashCode() + sources_.hashCode() + time_ + legacyMaxTime_ + invest_.hashCode());
   }
@@ -341,6 +343,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
+  @Override
   public boolean equals(Object other) {
     if (!equalsMinusID(other)) {
       return (false);
@@ -386,23 +389,23 @@ public class Experiment implements Cloneable, PertFilterTarget {
   
   public boolean matchesFilter(PertFilter pf, SourceSrc ss) {
     switch (pf.getCategory()) {
-      case PertFilter.EXPERIMENT:
+      case EXPERIMENT:
         return (pf.getStringValue().equals(id_));
-      case PertFilter.EXP_CONDITION:
+      case EXP_CONDITION:
         return (pf.getStringValue().equals(conditionKey_));
-      case PertFilter.SOURCE:
-      case PertFilter.SOURCE_NAME:
-      case PertFilter.SOURCE_OR_PROXY_NAME:
-      case PertFilter.ANNOTATION:     
-      case PertFilter.PERT:
+      case SOURCE:
+      case SOURCE_NAME:
+      case SOURCE_OR_PROXY_NAME:
+      case ANNOTATION:     
+      case PERT:
         return (sources_.matchesFilter(pf, ss));
-      case PertFilter.TARGET:
+      case TARGET:
          // We do not care about this question:
         return (true);
-      case PertFilter.TIME:
+      case TIME:
         MinMax filterTimes = pf.getIntRangeValue();
         return (timeRangeMatches(pf.getMatchType(), filterTimes));
-      case PertFilter.INVEST:
+      case INVEST:
         String filterInvest = pf.getStringValue();
         int numI = invest_.size();
         for (int i = 0; i < numI; i++) {
@@ -412,14 +415,14 @@ public class Experiment implements Cloneable, PertFilterTarget {
           }
         }
         return (false);
-      case PertFilter.INVEST_LIST:
+      case INVEST_LIST:
         filterInvest = pf.getStringValue();
         return (filterInvest.equals(getInvestigatorDisplayString(ss)));
-      case PertFilter.VALUE:
-      case PertFilter.EXP_CONTROL: 
-      case PertFilter.MEASURE_SCALE:
+      case VALUE:
+      case EXP_CONTROL: 
+      case MEASURE_SCALE:
       
-      case PertFilter.MEASURE_TECH:       
+      case MEASURE_TECH:       
         // We do not care about this question:
         return (true);
       default:
@@ -433,13 +436,13 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public boolean timeRangeMatches(int matchType, MinMax filterTimes) {
+  public boolean timeRangeMatches(PertFilter.Match matchType, MinMax filterTimes) {
     int min = time_;
     int max = (legacyMaxTime_ != NO_TIME) ? legacyMaxTime_ : min;
     MinMax mm = new MinMax(min, max);
-    if (matchType == PertFilter.RANGE_EQUALS) {
+    if (matchType == PertFilter.Match.RANGE_EQUALS) {
       return (mm.equals(filterTimes));
-    } else if (matchType == PertFilter.RANGE_OVERLAPS) {
+    } else if (matchType == PertFilter.Match.RANGE_OVERLAPS) {
       return (mm.intersect(filterTimes) != null);
     } else {
       throw new IllegalArgumentException();
@@ -659,7 +662,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   */
   
   public String getTimeDisplayString(boolean showUnits, boolean abbreviate) {
-    return (getTimeDisplayString(appState_, getTimeRange(), showUnits, abbreviate));
+    return (getTimeDisplayString(dacx_, getTimeRange(), showUnits, abbreviate));
   } 
 
   /***************************************************************************
@@ -744,15 +747,15 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public static String getTimeDisplayString(BTState appState, MinMax mm, boolean showUnits, boolean abbreviate) {
+  public static String getTimeDisplayString(DataAccessContext dacx, MinMax mm, boolean showUnits, boolean abbreviate) {
     if (mm == null) {
       return ("");
     }
-    String td = PerturbationData.getTimeDisplay(appState, new Integer(mm.min), showUnits, abbreviate);
+    String td = PerturbationData.getTimeDisplay(dacx, new Integer(mm.min), showUnits, abbreviate);
     if (mm.max == mm.min) {
       return (td);
     }
-    String ltd = PerturbationData.getTimeDisplay(appState, new Integer(mm.max), showUnits, abbreviate);
+    String ltd = PerturbationData.getTimeDisplay(dacx, new Integer(mm.max), showUnits, abbreviate);
     return (td + " to " + ltd); // FIX ME: resource manager & format
   }
   
@@ -775,14 +778,18 @@ public class Experiment implements Cloneable, PertFilterTarget {
       
   public static class PertSourcesInfoWorker extends AbstractFactoryClient {
    
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public PertSourcesInfoWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public PertSourcesInfoWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      appState_ = appState;
       myKeys_.add("experiment");
     }
     
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("experiment")) {
@@ -818,10 +825,10 @@ public class Experiment implements Cloneable, PertFilterTarget {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }
-      Experiment retval = new Experiment(appState_, id, timeNum, legMaxNum, cond);
+      Experiment retval = new Experiment(dacx_, id, timeNum, legMaxNum, cond);
       
       // Add sources:
-      PertSources pss = new PertSources(appState_);
+      PertSources pss = new PertSources(dacx_);
       List<String> srcList = Splitter.stringBreak(srcs, ",", 0, false);
       int numSrc = srcList.size();
       for (int i = 0; i < numSrc; i++){

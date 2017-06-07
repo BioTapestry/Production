@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2014 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -39,6 +39,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.WebServerApplication;
 import org.systemsbiology.biotapestry.app.WebServerApplication.WebClientState;
 import org.systemsbiology.biotapestry.app.WebServerApplication.CommandResult;
@@ -47,15 +49,12 @@ import org.systemsbiology.biotapestry.app.WebServerApplication.WebClientState.Ne
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.nav.XPlatModelTree;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
-import org.systemsbiology.biotapestry.ui.freerender.MultiSubID;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.ui.menu.XPlatGenericMenu;
 
 import org.systemsbiology.biotapestry.web.serialization.BioTapSerializerFactory;
 import org.systemsbiology.biotapestry.web.serialization.ExcludeTransformer;
 import org.systemsbiology.biotapestry.web.serialization.LinkSegmentIDTransformer;
 
-import flexjson.JSONDeserializer;
 import flexjson.JSONSerializer;
 
 /****************************************************************************
@@ -66,6 +65,8 @@ import flexjson.JSONSerializer;
 public class BioTapServlet extends HttpServlet {
 	
 	private static final long serialVersionUID = 1L;
+	
+	private static final int MAGIC = -42;
 
 	////////////////////////////////////////////////////////////////////////////
 	//
@@ -192,6 +193,8 @@ public class BioTapServlet extends HttpServlet {
 				return;
 			}
 			
+      BTState.AppSources aSrc = appState.getAppSources();
+			
 			JSONSerializer serializer = null;
 			
 			if(target == RequestTargetType.INIT) {
@@ -200,12 +203,7 @@ public class BioTapServlet extends HttpServlet {
 				response.setContentType("application/json");
 				response.setCharacterEncoding(charEncoding_);
 				os = response.getOutputStream();
-				Set<Object> emptySelex = new HashSet<Object>();
-				Set<NetModuleObject> emptyMods = new HashSet<NetModuleObject>();
-				os.write((
-					"{\"result\": \"SESSION_READY\", \"clientMode\": \"" + (appState.getIsEditor() ? "Editor" : "Viewer") + "\"," + 
-					"\"stateObject\":" + serializer.deepSerialize(new WebClientState(emptySelex," ",emptyMods)) + "," +
-					"\"supportedMenus\":" + serializer.deepSerialize(wsa_.getSupportedMenuRequests(appState)) + "}").getBytes());
+				os.write(this.getInitResponse(appState, aSrc.uics, aSrc.tSrc, serializer).getBytes());
 				return;				
 			} else {
 				serializer = new JSONSerializer().exclude("*.class").include("*")
@@ -213,7 +211,10 @@ public class BioTapServlet extends HttpServlet {
 					.transform(new LinkSegmentIDTransformer(),LinkSegmentID.class);
 			}
 
-			String modelID = null;
+			String nodeID = null;
+			
+			String tab = request.getParameter("currentTab"); 
+			
 			os = response.getOutputStream();
 			
 			switch(target) {
@@ -225,31 +226,43 @@ public class BioTapServlet extends HttpServlet {
 					os.write(serializer.deepSerialize(results).getBytes());
 					break;
 				case MODEL_IMAGE:
-					modelID = request.getParameter("model");
+					nodeID = request.getParameter("modelID");
 					response.setContentType("image/png");
-					wsa_.getImage(appState, modelID, os); 				
+					wsa_.getImage(appState, nodeID, os); 				
 					break;
 		        case MODEL_ANNOT_IMAGE:
-					 modelID = request.getParameter("model");
-					 String annotMime = wsa_.getAnnotationImageType(appState, modelID);
+		        	nodeID = request.getParameter("modelID");
+					 String annotMime = wsa_.getImageType(appState, nodeID, "MODEL");
 					 if (annotMime != null) {
 						 response.setContentType(annotMime);
-						 wsa_.getAnnotationImage(appState, modelID, os);
+						 wsa_.getAnnotationImage(appState, tab, nodeID, os);
 					 }
-					 break;					
-				case MODEL_JSON:
-					modelID = request.getParameter("model");
+					 break;
+		        case GROUP_NODE_IMAGE:
+		        	nodeID = request.getParameter("nodeID");
+					// The "type" parameter determines which image is returned from the Group Node.
+					// "image": The group node image
+					// "map":   The mask image
+					 String imgMime = wsa_.getImageType(appState, nodeID, "GROUP_NODE");
+					 if (imgMime != null) {
+						 response.setContentType(imgMime);
+						 wsa_.getGroupNodeImage(appState, tab, nodeID, request.getParameter("type"), os);
+					 }
+					 break;		        	
+				case NODE_JSON:
+					nodeID = request.getParameter("nodeID");
+					String nodeType = request.getParameter("nodeType");
 					response.setContentType("application/json");
 					response.setCharacterEncoding(charEncoding_);
 								        			        					
-					Map<String,Object> modelMap = wsa_.getModelMap(appState, modelID);
-
-					JSONSerializer modelMapSerializer = BioTapSerializerFactory.getModelMapTransformer();
+					Map<String,Object> modelMap = wsa_.getNodeMap(appState, tab,nodeID, nodeType);
+					
+					JSONSerializer modelMapSerializer = BioTapSerializerFactory.getModelMapTransformer();					
 					os.write(modelMapSerializer.deepSerialize(modelMap).getBytes(charEncoding_));
 					break;
 				
 				case MODEL_TREE:
-					XPlatModelTree xpmt = wsa_.getModelTree(appState);  
+					XPlatModelTree xpmt = wsa_.getModelTree(appState,tab);  
 					response.setContentType("application/json");
 					response.setCharacterEncoding(charEncoding_);
 					os.write(serializer.deepSerialize(xpmt).getBytes(charEncoding_));
@@ -263,14 +276,14 @@ public class BioTapServlet extends HttpServlet {
 					
 				case MENU_DEF:
 					hsrw = new WebServerApplication.HSRWrapper(request);
-					XPlatGenericMenu xpgm = wsa_.getMenuDefinition(appState, hsrw);
+					XPlatGenericMenu xpgm = wsa_.getMenuDefinition(appState, tab,hsrw);
 					response.setContentType("application/json");
 					response.setCharacterEncoding(charEncoding_);
 					os.write(serializer.deepSerialize(xpgm).getBytes(charEncoding_));
 					break;
 					
 				case COMMAND:
-				case SET_MODEL:
+				case SET_NODE:
 				case SESSION_NEVER_EXPIRES:
 				case SESSION_EXPIRES_IN:				
 					//throw new IllegalArgumentException("[ERROR] " + request.getParameter("target") + " must be requested with POST");
@@ -308,7 +321,7 @@ public class BioTapServlet extends HttpServlet {
 
 	////////////////////////////////////////////////////////////////////////////
 	//
-	// POST: USE THIS FOR STATE CHANGES!!!!
+	// POST
 	//
 	////////////////////////////////////////////////////////////////////////////
 
@@ -345,17 +358,20 @@ public class BioTapServlet extends HttpServlet {
 				return;
 			}
 			
+			BTState.AppSources aSrc = appState.getAppSources();
+			
+			JSONSerializer serializer = new JSONSerializer().exclude("*.class").include("*")
+					.transform(new ExcludeTransformer(), void.class)
+					.transform(new LinkSegmentIDTransformer(),LinkSegmentID.class);
+			
 			if(target == RequestTargetType.INIT) {
 				response.setContentType("application/json");
 				response.setCharacterEncoding(charEncoding_);
 				os = response.getOutputStream();
-				os.write(("{\"result\": \"SESSION_READY\", \"clientMode\": \"" + (appState.getIsEditor() ? "Editor" : "Viewer") + "\"}").getBytes());
+				os.write(this.getInitResponse(appState, aSrc.uics, aSrc.tSrc, serializer).getBytes());
 				return;				
 			}
-						
-			JSONSerializer serializer = new JSONSerializer().exclude("*.class").include("*")
-				.transform(new ExcludeTransformer(), void.class)
-				.transform(new LinkSegmentIDTransformer(),LinkSegmentID.class);
+			
 			WebServerApplication.HSRWrapper hsrw = null;
 			os = response.getOutputStream();
 			
@@ -402,6 +418,7 @@ public class BioTapServlet extends HttpServlet {
 							case CANCEL:
 							case XPLAT_DIALOG:
 							case XPLAT_FRAME:
+							case STACK_PAGE:
 								os.write(serializer.deepSerialize(result).getBytes(charEncoding_));
 								break;			
 								
@@ -412,9 +429,9 @@ public class BioTapServlet extends HttpServlet {
 					  }
 					} 					
 					break;
-				case SET_MODEL:					
-					System.err.println("[ERROR] Use target=command to set models!");
-					throw new Exception(" Use target=command to set models!");
+				case SET_NODE:					
+					System.err.println("[ERROR] Use target=command to set tree nodes!");
+					throw new Exception(" Use target=command to set tree nodes!!");
 				case MENU_DEF:
 					hsrw = new WebServerApplication.HSRWrapper(request);
 					XPlatGenericMenu xpgm = wsa_.getMenuDefinition(appState, hsrw);
@@ -459,7 +476,23 @@ public class BioTapServlet extends HttpServlet {
 	}
 	
 	private void sessionNeverExpires(HttpServletRequest request) {
-		setSessionExpiry(request,-42);
+		setSessionExpiry(request,MAGIC);
+	}
+	
+	private String getInitResponse(BTState appState, UIComponentSource uics, TabSource tSrc, JSONSerializer serializer) throws Exception {
+		Set<Object> emptySelex = new HashSet<Object>();
+		Set<NetModuleObject> emptyMods = new HashSet<NetModuleObject>();
+		
+		String initResponse = 
+			"{\"result\": \"SESSION_READY\", \"clientMode\": \"" + (uics.getIsEditor() ? "Editor" : "Viewer") + "\"" 
+			+ ",\"stateObject\":" + serializer.deepSerialize(new WebClientState(emptySelex," ",emptyMods," "))
+			+ ",\"supportedMenus\":" + serializer.deepSerialize(wsa_.getSupportedMenuRequests(appState))  
+			+ ",\"tabs\":" + serializer.deepSerialize(tSrc.getTabs())
+			+ ",\"currentTab\":" + tSrc.getCurrentTabIndex()
+				
+			+ "}";
+		
+		return initResponse;
 	}
 	
 	
@@ -499,9 +532,10 @@ public class BioTapServlet extends HttpServlet {
 		
 		if(appState == null) {
 			appState = initNewBTState(session.getId());
+			BTState.AppSources aSrc = appState.getAppSources();
 			session.setAttribute("btState", appState);
 			if(this.modelListFile_ != null) {
-				appState.setServerBtpFileList(this.modelListFile_);
+				aSrc.pafs.setServerBtpFileList(this.modelListFile_);
 			}
 		}
 		return (appState);
@@ -543,15 +577,17 @@ public class BioTapServlet extends HttpServlet {
 	}
 
 	
-	/**
-	 * Enum for managing the request parameter 'target'
-	 * 
-	 * 
-	 */
+	///////////////////////
+	// RequestTargetType
+	//////////////////////
+	//
+	// Types of requests handled by GET and POST
+	// 
 	public enum RequestTargetType {
-		SET_MODEL,
-		MODEL_JSON,
+		SET_NODE,
+		NODE_JSON,
 		MODEL_IMAGE,
+		GROUP_NODE_IMAGE,
 		COMMAND,
 		MODEL_TREE,
 		MENU_DEF,
@@ -571,8 +607,8 @@ public class BioTapServlet extends HttpServlet {
 			if(stringToType == null) {
 				stringToType = new Hashtable<String, RequestTargetType>();
 				stringToType.put("init", RequestTargetType.INIT);
-				stringToType.put("setmodel", RequestTargetType.SET_MODEL);
-				stringToType.put("modeljson", RequestTargetType.MODEL_JSON);
+				stringToType.put("setnode", RequestTargetType.SET_NODE);
+				stringToType.put("nodejson", RequestTargetType.NODE_JSON);
 				stringToType.put("modelimage", RequestTargetType.MODEL_IMAGE);
 				stringToType.put("command", RequestTargetType.COMMAND);
 				stringToType.put("modeltree", RequestTargetType.MODEL_TREE);
@@ -584,6 +620,7 @@ public class BioTapServlet extends HttpServlet {
 				stringToType.put("setsessionexpiry", RequestTargetType.SESSION_EXPIRES_IN);
 				stringToType.put("modelannotimage", RequestTargetType.MODEL_ANNOT_IMAGE);
 				stringToType.put("linkstointersections", RequestTargetType.LINKS_TO_INTERSECTIONS);
+				stringToType.put("groupnodeimage", RequestTargetType.GROUP_NODE_IMAGE);
 			}
 			if(typeAsString == null) {
 				throw new IllegalArgumentException("String value of request type was null!");

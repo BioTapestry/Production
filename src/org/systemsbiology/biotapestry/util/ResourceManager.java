@@ -19,6 +19,8 @@
 
 package org.systemsbiology.biotapestry.util;
 
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.ResourceBundle;
 import java.util.MissingResourceException;
 
@@ -36,6 +38,8 @@ public class ResourceManager {
   ////////////////////////////////////////////////////////////////////////////
 
   private ResourceBundle bundle_; 
+  private ResourceBundle plugBundle_;
+  private HashSet<String> mainKeys_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,18 +73,48 @@ public class ResourceManager {
 
   /***************************************************************************
   ** 
+  ** Add a second bundle for plugins
+  */
+
+  public void addBundleForPlugin(ResourceBundle plugBundle) {
+    plugBundle_ = plugBundle;
+    mainKeys_ = new HashSet<String>();
+    Enumeration<String> enu = bundle_.getKeys();
+    while (enu.hasMoreElements()) {
+      String e = enu.nextElement();
+      mainKeys_.add(e);
+    }
+    return;
+  }  
+  
+  /***************************************************************************
+  ** 
   ** Get a resource String
   */
 
   public String getString(String key) {
-    String retval;
+
+    if (plugBundle_ == null) {
+      try {
+        return (bundle_.getString(key));
+      } catch (MissingResourceException mre) {
+        return (key);
+      }
+    } 
     
-    try {
-      retval = bundle_.getString(key);
-    } catch (MissingResourceException mre) {
-      retval = key;
+    if (mainKeys_.contains(key)) {   
+      try {
+        return (bundle_.getString(key));
+      } catch (MissingResourceException mre) {
+        throw new IllegalStateException();
+      }  
+    } else {
+      try {
+        return (plugBundle_.getString(key));
+      } catch (MissingResourceException mre) {
+        return (key);
+      } 
     }
-    return (retval);
   }  
 
   /***************************************************************************
@@ -89,17 +123,33 @@ public class ResourceManager {
   */
 
   public char getChar(String key) {
-
-    String str;
-    try {
-      str = bundle_.getString(key);
-    } catch (MissingResourceException mre) {
-      str = "!";
+    
+    String retStr = null;
+    if (plugBundle_ == null) {
+      try {
+        retStr = bundle_.getString(key);
+      } catch (MissingResourceException mre) {
+        retStr = "!";
+      }
+    } else {
+      if (mainKeys_.contains(key)) {   
+        try {
+          retStr = bundle_.getString(key);
+        } catch (MissingResourceException mre) {
+          throw new IllegalStateException();
+        }  
+      } else {
+        try {
+          retStr = plugBundle_.getString(key);
+        } catch (MissingResourceException mre) {
+          retStr = "!";
+        } 
+      }
     }
-    if (str.length() == 0) {
-      str = "!";
+    if (retStr.length() == 0) {
+      retStr = "!";
     }
-    return (str.charAt(0));
+    return (retStr.charAt(0));
   }  
   
   ////////////////////////////////////////////////////////////////////////////

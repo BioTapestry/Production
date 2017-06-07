@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GlobalChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -53,8 +52,8 @@ public class GlobalChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GlobalChangeCmd(BTState appState, DataAccessContext dacx, GlobalChange restore) {
-    this(appState, dacx, restore, false);
+  public GlobalChangeCmd(DataAccessContext dacx, GlobalChange restore) {
+    this(dacx, restore, false);
   }
 
   /***************************************************************************
@@ -62,8 +61,8 @@ public class GlobalChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GlobalChangeCmd(BTState appState, DataAccessContext dacx, GlobalChange restore, boolean doEvent) {
-    super(appState, dacx);
+  public GlobalChangeCmd(DataAccessContext dacx, GlobalChange restore, boolean doEvent) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = doEvent;
   }  
@@ -92,10 +91,10 @@ public class GlobalChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    appState_.getDB().changeUndo(restore_);
+    dacx_.getMetabase().changeUndo(restore_);
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }  
@@ -108,10 +107,10 @@ public class GlobalChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    appState_.getDB().changeRedo(restore_);
+    dacx_.getMetabase().changeRedo(restore_);
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }

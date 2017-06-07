@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,6 @@
 
 package org.systemsbiology.biotapestry.db;
 
-import java.awt.Color;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.AffineTransform;
 import java.io.IOException;
@@ -32,13 +31,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
-
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
@@ -49,7 +45,6 @@ import org.systemsbiology.biotapestry.event.ModelChangeListener;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.DBInternalLogic;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
@@ -63,14 +58,16 @@ import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.genome.XPlatDisplayText;
 import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.parser.NewerVersionIOException;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
+import org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.Layout;
-import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -78,8 +75,10 @@ import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MultiLineRenderSupport;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TaggedSet;
-import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+
 import org.xml.sax.Attributes;
 
 /****************************************************************************
@@ -89,56 +88,53 @@ import org.xml.sax.Attributes;
 
 public class Database implements GenomeSource, LayoutSource, 
                                  WorkspaceSource, ModelChangeListener, 
-                                 GeneralChangeListener, ColorResolver, 
-                                 ExperimentalDataSource, InstructionSource
-                                 {
+                                 GeneralChangeListener, InstructionSource, 
+                                 DataMapSource, TemporalRangeSource, 
+                                 ModelBuilder.Source, ExperimentalDataSource, 
+                                 ModelDataSource, LocalDataCopyTarget {
 
-  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE CONSTANTS
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private static final String PREVIOUS_IO_VERSION_A_ = "2.0"; 
-  private static final String PREVIOUS_IO_VERSION_B_ = "2.1"; // Actually for version 3.0 too....
-  private static final String PREVIOUS_IO_VERSION_C_ = "3.1"; // Actually for version 4.0 too....
-  private static final String PREVIOUS_IO_VERSION_D_ = "5.0"; // 5, 6, and 7.0
-  
-  private static final String CURRENT_IO_VERSION_    = "7.1";
-
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
-  private ColorGenerator colGen_;
-  private Genome genome_;
+  private Metabase mb_;
+  private String id_;
+  private int index_;
+  private TabNameData tabData_;
+  private DBGenome genome_;
   private HashMap<String, GenomeInstance> instances_;
   private HashMap<String, DynamicInstanceProxy> dynProxies_;  
   private HashMap<String, Layout> layouts_;
   private NavTree navTree_;
   private ModelData modelData_;
-  private PerturbationData pertData_;
-  private TimeCourseData timeCourse_;
-  private CopiesPerEmbryoData copiesPerEmb_;
-  private TemporalInputRangeData rangeData_;  
+ 
+  private Boolean isDataSharing_; 
+  private TimeAxisDefinition localTimeAxis_;
+  private PerturbationData localPertData_;
+  private TimeCourseData localTimeCourse_;
+  private CopiesPerEmbryoData localCopiesPerEmb_;
+
+  private TemporalInputRangeData rangeData_; 
+  private TimeCourseDataMaps tcdm_;
+  private PerturbationDataMaps pdms_;
   private UniqueLabeller labels_;
   private UniqueLabeller instructionLabels_;  
   private int uniqueNameSuffix_;
-  private HashMap<String, String> simDefaultsNode_;
-  private HashMap<String, String> simDefaultsGeneAnd_;
-  private HashMap<String, String> simDefaultsGeneOr_;
   private ArrayList<BuildInstruction> buildInstructions_;
   private HashMap<String, InstanceInstructionSet> instanceInstructionSets_;
-  private TimeAxisDefinition timeAxis_;
   private Workspace workspace_;
   private StartupView startupView_;
-  
-  private String iOVersion_;  
-
+  private ModelBuilder.Database mbDataSourceX_;
+  private UIComponentSource uics_;
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTOR
@@ -147,86 +143,264 @@ public class Database implements GenomeSource, LayoutSource,
  
   /***************************************************************************
   **
-  ** Not-null constructor
+  ** Not-null constructor. Gotta ditch the uics:
   */
 
-  public Database(BTState appState) {
-    appState_ = appState;
+  public Database(String id, int index, UIComponentSource uics, Metabase mb, TabPinnedDynamicDataAccessContext ddacx) {
+    mb_ = mb;
+    uics_ = uics;
+    id_ = id;
+    index_ = index;
+    String defName = ddacx.getRMan().getString("database.defaultModelName");
+    tabData_ = new TabNameData(defName, defName, defName);
     instances_ = new HashMap<String, GenomeInstance>();
     layouts_ = new HashMap<String, Layout>();
-    navTree_ = new NavTree(appState);
+    navTree_ = new NavTree(uics_);
     dynProxies_ = new HashMap<String, DynamicInstanceProxy>();    
     labels_ = new UniqueLabeller();
-    colGen_ = new ColorGenerator();
     instructionLabels_ = new UniqueLabeller();
     buildInstructions_ = new ArrayList<BuildInstruction>();
-    timeAxis_ = new TimeAxisDefinition(appState_);
     workspace_ = new Workspace();
-    pertData_ = new PerturbationData(appState);
     uniqueNameSuffix_ = 1;
-    iOVersion_ = CURRENT_IO_VERSION_;
     startupView_ = new StartupView();
+    installDataSharing(null, ddacx);
+
     instanceInstructionSets_ = new HashMap<String, InstanceInstructionSet>();
-    simDefaultsNode_ = new HashMap<String, String>();
-    simDefaultsNode_.put("initVal", "200.0");
-    simDefaultsNode_.put("KD", "0.005");
-    simDefaultsNode_.put("Kmult", "1.0");  // This parameter is for non-gene nodes
-                                           // with one or more inputs; the Kmult value
-                                           // sets the scale for the output of the node,
-                                           // relative to the input values.  
-    simDefaultsGeneAnd_ = new HashMap<String, String>();
-    simDefaultsGeneAnd_.put("DN", "160000000.0");
-    simDefaultsGeneAnd_.put("IM", "5.45");
-    simDefaultsGeneAnd_.put("initVal", "0.0");
-    simDefaultsGeneAnd_.put("KR", "100000.0");
-    simDefaultsGeneAnd_.put("KQ", "10.0");
-    simDefaultsGeneAnd_.put("KD", "0.005");
-    simDefaultsGeneOr_ = new HashMap<String, String>();
-    simDefaultsGeneOr_.put("DN", "160000000.0");
-    simDefaultsGeneOr_.put("IM", "5.45");
-    simDefaultsGeneOr_.put("initVal", "0.0");
-    simDefaultsGeneOr_.put("KR", "100000.0");
-    simDefaultsGeneOr_.put("KQ", "1.0");
-    simDefaultsGeneOr_.put("KD", "0.005");
-    appState.getEventMgr().addModelChangeListener(this);
-    appState.getEventMgr().addGeneralChangeListener(this);    
+    uics_.getEventMgr().addModelChangeListener(this);
+    uics_.getEventMgr().addGeneralChangeListener(this);    
   }
-   
+
+  /***************************************************************************
+  **
+  ** Install initialized data sharing policy
+  */
+
+  public void installDataSharing(Metabase.DataSharingPolicy dsp, TabPinnedDynamicDataAccessContext ddacx) {
+    if (dsp == null) {
+      
+      isDataSharing_ = Boolean.valueOf(false);
+       // Actually need the dynamic one, since still building the database: 
+      localTimeAxis_ = new TimeAxisDefinition(ddacx);
+      localPertData_ = new PerturbationData(ddacx);
+      localTimeCourse_ = new TimeCourseData(ddacx);
+      localCopiesPerEmb_ = new CopiesPerEmbryoData();
+      return; 
+    }    
+    if (!dsp.init) {
+      throw new IllegalArgumentException();
+    }
+    localTimeAxis_ = (dsp.shareTimeUnits) ? null : new TimeAxisDefinition(ddacx);
+    localPertData_ = (dsp.sharePerts) ? null : new PerturbationData(ddacx);
+    localTimeCourse_ = (dsp.shareTimeCourses) ? null : new TimeCourseData(ddacx);
+    localCopiesPerEmb_ = (dsp.sharePerEmbryoCounts) ? null : new CopiesPerEmbryoData();
+    isDataSharing_ = Boolean.valueOf(dsp.isSpecifyingSharing());
+    return;
+  }
+
+  /***************************************************************************
+  **
+  ** Copy constructor
+  */
+
+  public Database(Database other) {
+    this.copyGuts(other);
+    this.uics_.getEventMgr().addModelChangeListener(this);
+    this.uics_.getEventMgr().addGeneralChangeListener(this);
+  }
+
+  /***************************************************************************
+  **
+  ** Copy guts
+  */
+
+  private void copyGuts(Database other) { 
+    this.mb_ = other.mb_;
+    this.uics_ = other.uics_;
+    this.id_ = other.id_;
+    this.index_ = other.index_;
+    this.tabData_ = other.tabData_.clone();
+
+    this.genome_ = other.genome_.clone();
+    
+    this.instances_ = new HashMap<String, GenomeInstance>();
+    for (String gik : other.instances_.keySet()) {
+      GenomeInstance ogi = other.instances_.get(gik);
+      this.instances_.put(gik, ogi.clone());
+    }
+    
+    this.layouts_ = new HashMap<String, Layout>();
+    for (String lak : other.layouts_.keySet()) {
+      Layout ola = other.layouts_.get(lak);
+      this.layouts_.put(lak, ola.clone());
+    }
+    
+    this.navTree_ = new NavTree(other.navTree_);
+    
+    this.dynProxies_ = new HashMap<String, DynamicInstanceProxy>();
+    for (String dipk : other.dynProxies_.keySet()) {
+      DynamicInstanceProxy dip = other.dynProxies_.get(dipk);
+      this.dynProxies_.put(dipk, dip.clone());
+    }
+    this.labels_ = other.labels_.clone();
+    this.instructionLabels_ = other.instructionLabels_.clone();
+
+    this.buildInstructions_ = new ArrayList<BuildInstruction>();
+    for (BuildInstruction bi : other.buildInstructions_) {
+      this.buildInstructions_.add(bi.clone());
+    }
+       
+    this.workspace_ = other.workspace_.clone();
+    this.uniqueNameSuffix_ = other.uniqueNameSuffix_;
+    
+    this.startupView_ = other.startupView_.clone();
+    
+    this.instanceInstructionSets_ = new HashMap<String, InstanceInstructionSet>();
+    for (String iisk : other.instanceInstructionSets_.keySet()) {
+      InstanceInstructionSet iis = other.instanceInstructionSets_.get(iisk);
+      this.instanceInstructionSets_.put(iisk, iis.clone());
+    }
+
+    this.tcdm_ = other.tcdm_.clone();
+    this.pdms_ = other.pdms_.clone();
+    
+    this.localTimeAxis_ = (other.localTimeAxis_ != null) ? other.localTimeAxis_.clone() : null;
+    this.localPertData_ = (other.localPertData_ != null) ? other.localPertData_.clone() : null;
+    this.localTimeCourse_ = (other.localTimeCourse_ != null) ? other.localTimeCourse_.clone() : null;
+    this.localCopiesPerEmb_ = (other.localCopiesPerEmb_ != null) ? other.localCopiesPerEmb_.clone() : null;
+     
+    this.rangeData_ = other.rangeData_.clone();
+    this.modelData_ = other.modelData_.clone();
+     
+    if (other.getMbDB() != null) {
+      mbDataSourceX_ = other.getMbDB().deepCopy();
+    }
+    return;
+  }
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+  
+  /***************************************************************************
+  ** 
+  ** Get the modelBuilderDatabase
+  */
+
+  public ModelBuilder.Database getMbDB() {
+    if (mbDataSourceX_ == null) {
+      Iterator<ModelBuilderPlugIn> mbIterator = uics_.getPlugInMgr().getBuilderIterator();
+      if (mbIterator.hasNext()) {
+        ModelBuilderPlugIn plugIn = mbIterator.next();
+        mbDataSourceX_ = plugIn.getModelBuilderDatabase();
+      }
+    }
+    return (mbDataSourceX_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Reset ID. Only for IO/Metabase use!
+  */
+
+  public void reset(String id, int index) {
+    id_ = id;
+    index_ = index;
+    return;
+  }
  
+  /***************************************************************************
+  ** 
+  ** Get tab name data
+  */
+
+  public TabNameData getTabNameData() {
+    return (tabData_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set tab name data
+  */
+
+  public DatabaseChange setTabNameData(TabNameData tnd) {
+    DatabaseChange dc = new DatabaseChange();
+    dc.oldTabData = tabData_.clone();
+    tabData_ = tnd;
+    dc.newTabData = tabData_.clone();
+    return (dc);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get ID
+  */
+
+  public String getID() {
+    return (id_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get index
+  */
+
+  public int getIndex() {
+    return (index_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set ID
+  */
+
+  public void setID(String id) {
+    id_ = id;
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set index
+  */
+
+  public void setIndex(int index) {
+    index_ = index;
+    return;
+  }
+  
   /***************************************************************************
   ** 
   ** Start a new model
   */
 
-  public void newModelViaDACX() {
-    dropViaDACX();
-    genome_ = new DBGenome(appState_, appState_.getRMan().getString("tree.FullGenome"), "bioTapA");
+  public void newModelViaDACX(TabPinnedDynamicDataAccessContext ddacx) {
+    dropViaDACX(ddacx);
+    genome_ = new DBGenome(ddacx, ddacx.getRMan().getString("tree.FullGenome"), "bioTapA");
     labels_.addExistingLabel("bioTapA");
     String layoutID = labels_.getNextLabel();    
-    layouts_.put(layoutID, new Layout(appState_, layoutID, "bioTapA"));
-    navTree_.addNode(null, null, "bioTapA");
+    layouts_.put(layoutID, new Layout(layoutID, "bioTapA"));
+    navTree_.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID("bioTapA"), null, null, ddacx); 
+    
+    
     modelData_ = null;
-    pertData_ = new PerturbationData(appState_);
-    timeCourse_ = new TimeCourseData(appState_);
-    copiesPerEmb_ = new CopiesPerEmbryoData(appState_);
-    rangeData_ = new TemporalInputRangeData(appState_);
-    timeAxis_ = new TimeAxisDefinition(appState_);
+    tcdm_ = new TimeCourseDataMaps(ddacx);
+    rangeData_ = new TemporalInputRangeData(ddacx);
+    pdms_ = new PerturbationDataMaps(ddacx);
+    
+    installDataSharing(null, ddacx);
+    
     //
     // We do NOT clear out display options, but we do need to drop
     // defs that depend on the time def, so the time axis definition 
     // is not frozen for a new model:
     //
 
-    appState_.getDisplayOptMgr().getDisplayOptions().dropDataBasedOptions();
+    ddacx.getDisplayOptsSource().getDisplayOptions().dropDataBasedOptions();
   
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
-    iOVersion_ = CURRENT_IO_VERSION_;
     startupView_ = new StartupView();     
     return;
   }  
@@ -236,41 +410,36 @@ public class Database implements GenomeSource, LayoutSource,
   ** Drop everything
   */
 
-  public void dropViaDACX() {
+  public void dropViaDACX(TabPinnedDynamicDataAccessContext ddacx) {
     genome_ = null;
     layouts_.clear();
     instances_.clear();
     dynProxies_.clear();
+    String defName = ddacx.getRMan().getString("database.defaultModelName");
+    tabData_ = new TabNameData(defName, defName, defName);
     // Have to clear out above before clearing the tree so that
     // the tree clears correctly:
     navTree_.clearOut();
     modelData_ = null;
-    pertData_ = new PerturbationData(appState_);
-    timeCourse_ = null;
-    copiesPerEmb_ = null;
+    tcdm_ = null;
+    pdms_ = null;
     rangeData_ = null;
-    timeAxis_ = new TimeAxisDefinition(appState_);
-    //
-    // We do NOT clear out display options, but we do need to drop
-    // defs that depend on the time def, so the time axis definition 
-    // is not frozen for a new model:
-    //
-
-    appState_.getDisplayOptMgr().getDisplayOptions().dropDataBasedOptions();
+    installDataSharing(null, ddacx);
     
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
-    iOVersion_ = CURRENT_IO_VERSION_;
     startupView_ = new StartupView();     
     labels_ = new UniqueLabeller();
-    colGen_.dropColors();
-    appState_.getFontMgr().resetToDefaults();
-    appState_.getImageMgr().dropAllImages();
-    appState_.getPathMgr().dropAllPaths();
+    uics_.getPathMgr().dropAllPaths();
     // Note we are not resetting the Display options!
     buildInstructions_.clear();
     instructionLabels_ = new UniqueLabeller();
     instanceInstructionSets_.clear();
+    
+    if (getMbDB() != null) {
+      getMbDB().dropViaDACX();
+    }
+    
     return;
   }
   
@@ -294,7 +463,7 @@ public class Database implements GenomeSource, LayoutSource,
         retval.oldLayouts.put(name, new Layout(lo));
         // Note this drops overlay and note info in the layout.  We require later
         // fixup from legacy layout to return this information:
-        retval.newLayouts.put(name, new Layout(appState_, name, "bioTapA"));
+        retval.newLayouts.put(name, new Layout(name, "bioTapA"));
       }
     }
     Iterator<String> nlit = retval.newLayouts.keySet().iterator();
@@ -303,7 +472,7 @@ public class Database implements GenomeSource, LayoutSource,
       Layout lo = retval.newLayouts.get(name);
       layouts_.put(name, new Layout(lo));
     }
-    genome_ = ((DBGenome)genome_).getStrippedGenomeCopy();
+    genome_ = (DBGenome)genome_.getStrippedGenomeCopy();
     retval.newGenome = genome_;
     return (retval);
   } 
@@ -327,7 +496,7 @@ public class Database implements GenomeSource, LayoutSource,
       String name = lo.getID();
       if (targ.equals(gid)) {
         retval.oldLayouts.put(name, new Layout(lo));
-        retval.newLayouts.put(name, new Layout(appState_, name, gid));        
+        retval.newLayouts.put(name, new Layout(name, gid));        
       }
     }
     Iterator<String> nlit = retval.newLayouts.keySet().iterator();
@@ -342,243 +511,13 @@ public class Database implements GenomeSource, LayoutSource,
     return (retval);
   }  
   
-  /***************************************************************************
-  ** 
-  ** Get the simulation defaults
-  */
-
-  public Iterator<String> getSimulationDefaults(int nodeType, int logicType) {
-    if (nodeType != Node.GENE) {
-      return (simDefaultsNode_.keySet().iterator());
-    } else if (logicType == DBInternalLogic.AND_FUNCTION) {
-      return (simDefaultsGeneAnd_.keySet().iterator());
-    } else {
-      return (simDefaultsGeneOr_.keySet().iterator());
-    }
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Get a simulation default
-  */
-
-  public String getSimulationDefaultValue(String key, int nodeType, int logicType) {
-    if (nodeType != Node.GENE) {
-      return (simDefaultsNode_.get(key));
-    } else if (logicType == DBInternalLogic.AND_FUNCTION) {
-      return (simDefaultsGeneAnd_.get(key));
-    } else {
-      return (simDefaultsGeneOr_.get(key));
-    }
-  }
-  
-  /***************************************************************************
-  ** 
-  ** This gets called following file input to do any needed legacy fixups.
-  */
-
-  public void legacyIOFixup(JFrame topWindow) {
-
-    appState_.getFontMgr().fixupLegacyIO();  // Need this starting version 3.1
-    ResourceManager rMan = appState_.getRMan();
-    String message = rMan.getString("legacyIOFixup.baseChange");
-    String msgDiv;
-    if (topWindow != null) {
-      message = "<html><center>" + message;
-      msgDiv = "<br><br>";
-    } else {
-      msgDiv = " ";
-    }
-    boolean doit = false;
     
-    if (iOVersion_.equals("1.0")) {
-      List<String> change = legacyIOFixupForHourBounds();
-      if ((change != null) && !change.isEmpty()) {
-        int size = change.size();
-        String desc;
-        if (size == 1) {
-          String form = rMan.getString("legacyIOFixup.singleHourBoundsChange");                             
-          desc = MessageFormat.format(form, new Object[] {change.get(0)});
-        } else {
-          String form = rMan.getString("legacyIOFixup.multiHourBoundsChange");
-          desc = MessageFormat.format(form, new Object[] {change.get(0), new Integer(size - 1)});                    
-        }
-        message = message + msgDiv + desc;        
-        doit = true;
-      }
-      
-      List<String> nodeCh = legacyIOFixupForNodeActivities();
-      if ((nodeCh != null) && !nodeCh.isEmpty()) {
-        int size = nodeCh.size();
-        String desc;
-        if (size == 1) {
-          String form = rMan.getString("legacyIOFixup.singleNodeActivityChange");                             
-          desc = MessageFormat.format(form, new Object[] {nodeCh.get(0)});
-        } else {
-          String form = rMan.getString("legacyIOFixup.multiNodeActivityChange");
-          desc = MessageFormat.format(form, new Object[] {nodeCh.get(0), new Integer(size - 1)});                    
-        }
-        message = message + msgDiv + desc;        
-        doit = true;
-      } 
-    }
-    
-    if (iOVersion_.equals("1.0") || iOVersion_.equals(PREVIOUS_IO_VERSION_A_)) {
-      legacyIOFixupForGroupOrdering();
-    }
-    
-    //
-    // Slash Node pads have been overhauled in Version 7.0.1. 
-    //
-    
-    if (iOVersion_.equals("1.0") || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_C_) || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_D_)) { 
-      PadCalculatorToo pcalc = new PadCalculatorToo();
-      pcalc.legacyIOFixupForSlashNodes(this, this);
-      
-      //
-      // Gene length must now match link usage:
-      //
-      FullGenomeHierarchyOracle fgho = new FullGenomeHierarchyOracle(appState_);
-      Map<String, Integer> repairs = new HashMap<String, Integer>();
-      Map<String, Map<String, Set<Integer>>> padsForModGenes = new HashMap<String, Map<String, Set<Integer>>>();
-      fgho.legacyIOGeneLengthFixup(repairs, padsForModGenes);
-      if (!repairs.isEmpty()) {
-        message = message + msgDiv + rMan.getString("legacyIOFixup.geneLengthErrors");
-        legacyIOFixupForGeneLength(repairs);
-        doit = true;
-      }
-      //
-      // We have tweaked how gene cis-reg domains are modeled and displayed:
-      //
-      List<String> errs = DBGeneRegion.legacyIOFixup(this, rMan, padsForModGenes);
-      if (!errs.isEmpty()) {
-        message = message + msgDiv + rMan.getString("legacyIOFixup.moduleErrors");
-        for (String msg : errs) {
-          message = message + msgDiv + msg;
-        }
-        doit = true;
-      }
-      
-      //
-      // Links into child models must now respect gene cis-reg modules if they are present, so
-      // we may need to move link landings. NOTE: Example SpEndomes into Delta, I messed up and
-      // landed the r11 VfG link into the pm link. This fixup moves the link target to r11 and issues
-      // a warning: it DOES NOT find a VfG link that could fit the bill and replace the existing link.
-      //
-      
-      Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = fgho.fullyAnalyzeLinksIntoModules();
-      if (FullGenomeHierarchyOracle.hasModuleProblems(gla)) {
-        message = message + msgDiv + rMan.getString("legacyIOFixup.moduleLinkErrors");
-        Set<String> toFix = FullGenomeHierarchyOracle.geneModsNeedFixing(gla);
-        for (String geneID : toFix) {
-          List<String> lerrs = LinkSupport.fixCisModLinks(null, gla, appState_, new DataAccessContext(appState_), geneID, true);
-          for (String msg : lerrs) {
-            message = message + msgDiv + msg;
-          }
-        }
-        doit = true;
-      }
-    }
-
-    //
-    // Turns out V3.0 had potential errors with pad assignments in root when
-    // drawing bottom-up.  For kicks, let's _always_ look out for these problems:
-    //
-    
-    PadCalculatorToo pcalc = new PadCalculatorToo();   
-    List<PadCalculatorToo.IOFixup> padErrors = pcalc.checkForPadErrors(this, this);
-    if (!padErrors.isEmpty()) {
-      pcalc.fixIOPadErrors(this, padErrors);
-      message = message + msgDiv + rMan.getString("legacyIOFixup.padErrors");
-      doit = true;
-    }
-    
-    List<String> srcErrors = pcalc.checkForGeneSrcPadErrors(this, this);
-    if (!srcErrors.isEmpty()) {
-      message = message + msgDiv + rMan.getString("legacyIOFixup.srcPadErrors");
-      doit = true;
-    }
-    
-    //
-    // Note properties got orphaned in old versions:
-    //
-    
-    if (iOVersion_.equals("1.0") || iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || iOVersion_.equals(PREVIOUS_IO_VERSION_B_)) {  
-      List<String> noteOrphs = legacyIOFixupForOrphanedNotes();
-      int numOrphs = noteOrphs.size();
-      if (numOrphs > 0) {
-        String form = rMan.getString("legacyIOFixup.orphanNoteFixup");                             
-        message = message + msgDiv + form;        
-        doit = true;
-      }
-    }    
-
-    //
-    // Prior to 3.1, need to fixup line breaks on nodes
-    //
-
-    if (iOVersion_.equals("1.0") || iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || iOVersion_.equals(PREVIOUS_IO_VERSION_B_)) {
-      List<String> lineBrks = legacyIOFixupForLineBreaks();
-      if ((lineBrks != null) && !lineBrks.isEmpty()) {
-        int size = lineBrks.size();
-        String desc;
-        if (size == 1) {
-          String form = rMan.getString("legacyIOFixup.singleLineBreakChange");                             
-          desc = MessageFormat.format(form, new Object[] {lineBrks.get(0)});
-        } else {
-          String form = rMan.getString("legacyIOFixup.multiLineBreakChange");
-          desc = MessageFormat.format(form, new Object[] {lineBrks.get(0), new Integer(size - 1)});                    
-        }
-        message = message + msgDiv + desc;        
-        doit = true;
-      } 
-    }
-    
-    
-    //
-    // QPCR is no longer used for storage:
-    //
-    
-    if (iOVersion_.equals("1.0") || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
-        iOVersion_.equals(PREVIOUS_IO_VERSION_C_)) { 
-      pertData_.transferFromLegacy();
-    }
-    
-    
-
-    
-    //
-    // Finish assembling the message:
-    //
-    
-    if (doit) {
-      message = message + msgDiv + rMan.getString("legacyIOFixup.changeSuffix");
-      if (topWindow != null) {
-        message = message + "</center></html>";        
-        JOptionPane.showMessageDialog(topWindow, message,
-                                      rMan.getString("legacyIOFixup.dialogTitle"),
-                                      JOptionPane.WARNING_MESSAGE); 
-      } else {
-        System.err.println(message);
-      }
-    }
-
-    return;
-  }
- 
-
   /***************************************************************************
   ** 
   ** We need to install hour bounds on parent models of child dynamic models
   */
 
-  private List<String> legacyIOFixupForHourBounds() {
+  List<String> legacyIOFixupForHourBounds() {
     if (dynProxies_.isEmpty()) {
       return (null);
     }
@@ -586,7 +525,7 @@ public class Database implements GenomeSource, LayoutSource,
     int minTcd = Integer.MAX_VALUE;
     int maxTcd = Integer.MIN_VALUE;    
     TimeCourseData tcd = getTimeCourseData();
-    if ((tcd != null) && tcd.haveData()) {
+    if ((tcd != null) && tcd.haveDataEntries()) {
       minTcd = tcd.getMinimumTime(); 
       maxTcd = tcd.getMaximumTime();
     }
@@ -612,9 +551,9 @@ public class Database implements GenomeSource, LayoutSource,
   ** We need to install new group ordering values
   */
 
-  private void legacyIOFixupForGroupOrdering() {
+  void legacyIOFixupForGroupOrdering() {
 
-    String rootKey = getGenome().getID();
+    String rootKey = getRootDBGenome().getID();
 
     //
     // Since layouts are only for VfAs, we are only going to deal with them:
@@ -653,30 +592,83 @@ public class Database implements GenomeSource, LayoutSource,
       }
     }
     return;
-  } 
+  }
   
+  /***************************************************************************
+  ** 
+  ** We need to fix genes that are too short and that have module problems
+  */
   
+  public String legacyIOFixupForGeneLengthAndModules(String message, ResourceManager rMan, String msgDiv, DataAccessContext dacx) {
+    boolean doit = false;
+    //
+    // Gene length must now match link usage:
+    //
+    FullGenomeHierarchyOracle fgho = dacx.getFGHO();
+    Map<String, Integer> repairs = new HashMap<String, Integer>();
+    Map<String, Map<String, Set<Integer>>> padsForModGenes = new HashMap<String, Map<String, Set<Integer>>>();
+    fgho.legacyIOGeneLengthFixup(repairs, padsForModGenes);
+    if (!repairs.isEmpty()) {
+      message = message + msgDiv + rMan.getString("legacyIOFixup.geneLengthErrors");
+      legacyIOFixupForGeneLength(repairs);
+      doit = true;
+    }
+    //
+    // We have tweaked how gene cis-reg domains are modeled and displayed:
+    //
+    List<String> errs = DBGeneRegion.legacyIOFixup(this, rMan, padsForModGenes);
+    if (!errs.isEmpty()) {
+      message = message + msgDiv + rMan.getString("legacyIOFixup.moduleErrors");
+      for (String msg : errs) {
+        message = message + msgDiv + msg;
+      }
+      doit = true;
+    }
+    
+    //
+    // Links into child models must now respect gene cis-reg modules if they are present, so
+    // we may need to move link landings. NOTE: Example SpEndomes into Delta, I messed up and
+    // landed the r11 VfG link into the pm link. This fixup moves the link target to r11 and issues
+    // a warning: it DOES NOT find a VfG link that could fit the bill and replace the existing link.
+    //
+    
+    Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = fgho.fullyAnalyzeLinksIntoModules();
+    if (FullGenomeHierarchyOracle.hasModuleProblems(gla)) {
+      message = message + msgDiv + rMan.getString("legacyIOFixup.moduleLinkErrors");
+      Set<String> toFix = FullGenomeHierarchyOracle.geneModsNeedFixing(gla);
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx).getContextForRoot();
+      for (String geneID : toFix) {
+        List<String> lerrs = LinkSupport.fixCisModLinks(null, gla, rcx, geneID, true);
+        for (String msg : lerrs) {
+          message = message + msgDiv + msg;
+        }
+      }
+      doit = true;
+    }
+    
+    return ((doit) ? message : null);
+  }
+
   /***************************************************************************
   ** 
   ** We need to fix genes that are too short
   */
 
   private void legacyIOFixupForGeneLength(Map<String, Integer> changes) {
-
-    DBGenome genome = (DBGenome)getGenome();
+    DBGenome genome = getRootDBGenome();
     for (String geneKey : changes.keySet()) {
       DBGene gene = (DBGene)genome.getGene(geneKey);
       gene.setPadCount(changes.get(geneKey).intValue()); 
     }
     return;
   } 
-  
+    
   /***************************************************************************
   ** 
   ** We need to install new line break info
   */
 
-  private List<String> legacyIOFixupForLineBreaks() {
+  List<String> legacyIOFixupForLineBreaks(FontManager fMgr) {
 
     ArrayList<String> fixes = new ArrayList<String>();
     AffineTransform trans = new AffineTransform();
@@ -694,7 +686,7 @@ public class Database implements GenomeSource, LayoutSource,
         Node node = it.next();
         String nodeID = node.getID();
         NodeProperties np = layout.getNodeProperties(nodeID);
-        String breakDef = MultiLineRenderSupport.legacyLineBreaks(np.getHideName(), node.getNodeType(), frc, node.getName(), appState_.getFontMgr());
+        String breakDef = MultiLineRenderSupport.legacyLineBreaks(np.getHideName(), node.getNodeType(), frc, node.getName(), fMgr);
         if (breakDef != null) {
           System.err.println(node.getName() + " def = " + breakDef);
           np.setLineBreakDef(breakDef);
@@ -710,7 +702,7 @@ public class Database implements GenomeSource, LayoutSource,
   ** We need to kill off orphaned note properties
   */
 
-  private List<String> legacyIOFixupForOrphanedNotes() {
+  List<String> legacyIOFixupForOrphanedNotes() {
 
     ArrayList<String> fixes = new ArrayList<String>();
     
@@ -757,7 +749,7 @@ public class Database implements GenomeSource, LayoutSource,
   ** We need to enforce new node activity standards
   */
 
-  private List<String> legacyIOFixupForNodeActivities() {
+  List<String> legacyIOFixupForNodeActivities() {
     //
     // Has to proceed top down: 
     //
@@ -785,8 +777,161 @@ public class Database implements GenomeSource, LayoutSource,
     }
     return (retval);
   }  
-   
 
+  /***************************************************************************
+  ** 
+  ** Get the model data
+  */
+
+  public ModelData getModelData() {
+    return (modelData_);
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** Set the model data
+  */
+
+  public void setModelData(ModelData md) {
+    modelData_ = md;
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Answer if we are using shared experimental data
+  */
+
+  public boolean amUsingSharedExperimentalData() {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    return (isDataSharing_.booleanValue());
+  } 
+
+  /***************************************************************************
+  **
+  ** Rollback a data undo transaction
+  */
+    
+  public void rollbackDataUndoTransaction(DatabaseChange change) {
+    databaseChangeUndo(change);
+    return;
+  }    
+ 
+  /***************************************************************************
+  **
+  ** Start an undo transaction
+  */
+  
+  public DatabaseChange startTimeCourseUndoTransaction() {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeCourses) {
+      return (mb_.startSharedTimeCourseUndoTransaction());
+    }
+    DatabaseChange dc = new DatabaseChange();
+    dc.oldTcd = localTimeCourse_;
+    dc.localTcdChange = true;
+    return (dc);
+  }  
+  
+  /***************************************************************************
+  **
+  ** Finish an undo transaction
+  */
+  
+  public DatabaseChange finishTimeCourseUndoTransaction(DatabaseChange change) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeCourses) {
+      return (mb_.finishSharedTimeCourseUndoTransaction(change));
+    }
+    change.newTcd = localTimeCourse_;
+    return (change);
+  }
+  
+  /***************************************************************************
+  **
+  ** Start an undo transaction
+  */
+  
+  public DatabaseChange startTemporalInputUndoTransaction() {
+    DatabaseChange dc = new DatabaseChange();
+    dc.oldTir = rangeData_;
+    return (dc);
+  }  
+  
+  /***************************************************************************
+  **
+  ** Finish an undo transaction
+  */
+  
+  public DatabaseChange finishTemporalInputUndoTransaction(DatabaseChange change) {
+    change.newTir = rangeData_;
+    return (change);
+  }
+
+  /***************************************************************************
+  ** 
+  ** Get the Temporal Range Data
+  */
+
+  public TemporalInputRangeData getTemporalInputRangeData() {
+    return (rangeData_);
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** Set the Temporal Range Data
+  */
+
+  public void setTemporalInputRangeData(TemporalInputRangeData rangeData) {
+    rangeData_ = rangeData;
+    return;
+  }  
+  
+  /***************************************************************************
+  ** 
+  ** Now just hold onto data maps, not the underlying data:
+  */
+  
+  public PerturbationDataMaps getPerturbationDataMaps() {
+    return (pdms_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Now just hold onto data maps, not the underlying data:
+  */
+  
+  public void setPerturbationDataMaps(PerturbationDataMaps pdms) {
+    pdms_ = pdms;
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Now just hold onto data maps, not the underlying data:
+  */
+  
+  
+  public TimeCourseDataMaps getTimeCourseDataMaps() {
+    return (tcdm_);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Now just hold onto data maps, not the underlying data:
+  */
+  
+  
+  public void setTimeCourseDataMaps(TimeCourseDataMaps tcdm) {
+    tcdm_ = tcdm;
+    return;
+  }
   
   /***************************************************************************
   **
@@ -795,20 +940,21 @@ public class Database implements GenomeSource, LayoutSource,
   */
   
   public boolean hasDataAttachedByDefault(String nodeID) {
-    Database db = appState_.getDB();
     nodeID = GenomeItemInstance.getBaseID(nodeID);
+    PerturbationData pd = getPertData();
+    PerturbationDataMaps pdms = getPerturbationDataMaps();
+    TimeCourseData tcd = getTimeCourseData();
 
-    PerturbationData pdat = db.getPertData();
-    if (pdat.haveDataForNode(nodeID, null) && !pdat.haveCustomMapForNode(nodeID)) {
+    if (pd.haveDataForNode(nodeID, null, pdms_) && !pdms.haveCustomMapForNode(nodeID)) {
       return (true);
     }
     
-    TimeCourseData tcd = db.getTimeCourseData();
-    if (tcd.haveDataForNode(nodeID) && !tcd.haveCustomMapForNode(nodeID)) {
+    TimeCourseDataMaps tcdm = getTimeCourseDataMaps();
+    if (tcdm.haveDataForNode(tcd, nodeID, this) && !tcdm.haveCustomMapForNode(nodeID)) {
       return (true);
     }
-    TemporalInputRangeData tird = db.getTemporalInputRangeData();
-    if (tird.haveDataForNode(nodeID) && !tird.haveCustomMapForNode(nodeID)) {
+    TemporalInputRangeData tird = getTemporalInputRangeData();
+    if (tird.haveDataForNode(nodeID, this) && !tird.haveCustomMapForNode(nodeID)) {
       return (true);
     }    
     return (false);
@@ -821,23 +967,23 @@ public class Database implements GenomeSource, LayoutSource,
   */
   
   public boolean hasRegionAttachedByDefault(Group group) {
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData();
+    TimeCourseDataMaps tcdm = getTimeCourseDataMaps();
+    TimeCourseData tcd = getTimeCourseData();
     String groupName = group.getName();
     String groupID = group.getID();
     if (DataUtil.containsKey(tcd.getRegions(), groupName) &&     
-        !tcd.haveCustomMapForRegion(groupID)) {
+        !tcdm.haveCustomMapForRegion(groupID)) {
       return (true);
       
     }
-    TemporalInputRangeData tird = db.getTemporalInputRangeData();
+    TemporalInputRangeData tird = getTemporalInputRangeData();
     if (DataUtil.containsKey(tird.getRegions(), groupName) && 
         !tird.haveCustomMapForRegion(groupID)) {
       return (true);
     } 
     return (false);
   } 
-  
+
   /***************************************************************************
   **
   ** Answers if other top-level genome instances have regions named the same
@@ -871,208 +1017,8 @@ public class Database implements GenomeSource, LayoutSource,
       }
     }
     return (false);
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Get the model data
-  */
-
-  public ModelData getModelData() {
-    return (modelData_);
   }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the model data
-  */
 
-  public void setModelData(ModelData md) {
-    modelData_ = md;
-    return;
-  }    
-  
-  /***************************************************************************
-  **
-  ** Rollback a data undo transaction
-  */
-    
-  public void rollbackDataUndoTransaction(DatabaseChange change) {
-    databaseChangeUndo(change);
-    return;
-  }    
-
-  /***************************************************************************
-  ** 
-  ** Get the perturbation data
-  */
-
-  public PerturbationData getPertData() {
-    return (pertData_);
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the perturbation data
-  */
-
-  public void setPertData(PerturbationData pd) {
-    pertData_ = pd;
-    return;
-  }
- 
-  /***************************************************************************
-  **
-  ** Start an undo transaction
-  */
-  
-  public DatabaseChange startTimeCourseUndoTransaction() {
-    DatabaseChange dc = new DatabaseChange();
-    dc.oldTcd = timeCourse_;
-    return (dc);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Finish an undo transaction
-  */
-  
-  public DatabaseChange finishTimeCourseUndoTransaction(DatabaseChange change) {
-    change.newTcd = timeCourse_;
-    return (change);
-  }
-  
-  /***************************************************************************
-  **
-  ** Start an undo transaction
-  */
-  
-  public DatabaseChange startCopiesPerEmbryoUndoTransaction() {
-    DatabaseChange dc = new DatabaseChange();
-    dc.oldCpe = copiesPerEmb_;
-    return (dc);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Finish an undo transaction
-  */
-  
-  public DatabaseChange finishCopiesPerEmbryoUndoTransaction(DatabaseChange change) {
-    change.newCpe = copiesPerEmb_;
-    return (change);
-  }  
- 
-  /***************************************************************************
-  **
-  ** Start an undo transaction
-  */
-  
-  public DatabaseChange startTemporalInputUndoTransaction() {
-    DatabaseChange dc = new DatabaseChange();
-    dc.oldTir = rangeData_;
-    return (dc);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Finish an undo transaction
-  */
-  
-  public DatabaseChange finishTemporalInputUndoTransaction(DatabaseChange change) {
-    change.newTir = rangeData_;
-    return (change);
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Get the Time course data
-  */
-
-  public TimeCourseData getTimeCourseData() {
-    return (timeCourse_);
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the Time Course data
-  */
-
-  public void setTimeCourseData(TimeCourseData timeCourse) {
-    timeCourse_ = timeCourse;
-    return;
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Get the Time course data
-  */
-
-  public CopiesPerEmbryoData getCopiesPerEmbryoData() {
-    return (copiesPerEmb_);
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the copies per embryo data
-  */
-
-  public void setCopiesPerEmbryoData(CopiesPerEmbryoData copies) {
-    copiesPerEmb_ = copies;
-    return;
-  }    
-  
-  /***************************************************************************
-  ** 
-  ** Get the Temporal Range Data
-  */
-
-  public TemporalInputRangeData getTemporalInputRangeData() {
-    return (rangeData_);
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the Temporal Range Data
-  */
-
-  public void setTemporalInputRangeData(TemporalInputRangeData rangeData) {
-    rangeData_ = rangeData;
-    return;
-  }  
-    
-  /***************************************************************************
-  ** 
-  ** Get the time axis definition
-  */
-
-  public TimeAxisDefinition getTimeAxisDefinition() {
-    return (timeAxis_);
-  }  
-  
-  /***************************************************************************
-  ** 
-  ** Set the time axis definition
-  */
-
-  public DatabaseChange setTimeAxisDefinition(TimeAxisDefinition timeAxis) {
-    DatabaseChange dc = new DatabaseChange();
-    dc.oldTimeAxis = timeAxis_.clone();
-    timeAxis_ = timeAxis;
-    dc.newTimeAxis = timeAxis_.clone();
-    return (dc);
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Set the time axis definition
-  */
-
-  public void installLegacyTimeAxisDefinition() {
-    timeAxis_ = new TimeAxisDefinition(appState_).setToLegacy();
-    return;
-  } 
-  
   /***************************************************************************
   ** 
   ** Answer if any model has time bounds set
@@ -1111,9 +1057,9 @@ public class Database implements GenomeSource, LayoutSource,
       NetOverlayOwner owner = getOverlayOwnerFromGenomeKey(modelID);
       TaggedSet modChoice = new TaggedSet();
       TaggedSet revChoice = new TaggedSet();
-      String ovrID = owner.getFirstViewPreference(modChoice, revChoice);
+      String ovrID =  owner.getFirstViewPreference(modChoice, revChoice); // (owner == null ? null : owner.getFirstViewPreference(modChoice, revChoice));
       if (ovrID != null) {
-        StartupView modified = new StartupView(modelID, ovrID, modChoice, revChoice);
+        StartupView modified = new StartupView(modelID, ovrID, modChoice, revChoice,startupView_.getNodeType());
         return (modified);
       }
     }
@@ -1180,7 +1126,7 @@ public class Database implements GenomeSource, LayoutSource,
   ** Get the core genome
   */
 
-  public Genome getGenome() {
+  public DBGenome getRootDBGenome() {
     return (genome_);
   }  
 
@@ -1238,7 +1184,7 @@ public class Database implements GenomeSource, LayoutSource,
   */
   
   public Layout getRootLayout() {
-    return (getLayoutForGenomeKey(getGenome().getID()));
+    return (getLayoutForGenomeKey(getRootDBGenome().getID()));
   } 
   
   /***************************************************************************
@@ -1247,7 +1193,27 @@ public class Database implements GenomeSource, LayoutSource,
   */
   
   public String mapGenomeKeyToLayoutKey(String genomeKey) {
-    return (appState_.getLayoutMgr().getLayout(genomeKey));
+    if (genomeKey == null) {
+      return (null);
+    } else {
+      Genome gen = getGenome(genomeKey);
+      // For subset instances, look for the layout to the source
+      if (gen instanceof GenomeInstance) {  // FIX ME
+        GenomeInstance parent = ((GenomeInstance)gen).getVfgParentRoot();
+        if (parent != null) {
+          genomeKey = parent.getID();
+        }
+      } 
+      Iterator<Layout> lit = getLayoutIterator();
+      while (lit.hasNext()) {
+        Layout lo = lit.next();
+        String targ = lo.getTarget();
+        if (targ.equals(genomeKey)) {
+          return (lo.getID());
+        }
+      }
+      return (null);
+    }
   }
 
   /***************************************************************************
@@ -1313,6 +1279,7 @@ public class Database implements GenomeSource, LayoutSource,
   */ 
     
   public NetOverlayOwner getOverlayOwnerWithOwnerKey(String key) {
+    System.out.println("goo " + key + " " + getID() + " " + this.instances_.size());
     NetOverlayOwner fromProx = getDynamicProxy(key);
     if (fromProx != null) {
       return (fromProx);
@@ -1418,7 +1385,7 @@ public class Database implements GenomeSource, LayoutSource,
   ** Set the core genome
   */
 
-  public void setGenome(Genome genome) {
+  public void setGenome(DBGenome genome) {
     if (genome_ != null) {
       throw new IllegalArgumentException();
     } else {
@@ -1635,7 +1602,6 @@ public class Database implements GenomeSource, LayoutSource,
     return (retval);
   }  
 
-
   /***************************************************************************
   **
   ** Start an undo transaction
@@ -1720,39 +1686,12 @@ public class Database implements GenomeSource, LayoutSource,
 
   /***************************************************************************
   ** 
-  ** Get the color
-  */
-
-  public Color getColor(String colorKey) {
-    return (colGen_.getColor(colorKey));
-  }
-
-  /***************************************************************************
-  ** 
-  ** Get the named color
-  */
-
-  public NamedColor getNamedColor(String colorKey) {
-    return (colGen_.getNamedColor(colorKey));
-  }  
-
-  /***************************************************************************
-  **
-  ** Update the color set
-  */
-  
-  public GlobalChange updateColors(Map<String, NamedColor> namedColors) {
-    return (colGen_.updateColors(namedColors));
-  }
-  
-  /***************************************************************************
-  ** 
   ** Get a unique model name
   */
 
-  public String getUniqueModelName() {
+  public String getUniqueModelName(ResourceManager rMan) {
  
-    String format = appState_.getRMan().getString("model.defaultNameFormat");   
+    String format = rMan.getString("model.defaultNameFormat");   
     while (true) {
       Integer suffix = new Integer(uniqueNameSuffix_++);
       String tryName = MessageFormat.format(format, new Object[] {suffix});
@@ -1829,18 +1768,27 @@ public class Database implements GenomeSource, LayoutSource,
   
   public void writeXML(PrintWriter out, Indenter ind) {    
     ind.indent();
-    out.print("<BioTapestry version=\"");
-    out.print(CURRENT_IO_VERSION_);
+    out.print("<Database tabNum=\"");
+    out.print(index_);
+    out.print("\" id=\"");
+    out.print(id_);
+    out.print("\" sharing=\"");
+    out.print(isDataSharing_.booleanValue());
     out.println("\" >");
+    
+    tabData_.writeXML(out, ind.up());
+    ind.down();
+    
     if (modelData_ != null) {
       modelData_.writeXML(out, ind.up());
       ind.down();
     }
-    if ((timeAxis_ != null) && timeAxis_.isInitialized()) {
-      timeAxis_.writeXML(out, ind.up());
-      ind.down();
-    }    
     
+    if ((localTimeAxis_ != null) && localTimeAxis_.isInitialized()) {
+      localTimeAxis_.writeXML(out, ind.up());
+      ind.down();
+    }   
+
     if (workspace_ != null) {
       workspace_.writeXML(out, ind.up());
       ind.down();
@@ -1850,23 +1798,18 @@ public class Database implements GenomeSource, LayoutSource,
       startupView_.writeXML(out, ind.up());
       ind.down();
     }    
-
-    appState_.getFontMgr().writeXML(out, ind.up());
-    ind.down();
-    appState_.getDisplayOptMgr().writeXML(out, ind.up());
+    
+    uics_.getPathMgr().writeXML(out, ind.up());
     ind.down();
     
-    colGen_.writeXML(out, ind.up());
+    navTree_.writeXML(out, ind.up());
     ind.down();
     
-    appState_.getImageMgr().writeXML(out, ind.up());
-    ind.down();
-    
-    appState_.getPathMgr().writeXML(out, ind.up());
-    ind.down();
+    ind.up().indent();
+    out.println("<modelTree>");
     
     // core genome
-    ((DBGenome)genome_).writeXML(out, ind.up());
+    genome_.writeXML(out, ind.up());
     ind.indent();
     //
     // Dump the instances out in tree order to preserve it:
@@ -1884,30 +1827,6 @@ public class Database implements GenomeSource, LayoutSource,
     }
     ind.down().indent();
     out.println("</genomeInstances>");
-    // Layouts
-    ind.indent();
-    out.println("<layouts>");
-    Iterator<Layout> lit = getLayoutIterator();
-    ind.up();
-    while (lit.hasNext()) {
-      Layout lo = lit.next();
-      lo.writeXML(out, ind);
-    }
-    ind.down().indent();
-    out.println("</layouts>");
-    if ((pertData_ != null) && pertData_.haveData()) {
-      pertData_.writeXML(out, ind);
-    }
-    
-    if (timeCourse_ != null) {
-      timeCourse_.writeXML(out, ind);
-    }
-    if (rangeData_ != null) {
-      rangeData_.writeXML(out, ind);
-    }
-    if ((copiesPerEmb_ != null) && copiesPerEmb_.haveData()) {
-      copiesPerEmb_.writeXML(out, ind);
-    }    
     
     //
     // Dump the single-shot proxies out in tree order to preserve it:
@@ -1941,7 +1860,46 @@ public class Database implements GenomeSource, LayoutSource,
         dumpList.add(dip.getID());
       }
     }
+ 
+    ind.down().indent();
+    out.println("</modelTree>");
     
+    // Layouts
+    ind.indent();
+    out.println("<layouts>");
+    Iterator<Layout> lit = getLayoutIterator();
+    ind.up();
+    while (lit.hasNext()) {
+      Layout lo = lit.next();
+      lo.writeXML(out, ind);
+    }
+    ind.down().indent();
+    out.println("</layouts>");
+    
+    if ((localPertData_ != null) && localPertData_.haveData()) {
+      localPertData_.writeXML(out, ind);
+    }
+    
+    if (localTimeCourse_ != null) {
+      localTimeCourse_.writeXML(out, ind);
+    }
+  
+    if ((localCopiesPerEmb_ != null) && localCopiesPerEmb_.haveData()) {
+      localCopiesPerEmb_.writeXML(out, ind);
+    }    
+  
+    if (tcdm_ != null) {
+      tcdm_.writeXML(out, ind);
+    }
+    
+    if (pdms_ != null) {
+      pdms_.writeXML(out, ind);
+    }  
+
+    if (rangeData_ != null) {
+      rangeData_.writeXML(out, ind);
+    }
+
     //
     // Dump the build instructions:
     //
@@ -1976,8 +1934,12 @@ public class Database implements GenomeSource, LayoutSource,
       out.println("</instructionSets>");
     } 
 
+    if (getMbDB() != null) {
+      getMbDB().writeXML(out, ind);  
+    }
+  
     ind.down().indent();
-    out.println("</BioTapestry>");
+    out.println("</Database>");
     return;
   }
 
@@ -2013,54 +1975,6 @@ public class Database implements GenomeSource, LayoutSource,
     clearAllDynamicProxyCaches();
     return;
   }
-
-  /***************************************************************************
-  **
-  ** Get the next color label
-  */
-  
-  public String getNextColorLabel() {
-    return (colGen_.getNextColorLabel()); 
-  }  
-  
-  /***************************************************************************
-  **
-  ** Set the color for the given name
-  */
-  
-  public void setColor(String itemId, NamedColor color) {
-    colGen_.setColor(itemId, color);
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Return an iterator over all the color keys
-  */
-  
-  public Iterator<String> getColorKeys() {
-    return (colGen_.getColorKeys());
-  }
-
-  /***************************************************************************
-  **
-  ** Undo a change
-  */
-  
-  public void changeUndo(GlobalChange undo) {
-    colGen_.changeUndo(undo);
-    return;
-  }  
-  
-  /***************************************************************************
-  **
-  ** Redo a change
-  */
-  
-  public void changeRedo(GlobalChange undo) {
-    colGen_.changeRedo(undo);
-    return;
-  }
   
   /***************************************************************************
   **
@@ -2092,10 +2006,6 @@ public class Database implements GenomeSource, LayoutSource,
       String key = undo.newProxy.getID();
       dynProxies_.remove(key);
       labels_.removeLabel(key);
-    } else if (undo.oldTcd != null) {
-      timeCourse_ = undo.oldTcd;
-    } else if (undo.oldCpe != null) {
-      copiesPerEmb_ = undo.oldCpe;  
     } else if (undo.oldTir != null) {
       rangeData_ = undo.oldTir;
     } else if (undo.oldBuildInst != null) {
@@ -2109,12 +2019,17 @@ public class Database implements GenomeSource, LayoutSource,
       }
     } else if (undo.oldGenome != null) {
       genome_ = undo.oldGenome;
-    } else if (undo.oldTimeAxis != null) {
-      timeAxis_ = undo.oldTimeAxis;
     } else if (undo.oldWorkspace != null) {
       workspace_ = undo.oldWorkspace;
     } else if (undo.oldStartupView != null) {
       startupView_ = undo.oldStartupView;
+    } else if (undo.oldTabData != null) {
+      tabData_ = undo.oldTabData;   
+    } else if ((undo.newModelBuilderData != null) || (undo.oldModelBuilderData != null)) {
+      if (getMbDB() == null) {
+        throw new IllegalStateException();
+      }
+      getMbDB().handleWorksheetRunUndo(undo.newModelBuilderData, undo.oldModelBuilderData);  
     }
     // May be called if oldGenome or oldInstance != null
     if (undo.oldLayouts != null) {
@@ -2159,10 +2074,6 @@ public class Database implements GenomeSource, LayoutSource,
       String key = undo.oldProxy.getID();
       dynProxies_.remove(key);
       labels_.removeLabel(key);
-    } else if (undo.newTcd != null) {
-      timeCourse_ = undo.newTcd;
-    } else if (undo.newCpe != null) {
-      copiesPerEmb_ = undo.newCpe;        
     } else if (undo.newTir != null) {
       rangeData_ = undo.newTir;
     } else if (undo.newBuildInst != null) {
@@ -2176,14 +2087,19 @@ public class Database implements GenomeSource, LayoutSource,
       }      
     } else if (undo.newGenome != null) {
       genome_ = undo.newGenome;
-    } else if (undo.newTimeAxis != null) {
-      timeAxis_ = undo.newTimeAxis;
     } else if (undo.newWorkspace != null) {
       workspace_ = undo.newWorkspace;
     } else if (undo.newStartupView != null) {
       startupView_ = undo.newStartupView;
+    } else if (undo.newTabData != null) {
+      tabData_ = undo.newTabData;
+    } else if ((undo.newModelBuilderData != null) || (undo.oldModelBuilderData != null)) {
+      if (getMbDB() == null) {
+        throw new IllegalStateException();
+      }
+      getMbDB().handleWorksheetRunRedo(undo.newModelBuilderData, undo.oldModelBuilderData);  
     }
-        // May be called if newGenome or newInstance != null
+    // May be called if newGenome or newInstance != null
     if (undo.newLayouts != null) {
       Iterator<String> nlit = undo.newLayouts.keySet().iterator();
       while (nlit.hasNext()) {
@@ -2196,140 +2112,7 @@ public class Database implements GenomeSource, LayoutSource,
     
     return;
   }
-  
-  /***************************************************************************
-  **
-  ** Return the colors you cannot delete
-  */
-  
-  public Set<String> cannotDeleteColors() {
-    return (colGen_.cannotDeleteColors());
-  }  
 
-  /***************************************************************************
-  **
-  ** Return from a cycle of active colors
-  */
-  
-  public String activeColorCycle(int i) {
-    return (colGen_.activeColorCycle(i));
-  }
-  
-  /***************************************************************************
-  **
-  ** A distinct active color
-  */
-  
-  public String distinctActiveColor() { 
-    return (colGen_.distinctActiveColor());
-  }
-  
-  /***************************************************************************
-  **
-  ** Return a distinct inactive color
-  */
-  
-  public String distinctInactiveColor() {  
-    return (colGen_.distinctInactiveColor());
-  }
-   
-  /***************************************************************************
-  **
-  ** Return from a cycle of inactive colors
-  */
-  
-  public String inactiveColorCycle(int i) {
-    return (colGen_.inactiveColorCycle(i));
-  }
-  
-  /***************************************************************************
-  **
-  ** Return from a cycle of gene colors
-  */
-  
-  public String getNextColor() {
-    
-    List<String> geneColors = colGen_.getGeneColorsAsList();
-    HashMap<String, Integer> colorCounts = new HashMap<String, Integer>();
-    int gcSize = geneColors.size();
-    for (int i = 0; i < gcSize; i++) {
-      String col = geneColors.get(i);
-      colorCounts.put(col, new Integer(0));
-    }
-   
-    //
-    // Crank thru all the genes and get their colors.  Figure out the set of colors
-    // with the minimum count.  Choose a color from that set.
-    //
-    
- 
-    Genome root = getGenome();
-    String loKey = appState_.getLayoutMgr().getLayout(root.getID());
-    Layout lo = getLayout(loKey);    
-    Iterator<Gene> git = root.getGeneIterator();
-    while (git.hasNext()) {
-      Gene gene = git.next();
-      NodeProperties np = lo.getNodeProperties(gene.getID());
-      String col = np.getColorName();
-      if (geneColors.contains(col)) {
-        Integer count = colorCounts.get(col);
-        colorCounts.put(col, new Integer(count.intValue() + 1));
-      }
-    }
-    Iterator<Node> nit = root.getNodeIterator();
-    while (nit.hasNext()) {
-      Node node = nit.next();
-      if (NodeProperties.setWithLinkColor(node.getNodeType())) {
-        NodeProperties srcProp = lo.getNodeProperties(node.getID());
-        // FIX ME: Abstract this away!
-        String col = "black";
-        if (node.getNodeType() == Node.INTERCELL) {
-          col = srcProp.getSecondColorName();
-          if (col == null) {
-            col = srcProp.getColorName();
-          }
-        } else {
-          col = srcProp.getColorName();
-        }
-        if (geneColors.contains(col)) {
-          Integer count = colorCounts.get(col);
-          colorCounts.put(col, new Integer(count.intValue() + 1));
-        }
-      }
-    }
-
-    //
-    // Minimum count colors:
-    //
-    
-    int minVal = Integer.MAX_VALUE;
-    HashSet<String> minSet = new HashSet<String>();
-    Iterator<String> cckit = colorCounts.keySet().iterator();
-    while (cckit.hasNext()) {
-      String col = cckit.next();
-      int count = colorCounts.get(col).intValue();
-      if (count < minVal) {
-        minSet.clear();
-        minVal = count;
-        minSet.add(col);
-      } else if (count == minVal) {
-        minSet.add(col);
-      }
-    }
- 
-    //
-    // get a color from minimum set in the predefined order:
-    //
-    for (int i = 0; i < gcSize; i++) {
-      String retval = geneColors.get(i);
-      if (minSet.contains(retval)) {
-        return (retval);
-      }
-    }
-    
-    return ("black");
-  }
-  
   /***************************************************************************
   **
   ** Return the least used colors from the list of colors
@@ -2415,45 +2198,6 @@ public class Database implements GenomeSource, LayoutSource,
     return;
   }  
   
-  /***************************************************************************
-  **
-  ** Get Ith available color
-  */
-  
-  public String getGeneColor(int i) {
-    return (colGen_.getGeneColor(i));
-  }   
-  
-  /***************************************************************************
-  **
-  ** Get number of colors
-  */
-  
-  public int getNumColors() {
-    return (colGen_.getNumColors());
-  }
-  
-  /***************************************************************************
-  **
-  ** Set the IO version
-  **
-  */
-  
-  public void setIOVersion(String version) throws IOException {
-    iOVersion_ = version;
-    // Issue 240 FIX: Must not be too new:
-    boolean notTooNew = (iOVersion_.equals("1.0") || 
-                         iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || 
-                         iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
-                         iOVersion_.equals(PREVIOUS_IO_VERSION_C_) || 
-                         iOVersion_.equals(PREVIOUS_IO_VERSION_D_) ||
-                         iOVersion_.equals(CURRENT_IO_VERSION_));
-    if (!notTooNew) {
-      throw new NewerVersionIOException(iOVersion_);
-    }  
-    return;
-  }   
-   
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC STATIC METHODS
@@ -2468,29 +2212,293 @@ public class Database implements GenomeSource, LayoutSource,
   
   public static Set<String> keywordsOfInterest() {
     HashSet<String> retval = new HashSet<String>();
-    retval.add("BioTapestry");
+    retval.add("Database");
     return (retval);
-  }  
+  } 
   
   /***************************************************************************
   **
-  ** Parse out IO version
+  ** Return our tab number
   **
-  */  
+  */
   
-  public static String versionFromXML(String elemName, Attributes attrs) throws IOException {
-    String version = AttributeExtractor.extractAttribute(elemName, attrs, "BioTapestry", "version", false);   
-    return ((version == null) ? "1.0" : version);
+  public static int extractTab(String elemName, Attributes attrs) throws IOException {
+    String tabStr = AttributeExtractor.extractAttribute(elemName, attrs, "Database", "tabNum", true);
+    try {
+      Integer tabNum = Integer.parseInt(tabStr);
+      return (tabNum.intValue());
+    } catch (NumberFormatException nfex) {
+      throw new IOException();
+    }
   }
-      
+  
+  /***************************************************************************
+  **
+  ** Return our DBID
+  **
+  */
+  
+  public static String extractID(String elemName, Attributes attrs) throws IOException {
+    return (AttributeExtractor.extractAttribute(elemName, attrs, "Database", "id", true));
+  }
+
+  /***************************************************************************
+  **
+  ** Return our data sharing state
+  **
+  */
+  
+  public static Boolean extractSharing(String elemName, Attributes attrs) throws IOException {
+    String shStr = AttributeExtractor.extractAttribute(elemName, attrs, "Database", "sharing", true);
+    return (Boolean.valueOf(shStr)); 
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get the Time Course Data
+  */
+
+  public TimeCourseData getTimeCourseData() {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeCourses) {
+      return (mb_.getSharedTimeCourseData());
+    } else {  
+      return (localTimeCourse_);
+    }
+  }
+
+  /***************************************************************************
+  ** 
+  ** Set the local copies for IO
+  */
+
+  public void installLocalTimeCourseData(TimeCourseData timeCourseData) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    // Handles "Empty" sets sitting in XML input
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeCourses) {
+      return;
+    }
+    localTimeCourse_ = timeCourseData;
+    return;
+  } 
+  
+   
+  /***************************************************************************
+  ** 
+  ** Set the Time Course Data
+  */
+
+  public DatabaseChange setTimeCourseData(TimeCourseData timeCourseData) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeCourses) {
+      return (mb_.setSharedTimeCourseData(timeCourseData));
+    } else {   
+      DatabaseChange dc = new DatabaseChange();
+      dc.oldTcd = (localTimeCourse_ == null) ? null : localTimeCourse_.clone();
+      this.localTimeCourse_ = timeCourseData;
+      dc.newTcd = (localTimeCourse_ == null) ? null : localTimeCourse_.clone();
+      return (dc);
+    }
+  }  
+
+  /***************************************************************************
+  ** 
+  ** Get the perturbation data
+  */
+
+  public PerturbationData getPertData() {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerts) {
+      return (mb_.getSharedPertData());
+    } else {
+      return (localPertData_);
+    }
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Set the local copies for IO
+  */
+
+  public void installLocalPertData(PerturbationData pd) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    // Handles "Empty" sets sitting in XML input
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerts) {
+      return;
+    }
+    localPertData_ = pd;
+    return;
+  } 
+
+  /***************************************************************************
+  ** 
+  ** Set the perturbation data
+  */
+
+  public DatabaseChange setPertData(PerturbationData pd) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerts) {
+      return (mb_.setSharedPertData(pd));
+    } else {
+      DatabaseChange dc = new DatabaseChange();
+      dc.localPertDataChange = true;
+      dc.oldSharedPertData = (localPertData_ == null) ? null : localPertData_.clone();
+      this.localPertData_ = pd;
+      dc.newSharedPertData = (localPertData_ == null) ? null : localPertData_.clone();
+      return (dc);
+    }
+  }
+  
+  /***************************************************************************
+  **
+  ** Start an undo transaction
+  */
+  
+  public DatabaseChange startCopiesPerEmbryoUndoTransaction() {
+    return (mb_.startSharedCopiesPerEmbryoUndoTransaction());  
+  }
+  
+  /***************************************************************************
+  **
+  ** Finish an undo transaction
+  */
+  
+  public DatabaseChange finishCopiesPerEmbryoUndoTransaction(DatabaseChange change) {
+    return (mb_.finishSharedCopiesPerEmbryoUndoTransaction(change));    
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get the copies per embryo data
+  */
+
+  public CopiesPerEmbryoData getCopiesPerEmbryoData() { 
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerEmbryoCounts) {
+      return (mb_.getSharedCopiesPerEmbryoData());
+    } else {
+      return (localCopiesPerEmb_);
+    }
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Set the local copies for IO
+  */
+
+  public void installLocalCopiesPerEmbryoData(CopiesPerEmbryoData copies) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerEmbryoCounts) {
+      return;
+    }
+    localCopiesPerEmb_ = copies;
+    return;
+  }  
+
+  /***************************************************************************
+  ** 
+  ** Set the copies per embryo data
+  */
+
+  public DatabaseChange setCopiesPerEmbryoData(CopiesPerEmbryoData copies) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().sharePerEmbryoCounts) {
+      return (mb_.setSharedCopiesPerEmbryoData(copies));
+    } else {
+      DatabaseChange dc = new DatabaseChange();
+      dc.oldCpe = (localCopiesPerEmb_ == null) ? null : localCopiesPerEmb_.clone();
+      localCopiesPerEmb_ = copies;
+      dc.newCpe = (localCopiesPerEmb_ == null) ? null : localCopiesPerEmb_.clone();
+      return (dc);
+    }
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get the time axis definition
+  */
+
+  public TimeAxisDefinition getTimeAxisDefinition() {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeUnits) {
+      return (mb_.getSharedTimeAxisDefinition());
+    } else {
+      return (localTimeAxis_);
+    }
+  }
+
+  /***************************************************************************
+  ** 
+  ** Set the time axis definition for IO
+  */
+
+  public void installLocalTimeAxisDefinition(TimeAxisDefinition timeAxis) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue()) {
+      return;
+    }
+    localTimeAxis_ = timeAxis;
+    return;
+  }  
+
+  /***************************************************************************
+  ** 
+  ** Set the time axis definition
+  */
+
+  public DatabaseChange setTimeAxisDefinition(TimeAxisDefinition timeAxis) {
+    if (isDataSharing_ == null) {
+      throw new IllegalStateException();
+    }
+    if (isDataSharing_.booleanValue() && mb_.getDataSharingPolicy().shareTimeUnits) {
+      return (mb_.setSharedTimeAxisDefinition(timeAxis));
+    } else {
+      DatabaseChange dc = new DatabaseChange();
+      dc.oldTimeAxis = (localTimeAxis_ == null) ? null : localTimeAxis_.clone();
+      localTimeAxis_ = timeAxis;
+      dc.newTimeAxis = (localTimeAxis_ == null) ? null : localTimeAxis_.clone();
+      return (dc);
+    }
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Set the time axis definition
+  */
+
+  public void installLegacyTimeAxisDefinition(DataAccessContext dacx) {
+    localTimeAxis_ = new TimeAxisDefinition(new StaticDataAccessContext(dacx).getContextForRoot()).setToLegacy();
+    return;
+  }
+    
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE CONSTRUCTORS
   //
   ////////////////////////////////////////////////////////////////////////////
 
-
-  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE INSTANCE METHODS
@@ -2511,6 +2519,56 @@ public class Database implements GenomeSource, LayoutSource,
     return (retval);
   }
  
+  /***************************************************************************
+  **
+  ** When the user starts up, the data sets that can be shared or local are all local to the
+  ** first tab. If they create a second tab, and choose a shared data policy, we need to transfer
+  ** the data to the Metabase. If that second tab is deleted, we need to suck the data back up to be
+  ** local.
+  */
+
+  public List<DatabaseChange> modifyDataSharing(Metabase.DataSharingPolicy oldPolicy, Metabase.DataSharingPolicy newPolicy) {
+    List<DatabaseChange> retval = new ArrayList<DatabaseChange>();
+    UiUtil.fixMePrintout("need undo/redo ability");
+    if (!newPolicy.init) {
+      throw new IllegalArgumentException();
+    }
+    if (newPolicy.shareTimeUnits && !oldPolicy.shareTimeUnits) {
+      retval.add(mb_.setSharedTimeAxisDefinition(this.localTimeAxis_));
+      UiUtil.fixMePrintout("needs to add to retval too...");
+      this.localTimeAxis_ = null; // Needs a retval too....
+    } else if (!newPolicy.shareTimeUnits && oldPolicy.shareTimeUnits) {
+      this.localTimeAxis_ = mb_.getSharedTimeAxisDefinition();
+      retval.add(mb_.setSharedTimeAxisDefinition(null));
+    }
+    
+    if (newPolicy.shareTimeCourses && !oldPolicy.shareTimeCourses) {
+      retval.add(mb_.setSharedTimeCourseData(this.localTimeCourse_));
+      this.localTimeCourse_ = null; // Needs a retval too....
+    } else if (!newPolicy.shareTimeCourses && oldPolicy.shareTimeCourses) {
+      this.localTimeCourse_ = mb_.getSharedTimeCourseData();
+      retval.add(mb_.setSharedTimeCourseData(null));
+    }
+        
+    if (newPolicy.sharePerts && !oldPolicy.sharePerts) {
+      retval.add(mb_.setSharedPertData(this.localPertData_));
+      this.localPertData_ = null; // Needs a retval too....
+    } else if (!newPolicy.sharePerts && oldPolicy.sharePerts) {
+      this.localPertData_ = mb_.getSharedPertData();
+      retval.add(mb_.setSharedPertData(null));
+    }
+        
+    if (newPolicy.sharePerEmbryoCounts && !oldPolicy.sharePerEmbryoCounts) {
+      retval.add(mb_.setSharedCopiesPerEmbryoData(this.localCopiesPerEmb_));
+      this.localCopiesPerEmb_ = null; // Needs a retval too....
+    } else if (!newPolicy.sharePerEmbryoCounts && oldPolicy.sharePerEmbryoCounts) {
+      this.localCopiesPerEmb_ = mb_.getSharedCopiesPerEmbryoData();
+      retval.add(mb_.setSharedCopiesPerEmbryoData(null));
+    }       
+    this.isDataSharing_ = Boolean.valueOf(newPolicy.isSpecifyingSharing()); // Needs a retval too....
+    return (retval);
+  }
+
   /***************************************************************************
   ** 
   ** Build a list of dynamic proxies that respect dependencies

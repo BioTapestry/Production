@@ -541,7 +541,7 @@ public class MeasureDictionary implements Cloneable {
         retval = board.mDict;
       }
       return (retval);     
-    }  
+    }
     
     @SuppressWarnings("unused")
     private MeasureDictionary buildFromXML(String elemName, Attributes attrs) throws IOException {

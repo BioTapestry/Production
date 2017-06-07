@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -57,13 +57,12 @@ import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.PlainDocument;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.flow.edit.ActivityLevelSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
@@ -109,7 +108,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private BTState appState_;
+  private UIComponentSource uics_;
   private DataAccessContext dacx_;
   private String nodeID_;
   private String genomeKey_;
@@ -132,19 +131,19 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   private JTextArea freeTextField_;
   private int lastFreeTextTarg_;
   private String lastFreeTextLinkTarg_;
-  private HashMap allFreeText_;
+  private HashMap<String, String> allFreeText_;
   private JScrollPane freeScroll_;
   private boolean listMod_;
-  private Set forLinks_;
+  private Set<String> forLinks_;
   
   
   private JComboBox urlListTarget_;
   private JComboBox whichUrlLink_;
   private int lastUrlTarg_;
   private String lastUrlLinkTarg_;
-  private ArrayList urlListData_;
-  private HashMap allUrlLists_;
-  private Set urlsForLinks_;
+  private ArrayList<String> urlListData_;
+  private HashMap<String, List<String>> allUrlLists_;
+  private Set<String> urlsForLinks_;
   private JScrollPane urlScroll_;
   private boolean urlListMod_;
   private boolean editing_;
@@ -187,11 +186,11 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Constructor 
   */ 
   
-  NodeAndLinkPropertiesSupport(BTState appState, DataAccessContext dacx, String nodeID) { 
-    appState_ = appState;
+  NodeAndLinkPropertiesSupport(UIComponentSource uics, DataAccessContext dacx, String nodeID) { 
+    uics_ = uics;
     dacx_ = dacx;
     nodeID_ = nodeID;
-    genomeKey_ = dacx_.getGenomeID();
+    genomeKey_ = dacx_.getCurrentGenomeID();
   }
   
   /***************************************************************************
@@ -199,21 +198,11 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Constructor. This class is now getting used for non-node situations!
   */ 
   
-  NodeAndLinkPropertiesSupport(BTState appState, DataAccessContext dacx) { 
-    appState_ = appState;
+  NodeAndLinkPropertiesSupport(UIComponentSource uics, DataAccessContext dacx) { 
+    uics_ = uics;
     dacx_ = dacx;
-    genomeKey_ = dacx_.getGenomeID();
+    genomeKey_ = dacx_.getCurrentGenomeID();
   }
-  
-  /***************************************************************************
-  **
-  ** Constructor. This class is now getting used for non-node situations!
-
-  
-  NodeAndLinkPropertiesSupport(BTState appState, DataAccessContext dacx) { 
-    appState_ = appState;
-    dacx_ = dacx;
-  }  
      
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -230,7 +219,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
     ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(actTrack, nias);
     if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
-      ActivityLevelSupport.showForNode(check, appState_);
+      ActivityLevelSupport.showForNode(check, uics_, dacx_);
       return (false);
     }
    
@@ -246,7 +235,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
 
     ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(trackInfo, newActivity, newLevel);
     if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
-      ActivityLevelSupport.showForLink(check, appState_);
+      ActivityLevelSupport.showForLink(check, uics_, dacx_);
       return (false);
     }
    
@@ -259,12 +248,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** 
   */
   
-  public JPanel buildTextTab(Set forLinks, boolean forRoot) {
+  public JPanel buildTextTab(Set<String> forLinks, boolean forRoot) {
 
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     //
     // Build the model key text field
@@ -282,7 +271,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     freeTextTarget_ = new JComboBox(buildTargetChoices());
     lastFreeTextTarg_ = ROOT_TARGET_;
-    allFreeText_ = new HashMap();
+    allFreeText_ = new HashMap<String, String>();
     
     if (!forRoot) {
       label = new JLabel(rMan.getString("nprop.freeTextTarget"), JLabel.LEFT);
@@ -294,7 +283,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           try {
             manageDescription();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -315,7 +304,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           try {
             manageDescriptionForLinks();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -373,7 +362,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     useID = (targ.val == ROOT_TARGET_) ? GenomeItemInstance.getBaseID(nodeID_) : nodeID_;
   
-    currText = (String)allFreeText_.get(useID);
+    currText = allFreeText_.get(useID);
     freeTextField_.setText((currText == null) ? "" : currText);  
     freeTextField_.setCaretPosition(0);
     freeScroll_.getVerticalScrollBar().setValue(0);
@@ -396,7 +385,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
  
     String currText = freeTextField_.getText();
     allFreeText_.put(lastFreeTextLinkTarg_, currText);      
-    currText = (String)allFreeText_.get(targ.val);
+    currText = allFreeText_.get(targ.val);
     freeTextField_.setText((currText == null) ? "" : currText);  
     freeTextField_.setCaretPosition(0);
     freeScroll_.getVerticalScrollBar().setValue(0);
@@ -412,8 +401,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
 
   private Vector<ChoiceContent> buildTargetChoices() {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
-    retval.add(new ChoiceContent(dacx_.rMan.getString("nprop.rootDefaultTarget"), ROOT_TARGET_));
-    retval.add(new ChoiceContent(dacx_.rMan.getString("nprop.localTarget"), LOCAL_TARGET_));
+    retval.add(new ChoiceContent(dacx_.getRMan().getString("nprop.rootDefaultTarget"), ROOT_TARGET_));
+    retval.add(new ChoiceContent(dacx_.getRMan().getString("nprop.localTarget"), LOCAL_TARGET_));
     return (retval);
   }
 
@@ -446,8 +435,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** 
   */
 
-  public JPanel buildUrlTab(Set forLinks, boolean forRoot) {
-    ResourceManager rMan = appState_.getRMan();    
+  public JPanel buildUrlTab(Set<String> forLinks, boolean forRoot) {
+    ResourceManager rMan = dacx_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     
     JPanel urlPanel = new JPanel();    
@@ -460,7 +449,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     urlListTarget_ = new JComboBox(buildTargetChoices());
     lastUrlTarg_ = ROOT_TARGET_;
-    allUrlLists_ = new HashMap();
+    allUrlLists_ = new HashMap<String, List<String>>();
   
     if (!forRoot) {
       JLabel label = new JLabel(rMan.getString("nprop.urlListTarget"), JLabel.LEFT);
@@ -472,7 +461,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           try {
             manageUrls();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -493,7 +482,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           try {
             manageUrlsForLinks();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -524,7 +513,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           addOrEditURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -538,7 +527,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           cxEditURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -569,7 +558,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           deleteURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -581,7 +570,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           editURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -593,7 +582,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           bumpUpURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -605,7 +594,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           bumpDownURLElement();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -671,7 +660,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     //
     
     useID = (targ.val == ROOT_TARGET_) ? GenomeItemInstance.getBaseID(nodeID_) : nodeID_;   
-    ArrayList newList = (ArrayList)allUrlLists_.get(useID);
+    List<String> newList = allUrlLists_.get(useID);
     urlListData_.clear();
     if (newList != null) {
       urlListData_.addAll(newList);
@@ -721,9 +710,9 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     // Save current data:
     
-    ArrayList holdList = (ArrayList)allUrlLists_.get(lastUrlLinkTarg_);
+    List<String> holdList = allUrlLists_.get(lastUrlLinkTarg_);
     if (holdList == null) {
-      holdList = new ArrayList();
+      holdList = new ArrayList<String>();
       allUrlLists_.put(lastUrlLinkTarg_, holdList);
     } else {
       holdList.clear();
@@ -737,7 +726,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     // install new data:
     
-    ArrayList newList = (ArrayList)allUrlLists_.get(targ.val);
+    List<String> newList = allUrlLists_.get(targ.val);
     urlListData_.clear();
     if (newList != null) {
       urlListData_.addAll(newList);
@@ -758,7 +747,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       throw new IllegalStateException();
     }
     calcURL_ = true;
-    Object selObj = urlListData_.remove(selectedURLIndex_);   
+    String selObj = urlListData_.remove(selectedURLIndex_);   
     urlListData_.add(selectedURLIndex_ - 1, selObj);
     urlList_.setListData(urlListData_.toArray());
     selectedURLIndex_--;
@@ -780,7 +769,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       throw new IllegalStateException();
     }
     calcURL_ = true;
-    Object selObj = urlListData_.remove(selectedURLIndex_);   
+    String selObj = urlListData_.remove(selectedURLIndex_);   
     urlListData_.add(selectedURLIndex_ + 1, selObj);
     urlList_.setListData(urlListData_.toArray());
     selectedURLIndex_++;
@@ -810,8 +799,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     }
     
     if (badURL) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nodeProp.badNodeURL"), 
                                     rMan.getString("nodeProp.badNodeURLTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -881,7 +870,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   void cxEditURLElement() {
     urlField_.setText("");
     editing_ = false;
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = dacx_.getRMan(); 
     buttonURLAdd_.setText(rMan.getString("dialogs.add"));
     addEditLabel_.setText(rMan.getString("nprop.newURL"));
     buttonURLCxEdit_.setEnabled(false);
@@ -898,10 +887,10 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     if (selectedURLIndex_ == -1) {
       throw new IllegalStateException();
     }
-    String selURL = (String)urlListData_.get(selectedURLIndex_);
+    String selURL = urlListData_.get(selectedURLIndex_);
     urlField_.setText(selURL);
     editing_ = true;
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = dacx_.getRMan(); 
     buttonURLAdd_.setText(rMan.getString("nprop.editDone"));
     addEditLabel_.setText(rMan.getString("nprop.editURL"));
     buttonURLCxEdit_.setEnabled(true);
@@ -943,7 +932,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         buttonURLUp_.setEnabled(canRaise);
         myURLPanel_.validate();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;             
     }  
@@ -960,7 +949,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     boolean isInstance = tooth.isInstance();
     
@@ -986,7 +975,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     ChoiceContent targ = (ChoiceContent)freeTextTarget_.getSelectedItem();
     String useID = (targ.val == ROOT_TARGET_) ? GenomeItemInstance.getBaseID(nodeID_) : nodeID_;   
-    freeText = (String)allFreeText_.get(useID); 
+    freeText = allFreeText_.get(useID); 
     freeTextField_.setText((freeText == null) ? "" : freeText);
     freeTextField_.setCaretPosition(0);
     return;
@@ -1006,7 +995,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     boolean isInstance = tooth.isInstance();
     
@@ -1014,10 +1003,10 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Suck up all the descriptions:
     //
     
-    HashSet rootSeen = new HashSet();
-    Iterator flit = forLinks_.iterator();
+    HashSet<String> rootSeen = new HashSet<String>();
+    Iterator<String> flit = forLinks_.iterator();
     while (flit.hasNext()) {
-      String linkID = (String)flit.next();
+      String linkID = flit.next();
       if (isInstance) {
         Genome useGenome = dacx_.getDBGenome();
         String useID = GenomeItemInstance.getBaseID(linkID);
@@ -1037,7 +1026,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       }   
     }
     ObjChoiceContent targ = (ObjChoiceContent)whichFreeTextLink_.getSelectedItem();
-    String freeText = (String)allFreeText_.get(targ.val); 
+    String freeText = allFreeText_.get(targ.val); 
     freeTextField_.setText((freeText == null) ? "" : freeText);
     freeTextField_.setCaretPosition(0);
     return;
@@ -1053,7 +1042,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     boolean isInstance = tooth.isInstance();
 
@@ -1065,7 +1054,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       Genome useGenome = dacx_.getDBGenome();
       String useID = GenomeItemInstance.getBaseID(nodeID_);
       Node node = useGenome.getNode(useID);
-      Iterator uit = node.getURLs();
+      Iterator<String> uit = node.getURLs();
       loadURLList(uit, useID);
     }
     
@@ -1074,13 +1063,13 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     //
         
     Node node = genome.getNode(nodeID_);
-    Iterator uit = node.getURLs();
+    Iterator<String> uit = node.getURLs();
     loadURLList(uit, nodeID_);
    
     ChoiceContent targ = (ChoiceContent)urlListTarget_.getSelectedItem();
     String useID = (targ.val == ROOT_TARGET_) ? GenomeItemInstance.getBaseID(nodeID_) : nodeID_;   
-    ArrayList forTarg = (ArrayList)allUrlLists_.get(useID); 
-    urlListData_ = (forTarg == null) ? new ArrayList() : (ArrayList)forTarg.clone();
+    List<String> forTarg = allUrlLists_.get(useID); 
+    urlListData_ = (forTarg == null) ? new ArrayList<String>() : new ArrayList<String>(forTarg);
     urlList_.setListData(urlListData_.toArray());
     return;
   }  
@@ -1090,11 +1079,11 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Used load up urls
   */
   
-  private void loadURLList(Iterator uit, String useID) {
-    ArrayList newList = new ArrayList();
+  private void loadURLList(Iterator<String> uit, String useID) {
+    ArrayList<String> newList = new ArrayList<String>();
     allUrlLists_.put(useID, newList);
     while (uit.hasNext()) {
-      String url = (String)uit.next();
+      String url = uit.next();
       newList.add(url);
     }
     return;
@@ -1114,7 +1103,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     boolean isInstance = tooth.isInstance();
  
@@ -1122,22 +1111,22 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Suck up all the url lists:
     //
     
-    HashSet rootSeen = new HashSet(); 
-    Iterator flit = forLinks_.iterator();
+    HashSet<String> rootSeen = new HashSet<String>(); 
+    Iterator<String> flit = forLinks_.iterator();
     while (flit.hasNext()) {
-      String linkID = (String)flit.next();
+      String linkID = flit.next();
       if (isInstance) {
         Genome useGenome = dacx_.getDBGenome();
         String useID = GenomeItemInstance.getBaseID(linkID);
         if (!rootSeen.contains(useID)) {
           Linkage link = useGenome.getLinkage(useID);
-          Iterator uit = link.getURLs();
+          Iterator<String> uit = link.getURLs();
           loadURLList(uit, useID);
           rootSeen.add(useID);
         }
       }
       Linkage link = genome.getLinkage(linkID);
-      Iterator uit = link.getURLs();
+      Iterator<String> uit = link.getURLs();
       loadURLList(uit, linkID);
     }
     
@@ -1145,8 +1134,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     
     // install new data:
     
-    ArrayList newList = (ArrayList)allUrlLists_.get(targ.val);
-    urlListData_ = (newList == null) ? new ArrayList() : (ArrayList)newList.clone();
+    List<String> newList = allUrlLists_.get(targ.val);
+    urlListData_ = (newList == null) ? new ArrayList<String>() : new ArrayList<String>(newList);
     urlList_.setListData(urlListData_.toArray());
     urlScroll_.getVerticalScrollBar().setValue(0);
     lastUrlLinkTarg_ = targ.val;
@@ -1164,7 +1153,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     
     //
@@ -1181,10 +1170,10 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     //
     
     boolean haveSomeNewText = false;
-    Iterator aftit = allFreeText_.keySet().iterator();
+    Iterator<String> aftit = allFreeText_.keySet().iterator();
     while (aftit.hasNext()) {
-      String nodeID = (String)aftit.next();
-      String freeText = (String)allFreeText_.get(nodeID);
+      String nodeID = aftit.next();
+      String freeText = allFreeText_.get(nodeID);
       if ((freeText != null) && freeText.trim().equals("")) {
         freeText = null;
       }
@@ -1201,7 +1190,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         haveSomeNewText = true;
         GenomeChange gc = useGenome.changeNodeDescription(nodeID, freeText);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
           support.addEdit(gcc);
         }
       }
@@ -1221,7 +1210,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     boolean isInstance = tooth.isInstance();
     
@@ -1255,16 +1244,16 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
     boolean haveNewURLs = false;
 
-    ArrayList urls = (ArrayList)allUrlLists_.get(nodeID);
+    List<String> urls = allUrlLists_.get(nodeID);
     int newCount = urls.size();
     if (newCount != node.getURLCount()) {
       haveNewURLs = true;
     } else {
       int count = 0;
-      Iterator uit = node.getURLs();
+      Iterator<String> uit = node.getURLs();
       while (uit.hasNext()) {
-        String url = (String)uit.next();
-        String myUrl = (String)urls.get(count++);
+        String url = uit.next();
+        String myUrl = urls.get(count++);
         if (!url.equals(myUrl)) {
           haveNewURLs = true;
           break;
@@ -1273,9 +1262,9 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     }
   
     if (haveNewURLs) {
-      GenomeChange gc = genome.changeNodeURLs(nodeID, (List)urls.clone());
+      GenomeChange gc = genome.changeNodeURLs(nodeID, new ArrayList<String>(urls));
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
         return (true);
       }
@@ -1294,7 +1283,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();   
     
     //
@@ -1310,10 +1299,10 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     //
     
     boolean haveSomeNewText = false;
-    Iterator aftit = allFreeText_.keySet().iterator();
+    Iterator<String> aftit = allFreeText_.keySet().iterator();
     while (aftit.hasNext()) {
-      String linkID = (String)aftit.next();
-      String freeText = (String)allFreeText_.get(linkID);
+      String linkID = aftit.next();
+      String freeText = allFreeText_.get(linkID);
       if ((freeText != null) && freeText.trim().equals("")) {
         freeText = null;
       }
@@ -1330,7 +1319,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         haveSomeNewText = true;
         GenomeChange gc = useGenome.changeLinkageDescription(linkID, freeText);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
           support.addEdit(gcc);
         }
       }
@@ -1350,7 +1339,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeKey_);
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx_, genomeKey_);
     Genome genome = tooth.getGenome();
     
     //
@@ -1361,9 +1350,9 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     saveWhatWeHave(targ.val);
     
     boolean haveNewUrls = false;
-    Iterator aulit = allUrlLists_.keySet().iterator();
+    Iterator<String> aulit = allUrlLists_.keySet().iterator();
     while (aulit.hasNext()) {
-      String linkID = (String)aulit.next();
+      String linkID = aulit.next();
       Genome useGenome = (GenomeItemInstance.isBaseID(linkID)) ? dacx_.getDBGenome() : genome;
       Linkage link = useGenome.getLinkage(linkID);
       boolean haveNew = perLinkUrlInstall(useGenome, link, linkID, support);
@@ -1382,16 +1371,16 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
     boolean haveNewURLs = false;
 
-    ArrayList urls = (ArrayList)allUrlLists_.get(linkID);
+    List<String> urls = allUrlLists_.get(linkID);
     int newCount = urls.size();
     if (newCount != link.getURLCount()) {
       haveNewURLs = true;
     } else {
       int count = 0;
-      Iterator uit = link.getURLs();
+      Iterator<String> uit = link.getURLs();
       while (uit.hasNext()) {
-        String url = (String)uit.next();
-        String myUrl = (String)urls.get(count++);
+        String url = uit.next();
+        String myUrl = urls.get(count++);
         if (!url.equals(myUrl)) {
           haveNewURLs = true;
           break;
@@ -1400,9 +1389,9 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     }
   
     if (haveNewURLs) {
-      GenomeChange gc = genome.changeLinkageURLs(linkID, (List)urls.clone());
+      GenomeChange gc = genome.changeLinkageURLs(linkID, new ArrayList<String>(urls));
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
         return (true);
       }
@@ -1418,12 +1407,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   public JPanel orientUI(Node node) {
     JPanel retval = null;
     int type = node.getNodeType();
-    Vector orients = NodeProperties.getOrientTypeChoices(appState_, type);
+    Vector<ChoiceContent> orients = NodeProperties.getOrientTypeChoices(dacx_, type);
     if (orients.size() > 1) {
       retval = new JPanel();
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints(); 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       
       JLabel label = new JLabel(rMan.getString("nprop.orient"));
       orientCombo_ = new JComboBox(orients);      
@@ -1448,10 +1437,10 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     if ((maxCount == 0) || (maxCount == 1)) {
       return (retval);
     }
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     int useType = (maxCount == 4) ? Node.INTERCELL : Node.GENE;
-    Vector orients = NodeProperties.getOrientTypeChoices(appState_, useType);
+    Vector<ChoiceContent> orients = NodeProperties.getOrientTypeChoices(dacx_, useType);
     orients.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), NodeProperties.NONE));
     retval = new JPanel();
     retval.setLayout(new GridBagLayout());
@@ -1482,7 +1471,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
   public void orientDisplay(int orientDisplay) {
     if (orientCombo_ != null) {
-      orientCombo_.setSelectedItem(NodeProperties.orientTypeForCombo(appState_, orientDisplay));
+      orientCombo_.setSelectedItem(NodeProperties.orientTypeForCombo(dacx_, orientDisplay));
     }
     return;
   }
@@ -1497,7 +1486,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       if (orientDisplay == NodeProperties.NONE) {
         orientCombo_.setSelectedIndex(0);
       } else {
-        orientCombo_.setSelectedItem(NodeProperties.orientTypeForCombo(appState_, orientDisplay));
+        orientCombo_.setSelectedItem(NodeProperties.orientTypeForCombo(dacx_, orientDisplay));
       }
     }
     return;
@@ -1550,18 +1539,18 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
        
     int usedCols = 0;
     if (forMulti) {
-      doOverFontMultiCombo_ = new TriStateJComboBox(appState_);      
+      doOverFontMultiCombo_ = new TriStateJComboBox(dacx_);      
       doOverFontMultiCombo_.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
             int multiChoice = doOverFontMultiCombo_.getSetting();
             fsp_.setEnabled(multiChoice == TriStateJComboBox.TRUE);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -1579,7 +1568,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           try {
             fsp_.setEnabled(doOverFontBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -1589,7 +1578,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       usedCols = 1;
     }
  
-    fsp_ = new FontSettingPanel(appState_);
+    fsp_ = new FontSettingPanel(dacx_);
 
     UiUtil.gbcSet(gbc, usedCols, 0, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     retval.add(fsp_, gbc);
@@ -1604,7 +1593,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   public void fontOverrideDisplay(FontManager.FontOverride fo, int baseFont) {
     doOverFontBox_.setSelected(fo != null);
     fsp_.setEnabled(fo != null);  // above callback doesn't fire with no change, right?
-    FontManager fmgr = appState_.getFontMgr();
+    FontManager fmgr = dacx_.getFontManager();
     Font bFont = fmgr.getOverrideFont(baseFont, fo).getFont();
     fsp_.displayProperties(bFont);
     return;
@@ -1618,7 +1607,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   public void fontOverrideDisplayForMulti(int triState, FontManager.FontOverride fo, int baseFont) {
     doOverFontMultiCombo_.setSetting(triState);
     fsp_.setEnabled(triState == TriStateJComboBox.TRUE); // above callback doesn't fire with no change, right?
-    FontManager fmgr = appState_.getFontMgr();
+    FontManager fmgr = dacx_.getFontManager();
     Font bFont = fmgr.getOverrideFont(baseFont, fo).getFont();
     fsp_.displayProperties(bFont);
     return;
@@ -1652,15 +1641,15 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
-    Vector pads = new Vector(padOptions);
+    ResourceManager rMan = dacx_.getRMan();
+    Vector<ChoiceContent> pads = new Vector<ChoiceContent>(padOptions);
   
     //
     // Big size box and pad setter:
     //
     
     if (forMulti) {
-      bigBoxMultiCombo_ = new TriStateJComboBox(appState_);      
+      bigBoxMultiCombo_ = new TriStateJComboBox(dacx_);      
       bigBoxMultiCombo_.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
@@ -1672,7 +1661,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
               extraGrowthLabel_.setEnabled(multiChoice == TriStateJComboBox.TRUE);
             }    
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -1703,7 +1692,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
               extraGrowthLabel_.setEnabled(bigBox_.isSelected());
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1734,7 +1723,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       if (extraGrowthLabel_ != null) {
         extraGrowthLabel_.setEnabled(amBig);
         extraGrowthCombo_.setEnabled(amBig);
-        extraGrowthCombo_.setSelectedItem(NodeProperties.growthTypeForCombo(appState_, extraGrowthDirection));
+        extraGrowthCombo_.setSelectedItem(NodeProperties.growthTypeForCombo(dacx_, extraGrowthDirection));
       }
     }
     return;
@@ -1757,7 +1746,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         if (extraGrowthDirection == NodeProperties.NO_GROWTH) {
           extraGrowthCombo_.setSelectedIndex(0);
         } else {
-          extraGrowthCombo_.setSelectedItem(NodeProperties.growthTypeForCombo(appState_, extraGrowthDirection));
+          extraGrowthCombo_.setSelectedItem(NodeProperties.growthTypeForCombo(dacx_, extraGrowthDirection));
         }
       }
     }
@@ -1799,12 +1788,11 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       newPads = DBNode.getDefaultPadCount(node.getNodeType());
     }
     
-    FullGenomeHierarchyOracle fgho = new FullGenomeHierarchyOracle(appState_);  
-    PadCalculatorToo.PadResult padreq = fgho.getNodePadRequirements(GenomeItemInstance.getBaseID(node.getID()));
+    PadCalculatorToo.PadResult padreq = dacx_.getFGHO().getNodePadRequirements(GenomeItemInstance.getBaseID(node.getID()));
                
     if ((padreq.landing > newPads) || (padreq.launch > newPads)) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nodeProp.needMorePads"), 
                                     rMan.getString("nodeProp.needMorePadsTitle"),
                                     JOptionPane.ERROR_MESSAGE);         
@@ -1874,21 +1862,21 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
   public JPanel extraGrowthUI(boolean forMulti, int nodeType, boolean isPartial, ImageIcon warnIcon) {
     
-    Vector extraG;
+    Vector<ChoiceContent> extraG;
     if (!forMulti) {  
       if (!NodeProperties.usesGrowth(nodeType)) {
         return (null);
       }
-      extraG = NodeProperties.getExtraGrowthChoices(appState_, nodeType);
+      extraG = NodeProperties.getExtraGrowthChoices(dacx_, nodeType);
       if (extraG.size() <= 1) {
         return (null);
       }
     } else {
-      extraG = NodeProperties.getExtraGrowthChoices(appState_, Node.BUBBLE);  // FIX ME; bogus
+      extraG = NodeProperties.getExtraGrowthChoices(dacx_, Node.BUBBLE);  // FIX ME; bogus
     }
     
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     if (forMulti) {
       extraG.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), NodeProperties.NO_GROWTH));
     }
@@ -1961,19 +1949,19 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
    
-    Vector choices;
+    Vector<ChoiceContent> choices;
     int notSet;
     final int variable;
     String labelStr;
     if (forLinks) {
-      choices = LinkageInstance.getActivityChoices(appState_);
+      choices = LinkageInstance.getActivityChoices(dacx_);
       notSet = LinkageInstance.ACTIVITY_NOT_SET;
       variable = LinkageInstance.VARIABLE;
       labelStr = rMan.getString("lprop.activity");     
     } else {
-      choices = NodeInstance.getActivityChoices(appState_);
+      choices = NodeInstance.getActivityChoices(dacx_);
       notSet = NodeInstance.ACTIVITY_NOT_SET;
       variable = NodeInstance.VARIABLE;
       labelStr = rMan.getString("nprop.activity");
@@ -1993,7 +1981,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
           activityLevel_.setEnabled(activated);
           levelLabel_.setEnabled(activated);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -2021,7 +2009,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
   public void setActivityLevel(NodeInstance ni) { 
     int activity = ni.getActivity();
-    activityCombo_.setSelectedItem(NodeInstance.activityTypeForCombo(appState_, activity));
+    activityCombo_.setSelectedItem(NodeInstance.activityTypeForCombo(dacx_, activity));
     if (activity == NodeInstance.VARIABLE) { 
       activityLevel_.setText(Double.toString(ni.getActivityLevel()));
       activityLevel_.setEnabled(true);
@@ -2048,8 +2036,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       return;
     }
     
-    ChoiceContent scc = (forLink) ? LinkageInstance.activityTypeForCombo(appState_, astate.activityState)
-                                  : NodeInstance.activityTypeForCombo(appState_, astate.activityState);
+    ChoiceContent scc = (forLink) ? LinkageInstance.activityTypeForCombo(dacx_, astate.activityState)
+                                  : NodeInstance.activityTypeForCombo(dacx_, astate.activityState);
     activityCombo_.setSelectedItem(scc);
     if (astate.activityState == GenomeItemInstance.VARIABLE) { 
       activityLevel_.setText(astate.activityLevel.toString());
@@ -2088,8 +2076,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         }
       }
       if (badNum) {   
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("nodeProp.badActivityNumber"), 
                                       rMan.getString("nodeProp.badActivityNumberTitle"),
                                       JOptionPane.ERROR_MESSAGE);         
@@ -2177,7 +2165,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
        
     doMultiLine_ = new JCheckBox(rMan.getString("nprops.makeMultiLine"));      
     doMultiLine_.addActionListener(new ActionListener() {
@@ -2185,7 +2173,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         try {
           lbp_.setEnabled(doMultiLine_.isSelected());
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -2281,7 +2269,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         processChange(localBreak_.nameField, localBreak_, e, LineBreaker.ChangeStep.INSERT, doLocalBreak_);
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -2300,7 +2288,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         processChange(localBreak_.nameField, localBreak_, e, LineBreaker.ChangeStep.DELETE, doLocalBreak_);
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -2345,7 +2333,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   public Vector<ChoiceContent> padsToCC(SortedSet<Integer> padOptions, boolean forMulti) {
     Vector<ChoiceContent> forExtra = new Vector<ChoiceContent>();
     if (forMulti) {
-      forExtra.add(new ChoiceContent(appState_.getRMan().getString("multiSelProps.various"), ConsensusNodeProps.NO_PAD_CHANGE));
+      forExtra.add(new ChoiceContent(dacx_.getRMan().getString("multiSelProps.various"), ConsensusNodeProps.NO_PAD_CHANGE));
     }
     Iterator<Integer> pit = padOptions.iterator();
     while (pit.hasNext()) {
@@ -2425,7 +2413,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       }
       return;
     }
-   
+    
+    @Override
     public void insertString(int offs, String str, AttributeSet a) throws BadLocationException {
       if (str.equals("\n")) {
         super.insertString(offs, str, a);      
@@ -2434,6 +2423,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       return;
     }
   
+    @Override
     public void remove(int offs, int len) throws BadLocationException {
       if (getText(offs, len).equals("\n")) {
         super.remove(offs, len);
@@ -2442,6 +2432,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       return;
     }
 
+    @Override
     public void replace(int offset, int length, String text, AttributeSet attrs) throws BadLocationException {
       // This is being used always by the JTextArea, even for straight inserts!  Allow
       // it just for that case:

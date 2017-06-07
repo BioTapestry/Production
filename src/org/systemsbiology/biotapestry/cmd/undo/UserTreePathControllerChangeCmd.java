@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -17,10 +17,8 @@
 **    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
 
-
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.nav.UserTreePathControllerChange;
@@ -53,8 +51,8 @@ public class UserTreePathControllerChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public UserTreePathControllerChangeCmd(BTState appState, DataAccessContext dacx, UserTreePathControllerChange restore) {
-    super(appState, dacx);
+  public UserTreePathControllerChangeCmd(DataAccessContext dacx, UserTreePathControllerChange restore) {
+    super(dacx);
     restore_ = restore;
   }
 
@@ -92,7 +90,7 @@ public class UserTreePathControllerChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    UserTreePathController utpc = appState_.getPathController();
+    UserTreePathController utpc = uics_.getPathController();
     utpc.controllerChangeUndo(restore_); 
     return;
   }  
@@ -105,7 +103,7 @@ public class UserTreePathControllerChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    UserTreePathController utpc = appState_.getPathController();
+    UserTreePathController utpc = uics_.getPathController();
     utpc.controllerChangeRedo(restore_); 
     return;
   }

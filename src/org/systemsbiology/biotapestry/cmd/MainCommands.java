@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,16 +35,16 @@ import javax.swing.JButton;
 import javax.swing.KeyStroke;
 import javax.swing.undo.UndoManager;
 
-import org.systemsbiology.biotapestry.app.BTState;
+
+import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualGaggleControls;
-import org.systemsbiology.biotapestry.app.VirtualZoomControls;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
-import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.GeneralChangeListener;
@@ -56,12 +56,8 @@ import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeListener;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeListener;
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.nav.NetOverlayController;
-import org.systemsbiology.biotapestry.nav.UserTreePathController;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
-import org.systemsbiology.biotapestry.util.FilePreparer;
+import org.systemsbiology.biotapestry.util.JTabbedPaneWithPopup;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
@@ -100,8 +96,11 @@ public class MainCommands implements SelectionChangeListener,
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
- 
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private DynamicDataAccessContext ddacx_;
+  private HarnessBuilder hBld_;
+  
   private HashMap<FlowMeister.MainFlow, ControlFlow> flowCache_;
   private HashMap<FlowMeister.MainFlow, ChecksForEnabled> withIcons_;
   private HashMap<FlowMeister.MainFlow, ChecksForEnabled> noIcons_;
@@ -117,27 +116,20 @@ public class MainCommands implements SelectionChangeListener,
   ** Constructor 
   */ 
   
-  public MainCommands(BTState appState) {
-    appState_ = appState.setMainCmds(this);
+  public MainCommands(UIComponentSource uics, DynamicDataAccessContext ddacx, CmdSource cSrc, HarnessBuilder hBld) {
+    uics_ = uics;
+    cSrc_ = cSrc;
+    ddacx_ = ddacx;
+    hBld_ = hBld;
     withIcons_ = new HashMap<FlowMeister.MainFlow, ChecksForEnabled>();
     noIcons_ = new HashMap<FlowMeister.MainFlow, ChecksForEnabled>();
     flowCache_ = new HashMap<FlowMeister.MainFlow, ControlFlow>();
-    new VirtualZoomControls(appState_);
-    new UserTreePathController(appState);
-    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
-    new NetOverlayController(appState, ddacx);
-    FilePreparer fprep = new FilePreparer(appState_, appState_.isHeadless(), appState_.getTopFrame(), this.getClass()); 
-    LoadSaveSupport lsSup = new LoadSaveSupport(appState, fprep);
-    appState_.setLSSupport(lsSup);
- 
-    EventManager em = appState_.getEventMgr();
+    EventManager em = uics_.getEventMgr();
     em.addLayoutChangeListener(this);
     em.addModelChangeListener(this);
     em.addSelectionChangeListener(this);
     em.addGeneralChangeListener(this);
-    em.addOverlayDisplayChangeListener(this);
-    
-    appState_.getNetOverlayController().resetControllerState(ddacx);
+    em.addOverlayDisplayChangeListener(this);   
   }  
    
   ////////////////////////////////////////////////////////////////////////////
@@ -152,12 +144,16 @@ public class MainCommands implements SelectionChangeListener,
   */ 
     
   public ChecksForEnabled getActionNoCache(FlowMeister.MainFlow actionKey, boolean withIcon, ControlFlow.OptArgs optionArgs) {
-    FlowMeister flom = appState_.getFloM();
+    FlowMeister flom = cSrc_.getFloM();
     switch (actionKey) {          
       case TREE_PATH_SET_CURRENT_USER_PATH:
       case REMOVE_SELECTIONS_FOR_NODE_TYPE:
       case SET_CURRENT_GAGGLE_TARGET:
       case LOAD_RECENT:
+      case LAUNCH_SIM_PLUGIN:
+      case RECOVER_SIMULATION:
+      case LAUNCH_WORKSHEET:
+      case LAUNCH_LINK_DRAWING_TRACKER:
         return (new ChecksForEnabled(withIcon, flom.getControlFlow(actionKey, optionArgs)));
       default: 
         throw new IllegalArgumentException();
@@ -174,7 +170,7 @@ public class MainCommands implements SelectionChangeListener,
   public ControlFlow getCachedFlow(FlowMeister.MainFlow actionKey) {
     ControlFlow retval = flowCache_.get(actionKey);
     if (retval == null) {
-      retval = appState_.getFloM().getControlFlow(actionKey, null);
+      retval = cSrc_.getFloM().getControlFlow(actionKey, null);
       flowCache_.put(actionKey, retval);
     }
     return (retval);
@@ -210,11 +206,11 @@ public class MainCommands implements SelectionChangeListener,
           retval.setConditionalEnabled(false);
           break;       
         case GAGGLE_GOOSE_UPDATE:
-          VirtualGaggleControls vgc = appState_.getGaggleControls();
+          VirtualGaggleControls vgc = uics_.getGaggleControls();
           retval = new ChecksWithSpecialButton(withIcon, flow, "U24Selected.gif", vgc);   
           break;
         case GAGGLE_PROCESS_INBOUND:
-          vgc = appState_.getGaggleControls();
+          vgc = uics_.getGaggleControls();
           retval = new ChecksWithSpecialButton(withIcon, flow, "P24Selected.gif", vgc);
           break; 
         case PULLDOWN:
@@ -323,12 +319,11 @@ public class MainCommands implements SelectionChangeListener,
   */ 
   
   public void modelHasChanged(ModelChangeEvent mcev) {
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    checkForChanges(dacx.getGenomeID(), CheckGutsCache.MODEL, dacx);
+    checkForChanges(CheckGutsCache.Checktype.MODEL, ddacx_, uics_);
     int change = mcev.getChangeType();
     if ((change == ModelChangeEvent.MODEL_DROPPED) && 
-        (mcev.getGenomeKey().equals(dacx.getDBGenomeID()))) {
-      appState_.getCommonView().handleModelDrop(); 
+        (mcev.getGenomeKey().equals(ddacx_.getDBGenomeID()))) {
+      uics_.getCommonView().handleModelDrop(); 
     }
     return;
   }
@@ -362,9 +357,8 @@ public class MainCommands implements SelectionChangeListener,
   */ 
   
   public void generalChangeOccurred(GeneralChangeEvent gcev) {
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    appState_.getCommonView().perturbationsManagementWindowHasChanged();
-    checkForChanges(dacx.getGenomeID(), CheckGutsCache.GENERAL, dacx);    
+    uics_.getCommonView().perturbationsManagementWindowHasChanged();
+    checkForChanges(CheckGutsCache.Checktype.GENERAL, ddacx_, uics_);    
   }
   
   /***************************************************************************
@@ -373,8 +367,7 @@ public class MainCommands implements SelectionChangeListener,
   */ 
   
   public void selectionHasChanged(SelectionChangeEvent scev) {
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    checkForChanges(dacx.getGenomeID(), CheckGutsCache.SELECT, dacx);
+    checkForChanges(CheckGutsCache.Checktype.SELECT, ddacx_, uics_);
     return;
   }
   
@@ -384,8 +377,7 @@ public class MainCommands implements SelectionChangeListener,
   */ 
   
   public void overlayDisplayChangeOccurred(OverlayDisplayChangeEvent odcev) {
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    checkForChanges(dacx.getGenomeID(), CheckGutsCache.OVERLAY, dacx);
+    checkForChanges(CheckGutsCache.Checktype.OVERLAY, ddacx_, uics_);
     return;
   }  
   
@@ -394,9 +386,8 @@ public class MainCommands implements SelectionChangeListener,
   ** Trigger the enabled checks
   */ 
   
-  private void checkForChanges(String genomeID, int checkType, DataAccessContext dacx) {
-    Genome genome = (genomeID == null) ? null : dacx.getGenomeSource().getGenome(genomeID);
-    CheckGutsCache cache = new CheckGutsCache(appState_, genome, checkType);
+  private void checkForChanges(CheckGutsCache.Checktype checkType, DataAccessContext dacx, UIComponentSource uics) {
+    CheckGutsCache cache = new CheckGutsCache(uics, dacx, checkType);
     Iterator<ChecksForEnabled> wiit = withIcons_.values().iterator();
     while (wiit.hasNext()) {
       ChecksForEnabled cfe = wiit.next();
@@ -407,8 +398,8 @@ public class MainCommands implements SelectionChangeListener,
       ChecksForEnabled cfe = niit.next();
       cfe.checkIfEnabled(cache);
     }
-    appState_.getPathControls().handlePathButtons();
-    appState_.getNetOverlayController().checkForChanges(dacx);
+    uics_.getPathControls().handlePathButtons();
+    uics_.getNetOverlayController().checkForChanges(dacx);
     return;
   }  
   
@@ -418,10 +409,7 @@ public class MainCommands implements SelectionChangeListener,
   */ 
   
   public Map<FlowMeister.FlowKey, Boolean> getFlowEnabledState() {
-    Database db = appState_.getDB();   
-    String genomeID = appState_.getGenome();
-    Genome genome = (genomeID == null) ? null : db.getGenome(genomeID);
-    CheckGutsCache cache = new CheckGutsCache(appState_, genome, CheckGutsCache.NONE);
+    CheckGutsCache cache = new CheckGutsCache(uics_, ddacx_, CheckGutsCache.Checktype.NONE);
     HashMap<FlowMeister.FlowKey, Boolean> retval = new HashMap<FlowMeister.FlowKey, Boolean>(); 
     
     Iterator<FlowMeister.MainFlow> fckit = flowCache_.keySet().iterator();
@@ -432,18 +420,20 @@ public class MainCommands implements SelectionChangeListener,
         continue;
       }    
       boolean enabled = flow.isEnabled(cache);
+    	
       retval.put(mfk, Boolean.valueOf(enabled));
     }
-    Map<FlowMeister.FlowKey, Boolean> pathEna = appState_.getPathControls().getButtonEnables();
+    Map<FlowMeister.FlowKey, Boolean> pathEna = uics_.getPathControls().getButtonEnables();
     retval.putAll(pathEna);
-    Map<FlowMeister.FlowKey, Boolean> ovrEna = appState_.getNetOverlayController().getButtonEnables();
+    Map<FlowMeister.FlowKey, Boolean> ovrEna = uics_.getNetOverlayController().getButtonEnables();
     retval.putAll(ovrEna);  
-    Map<FlowMeister.FlowKey, Boolean> zoomEna = appState_.getVirtualZoom().getButtonEnables();
+    Map<FlowMeister.FlowKey, Boolean> zoomEna = uics_.getVirtualZoom().getButtonEnables();
     retval.putAll(zoomEna); 
     
-    UndoManager undom = appState_.getUndoManager();
+    UndoManager undom = cSrc_.getUndoManager();
     retval.put(FlowMeister.MainFlow.UNDO, undom.canUndo());
     retval.put(FlowMeister.MainFlow.REDO, undom.canRedo());
+    
     return (retval);
   }
   
@@ -487,16 +477,14 @@ public class MainCommands implements SelectionChangeListener,
     protected boolean pushed_ = false;
     
     protected ControlFlow flow;
-    protected DesktopControlFlowHarness dcf;
+
      
     protected ChecksForEnabled() {
-      dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame())); 
     }
     
     protected ChecksForEnabled(boolean doIcon, ControlFlow flow) {
-      dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
       this.flow = flow;
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = ddacx_.getRMan();
       name_ = rMan.getString(flow.getName());
       putValue(Action.NAME, name_);
       if (doIcon) {
@@ -523,8 +511,7 @@ public class MainCommands implements SelectionChangeListener,
     }
          
     protected ChecksForEnabled(boolean doIcon, String name, String sDesc, String icon, String mnem, String accel) {
-      dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = ddacx_.getRMan();
       name_ = rMan.getString(name);
       putValue(Action.NAME, name_);
       if (doIcon) {
@@ -576,12 +563,11 @@ public class MainCommands implements SelectionChangeListener,
         if (flow == null) {
           throw new IllegalStateException();
         }
-        dcf.initFlow(flow, new DataAccessContext(appState_, appState_.getGenome()));
-        dcf.runFlow();
+        hBld_.buildAndRunHarness(flow, ddacx_, uics_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
       return;
     }
@@ -721,9 +707,9 @@ public class MainCommands implements SelectionChangeListener,
         setButtonCondition(false);
         super.actionPerformed(e);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
       return;
     }
@@ -767,10 +753,11 @@ public class MainCommands implements SelectionChangeListener,
     }
     
     public void setAsActive(boolean arg) {
-      ((ControlFlow.FlowForMainToggle)flow).directCheck(arg);
+      ((ControlFlow.FlowForMainToggle)flow).directCheck(arg, cSrc_);
       return;
     }
     
+    @Override
     public void actionPerformed(ActionEvent e) {
       try {
         if (ignore_) {
@@ -778,11 +765,75 @@ public class MainCommands implements SelectionChangeListener,
         }
         super.actionPerformed(e);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
       return;
     }
+  }
+  
+  /***************************************************************************
+  **
+  ** Command for tab popups
+  */
+  
+  public static class TabPopupAction extends JTabbedPaneWithPopup.InformedAction {     
+    
+    private DynamicDataAccessContext myDdacx_;
+    private UIComponentSource myUics_;
+    private String name_;   
+    private Character mNem_;
+    private Character accel_; 
+    protected ControlFlow myControlFlow;
+    protected HarnessBuilder myHBld_;
+
+    public TabPopupAction(DynamicDataAccessContext ddacx, ControlFlow theFlow, UIComponentSource uics, HarnessBuilder hBld) {
+      myDdacx_ = ddacx;
+      myUics_ = uics;
+      myHBld_ = hBld;
+      myControlFlow = theFlow;
+      installName(myControlFlow.getName(), myControlFlow.getMnem(), myControlFlow.getAccel());
+    }
+    
+    private void installName(String name, String mnem, String accel) {
+      ResourceManager rMan = myDdacx_.getRMan();
+      name_ = rMan.getString(name);
+      putValue(Action.NAME, name_);
+      char mnemC = rMan.getChar(mnem);
+      mNem_ = new Character(mnemC);
+      putValue(Action.MNEMONIC_KEY, new Integer(mnemC)); 
+      if (accel != null) {
+        char accelC = rMan.getChar(accel);
+        accel_ = new Character(accelC);
+        putValue(Action.ACCELERATOR_KEY, KeyStroke.getKeyStroke(accelC, Event.CTRL_MASK, false));
+      }
+    }
+
+    public String getName() {
+      return (name_);
+    }    
+    public Character getMnem() {
+      return (mNem_);        
+    }
+    public Character getAccel() {
+      return (accel_);      
+    }
+    
+    public void actionPerformed(ActionEvent e) {
+      try {
+        HarnessBuilder.PreHarness pH = myHBld_.buildHarness(myControlFlow, myDdacx_, myUics_);
+        DialogAndInProcessCmd.TabPopupCmdState agis = (DialogAndInProcessCmd.TabPopupCmdState)pH.getCmdState();
+        agis.setTab(selectedTab_, true, null);
+        myHBld_.runHarness(pH);
+      } catch (Exception ex) {
+        myUics_.getExceptionHandler().displayException(ex);
+      }
+      return;
+    }
+  
+    public boolean manageActionEnables(DataAccessContext dacx) {
+      return (true);
+    } 
   }
 }

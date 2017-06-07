@@ -378,14 +378,14 @@ public class ConditionDictionary implements Cloneable {
   ** Get the choices for conditions
   */
   
-  public Vector getExprConditionsOptions() { 
+  public Vector<TrueObjChoiceContent> getExprConditionsOptions() { 
     TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
     Iterator<String> oit = cond_.keySet().iterator();
     while (oit.hasNext()) {
       String key = oit.next();
       sorted.add(getExprConditionsChoice(key));
     }
-    return (new Vector(sorted));
+    return (new Vector<TrueObjChoiceContent>(sorted));
   }  
   
   /***************************************************************************
@@ -403,14 +403,14 @@ public class ConditionDictionary implements Cloneable {
   ** Get the choices for controls
   */
   
-  public Vector getExprControlOptions() { 
+  public Vector<TrueObjChoiceContent> getExprControlOptions() { 
     TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
     Iterator<String> oit = controls_.keySet().iterator();
     while (oit.hasNext()) {
       String key = oit.next();
       sorted.add(getExprControlChoice(key));
     }
-    return (new Vector(sorted));
+    return (new Vector<TrueObjChoiceContent>(sorted));
   }  
   
   /***************************************************************************

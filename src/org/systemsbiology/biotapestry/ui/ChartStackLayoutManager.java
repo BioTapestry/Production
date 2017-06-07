@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -50,7 +50,7 @@ public class ChartStackLayoutManager implements LayoutManager2 {
   private int height_;
   private int minWidth_;  
   private boolean haveCalc_;
-  private HashMap constraints_;
+  private HashMap<Component, Object> constraints_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,7 +67,7 @@ public class ChartStackLayoutManager implements LayoutManager2 {
     height_ = 0;
     minWidth_ = 0;    
     haveCalc_ = false;
-    constraints_ = new HashMap();
+    constraints_ = new HashMap<Component, Object>();
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -164,7 +164,7 @@ public class ChartStackLayoutManager implements LayoutManager2 {
     sizeCalcs(parent);
     int currY_ = insets.top;
     
-    ArrayList bars = new ArrayList();
+    ArrayList<Component> bars = new ArrayList<Component>();
     int nComps = parent.getComponentCount();
     for (int i = 0; i < nComps; i++) {
       Component comp = parent.getComponent(i);
@@ -184,7 +184,7 @@ public class ChartStackLayoutManager implements LayoutManager2 {
     }
     int nBars = bars.size();
     for (int i = 0; i < nBars; i++) {    
-      Component comp = (Component)bars.get(i);
+      Component comp = bars.get(i);
       if (comp == null) {
         continue;
       }

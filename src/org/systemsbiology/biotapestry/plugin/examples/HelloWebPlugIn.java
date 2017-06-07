@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -55,7 +55,7 @@ public class HelloWebPlugIn implements ExternalDataDisplayPlugIn {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-  
+ 
   /***************************************************************************
   **
   ** Determine data requirements

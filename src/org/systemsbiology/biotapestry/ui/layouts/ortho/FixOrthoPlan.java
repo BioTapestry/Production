@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -122,7 +122,7 @@ public class FixOrthoPlan implements Cloneable {
     buf.append("FixOrthoPlan:\n");
     int numCmd = commandList_.size();
     for (int i = 0; i < numCmd; i++) {
-      OrthoCommand oc = (OrthoCommand)commandList_.get(i);
+      OrthoCommand oc = commandList_.get(i);
       buf.append("  ");
       buf.append(oc.toString());
       buf.append("\n");

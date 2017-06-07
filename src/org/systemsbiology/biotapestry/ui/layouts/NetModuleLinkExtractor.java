@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ import org.systemsbiology.biotapestry.analysis.CycleFinder;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
 import org.systemsbiology.biotapestry.analysis.GridGrower;
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.NetModuleLinkage;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
@@ -71,12 +71,13 @@ public class NetModuleLinkExtractor {
   ** Extract
   */
   
-  public Map<String, ExtractResultForSource> extract(DataAccessContext icx, String overlayKey, List<GenomeSubset> subsetList) {
+  @SuppressWarnings("unused")
+  public Map<String, ExtractResultForSource> extract(StaticDataAccessContext icx, String overlayKey, List<GenomeSubset> subsetList) {
     HashMap<String, ExtractResultForSource> retval = new HashMap<String, ExtractResultForSource>();
-    String genomeKey = icx.getGenomeID();
+    String genomeKey = icx.getCurrentGenomeID();
     NetOverlayOwner owner = icx.getGenomeSource().getOverlayOwnerFromGenomeKey(genomeKey);
     NetworkOverlay nov = owner.getNetworkOverlay(overlayKey);
-    NetOverlayProperties noProps = icx.getLayout().getNetOverlayProperties(overlayKey);
+    NetOverlayProperties noProps = icx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     Iterator<String> lpkit = noProps.getNetModuleLinkagePropertiesKeys();
     HashSet<Point2D> seenPts = new HashSet<Point2D>();
     while (lpkit.hasNext()) {
@@ -304,6 +305,7 @@ public class NetModuleLinkExtractor {
     private HashMap<String, String> trgToTree_;
     //private String srcMod_;
   
+    @SuppressWarnings("unused")
     ExtractResultForSource(String srcMod) {
       resultsByTrees_ = new HashMap<String, ExtractResultForTree>();
       trgToTree_ = new HashMap<String, String>();
@@ -1026,7 +1028,8 @@ public class NetModuleLinkExtractor {
         return (new Point(xSign(parPAndV, myPAndV) * r1, ySign(parPAndV, myPAndV) * r2));
       }
     }
-    
+
+    @SuppressWarnings("unused")
     private int xSign(PointAndVec parPAndV, PointAndVec myPAndV) {
       // You can either make ALL the turn points lie on a NW->SE diagonal (1) or
       // SW->NE diagonal (-1).  But if you are going to mix and match, track ordering needs
@@ -1044,6 +1047,7 @@ public class NetModuleLinkExtractor {
       return (1);
     }
     
+    @SuppressWarnings("unused")
     private int ySign(PointAndVec parPAndV, PointAndVec myPAndV) {
       // See above!
       return (1);
@@ -1264,7 +1268,8 @@ public class NetModuleLinkExtractor {
       String modName = indexToModName_.get(new Integer(pao.getPrimCode()));
       return (modName);
     }
-    
+
+    @SuppressWarnings("unused")
     public String getTargetModuleName(PrimaryAndOthers pao, Integer which) {
       String modName = indexToModName_.get(which);
       return (modName);
@@ -1502,7 +1507,8 @@ public class NetModuleLinkExtractor {
     public String srcID;
     private int primary_;
     private HashSet<Integer> others_;
-        
+     
+    @SuppressWarnings("unused")
     PrimaryAndOthers(String srcID, int primary) {
       this.primary_ = primary;  // note this refers to original order, and must be mapped follow topo sort!
       this.others_ = new HashSet<Integer>();

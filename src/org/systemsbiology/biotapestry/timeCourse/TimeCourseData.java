@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,9 +30,9 @@ import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Vector;
 import java.io.PrintWriter;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.awt.geom.Point2D;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -46,19 +46,20 @@ import javax.swing.tree.TreeModel;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DataMapSource;
 import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
-import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UniqueLabeller;
 
 /****************************************************************************
 **
@@ -87,18 +88,17 @@ public class TimeCourseData implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
 
   private List<TimeCourseGene> genes_;
-  private HashMap<String, List<TCMapping>> tcMap_;
-  private HashMap<String, List<GroupUsage>> groupMap_;
   private ArrayList<GeneTemplateEntry> geneTemplate_;
   private ArrayList<GeneTemplateEntry> tempTemplate_;
   private HashMap<String, String> groupParents_;
   private HashSet<String> groupRoots_;
   private SortedMap<TopoTimeRange, RegionTopology> regionTopologies_;
   private TopoRegionLocator topoLocator_;
+  private UniqueLabeller simLabels_;
   private long serialNumber_;
   private long topoSerialNumber_;
   private long linSerialNumber_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -111,15 +111,14 @@ public class TimeCourseData implements Cloneable {
   ** Constructor
   */
 
-  public TimeCourseData(BTState appState) {
-    appState_ = appState;
+  public TimeCourseData(DataAccessContext dacx) {
+    dacx_ = dacx;
     genes_ = new ArrayList<TimeCourseGene>();
-    tcMap_ = new HashMap<String, List<TCMapping>>();
-    groupMap_ = new HashMap<String, List<GroupUsage>>();
     groupParents_ = new HashMap<String, String>();
     groupRoots_ = new HashSet<String>();
     regionTopologies_ = new TreeMap<TopoTimeRange, RegionTopology>();
     topoLocator_ = null;
+    simLabels_ = new UniqueLabeller();
     serialNumber_ = 0L;
     topoSerialNumber_ = 0L;
     linSerialNumber_ = 0L;
@@ -135,7 +134,8 @@ public class TimeCourseData implements Cloneable {
   **
   ** Clone
   */
-
+  
+  @Override
   public TimeCourseData clone() {
     try {
       TimeCourseData retval = (TimeCourseData)super.clone();
@@ -145,34 +145,6 @@ public class TimeCourseData implements Cloneable {
       for (int i = 0; i < size; i++) {
         TimeCourseGene tcg = this.genes_.get(i);
         retval.genes_.add(tcg.clone());
-      }
-      
-      retval.tcMap_ = new HashMap<String, List<TCMapping>>();
-      Iterator<String> tcmit = this.tcMap_.keySet().iterator();
-      while (tcmit.hasNext()) {
-        String mapKey = tcmit.next();
-        List<TCMapping> targList = tcMap_.get(mapKey);
-        ArrayList<TCMapping> retTargList = new ArrayList<TCMapping>();       
-        retval.tcMap_.put(mapKey, retTargList);
-        int tlSize = targList.size();
-        for (int i = 0; i < tlSize; i++) {
-          TCMapping targ = targList.get(i);
-          retTargList.add(targ.clone());        
-        }
-      }
-      
-      retval.groupMap_ = new HashMap<String, List<GroupUsage>>();
-      Iterator<String> gmkit = this.groupMap_.keySet().iterator();
-      while (gmkit.hasNext()) {
-        String key = gmkit.next();
-        List<GroupUsage> mapList = groupMap_.get(key);
-        ArrayList<GroupUsage> retGroupList = new ArrayList<GroupUsage>();       
-        retval.groupMap_.put(key, retGroupList);
-        int mlsize = mapList.size();
-        for (int i = 0; i < mlsize; i++) {
-          GroupUsage gu = mapList.get(i);
-          retGroupList.add(gu.clone());     
-        }
       }
       
       // Map of strings to strings, shallow is OK:
@@ -192,12 +164,57 @@ public class TimeCourseData implements Cloneable {
       if (this.topoLocator_ != null) {   
         retval.topoLocator_ = this.topoLocator_.clone();     
       }
+      
+      retval.simLabels_ = this.simLabels_.clone();
+      
       return (retval);
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
     }
   }
- 
+
+  /***************************************************************************
+  **
+  ** Get a set of all the used sim keys
+  */
+  
+  public SortedSet<String> getAllSimKeys() {
+    TreeSet<String> retval = new TreeSet<String>();
+    int size = this.genes_.size();
+    for (int i = 0; i < size; i++) {
+      TimeCourseGene tcg = this.genes_.get(i);
+      retval.addAll(tcg.getAllSimKeys());
+    }
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** Build the combo of existing options
+  ** 
+  */
+  
+  public Vector<ObjChoiceContent> buildSimKeyCombo() {
+    Vector<ObjChoiceContent> retval = new Vector<ObjChoiceContent>();
+    Set<String> skeys = getAllSimKeys();
+    Iterator<String> eoit = skeys.iterator();
+    while (eoit.hasNext()) {
+      String simID = eoit.next();
+      retval.add(new ObjChoiceContent(simID, simID));
+    }
+    return (retval);
+  }
+  
+
+  /***************************************************************************
+  **
+  ** Get an unused sim key
+  */
+  
+  public String getNewSimKey() {
+    return (simLabels_.getNextLabel());
+  }  
+  
   /***************************************************************************
   **
   ** Return the serialNumber
@@ -346,7 +363,7 @@ public class TimeCourseData implements Cloneable {
     int num = slices.size();
     for (int i = 0; i < num; i++) {
       RootInstanceSuggestions sugg = slices.get(i);
-      TopoTimeRange ttr = new TopoTimeRange(appState_, sugg.minTime, sugg.maxTime);
+      TopoTimeRange ttr = new TopoTimeRange(dacx_, sugg.minTime, sugg.maxTime);
       List<String> regs = new ArrayList<String>(sugg.regions);
       RegionTopology rt = new RegionTopology(ttr, regs, new ArrayList<TopoLink>());
       regionTopologies_.put(ttr, rt);
@@ -377,20 +394,58 @@ public class TimeCourseData implements Cloneable {
   
   /***************************************************************************
   **
-  ** Answer if we have data
+  ** Answer if the data can be merged
   */
   
-  public boolean haveData() {
-    if (!genes_.isEmpty()) {
+  public boolean templatesMatch(TimeCourseData otherTCD) {
+    Iterator<GeneTemplateEntry> otherTemp = otherTCD.getGeneTemplate();
+    Iterator<GeneTemplateEntry> myTemp = getGeneTemplate();
+    
+    boolean iGottaTemplate = myTemp.hasNext();
+    boolean theyGottaTemplate = otherTemp.hasNext();
+    
+    if (iGottaTemplate && theyGottaTemplate) {
+      while (myTemp.hasNext()) {
+        if (!otherTemp.hasNext()) {
+          return (false);
+        }
+        GeneTemplateEntry myGte = myTemp.next();
+        GeneTemplateEntry otherGte = otherTemp.next();
+        if (!myGte.equals(otherGte)) {
+          return (false);
+        }
+      }
+      if (otherTemp.hasNext()) {
+        return (false);
+      }
+      return (true);
+    } else {
       return (true);
     }
-    if (!tcMap_.isEmpty()) {
-      return (true);
+  }
+  
+  /***************************************************************************
+  **
+  ** Merge with another TCD
+  */
+  
+  public Set<String> mergeData(TimeCourseData otherTCD) {
+
+    HashSet<String> retval = new HashSet<String>();
+    UiUtil.fixMePrintout("Still lots to do (bump serial no, topo, lineage,...)");
+    Iterator<TimeCourseGene> otcdgit = otherTCD.getGenes();
+    while (otcdgit.hasNext()) {
+      TimeCourseGene otherGene = otcdgit.next();
+      TimeCourseGene myGene = getTimeCourseData(otherGene.getName());
+      if (myGene == null) {
+        addGene(otherGene);       
+      } else {
+        if (!myGene.equals(otherGene)) {
+          retval.add(myGene.getName());
+        }
+      } 
     }
-    if (!groupMap_.isEmpty()) {
-      return (true);
-    }
-    return (false);
+    return ((retval.isEmpty()) ? null : retval);
   }
 
   /***************************************************************************
@@ -539,7 +594,7 @@ public class TimeCourseData implements Cloneable {
   public void exportCSV(PrintWriter out, boolean groupByTime, 
                         boolean encodeConfidence, boolean exportInternals) { 
     out.print("\"");     
-    out.print(appState_.getRMan().getString("csvTcdExport.geneName"));
+    out.print(dacx_.getRMan().getString("csvTcdExport.geneName"));
     out.print("\"");
     Iterator<GeneTemplateEntry> tempit = getGeneTemplate();
     if (tempit.hasNext()) {
@@ -582,7 +637,7 @@ public class TimeCourseData implements Cloneable {
       tg.exportCSV(out, oit, encodeConfidence, exportInternals);
     }
     
-    ExpressionEntry.expressionKeyCSV(appState_, out, encodeConfidence);
+    ExpressionEntry.expressionKeyCSV(dacx_, out, encodeConfidence);
     
     return;
   }
@@ -614,55 +669,22 @@ public class TimeCourseData implements Cloneable {
 
   /***************************************************************************
   **
-  ** Answers if we have a time course region mapping
-  **
-  */
-  
-  public boolean haveCustomMapForRegion(String groupId) {
-    if (!haveData()) {
-      return (false);
-    }
-    List<GroupUsage> mapped = groupMap_.get(groupId);
-    if ((mapped == null) || (mapped.size() == 0))  {
-      return (false);
-    }
-    return (true);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Answers if we have a time course mapping
-  **
-  */
-  
-  public boolean haveCustomMapForNode(String nodeID) {
-    if (!haveData()) {
-      return (false);
-    }
-    List<TCMapping> mapped = tcMap_.get(nodeID);
-    if ((mapped == null) || (mapped.size() == 0))  {
-      return (false);
-    }
-    return (true);
-  }
-  
-  /***************************************************************************
-  **
   ** Answers if we have time course data for the given node
   **
   */
   
   public boolean haveDataForNode(String nodeID) {
-    if (!haveData()) {
+    if (!haveDataEntries()) {
       return (false);
     }
-    List<TCMapping> mapped = getTimeCourseTCMDataKeysWithDefault(nodeID);
+    List<TimeCourseDataMaps.TCMapping> mapped = 
+      dacx_.getDataMapSrc().getTimeCourseDataMaps().getTimeCourseTCMDataKeysWithDefault(nodeID, dacx_.getGenomeSource());
     if (mapped == null) {
       return (false);
     }
-    Iterator<TCMapping> mit = mapped.iterator();
+    Iterator<TimeCourseDataMaps.TCMapping> mit = mapped.iterator();
     while (mit.hasNext()) {
-      TCMapping tcm = mit.next();
+      TimeCourseDataMaps.TCMapping tcm = mit.next();
       if (getTimeCourseData(tcm.name) != null) {
         return (true);
       }
@@ -676,19 +698,19 @@ public class TimeCourseData implements Cloneable {
   **
   */
   
-  public boolean isAllInternalForNode(String nodeID) {
-    if (!haveData()) {
+  public boolean isAllInternalForNode(String nodeID, Database db) {
+    if (!haveDataEntries()) {
       return (false);
     }
-    List<TCMapping> mapped = getTimeCourseTCMDataKeysWithDefault(nodeID);
+    List<TimeCourseDataMaps.TCMapping> mapped = db.getTimeCourseDataMaps().getTimeCourseTCMDataKeysWithDefault(nodeID, db);
     if (mapped == null) {
       return (false);
     }
-    Iterator<TCMapping> mit = mapped.iterator();
+    Iterator<TimeCourseDataMaps.TCMapping> mit = mapped.iterator();
     boolean retval = false;
     while (mit.hasNext()) {
       retval = true;
-      TCMapping tcm = mit.next();
+      TimeCourseDataMaps.TCMapping tcm = mit.next();
       TimeCourseGene tcg = getTimeCourseData(tcm.name);
       if (tcg == null) {
         continue;
@@ -706,17 +728,17 @@ public class TimeCourseData implements Cloneable {
   **
   */
   
-  public boolean haveDataForNodeOrName(String nodeID, String deadName) {
-    if (!haveData()) {
+  public boolean haveDataForNodeOrName(String nodeID, String deadName, DataMapSource db) {
+    if (!haveDataEntries()) {
       return (false);
     }
-    List<TCMapping> mapped = getTimeCourseTCMDataKeysWithDefaultGivenName(nodeID, deadName);
+    List<TimeCourseDataMaps.TCMapping> mapped = db.getTimeCourseDataMaps().getTimeCourseTCMDataKeysWithDefaultGivenName(nodeID, deadName);
     if (mapped == null) {
       return (false);
     }
-    Iterator<TCMapping> mit = mapped.iterator();
+    Iterator<TimeCourseDataMaps.TCMapping> mit = mapped.iterator();
     while (mit.hasNext()) {
-      TCMapping tcm = mit.next();
+      TimeCourseDataMaps.TCMapping tcm = mit.next();
       if (getTimeCourseData(tcm.name) != null) {
         return (true);
       }
@@ -730,11 +752,7 @@ public class TimeCourseData implements Cloneable {
   */
   
   public void changeUndo(TimeCourseChange undo) {
-    if ((undo.mapListOrig != null) || (undo.mapListNew != null)) {
-      mapChangeUndo(undo);
-    } else if ((undo.groupMapListOrig != null) || (undo.groupMapListNew != null)) {
-      groupMapChangeUndo(undo);
-    } else if ((undo.gOrig != null) || (undo.gNew != null)) {
+    if ((undo.gOrig != null) || (undo.gNew != null)) {
       geneChangeUndo(undo);
     } else if ((undo.allGenesOrig != null) || (undo.allGenesNew != null)) {
       fullChangeUndo(undo);
@@ -763,11 +781,7 @@ public class TimeCourseData implements Cloneable {
   */
   
   public void changeRedo(TimeCourseChange undo) {
-    if ((undo.mapListOrig != null) || (undo.mapListNew != null)) {
-      mapChangeRedo(undo);
-    } else if ((undo.groupMapListOrig != null) || (undo.groupMapListNew != null)) {
-      groupMapChangeRedo(undo);
-    } else if ((undo.gOrig != null) || (undo.gNew != null)) {
+    if ((undo.gOrig != null) || (undo.gNew != null)) {
       geneChangeRedo(undo);
     } else if ((undo.allGenesOrig != null) || (undo.allGenesNew != null)) {
       fullChangeRedo(undo);
@@ -792,13 +806,13 @@ public class TimeCourseData implements Cloneable {
   
   /***************************************************************************
   **
-  ** Answer if the data is empty
+  ** Answer if we have data
   */
   
-  public boolean isEmpty() {
-    return (genes_.isEmpty());
-  }  
-  
+  public boolean haveDataEntries() {
+    return (!genes_.isEmpty());
+  }
+
   /***************************************************************************
   **
   ** Add a gene.  I/o only
@@ -847,107 +861,6 @@ public class TimeCourseData implements Cloneable {
   public TimeCourseGene getGene(int n) {
     return (genes_.get(n));
   }
-
-  /***************************************************************************
-  **
-  ** Drop maps that resolve to the given time course entry SOURCE CHANNEL
-  */
-  
-  public TimeCourseChange[] dropMapsToEntrySourceChannel(String nodeID, int channel) {
-    //
-    // Crank through the maps and look for entries that target the 
-    // given entry.  Delete it.
-    //
-    ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
-    Iterator<String> mit = new HashSet<String>(tcMap_.keySet()).iterator();
-    while (mit.hasNext()) {
-      String mapKey = mit.next();
-      List<TCMapping> targList = tcMap_.get(mapKey);
-      int tlSize = targList.size();
-      for (int i = 0; i < tlSize; i++) {
-        TCMapping targ = targList.get(i);
-        if (DataUtil.keysEqual(targ.name, nodeID) && (targ.channel == channel)) {
-          TimeCourseChange tcc = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-          tcc.mapKey = mapKey;
-          tcc.mapListOrig = TCMapping.cloneAList(targList);
-          targList.remove(i);
-          if (targList.isEmpty()) {
-            tcc.mapListNew = null;
-            tcMap_.remove(mapKey);
-          } else {
-            tcc.mapListNew = TCMapping.cloneAList(targList);
-          }
-          tcc.baseSerialNumberNew = ++serialNumber_;
-          retvalList.add(tcc);
-          break;
-        }
-      }
-    }
-    return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
-  }    
- 
-  /***************************************************************************
-  **
-  ** Answer if we have a map to the given source channel on a node:
-  */
-  
-  public boolean haveMapsToEntrySourceChannel(String nodeID, int channel) {
-    //
-    // Crank through the maps and look for entries that target the 
-    // given entry.  Delete it.
-    //
-    Iterator<String> mit = tcMap_.keySet().iterator();
-    while (mit.hasNext()) {
-      String mapKey = mit.next();
-      List<TCMapping> targList = tcMap_.get(mapKey);
-      int tlSize = targList.size();
-      for (int i = 0; i < tlSize; i++) {
-        TCMapping targ = targList.get(i);
-        if (DataUtil.keysEqual(targ.name, nodeID) && (targ.channel == channel)) {
-          return (true);
-        }
-      }
-    }
-    return (false);
-  }  
-
-  /***************************************************************************
-  **
-  ** Drop maps that resolve to the given time course entry.
-  */
-  
-  public TimeCourseChange[] dropMapsTo(String nodeID) {
-    //
-    // Crank through the maps and look for entries that target the 
-    // given entry.  Delete it.
-    //
-    ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
-    Iterator<String> mit = new HashSet<String>(tcMap_.keySet()).iterator();
-    while (mit.hasNext()) {
-      String mapKey = mit.next();
-      List<TCMapping> targList = tcMap_.get(mapKey);
-      int tlSize = targList.size();
-      for (int i = 0; i < tlSize; i++) {
-        TCMapping targ = targList.get(i);
-        if (DataUtil.keysEqual(targ.name, nodeID)) {
-          TimeCourseChange tcc = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-          tcc.mapKey = mapKey;
-          tcc.mapListOrig = TCMapping.cloneAList(targList);
-          targList.remove(i);
-          if (targList.isEmpty()) {
-            tcc.mapListNew = null;
-            tcMap_.remove(mapKey);
-          } else {
-            tcc.mapListNew = TCMapping.cloneAList(targList);
-          }
-          tcc.baseSerialNumberNew = ++serialNumber_;
-          retvalList.add(tcc);
-          break;
-        }
-      }
-    }
-    return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
-  }    
  
   /***************************************************************************
   **
@@ -1078,85 +991,6 @@ public class TimeCourseData implements Cloneable {
     }
     return;
   }
-  
-  /***************************************************************************
-  **
-  ** Delete the entire mapping set
-  */
-  
-  public TimeCourseChange[] clearAllDataKeys(boolean bumpSerial) {
-    ArrayList<TimeCourseChange> retval = new ArrayList<TimeCourseChange>();
-    Iterator<String> ksit = new HashSet<String>(tcMap_.keySet()).iterator();  
-    while (ksit.hasNext()) {
-      String id = ksit.next(); 
-      TimeCourseChange tcc = coreDropDataKeys(id, bumpSerial);
-      retval.add(tcc);
-    }  
-    return (retval.toArray(new TimeCourseChange[retval.size()])); 
-    
-  }
-
-  /***************************************************************************
-  **
-  ** Delete the key mapping
-  */
-  
-  public TimeCourseChange dropDataKeys(String geneId) {
-    return (coreDropDataKeys(geneId, true));
-  }
-  
-  /***************************************************************************
-  **
-  ** Delete the key mapping
-  */
-  
-  private TimeCourseChange coreDropDataKeys(String geneId, boolean bumpSerial) {
-    if (tcMap_.get(geneId) == null) {
-      return (null);
-    }    
-    TimeCourseChange retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-    retval.mapKey = geneId;
-    retval.mapListOrig = TCMapping.cloneAList(tcMap_.get(geneId));
-    tcMap_.remove(geneId);
-    retval.mapListNew = null;
-    if (bumpSerial) {
-      ++serialNumber_;
-    }
-    retval.baseSerialNumberNew = serialNumber_;
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Undo a map change
-  */
-  
-  private void mapChangeUndo(TimeCourseChange undo) {
-    if ((undo.mapListOrig != null) && (undo.mapListNew != null)) {
-      tcMap_.put(undo.mapKey, TCMapping.cloneAList(undo.mapListOrig));
-    } else if (undo.mapListOrig == null) {
-      tcMap_.remove(undo.mapKey);
-    } else {
-      tcMap_.put(undo.mapKey, TCMapping.cloneAList(undo.mapListOrig));
-    }
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Redo a map change
-  */
-  
-  private void mapChangeRedo(TimeCourseChange undo) {
-    if ((undo.mapListOrig != null) && (undo.mapListNew != null)) {
-      tcMap_.put(undo.mapKey, TCMapping.cloneAList(undo.mapListNew));
-    } else if (undo.mapListNew == null) {
-      tcMap_.remove(undo.mapKey);
-    } else {
-      tcMap_.put(undo.mapKey, TCMapping.cloneAList(undo.mapListNew));
-    }
-    return;
-  }  
   
   /***************************************************************************
   **
@@ -1646,85 +1480,6 @@ public class TimeCourseData implements Cloneable {
 
   /***************************************************************************
   **
-  ** As the table template is changed, we need to make sure we don't have
-  ** dangling maps.
-  */
-  
-  public Set<String> getDanglingRegionMaps(ArrayList<GeneTemplateEntry> newTemplate) {
-    HashSet<String> haveRegions = new HashSet<String>();
-    int size = newTemplate.size();
-    for (int i = 0; i < size; i++) {
-      GeneTemplateEntry entry = newTemplate.get(i);
-      haveRegions.add(entry.region);
-    }
-    
-    HashSet<String> retval = new HashSet<String>();
-    Iterator<String> gmkit = groupMap_.keySet().iterator();
-    while (gmkit.hasNext()) {
-      String key = gmkit.next();
-      List<GroupUsage> mapList = groupMap_.get(key);
-      int mlsize = mapList.size();
-      for (int i = 0; i < mlsize; i++) {
-        GroupUsage gu = mapList.get(i);
-        if (!haveRegions.contains(gu.mappedGroup)) {
-          retval.add(key);
-        }
-      }
-    }    
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** As the table template is changed, we need to make sure we don't have
-  ** dangling maps.  This repairs dangling maps.
-  */
-  
-  public TimeCourseChange[] repairDanglingRegionMaps(Set<String> badMapKeys, ArrayList<GeneTemplateEntry> newTemplate) {
-
-    //
-    // Figure out what we have
-    //
-                                                       
-    HashSet<String> haveRegions = new HashSet<String>();
-    int size = newTemplate.size();
-    for (int i = 0; i < size; i++) {
-      GeneTemplateEntry entry = newTemplate.get(i);
-      haveRegions.add(entry.region);
-    }                                                   
-                                                                                                          
-    ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
-    Iterator<String> bmkit = badMapKeys.iterator();
-    while (bmkit.hasNext()) {
-      String key = bmkit.next();
-      TimeCourseChange tcc = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-      retvalList.add(tcc);
-      tcc.mapKey = key;
-      List<GroupUsage> currentMap = groupMap_.get(key);
-      tcc.groupMapListOrig = deepCopyGroupMap(currentMap);
-      int mSize = currentMap.size();
-      ArrayList<GroupUsage> newMap = new ArrayList<GroupUsage>();
-      for (int i = 0; i < mSize; i++) {
-        GroupUsage gu = currentMap.get(i);
-        if (haveRegions.contains(gu.mappedGroup)) {
-          newMap.add(gu);
-        }
-      }
-      if (newMap.size() > 0) {
-        groupMap_.put(key, newMap);
-        tcc.groupMapListNew = deepCopyGroupMap(newMap);        
-      } else {
-        groupMap_.remove(key);
-        tcc.groupMapListNew = null;
-      }
-      tcc.baseSerialNumberNew = ++serialNumber_;
-    }
-    
-    return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
-  }  
- 
-  /***************************************************************************
-  **
   ** As the table template is changed, we need to find out if the hierarchy is
   ** intact.
   */
@@ -1897,13 +1652,14 @@ public class TimeCourseData implements Cloneable {
   ** Get the earliest expression time for the given NODE ID
   */
   
-  public int getFirstExpressionTime(String nodeID) {
+  public int getFirstExpressionTime(String nodeID, DataAccessContext dacx) {
     int retval = Integer.MAX_VALUE;
     String baseID = GenomeItemInstance.getBaseID(nodeID);
-    List<TCMapping> dataKeys = getTimeCourseTCMDataKeysWithDefault(baseID);
-    Iterator<TCMapping> dkit = dataKeys.iterator();
+    TimeCourseDataMaps tcdm = dacx.getDataMapSrc().getTimeCourseDataMaps();
+    List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseID, dacx.getGenomeSource());
+    Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
     while (dkit.hasNext()) {
-      TCMapping tcm = dkit.next();
+      TimeCourseDataMaps.TCMapping tcm = dkit.next();
       TimeCourseGene tcg = getTimeCourseData(tcm.name);
       if (tcg == null) {
         continue;
@@ -1937,7 +1693,7 @@ public class TimeCourseData implements Cloneable {
   ** Get a set of the genes that are expressed at a certain time and region.
   */
   
-  public void getExpressedGenes(String region, int hour, int exprSource, Set<String> expressed) {
+  public void getExpressedGenes(String region, int hour, ExpressionEntry.Source exprSource, Set<String> expressed) {
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
     Iterator<TimeCourseGene> trgit = genes_.iterator();
     while (trgit.hasNext()) {
@@ -1958,10 +1714,10 @@ public class TimeCourseData implements Cloneable {
   ** Get the set of regions that a gene expresses in
   */
 
-  public Set<String> getGeneRegions(String geneID, int exprSource) {
+  public Set<String> getGeneRegions(String geneID, ExpressionEntry.Source exprSource, boolean varToo) {
     TimeCourseGene tcg = getTimeCourseDataCaseInsensitive(geneID);
     if (tcg != null) {
-      return (tcg.expressesInRegions(exprSource));
+      return (tcg.expressesInRegions(exprSource, varToo));
     }
     return (null);
   }
@@ -1973,10 +1729,10 @@ public class TimeCourseData implements Cloneable {
   **
   */
 
-  public String isRegionMarkerGene(String geneID, int exprSource) {
+  public String isRegionMarkerGene(String geneID, ExpressionEntry.Source exprSource, boolean varToo) {
     TimeCourseGene tcg = getTimeCourseDataCaseInsensitive(geneID);
     if (tcg != null) {
-      String regID = tcg.expressesInOnlyAndOnlyOneRegion(exprSource);
+      String regID = tcg.expressesInOnlyAndOnlyOneRegion(exprSource, varToo);
       return (regID);
     }
     return (null);
@@ -2038,59 +1794,12 @@ public class TimeCourseData implements Cloneable {
     
   /***************************************************************************
   **
-  ** Add a map from a node to a List of target nodes
-  */
-  
-  public TimeCourseChange addTimeCourseTCMMap(String key, List<TCMapping> mapSets, boolean bumpSerial) {
-    TimeCourseChange retval = null;
-    if ((mapSets != null) && (mapSets.size() > 0)) {
-      retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-      retval.mapKey = key;
-      retval.mapListNew = TCMapping.cloneAList(mapSets);
-      retval.mapListOrig = null;
-      retval.baseSerialNumberNew = (bumpSerial) ? ++serialNumber_ : serialNumber_;
-      tcMap_.put(key, mapSets);
-    }
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** When changing an entry name, we need to change one or more maps to keep
-  ** them consistent.  Do this operation. Return empty array if no changes occurred.
-  */
-  
-  public TimeCourseChange[] changeTimeCourseMapsToName(String oldName, String newName) {  
-    ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
-    Iterator<String> tmit = tcMap_.keySet().iterator();
-    while (tmit.hasNext()) {
-      String mkey = tmit.next();
-      List<TCMapping> keys = tcMap_.get(mkey);
-      int numKeys = keys.size();
-      for (int i = 0; i < numKeys; i++) {
-        TCMapping tcm = keys.get(i);
-        if (DataUtil.keysEqual(tcm.name, oldName)) {
-          TimeCourseChange retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-          retval.mapKey = mkey;
-          retval.mapListOrig = TCMapping.cloneAList(keys);
-          tcm.name = newName;
-          retval.mapListNew = TCMapping.cloneAList(keys);
-          retval.baseSerialNumberNew = ++serialNumber_;
-          retvalList.add(retval);
-        }
-      }
-    }
-    return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
-  }
-  
-  /***************************************************************************
-  **
   ** We are changing the name of a node or gene, and have been told to modify the
   ** data as needed.  We need to change the entry (if any) to the given name
   ** and any custom maps to that name.
   */
   
-  public TimeCourseChange[] changeName(String oldName, String newName) {
+  public TimeCourseChange[] changeName(String oldName, String newName, List<TimeCourseDataMaps> tcdm) {
     ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
 
     if ((getTimeCourseData(newName) != null) && !DataUtil.keysEqual(oldName, newName)) {
@@ -2113,9 +1822,12 @@ public class TimeCourseData implements Cloneable {
     // Fix any custom entry maps
     //
     
-    TimeCourseChange[] tccs = changeTimeCourseMapsToName(oldName, newName);
-    retvalList.addAll(Arrays.asList(tccs));
-
+    Iterator<TimeCourseDataMaps> tcdmit = tcdm.iterator();
+    while (tcdmit.hasNext()) {
+      TimeCourseChange[] tccs = tcdmit.next().changeTimeCourseMapsToName(oldName, newName);
+      retvalList.addAll(Arrays.asList(tccs));
+    }
+    
     return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
   }
   
@@ -2125,7 +1837,7 @@ public class TimeCourseData implements Cloneable {
   ** data as needed.  We need to change the regions.  
   */
   
-  public TimeCourseChange[] changeRegionName(String oldName, String newName) {
+  public TimeCourseChange[] changeRegionName(String oldName, String newName, List<TimeCourseDataMaps> tcdm) {
     ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
     
     //
@@ -2169,32 +1881,11 @@ public class TimeCourseData implements Cloneable {
     // Fix any custom entry maps
     //
     
-    Iterator<String> dmit = groupMap_.keySet().iterator();
-    while (dmit.hasNext()) {
-      String mkey = dmit.next();
-      List<GroupUsage> currentMap = groupMap_.get(mkey);
-      List<GroupUsage> newMap = new ArrayList<GroupUsage>();
-      haveChange = false;
-      int size = currentMap.size();
-      for (int i = 0; i < size; i++) {
-        GroupUsage gu = currentMap.get(i);
-        GroupUsage newgu  = new GroupUsage(gu);
-        if (DataUtil.keysEqual(gu.mappedGroup, oldName)) {
-          haveChange = true;
-          newgu.mappedGroup = newName;
-        }
-        newMap.add(newgu);
-      }
-      if (haveChange) {
-        TimeCourseChange tcc = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-        retvalList.add(tcc);
-        tcc.mapKey = mkey;
-        tcc.groupMapListOrig = deepCopyGroupMap(currentMap);
-        groupMap_.put(mkey, newMap);
-        tcc.groupMapListNew = deepCopyGroupMap(newMap); 
-        tcc.baseSerialNumberNew = ++serialNumber_;
-      }  
-    }
+    Iterator<TimeCourseDataMaps> tcdmit = tcdm.iterator();
+    while (tcdmit.hasNext()) {
+      TimeCourseChange[] tccs = tcdmit.next().changeRegionNameForMaps(oldName, newName);
+      retvalList.addAll(Arrays.asList(tccs));
+    } 
    
     //
     // Propagate the name change into the hierarchy:
@@ -2240,354 +1931,7 @@ public class TimeCourseData implements Cloneable {
      
     return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
   } 
-  
-  /***************************************************************************
-  **
-  ** Get the list of targets names for the node ID.  May be empty.
-  */
-  
-  public List<TCMapping> getTimeCourseTCMDataKeysWithDefault(String nodeId) {
-    List<TCMapping> retval = tcMap_.get(nodeId);
-    if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList<TCMapping>();
-      TCMapping tcmd = getTimeCourseDefaultMap(nodeId);
-      if (tcmd == null) {
-        return (retval);
-      }
-      retval.add(tcmd);
-    }    
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the default target name for the node ID.  May be null.
-  */
-  
-  public TCMapping getTimeCourseDefaultMap(String nodeId) {
-    Node node = appState_.getDB().getGenome().getNode(nodeId);      
-    if (node == null) { // for when node has been already deleted...
-      throw new IllegalStateException();
-    }      
-    String nodeName = node.getRootName();
-    if ((nodeName == null) || (nodeName.trim().equals(""))) {
-      return (null);
-    } 
-    return (new TCMapping(nodeName));
-  }
-
-  /***************************************************************************
-  **
-  ** Get the list of targets names for the node ID.  May be empty.
-  */
-  
-  public List<TCMapping> getTimeCourseTCMDataKeysWithDefaultGivenName(String nodeId, String nodeName) {
-    List<TCMapping> retval = tcMap_.get(nodeId);
-    if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList<TCMapping>();
-      if ((nodeName == null) || (nodeName.trim().equals(""))) {
-        return (retval);
-      }
-      retval.add(new TCMapping(nodeName));
-    }    
-    return (retval);
-  }  
-
-  /***************************************************************************
-  **
-  ** Get the list of targets names for the node ID.  May be null
-  */
-  
-  public List<TCMapping> getCustomTCMTimeCourseDataKeys(String nodeId) {
-    return (tcMap_.get(nodeId));
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the set of nodeIDs that target the given name. May be empty, not null.
-  */
-  
-  public Set<String> getTimeCourseDataKeyInverses(String name) {
-    name = DataUtil.normKey(name);
-    HashSet<String> retval = new HashSet<String>();
-    //
-    // If there is anybody out there with the same name and no custom map, it
-    // will map by default:
-    //
-    
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
-    Node node = genome.getGeneWithName(name);
-    if (node != null) {
-      if (!haveCustomMapForNode(node.getID())) {
-        retval.add(node.getID());
-      }
-    }
-    
-    Set<Node> nodes = genome.getNodesWithName(name);
-    if (!nodes.isEmpty()) {
-      Iterator<Node> sit = nodes.iterator();
-      while (sit.hasNext()) {
-        node = sit.next();
-        if (!haveCustomMapForNode(node.getID())) {
-          retval.add(node.getID());
-        }
-      }
-    }
-
-    Iterator<String> kit = tcMap_.keySet().iterator();
-    while (kit.hasNext()) {
-      String key = kit.next();
-      List<TCMapping> targs = tcMap_.get(key);
-      if (TCMapping.nameInList(name, targs)) {
-        retval.add(key);
-      }
-    }
-    return (retval);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Add a map from a group to a target group
-  */
-  
-  public TimeCourseChange setTimeCourseGroupMap(String key, List<GroupUsage> mapSets, boolean bumpSerial) {
-    TimeCourseChange retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-    retval.mapKey = key;
-    retval.groupMapListNew = deepCopyGroupMap(mapSets);
-    retval.groupMapListOrig = deepCopyGroupMap(groupMap_.get(key));
-    groupMap_.put(key, mapSets);
-    retval.baseSerialNumberNew = (bumpSerial) ? ++serialNumber_ : serialNumber_;
-    return (retval);
-  }
-
-  /***************************************************************************
-  **
-  ** Duplicate a map for genome duplications
-  */
-  
-  public TimeCourseChange copyTimeCourseGroupMapForDuplicateGroup(String oldKey, String newKey, Map<String, String> modelMap) {
-    List<GroupUsage> oldMapList = groupMap_.get(oldKey);
-    if (oldMapList == null) {
-      return (null);
-    }
-    TimeCourseChange retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-    retval.mapKey = newKey;
-    retval.groupMapListNew = deepCopyGroupMapMappingUsage(oldMapList, modelMap, oldKey.equals(newKey));
-    retval.groupMapListOrig = null;
-    groupMap_.put(newKey, deepCopyGroupMap(retval.groupMapListNew));
-    retval.baseSerialNumberNew = ++serialNumber_;
-    return (retval);
-  }    
-  
-  /***************************************************************************
-  **
-  ** Deep copy a group mapping, mapping model usage as we go
-  */
-  
-  private List<GroupUsage> deepCopyGroupMapMappingUsage(List<GroupUsage> oldMap, Map<String, String> modelMaps, boolean append) {
-    if (oldMap == null) {
-      return (null);
-    }
-    ArrayList<GroupUsage> retval = new ArrayList<GroupUsage>();
-    int size = oldMap.size();
-    for (int i = 0; i < size; i++) {
-      GroupUsage copied = oldMap.get(i).clone();
-      String modelID = modelMaps.get(copied.usage);
-      if (modelID != null) {
-        if (append) {
-          retval.add(copied);
-          copied = copied.clone();
-        }
-        copied.usage = modelID;
-      }
-      retval.add(copied);      
-    }
-    return (retval);
-  }  
-  
-  /***************************************************************************
-  **
-  ** Deep copy a group mapping
-  */
-  
-  private List<GroupUsage> deepCopyGroupMap(List<GroupUsage> oldMap) {
-    if (oldMap == null) {
-      return (null);
-    }
-    ArrayList<GroupUsage> retval = new ArrayList<GroupUsage>();
-    int size = oldMap.size();
-    for (int i = 0; i < size; i++) {
-      retval.add(oldMap.get(i).clone());      
-    }
-    return (retval);
-  }
-
-  /***************************************************************************
-  **
-  ** Get the list of target names for the group.  May be empty for a group
-  ** with no name.
-  */
-  
-  public List<GroupUsage> getTimeCourseGroupKeysWithDefault(String groupId, String groupName) {
-    List<GroupUsage> retval = groupMap_.get(groupId);
-    if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList<GroupUsage>();
-      if ((groupName == null) || (groupName.trim().equals(""))) {        
-        return (retval);
-      }
-      retval.add(new GroupUsage(DataUtil.normKey(groupName), null));
-    }
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the list of target names for the group.  May be empty for a group
-  ** with no name.
-  */
-  
-  public List<GroupUsage> getCustomTimeCourseGroupKeys(String groupId) {
-    return (groupMap_.get(groupId));
-  }  
-  
-  /***************************************************************************
-  **
-  ** Get the set of groupIDs that target the given group. May be empty, not null.
-  */
-  
-  public Set<String> getTimeCourseGroupKeyInverses(String name) {
-    HashSet<String> retval = new HashSet<String>();
-    Iterator<String> kit = groupMap_.keySet().iterator();
-    while (kit.hasNext()) {
-      String key = kit.next();
-      List<GroupUsage> targs = groupMap_.get(key);
-      Iterator<GroupUsage> trit = targs.iterator();
-      while (trit.hasNext()) {
-        GroupUsage usage = trit.next();
-        if (usage.mappedGroup.equals(name)) {
-          retval.add(key);
-        }
-      }
-    }
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Delete the group mappings referencing the given proxy
-  */
-
-  public TimeCourseChange[] dropGroupMapsForProxy(String proxyId) {
-
-    ArrayList<TimeCourseChange> retvalList = new ArrayList<TimeCourseChange>();
-    Iterator<String> gmit = new HashSet<String>(groupMap_.keySet()).iterator();
-    while (gmit.hasNext()) {
-      String key = gmit.next();
-      List<GroupUsage> currentMap = groupMap_.get(key);
-      int mSize = currentMap.size();
-      ArrayList<GroupUsage> newMap = new ArrayList<GroupUsage>();
-      for (int i = 0; i < mSize; i++) {
-        GroupUsage gu = currentMap.get(i);
-        if ((gu.usage == null) || (!gu.usage.equals(proxyId))) {
-          newMap.add(gu);
-        }
-      }
-      if (newMap.size() < mSize) {
-        TimeCourseChange tcc = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);      
-        retvalList.add(tcc);
-        tcc.mapKey = key;
-        tcc.groupMapListOrig = deepCopyGroupMap(currentMap);
-        if (newMap.size() > 0) {
-          groupMap_.put(key, newMap);
-          tcc.groupMapListNew = deepCopyGroupMap(newMap);        
-        } else {
-          groupMap_.remove(key);
-          tcc.groupMapListNew = null;
-        }
-        tcc.baseSerialNumberNew = ++serialNumber_;
-      }
-    }
-    
-    return (retvalList.toArray(new TimeCourseChange[retvalList.size()]));
-  }  
- 
-  /***************************************************************************
-  **
-  ** Delete the group mapping
-  */
-
-  public TimeCourseChange dropGroupMap(String groupId) {
-    if (groupMap_.get(groupId) == null) {
-      return (null);
-    }    
-    TimeCourseChange retval = new TimeCourseChange(TimeCourseChange.BASE_SERIAL, serialNumber_);
-    retval.mapKey = groupId;
-    retval.groupMapListNew = null;
-    retval.groupMapListOrig = deepCopyGroupMap(groupMap_.remove(groupId));
-    retval.baseSerialNumberNew = ++serialNumber_;
-    return (retval);
-  }
-
-  /***************************************************************************
-  ** 
-  ** Get an iterator over all the group map keys
-  */
-
-  public Iterator<String> getGroupMapKeys() {
-    return (groupMap_.keySet().iterator());
-  }
-
-  /***************************************************************************
-  ** 
-  ** For debug: output all group maps
-  */
-
-  public void dumpGroupMaps(PrintStream out) {
-    Iterator<String> kit = groupMap_.keySet().iterator();
-    while (kit.hasNext()) {
-      String giid = kit.next();
-      out.print(giid);
-      out.print(":");
-      List<GroupUsage> gm = groupMap_.get(giid);
-      if (gm != null) {
-        out.println(gm);
-      }
-    }
-    return;
-  }  
-  
-  /***************************************************************************
-  **
-  ** Undo a map change
-  */
-  
-  private void groupMapChangeUndo(TimeCourseChange undo) {
-    if ((undo.groupMapListOrig != null) && (undo.groupMapListNew != null)) {
-      groupMap_.put(undo.mapKey, undo.groupMapListOrig);
-    } else if (undo.groupMapListOrig == null) {
-      groupMap_.remove(undo.mapKey);
-    } else {
-      groupMap_.put(undo.mapKey, undo.groupMapListOrig);
-    }
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Redo a map change
-  */
-  
-  private void groupMapChangeRedo(TimeCourseChange undo) {
-    if ((undo.groupMapListOrig != null) && (undo.groupMapListNew != null)) {
-      groupMap_.put(undo.mapKey, undo.groupMapListNew);
-    } else if (undo.groupMapListNew == null) {
-      groupMap_.remove(undo.mapKey);
-    } else {
-      groupMap_.put(undo.mapKey, undo.groupMapListNew);
-    }
-    return;
-  }
-  
+   
   /***************************************************************************
   **
   ** Write the Time Course Data to XML
@@ -2625,16 +1969,10 @@ public class TimeCourseData implements Cloneable {
     } else if (hasGeneTemplate()) {
        ind.up();    
        Iterator<GeneTemplateEntry> tempit = getGeneTemplate();
-       TimeCourseGene tg = new TimeCourseGene(appState_, "___Gene-For-BT-Template__", tempit, true);
+       TimeCourseGene tg = new TimeCourseGene(dacx_, "___Gene-For-BT-Template__", tempit, true);
        tg.writeXMLForTemplate(out, ind);
        ind.down();
     }
-    if (tcMap_.size() > 0) {
-      writeTcMap(out, ind);
-    } 
-    if (groupMap_.size() > 0) {
-      writeGroupMap(out, ind);
-    } 
     if ((groupParents_.size() > 0) || (groupRoots_.size() > 0)) {
       writeHierarchy(out, ind);
     }     
@@ -2785,7 +2123,7 @@ public class TimeCourseData implements Cloneable {
           if (neighbors != null) {
             regions.addAll(neighbors.get(regKey));
           }
-          currRis = new RootInstanceSuggestions(appState_, hourVal, hourVal, times, regions, regKey, false);
+          currRis = new RootInstanceSuggestions(dacx_, hourVal, hourVal, times, regions, regKey, false);
           List<RootInstanceSuggestions> sugsForTime = retvalMap.get(hour);
           if (sugsForTime == null) {
             sugsForTime = new ArrayList<RootInstanceSuggestions>();
@@ -2854,7 +2192,7 @@ public class TimeCourseData implements Cloneable {
         }
         ArrayList<Integer> times = new ArrayList<Integer>();
         times.add(hourKey);
-        currRis = new RootInstanceSuggestions(appState_, hourVal, hourVal, times, regions, null, true);
+        currRis = new RootInstanceSuggestions(dacx_, hourVal, hourVal, times, regions, null, true);
       } else {
         currRis.times.add(hourKey);
         currRis.maxTime = hourVal;
@@ -2872,7 +2210,7 @@ public class TimeCourseData implements Cloneable {
   ** mapped.
   */  
  
-  List<TimeBoundedRegion> genRegionLineage(String groupID) {
+  public List<TimeBoundedRegion> genRegionLineage(String groupID) {
     if (!hierarchyIsSetForRegion(groupID)) {
       throw new IllegalStateException();
     }
@@ -2880,7 +2218,7 @@ public class TimeCourseData implements Cloneable {
     String currRegion = groupID;
     SortedSet<Integer> currTimes = DataUtil.fillOutHourly(hoursForRegion(groupID));
     while (true) {
-      retval.add(new TimeBoundedRegion(appState_, currTimes, currRegion));
+      retval.add(new TimeBoundedRegion(dacx_, currTimes, currRegion));
       if (regionIsRoot(currRegion)) {
         return (retval);
       } else {
@@ -2940,12 +2278,12 @@ public class TimeCourseData implements Cloneable {
     public SortedSet<Integer> times;
     public String region;
     private List<TimeBoundedRegion> lineage_;
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
     public static final String TBR_XML_KEY = "tcTimedRegion";
        
-    public TimeBoundedRegion(BTState appState, SortedSet<Integer> times, String region) {
-      appState_ = appState;
+    public TimeBoundedRegion(DataAccessContext dacx, SortedSet<Integer> times, String region) {
+      dacx_ = dacx;
       this.times = DataUtil.fillOutHourly(times);
       this.region = region;
       this.lineage_ = null;
@@ -2953,7 +2291,7 @@ public class TimeCourseData implements Cloneable {
        
     public List<TimeBoundedRegion> getLineage() {
       if (lineage_ == null) {
-        lineage_ = appState_.getDB().getTimeCourseData().genRegionLineage(region);     
+        lineage_ = dacx_.getExpDataSrc().getTimeCourseData().genRegionLineage(region);     
       }
       return (lineage_);
     }
@@ -3038,7 +2376,7 @@ public class TimeCourseData implements Cloneable {
       return;
     }
       
-    public static TimeBoundedRegion buildFromXML(BTState appState, String elemName, Attributes attrs) throws IOException {          
+    public static TimeBoundedRegion buildFromXML(DataAccessContext dacx, String elemName, Attributes attrs) throws IOException {          
       String regName = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "region", true);
       String minTime = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "minTime", true);
       String maxTime = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "maxTime", true); 
@@ -3053,7 +2391,7 @@ public class TimeCourseData implements Cloneable {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }  
-      return (new TimeBoundedRegion(appState, seedSet, regName));
+      return (new TimeBoundedRegion(dacx, seedSet, regName));
     } 
   }
  
@@ -3064,19 +2402,19 @@ public class TimeCourseData implements Cloneable {
  
   public static class TimeBoundedRegionWorker extends AbstractFactoryClient {
   
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public TimeBoundedRegionWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public TimeBoundedRegionWorker(DataAccessContext dacx, FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add(TimeBoundedRegion.TBR_XML_KEY);
-      appState_ = appState;
+      dacx_ = dacx;
     }
     
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals(TimeBoundedRegion.TBR_XML_KEY)) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-        board.currTimeBoundRegion = TimeBoundedRegion.buildFromXML(appState_, elemName, attrs);
+        board.currTimeBoundRegion = TimeBoundedRegion.buildFromXML(dacx_, elemName, attrs);
         retval = board.currTimeBoundRegion;
       }
       return (retval);     
@@ -3096,10 +2434,10 @@ public class TimeCourseData implements Cloneable {
     public Set<String> regions;
     public String mainRegion;
     public boolean timeSliced;
-    private BTState appState_;
-
-    public RootInstanceSuggestions(BTState appState, int minTime, int maxTime, List<Integer> times, Set<String> regions, String mainRegion, boolean timeSliced) {
-      appState_ = appState;
+    private DataAccessContext dacx_;
+    
+    public RootInstanceSuggestions(DataAccessContext dacx, int minTime, int maxTime, List<Integer> times, Set<String> regions, String mainRegion, boolean timeSliced) {
+      dacx_ = dacx;
       this.minTime = minTime;
       this.maxTime = maxTime;      
       this.regions = regions;
@@ -3118,11 +2456,10 @@ public class TimeCourseData implements Cloneable {
     } 
        
     public String heavyToString() {
-      Database db = appState_.getDB();
-      TimeAxisDefinition tad = db.getTimeAxisDefinition();
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
       String displayUnits = tad.unitDisplayString();
       boolean suffixUnits = tad.unitsAreASuffix();    
-      ResourceManager rMan = appState_.getRMan();    
+      ResourceManager rMan = dacx_.getRMan();    
       String format = (suffixUnits) ? rMan.getString("timeRange.format") 
                                     : rMan.getString("timeRange.formatPrefix"); 
       String timeSpan = MessageFormat.format(format, new Object[] {new Integer(minTime), new Integer(maxTime), displayUnits});      
@@ -3242,6 +2579,10 @@ public class TimeCourseData implements Cloneable {
       return (links.iterator());
     }    
     
+    public Iterator<String> getRegions() {
+      return (regions.iterator());
+    }  
+    
     public boolean hasLink(TopoLink link) {
       return (links.contains(link));
     }
@@ -3318,16 +2659,16 @@ public class TimeCourseData implements Cloneable {
   public static class TopoTimeRange implements Cloneable, Comparable<TopoTimeRange> {
     public int minTime;
     public int maxTime;
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
     public static final String XML_TAG_TOPO = "tcRegionTopology";
     public static final String XML_TAG_LOC = "topoLocationsForRange";    
 
-    public TopoTimeRange(BTState appState, int minTime, int maxTime) {
+    public TopoTimeRange(DataAccessContext dacx, int minTime, int maxTime) {
       if (minTime > maxTime) {
         throw new IllegalArgumentException();
       }
-      appState_ = appState;
+      dacx_ = dacx;
       this.minTime = minTime;
       this.maxTime = maxTime;      
     }
@@ -3340,6 +2681,7 @@ public class TimeCourseData implements Cloneable {
       return (retval);
     }
  
+    @Override
     public TopoTimeRange clone() {
       try {
         TopoTimeRange retval = (TopoTimeRange)super.clone();
@@ -3378,7 +2720,7 @@ public class TimeCourseData implements Cloneable {
 
     @Override
     public String toString() {
-      TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
       String minStr;
       String maxStr;
       if (tad.haveNamedStages()) {
@@ -3388,7 +2730,7 @@ public class TimeCourseData implements Cloneable {
         minStr = Integer.toString(minTime);
         maxStr = Integer.toString(maxTime);        
       }        
-      ResourceManager rMan = appState_.getRMan();    
+      ResourceManager rMan = dacx_.getRMan();    
       String format = (tad.unitsAreASuffix()) ? rMan.getString("timeRange.format") 
                                               : rMan.getString("timeRange.formatPrefix");
       String displayUnits = tad.unitDisplayAbbrev();
@@ -3416,7 +2758,7 @@ public class TimeCourseData implements Cloneable {
       return;
     }
     
-    public static TopoTimeRange buildFromXML(BTState appState, String elemName, 
+    public static TopoTimeRange buildFromXML(DataAccessContext dacx, String elemName, 
                                              Attributes attrs) throws IOException {
 
       if (!elemName.equals(XML_TAG_TOPO) && !elemName.equals(XML_TAG_LOC)) {
@@ -3453,8 +2795,7 @@ public class TimeCourseData implements Cloneable {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }    
- 
-      return (new TopoTimeRange(appState, minTime, maxTime));
+      return (new TopoTimeRange(dacx, minTime, maxTime));
     }    
   }
   
@@ -3548,7 +2889,7 @@ public class TimeCourseData implements Cloneable {
         TopoTimeRange ttr = timeit.next();
         RegionTopology regTopo = tcd.getRegionTopology(ttr);
         TopoTimeRange tRange = regTopo.times;
-        HashMap<String, TopoRegionLoc> locsPerRange = initializeTopoLocData(regTopo);
+        HashMap<String, TopoRegionLoc> locsPerRange = initializeTopoLocData(regTopo, tRange);
         regionTopoLocs_.put(tRange, locsPerRange);
       }
     }
@@ -3695,7 +3036,8 @@ public class TimeCourseData implements Cloneable {
       return;
     }
     
-    private HashMap<String, TopoRegionLoc> initializeTopoLocData(RegionTopology rt) {
+    @SuppressWarnings("unused")
+    private HashMap<String, TopoRegionLoc> initializeTopoLocData(RegionTopology rt, TopoTimeRange ttr) {
       HashMap<String, TopoRegionLoc> retval = new HashMap<String, TopoRegionLoc>();
       int num = rt.regions.size();
       int numSide = (int)Math.ceil(Math.sqrt(num));
@@ -3733,6 +3075,7 @@ public class TimeCourseData implements Cloneable {
       this.center = new Point2D.Double(Math.round(center.getX()), Math.round(center.getY()));      
     }
     
+    @Override
     public TopoRegionLoc clone() {
       try {
         TopoRegionLoc retval = (TopoRegionLoc)super.clone();
@@ -3802,7 +3145,7 @@ public class TimeCourseData implements Cloneable {
   **
   */
   
-  public static TimeCourseData buildFromXML(BTState appState, String elemName, 
+  public static TimeCourseData buildFromXML(DataAccessContext dacx, String elemName, 
                                             Attributes attrs, 
                                             boolean serialNumberIsIllegal) throws IOException {
     if (!elemName.equals("TimeCourseData")) {
@@ -3815,7 +3158,7 @@ public class TimeCourseData implements Cloneable {
       throw new IOException();
     }
     
-    TimeCourseData retval = new TimeCourseData(appState);
+    TimeCourseData retval = new TimeCourseData(dacx);
   
     try {
       if (serialString != null) {
@@ -3854,69 +3197,6 @@ public class TimeCourseData implements Cloneable {
   **
   */
   
-  public static String extractTcMapKey(String elemName, 
-                                     Attributes attrs) throws IOException {
-    return (AttributeExtractor.extractAttribute(
-              elemName, attrs, "tcMap", "key", true));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static TCMapping extractTCMapping(String elemName, 
-                                           Attributes  attrs) throws IOException {
-    String name = AttributeExtractor.extractAttribute(elemName, attrs, "useTc", "name", true);
-    String srcString = AttributeExtractor.extractAttribute(elemName, attrs, "useTc", "src", false);
-    int source;
-    if (srcString == null) {
-      source = ExpressionEntry.NO_SOURCE_SPECIFIED;
-    } else {
-      srcString = srcString.trim();
-      try {
-        source = ExpressionEntry.mapFromSourceTag(srcString);
-      } catch (IllegalArgumentException iaex) {
-        throw new IOException();
-      }
-    }
-    return (new TCMapping(name, source));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static String extractGroupMapKey(String elemName, 
-                                     Attributes attrs) throws IOException {
-    return (AttributeExtractor.extractAttribute(
-              elemName, attrs, "tcGroupMap", "key", true));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static GroupUsage extractUseGroup(String elemName, 
-                                           Attributes attrs) throws IOException {
-    String mappedGroup = AttributeExtractor.extractAttribute(
-                         elemName, attrs, "useGroup", "name", true);
-    String usage = AttributeExtractor.extractAttribute(
-                   elemName, attrs, "useGroup", "useFor", false);    
-    return (new GroupUsage(mappedGroup, usage));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
   public static String extractRootRegion(String elemName, 
                                          Attributes attrs) throws IOException {
     return (AttributeExtractor.extractAttribute(
@@ -3939,46 +3219,6 @@ public class TimeCourseData implements Cloneable {
     return;
   }  
 
-  /***************************************************************************
-  **
-  ** Return the tcMap keyword
-  **
-  */
-  
-  public static String tcMapKeyword() {
-    return ("tcMap");
-  }
-  
-  /***************************************************************************
-  **
-  ** Return the usetc keyword
-  **
-  */
-  
-  public static String useTcKeyword() {
-    return ("useTc");
-  }
-
-  /***************************************************************************
-  **
-  ** Return the groupmap keyword
-  **
-  */
-  
-  public static String groupMapKeyword() {
-    return ("tcGroupMap");
-  }
-  
-  /***************************************************************************
-  **
-  ** Return the useGroup keyword
-  **
-  */
-  
-  public static String useGroupKeyword() {
-    return ("useGroup");
-  }
-  
   /***************************************************************************
   **
   ** Return the rootRegion keyword
@@ -4013,90 +3253,6 @@ public class TimeCourseData implements Cloneable {
   // PRIVATE INSTANCE METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-  
-  /***************************************************************************
-  **
-  ** Write the tcmap to XML
-  **
-  */
-  
-  private void writeTcMap(PrintWriter out, Indenter ind) {
-    ind.up().indent();    
-    out.println("<tcMaps>");
-    TreeSet<String> sorted = new TreeSet<String>();
-    sorted.addAll(tcMap_.keySet());
-    Iterator<String> mapKeys = sorted.iterator();
-    ind.up();    
-    while (mapKeys.hasNext()) {
-      String key = mapKeys.next();     
-      List<TCMapping> list = tcMap_.get(key);
-      ind.indent();
-      out.print("<tcMap key=\"");
-      out.print(key);
-      out.println("\">");
-      Iterator<TCMapping> lit = list.iterator();
-      ind.up();    
-      while (lit.hasNext()) {
-        TCMapping usetc = lit.next();      
-        ind.indent();
-        out.print("<useTc name=\"");
-        out.print(usetc.name);
-        if (usetc.channel != ExpressionEntry.NO_SOURCE_SPECIFIED) {       
-          out.print("\" src=\"");
-          out.print(ExpressionEntry.mapToSourceTag(usetc.channel));
-        }
-        out.println("\"/>");
-      }
-      ind.down().indent(); 
-      out.println("</tcMap>");
-    }
-    ind.down().indent(); 
-    out.println("</tcMaps>");
-    ind.down();
-    return;
-  }  
-
-  /***************************************************************************
-  **
-  ** Write the group map to XML
-  **
-  */
-
-  private void writeGroupMap(PrintWriter out, Indenter ind) {
-    ind.up().indent();    
-    out.println("<tcGroupMaps>");
-    TreeSet<String> sorted = new TreeSet<String>();
-    sorted.addAll(groupMap_.keySet());
-    Iterator<String> mapKeys = sorted.iterator();
-    ind.up();    
-    while (mapKeys.hasNext()) {
-      String key = mapKeys.next();     
-      List<GroupUsage> list = groupMap_.get(key);
-      ind.indent();
-      out.print("<tcGroupMap key=\"");
-      out.print(key);
-      out.println("\">");
-      Iterator<GroupUsage> lit = list.iterator();
-      ind.up();    
-      while (lit.hasNext()) {
-        GroupUsage usegr = lit.next();      
-        ind.indent();
-        out.print("<useGroup name=\"");
-        out.print(usegr.mappedGroup);
-        if (usegr.usage != null) {
-          out.print("\" useFor=\""); 
-          out.print(usegr.usage);          
-        }
-        out.println("\"/>");
-      }
-      ind.down().indent(); 
-      out.println("</tcGroupMap>");
-    }
-    ind.down().indent(); 
-    out.println("</tcGroupMaps>");
-    ind.down();
-    return;
-  }
   
   /***************************************************************************
   **
@@ -4173,94 +3329,6 @@ public class TimeCourseData implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  /***************************************************************************
-  **
-  ** Specifies a mapping from node to time course gene AND OPTIONAL SOURCE CHANNEL
-  **
-  */
-  
-  public static class TCMapping implements Cloneable, Comparable<TCMapping> {
-    public String name;
-    public int channel;
-    
-    public TCMapping(String name) {
-      this.name = name;
-      this.channel = ExpressionEntry.NO_SOURCE_SPECIFIED;
-    }
-    
-    public TCMapping(String name, int channel) {
-      this.name = name;
-      this.channel = channel;
-    }
-     
-    public TCMapping clone() {
-      try {
-        TCMapping retval = (TCMapping)super.clone();
-        return (retval);
-      } catch (CloneNotSupportedException cnse) {
-        throw new IllegalStateException();
-      }
-    }
-    
-    public boolean equals(Object other) {
-      if (other == null) {
-        return (false);
-      }
-      if (other == this) {
-        return (true);
-      }
-      if (!(other instanceof TCMapping)) {
-        return (false);
-      }
-      TCMapping otherTCM = (TCMapping)other;
-
-      if (!DataUtil.keysEqual(this.name, otherTCM.name)) {
-        return (false);
-      }
-      return (this.channel == otherTCM.channel);
-    }
-    
-    public String toString() {
-      return (name + ((channel != ExpressionEntry.NO_SOURCE_SPECIFIED) ? (": " + ExpressionEntry.mapToSourceTag(channel)) : ""));
-    }    
-
-    public int hashCode() {
-      return (DataUtil.normKey(name).hashCode() + channel);
-    }  
-
-    public static ArrayList<TCMapping> cloneAList(List<TCMapping> toClone) {
-      ArrayList<TCMapping> retval = new ArrayList<TCMapping>();
-      int num = toClone.size();
-      for (int i = 0; i < num; i++) {
-        TCMapping tcm = toClone.get(i);
-        retval.add(tcm.clone());
-      }
-      return (retval);      
-    }
-    
-    public int compareTo(TCMapping other) {
-      if (this == other) {
-        return (0);
-      }
-      int retval = this.name.compareTo(other.name);
-      if (retval != 0) {
-        return (retval);
-      }
-      return (this.channel - other.channel);
-    }  
-     
-    public static boolean nameInList(String name, List<TCMapping> toCheck) {
-      int num = toCheck.size();
-      for (int i = 0; i < num; i++) {
-        TCMapping tcm = toCheck.get(i);
-        if (DataUtil.keysEqual(name, tcm.name)) {
-          return (true);
-        }
-      }
-      return (false);
-    }
-  }
- 
   /***************************************************************************
   **
   ** Useful for reporting hierarchy changes

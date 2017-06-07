@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@ package org.systemsbiology.biotapestry.embedded;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 
 /****************************************************************************
 **
@@ -46,7 +46,7 @@ public class ExternalInventoryNode extends ExternalInventoryItem {
   ////////////////////////////////////////////////////////////////////////////  
   
   private ArgsForExternalNode afen_;
-  private ArrayList<TimeCourseData.TCMapping> timeCourseMaps_;
+  private ArrayList<TimeCourseDataMaps.TCMapping> timeCourseMaps_;
   private boolean internal_;
 
   ////////////////////////////////////////////////////////////////////////////
@@ -61,10 +61,10 @@ public class ExternalInventoryNode extends ExternalInventoryItem {
   */ 
   
   public ExternalInventoryNode(BuilderArgs bArgs, ArgsForExternalNode afen, 
-                               List<TimeCourseData.TCMapping> timeCourse, boolean internalOnly) {
+                               List<TimeCourseDataMaps.TCMapping> timeCourse, boolean internalOnly) {
     super(bArgs);
     afen_ = afen;
-    timeCourseMaps_ = (timeCourse == null) ? null : new ArrayList<TimeCourseData.TCMapping>(timeCourse);
+    timeCourseMaps_ = (timeCourse == null) ? null : new ArrayList<TimeCourseDataMaps.TCMapping>(timeCourse);
     internal_ = internalOnly;
   }
 
@@ -115,8 +115,8 @@ public class ExternalInventoryNode extends ExternalInventoryItem {
   ** Get mapped names (may be null)
   */ 
   
-  public List<TimeCourseData.TCMapping> getMappedNames() {
-    return ((timeCourseMaps_ == null) ? null : new ArrayList<TimeCourseData.TCMapping>(timeCourseMaps_));
+  public List<TimeCourseDataMaps.TCMapping> getMappedNames() {
+    return ((timeCourseMaps_ == null) ? null : new ArrayList<TimeCourseDataMaps.TCMapping>(timeCourseMaps_));
   }
   
   /***************************************************************************

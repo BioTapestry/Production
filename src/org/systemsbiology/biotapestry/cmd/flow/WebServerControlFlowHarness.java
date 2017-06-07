@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,16 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatResponse;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatStackPage;
+import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -58,8 +66,10 @@ public class WebServerControlFlowHarness extends ServerControlFlowHarness {
   ** Constructor 
   */ 
   
-  public WebServerControlFlowHarness(BTState appState, SerializableDialogPlatform dPlat) {
-    super(appState, dPlat);
+  public WebServerControlFlowHarness(HarnessBuilder hBld, UIComponentSource uics, RememberSource rSrc, 
+                                     UndoFactory uFac, TabSource tSrc, PathAndFileSource pafs, 
+                                     CmdSource cSrc, SerializableDialogPlatform dPlat) {  
+    super(dPlat, hBld, uics, rSrc, uFac, tSrc, pafs, cSrc);
     currFlow = null;
   }
      
@@ -87,14 +97,68 @@ public class WebServerControlFlowHarness extends ServerControlFlowHarness {
   @Override
   public DialogAndInProcessCmd receiveUserInputs(UserInputs cfhui) {
 	  if (cfhui != null) {
-		  currDaipc = new DialogAndInProcessCmd(cfhui, currDaipc.currStateX);
+		  currDaipc = new DialogAndInProcessCmd(cfhui, currDaipc.currStateX,currDaipc.dialog);
+		  // Temporary workaround until we solve the problem of 'apply' not being treated
+		  // like an 'update without close' step
+		  // TODO: think about how apply will handle a persistent virtual dialog
+		  Dialog currDialog = currDaipc.dialog;
 		  stepTheFlow();
+		  if(cfhui.isForApply()) {
+			  currDaipc.dialog = currDialog;
+		  }
 		  while (currDaipc.state == DialogAndInProcessCmd.Progress.KEEP_PROCESSING) {
+			  currDialog = currDaipc.dialog;
 			  stepTheFlow();
+			  if(cfhui.isForApply()) {
+				  currDaipc.dialog = currDialog;
+			  }
 		  }
 	  }
 	  return (currDaipc);
   }
+  
+  /******************************
+   * checkForErrors(UserInputs)
+   ******************************
+   * 
+   * @param cfhui
+   * @return DialogAndInProcessCmd
+   * 
+   */
+  public DialogAndInProcessCmd checkForErrors(UserInputs cfhui) {
+	  currDaipc.cfhui = cfhui;
+	  if(cfhui != null) {
+		  XPlatResponse xpr = ((SerializableDialogPlatform.Dialog)currDaipc.dialog).checkForErrors(cfhui);
+		  if(xpr != null) {
+			  switch(xpr.getXplatResponseType()) {
+				  case SUF:
+					  currDaipc.suf = (SimpleUserFeedback)xpr;
+					  currDaipc.state = DialogAndInProcessCmd.Progress.SIMPLE_USER_FEEDBACK;
+					  break;
+				  case STACK_PAGE:
+					  currDaipc.stackPage = (XPlatStackPage)xpr;
+					  currDaipc.state = DialogAndInProcessCmd.Progress.HAVE_STACK_PAGE;
+					  break;
+				}
+		  } else {
+			  currDaipc.stackPage = null;
+			  currDaipc.suf = null;
+		  }
+	  }
+	  return (currDaipc);
+  }
+  
+  public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+	  // If there was a dialog up, it will handle the SUF response
+	  if(currDaipc.dialog != null) {
+		  return ((SerializableDialogPlatform.Dialog)currDaipc.dialog).handleSufResponse(daipc);
+	  }
+	  // Otherwise the flow will, so just store it
+	  currDaipc.suf = daipc.suf;
+	  return currDaipc;
+  }
+  
+  
   
   /***************************************************************************
   **

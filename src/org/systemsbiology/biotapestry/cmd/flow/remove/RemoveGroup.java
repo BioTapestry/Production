@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,11 +19,11 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -45,8 +45,7 @@ public class RemoveGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveGroup(BTState appState) {
-    super(appState);  
+  public RemoveGroup() {
     name = "groupPopup.GroupDelete";
     desc = "groupPopup.GroupDelete";     
     mnem = "groupPopup.GroupDeleteMnem";
@@ -65,8 +64,8 @@ public class RemoveGroup extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(dacx);
      return (retval);
    }
  
@@ -84,6 +83,7 @@ public class RemoveGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();      
         } else {
@@ -102,26 +102,28 @@ public class RemoveGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private String groupKey_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
+    }
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepToRemove";
     }
     
     /***************************************************************************
@@ -140,9 +142,9 @@ public class RemoveGroup extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToRemove() {
-      UndoSupport support = new UndoSupport(appState_, "undo.groupDelete");
-      if (RemoveGroupSupport.deleteGroupFromModel(appState_, groupKey_, rcxT_, support, false)) {
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
+      UndoSupport support = uFac_.provideUndoSupport("undo.groupDelete", dacx_);
+      if (RemoveGroupSupport.deleteGroupFromModel(groupKey_, uics_, dacx_, support, false, uFac_)) {
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

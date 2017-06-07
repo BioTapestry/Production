@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,13 +19,13 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -57,8 +57,7 @@ public class RemoveNote extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveNote(BTState appState) {
-    super(appState);
+  public RemoveNote() {
     name = "notePopup.Delete";
     desc = "notePopup.Delete";     
     mnem = "notePopup.DeleteMnem";
@@ -77,8 +76,8 @@ public class RemoveNote extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
  
@@ -96,6 +95,7 @@ public class RemoveNote extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();       
         } else {
@@ -114,26 +114,18 @@ public class RemoveNote extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -153,27 +145,27 @@ public class RemoveNote extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToRemove() {
        
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteNote");
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteNote", dacx_);
       String noteID = intersect_.getObjectID();
-      GenomeChange gc = rcxT_.getGenome().removeNote(noteID);
+      GenomeChange gc = dacx_.getCurrentGenome().removeNote(noteID);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);        
       }
-      support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
            
       //
       // Gotta delete from the parent root layout
       //
       
       Layout.PropChange[] lpc = new Layout.PropChange[1];    
-      lpc[0] = rcxT_.getLayout().removeNoteProperties(noteID);
+      lpc[0] = dacx_.getCurrentLayout().removeNoteProperties(noteID);
       if (lpc != null) {
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
         support.addEdit(mov);        
       }  
-      appState_.getGenomePresentation().clearSelections(rcxT_, support);
-      appState_.getSUPanel().drawModel(false);
+      uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
+      uics_.getSUPanel().drawModel(false);
       support.finish();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 

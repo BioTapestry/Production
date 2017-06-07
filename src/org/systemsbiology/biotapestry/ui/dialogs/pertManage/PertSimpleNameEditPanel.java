@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
@@ -75,8 +75,8 @@ public class PertSimpleNameEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertSimpleNameEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String label, Client client, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 4);
+  public PertSimpleNameEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String label, Client client, String myKey) { 
+    super(uics, dacx, parent, pet, myKey, 4);
     client_ = client;
     
     JPanel editPanel = new JPanel();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,11 +28,12 @@ import java.awt.GridBagConstraints;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.SortedMap;
 import java.util.TreeSet;
 import javax.swing.JPanel;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -48,6 +49,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -78,8 +80,9 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   private PertAnnotEditPanel paep_;
   private String currKey_;
   private PertManageHelper pmh_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -94,13 +97,14 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertAnnotManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
+  public PertAnnotManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
                               PerturbationData pd, PendingEditTracker pet, 
                               PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    uFac_ = uFac;
+    pmh_ = new PertManageHelper(uics, dacx, pmw, pd, rMan_, gbc_, pet_);
 
     //
     // Build the Annotation panel
@@ -110,7 +114,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     UiUtil.gbcSet(gbc_, 2, rowNum_++, 4, 1, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 1.0);    
     topPanel_.add(annotPanel, gbc_);  
  
-    paep_ = new PertAnnotEditPanel(appState_, dacx, parent_, pd_, this, ANNOT_KEY);
+    paep_ = new PertAnnotEditPanel(uics, dacx, parent_, pd_, this, ANNOT_KEY);
     addEditPanel(paep_, ANNOT_KEY);
   
     finishConstruction();
@@ -228,20 +232,20 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   */
   
   protected void displayProperties(boolean fireChange) {
-    List selKeys = (rtda_.selectedRows == null) ? null :
-                     ((AnnotModel)rtda_.getModel()).getSelectedKeys(rtda_.selectedRows);
+    List<String> selKeys = (rtda_.selectedRows == null) ? null :
+                             ((AnnotModel)rtda_.getModel()).getSelectedKeys(rtda_.selectedRows);
     
     rtda_.rowElements.clear(); 
     PertAnnotations pa = pd_.getPertAnnotations();
-    Map refCounts = pd_.getDependencyAnalyzer().getAllAnnotReferenceCounts();
+    Map<String, Integer> refCounts = pd_.getDependencyAnalyzer().getAllAnnotReferenceCounts();
     Integer noCount = new Integer(0);
-    Map n2k = pa.getFootTagToKeyMap();
-    Iterator n2kit = n2k.keySet().iterator();
+    SortedMap<String, String> n2k = pa.getFootTagToKeyMap();
+    Iterator<String> n2kit = n2k.keySet().iterator();
     while (n2kit.hasNext()) {
-      String tag = (String)n2kit.next();
-      String key = (String)n2k.get(tag);
+      String tag = n2kit.next();
+      String key = n2k.get(tag);
       String message = pa.getMessage(key);
-      Integer refCount = (Integer)refCounts.get(key);
+      Integer refCount = refCounts.get(key);
       if (refCount == null) {
         refCount = noCount;
       }
@@ -294,10 +298,10 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
       return;
     }
  
-    UndoSupport support = new UndoSupport(appState_, "undo.deletePertAnnot");
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertAnnot", dacx_);
     da.killOffDependencies(refs, dacx_, support);    
     PertDataChange pdc = pd_.deleteAnnotation(annotKey);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -314,7 +318,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   public void doADuplication(String key) {
     currKey_ = null;
     String dupKey = ((AnnotModel)rtda_.getModel()).getSelectedKey(rtda_.selectedRows);
-    TrueObjChoiceContent tocc = (TrueObjChoiceContent)pd_.getPertAnnotations().getAvailableTagChoices().get(0);
+    TrueObjChoiceContent tocc = pd_.getPertAnnotations().getAvailableTagChoices().get(0);
     String dupText = pd_.getPertAnnotations().getMessage(dupKey);
     paep_.setDupAnnotation(tocc.name, dupText);
     paep_.startEditing();
@@ -326,18 +330,19 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   ** Handle join operations 
   */ 
   
+  @Override
   public void doAJoin(String key) {
     joinKeys_ = ((AnnotModel)rtda_.getModel()).getSelectedKeys(rtda_.selectedRows);
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map refCounts = da.getAllAnnotReferenceCounts();
+    Map<String, Integer> refCounts = da.getAllAnnotReferenceCounts();
     currKey_ = pmh_.getMostUsedKey(refCounts, joinKeys_);
     
-    TreeSet nameOptions = new TreeSet(String.CASE_INSENSITIVE_ORDER);
-    TreeSet tagOptions = new TreeSet(String.CASE_INSENSITIVE_ORDER);
+    TreeSet<String> nameOptions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
+    TreeSet<String> tagOptions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
     PertAnnotations pa = pd_.getPertAnnotations();
     int numk = joinKeys_.size();
     for (int i = 0; i < numk; i++) {
-      String nextJk = (String)joinKeys_.get(i);
+      String nextJk = joinKeys_.get(i);
       nameOptions.add(pa.getMessage(nextJk));
       tagOptions.add(pa.getTag(nextJk));
     }
@@ -353,7 +358,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   
   public void doAFilterJump(String key) {
     String filterKey = ((AnnotModel)rtda_.getModel()).getSelectedKey(rtda_.selectedRows);
-    PertFilter filter = new PertFilter(PertFilter.ANNOTATION, PertFilter.STR_EQUALS, filterKey);
+    PertFilter filter = new PertFilter(PertFilter.Cat.ANNOTATION, PertFilter.Match.STR_EQUALS, filterKey);
     PertFilterExpression pfe = new PertFilterExpression(filter);
     pfet_.jumpWithNewFilter(pfe); 
     return;
@@ -374,13 +379,13 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     String msg = paep_.getMessageResult();
     String tag = paep_.getTagResult();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    UndoSupport support = new UndoSupport(appState_, "undo.mergePertAnnot");   
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertAnnot", dacx_);   
   
-    DependencyAnalyzer.Dependencies refs = da.getAnnotMergeSet(new HashSet(joinKeys_), currKey_);
+    DependencyAnalyzer.Dependencies refs = da.getAnnotMergeSet(new HashSet<String>(joinKeys_), currKey_);
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange pdc = pd_.mergeAnnotations(joinKeys_, currKey_, tag, msg);
    
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -408,16 +413,16 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     PertDataChange pdc;
 
     if (currKey_ == null) {
-      support = new UndoSupport(appState_, "undo.createPertAnnot");
+      support = uFac_.provideUndoSupport("undo.createPertAnnot", dacx_);
       pdc = pd_.addAnnotation(tag, msg);
       resultKey = pdc.annotKey; // Kinda bogus...
     } else {
-      support = new UndoSupport(appState_, "undo.editPertAnnot");
+      support = uFac_.provideUndoSupport("undo.editPertAnnot", dacx_);
       pdc = pd_.editAnnotation(currKey_, tag, msg);
       resultKey = currKey_;
     }
     currKey_ = null;
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -434,7 +439,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
   
   private JPanel buildAnnotPanel() {
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
  
     //
     // Table:
@@ -448,7 +453,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     // Build the tables:
     //
     
-    rtda_ = new ReadOnlyTable(appState_, new AnnotModel(appState_), new ReadOnlyTable.EmptySelector());   
+    rtda_ = new ReadOnlyTable(uics_, dacx_, new AnnotModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());   
     rtda_.setButtonHandler(new ButtonHand(ANNOT_KEY));
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
@@ -494,8 +499,8 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     
     private static final long serialVersionUID = 1L;
  
-    AnnotModel(BTState appState) {
-      super(appState, NUM_COL_);
+    AnnotModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"annotTable.tag",
                                 "annotTable.message",
                                 "annotTable.refCount"};
@@ -526,8 +531,8 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
       return ((String)hiddenColumns_[HIDDEN_ID_].get(mapSelectionIndex(selected[0])));
     }   
     
-    public List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    public List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_ID_].get(mapSelectionIndex(selected[i])));
       }

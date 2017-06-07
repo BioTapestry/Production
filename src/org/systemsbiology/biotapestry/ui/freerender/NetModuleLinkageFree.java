@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,12 +26,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.NetModuleLinkage;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.LinkBusDrop;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
@@ -136,23 +137,23 @@ public class NetModuleLinkageFree implements DrawTreeModelDataSource, PlacementG
   ** Render the module linkage TREE!
   */
   
-  public void render(ModalShapeContainer group, String ovrID, String treeID, DataAccessContext rcx) {
+  public void render(ModalShapeContainer group, String ovrID, String treeID, DataAccessContext rcx, IRenderer.Mode mode) {
 
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);   
     DrawTree dTree = new DrawTree(nmlp, this,  null, rcx);
     rcx.pushGhosted(false);
-    dTree.renderToCache(group, this, nmlp, null, rcx);
+    dTree.renderToCache(group, this, nmlp, null, rcx, mode);
     rcx.popGhosted();
     return;  	
   }
   
-  public void renderForWeb(NetModuleLinkageCacheGroup group, String ovrID, String treeID, NetModuleLinkageExportForWeb lefw, DataAccessContext rcx) {
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+  public void renderForWeb(NetModuleLinkageCacheGroup group, String ovrID, String treeID, NetModuleLinkageExportForWeb lefw, DataAccessContext rcx, IRenderer.Mode mode) {
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);   
     DrawTree dTree = new DrawTree(nmlp, this,  null, rcx);
     rcx.pushGhosted(false);
-    dTree.renderToCache(group, this, nmlp, null, rcx);
+    dTree.renderToCache(group, this, nmlp, null, rcx, mode);
     dTree.exportNetModuleLinkages(lefw, rcx, ovrID, nmlp);
     rcx.popGhosted();
     return;  	
@@ -164,14 +165,14 @@ public class NetModuleLinkageFree implements DrawTreeModelDataSource, PlacementG
   */
   
   public Intersection intersects(String treeID, String ovrID, DataAccessContext itx, Point2D pt) {
-    NetOverlayProperties nop = itx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = itx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);
     
     //
     // Use mod links as a testbed for scale-dependent intersection testing:
     //
     
-    double useTol = (INTERSECT_TOL > itx.pixDiam) ? INTERSECT_TOL : 2.0 * itx.pixDiam;
+    double useTol = (INTERSECT_TOL > itx.getPixDiam()) ? INTERSECT_TOL : 2.0 * itx.getPixDiam();
      
     LinkProperties.DistancedLinkSegID dslid = nmlp.intersectBusSegment(itx, pt, null, useTol);
     if (dslid != null) {
@@ -278,9 +279,9 @@ public class NetModuleLinkageFree implements DrawTreeModelDataSource, PlacementG
            
      
     GenomeSource gSrc = icx.getGenomeSource();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
-    if (!lp.linkIsInModel(gSrc, genome, icx.oso, linkID)) {
+    if (!lp.linkIsInModel(gSrc, genome, icx.getOSO(), linkID)) {
       return (null);
     }
  
@@ -291,6 +292,7 @@ public class NetModuleLinkageFree implements DrawTreeModelDataSource, PlacementG
     NetModuleLinkage link = no.getLinkage(linkID);
     retval.sign = link.getSign();
     retval.perLinkActivity = null;
+    retval.simDiff = null;
     retval.perLinkForEvidence = null;
     retval.isActive = true;
     retval.targetOffset = 0.0;
@@ -313,7 +315,7 @@ public class NetModuleLinkageFree implements DrawTreeModelDataSource, PlacementG
     
     DrawTreeModelDataSource.ModelDataForTip retval = new DrawTreeModelDataSource.ModelDataForTip();
     GenomeSource gSrc = icx.getGenomeSource();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
       
     NetModuleLinkageProperties nmlp = (NetModuleLinkageProperties)lp;
     NetworkOverlay no = gSrc.getOverlayOwnerFromGenomeKey(genome.getID()).getNetworkOverlay(nmlp.getOverlayID());

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,11 @@
 package org.systemsbiology.biotapestry.genome;
 
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.plugin.InternalNodeDataDisplayPlugIn;
 import org.systemsbiology.biotapestry.plugin.PluginCallbackWorker;
 
@@ -32,7 +35,7 @@ import org.systemsbiology.biotapestry.plugin.PluginCallbackWorker;
 
 public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -56,11 +59,11 @@ public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   
   /***************************************************************************
   **
-  ** Internal plugins need to have access to internal state
+  ** Internal plugins need to have access to data state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
   
@@ -79,12 +82,15 @@ public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot(); 
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
       
@@ -117,7 +123,7 @@ public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String nodeID) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String nodeID) {
     return (null);
   }
    
@@ -126,17 +132,21 @@ public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   ** Show the free text
   */
   
-  public String getDataAsHTML(String genomeID, String nodeID) {
+  public String getDataAsHTML(String dbID, String genomeID, String nodeID) {
     StringBuffer buf = new StringBuffer();
     
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot(); 
+    
+    
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
-    Database db = appState_.getDB();
     
     //
     // If we have our own local free text, we display that.  If not, we display the root
@@ -146,7 +156,7 @@ public class FreeTextDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
     Node node = genome.getNode(nodeID);
     String desc = node.getDescription();
     if ((desc == null) && haveInstance) {
-      Genome useGenome = db.getGenome();
+      Genome useGenome = dacx.getDBGenome();
       String useID = GenomeItemInstance.getBaseID(nodeID);
       node = useGenome.getNode(useID);
       desc = node.getDescription();

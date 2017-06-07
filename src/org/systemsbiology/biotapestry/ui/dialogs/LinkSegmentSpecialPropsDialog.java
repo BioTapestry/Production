@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,9 +34,10 @@ import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -45,6 +46,7 @@ import org.systemsbiology.biotapestry.ui.SuggestedDrawStyle;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -61,8 +63,9 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
   //////////////////////////////////////////////////////////////////////////// 
   
   private BusProperties props_;
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
 
   private LinkSegmentID segID_;  
   private SuggestedDrawStyle sds_;
@@ -82,22 +85,24 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public LinkSegmentSpecialPropsDialog(BTState appState, DataAccessContext dacx, String propKey, LinkSegmentID segID) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("segSpecial.setSpecial"), true);
-    appState_ = appState;
+  public LinkSegmentSpecialPropsDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, 
+                                       String propKey, LinkSegmentID segID, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("segSpecial.setSpecial"), true);
+    uics_ = uics;
     dacx_ = dacx;
-    props_ = dacx_.getLayout().getLinkProperties(propKey);
+    uFac_ = uFac;
+    props_ = dacx_.getCurrentLayout().getLinkProperties(propKey);
     sds_ = props_.getDrawStyleForID(segID);
     segID_ = segID;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(800, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
 
-    sdsPan_ = new SuggestedDrawStylePanel(appState_, dacx_, true, null);    
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld, true, null);    
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(sdsPan_, gbc);
     
@@ -122,7 +127,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
         try {
           applyProperties();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -135,7 +140,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
             LinkSegmentSpecialPropsDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -146,7 +151,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
           LinkSegmentSpecialPropsDialog.this.setVisible(false);
           LinkSegmentSpecialPropsDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -163,7 +168,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 9, 10, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
     
@@ -206,7 +211,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
     // Undo/Redo support
     //
 
-    UndoSupport support = new UndoSupport(appState_, "undo.segSpecial"); 
+    UndoSupport support = uFac_.provideUndoSupport("undo.segSpecial", dacx_); 
 
     //
     // May bounce if the user specifies a non-valid integer thickness:
@@ -222,12 +227,12 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
     //
        
     Layout.PropChange[] lpc = new Layout.PropChange[1];
-    lpc[0] = dacx_.getLayout().setSpecialPropsForSegment(props_, segID_, qsds.sds, null, dacx_);     
+    lpc[0] = dacx_.getCurrentLayout().setSpecialPropsForSegment(props_, segID_, qsds.sds, null, dacx_);     
     
     if (lpc[0] != null) {
-      PropChangeCmd pcc = new PropChangeCmd(appState_, dacx_, lpc);
+      PropChangeCmd pcc = new PropChangeCmd(dacx_, lpc);
       support.addEdit(pcc);
-      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(ev);
     }
     

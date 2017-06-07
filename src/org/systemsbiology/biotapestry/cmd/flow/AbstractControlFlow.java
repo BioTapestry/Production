@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,12 +21,10 @@ package org.systemsbiology.biotapestry.cmd.flow;
 
 import java.awt.Point;
 
-import javax.swing.tree.TreeNode;
-
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
 import org.systemsbiology.biotapestry.ui.Intersection;
 
@@ -49,7 +47,6 @@ public abstract class AbstractControlFlow implements ControlFlow {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  protected BTState appState_;
   protected String name;
   protected String desc;
   protected String icon;
@@ -67,8 +64,7 @@ public abstract class AbstractControlFlow implements ControlFlow {
   ** Constructor 
   */ 
   
-  public AbstractControlFlow(BTState appState) {
-    appState_ = appState;
+  public AbstractControlFlow() {
     icon = "FIXME24.gif";
     accel = null;  
   }
@@ -130,9 +126,10 @@ public abstract class AbstractControlFlow implements ControlFlow {
   ** Answer if we are enabled for a popup case
   ** 
   */
-    
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-   return (true);
+  
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    return (true);
   }
   
   /***************************************************************************
@@ -141,7 +138,7 @@ public abstract class AbstractControlFlow implements ControlFlow {
   ** 
   */
   
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx, UIComponentSource uics) {
     return (true); 
   }
 
@@ -180,7 +177,7 @@ public abstract class AbstractControlFlow implements ControlFlow {
   ** 
   */ 
     
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
     throw new IllegalStateException();
   } 
   

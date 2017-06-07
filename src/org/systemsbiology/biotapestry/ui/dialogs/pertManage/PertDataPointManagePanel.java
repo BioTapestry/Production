@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -58,6 +58,7 @@ import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -109,6 +110,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   private HashMap currentScaleState_;
   private boolean ignoreScaleChange_;
   private JLabel dispLab_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -123,18 +125,19 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   ** Constructor 
   */ 
   
-  public PertDataPointManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw,
+  public PertDataPointManagePanel(UIComponentSource uics, DataAccessContext dacx, PerturbationsManagementWindow pmw,
                                   PerturbationData pd, 
-                                  PendingEditTracker pet, int legacyModes) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+                                  PendingEditTracker pet, int legacyModes, UndoFactory uFac) {
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    uFac_ = uFac;
+    pmh_ = new PertManageHelper(uics, dacx, pmw, pd, rMan_, gbc_, pet_);
   
     //
     // Build the filter panel:
     //
     
-    filtPanel_ = new PertFilterPanel(appState_, pd, this);
+    filtPanel_ = new PertFilterPanel(uics, dacx, pd, this);
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 1, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);    
     topPanel_.add(filtPanel_, gbc_);
     
@@ -162,7 +165,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
           TrueObjChoiceContent useTocc = (TrueObjChoiceContent)displayScaleCombo_.getSelectedItem();
           setDisplayScale((String)useTocc.val);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -178,9 +181,9 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     // Build the table:
     //  
     
-    rtd_ = new ReadOnlyTable(appState_);
+    rtd_ = new ReadOnlyTable(uics_, dacx_);
     rtd_.rowElements = new ArrayList();
-    rtd_.lateBinding(new PertDataTableModel(appState_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
+    rtd_.lateBinding(new PertDataTableModel(uics_, dacx_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
     rtd_.setButtonHandler(new ButtonHand(DATA_KEY_));   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
@@ -198,7 +201,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
         try {   
           doADuplication(DATA_KEY_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -217,13 +220,13 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     topPanel_.add(display, gbc_);
     topPanel_.countOnlyMe(display);
        
-    pdpep_ = new PertDataPointEditPanel(appState_, dacx_, parent_, pd, this, DATA_KEY_, legacyModes);
+    pdpep_ = new PertDataPointEditPanel(uics_, dacx_, parent_, pd, this, DATA_KEY_, legacyModes);
     addEditPanel(pdpep_, DATA_KEY_);
     
-    pdaep_ = new PertDataAnnotAddOrEditPanel(appState_, dacx_, parent_, pd, this, DATA_ANNOT_KEY);
+    pdaep_ = new PertDataAnnotAddOrEditPanel(uics_, dacx_, parent_, pd, this, DATA_ANNOT_KEY);
     addEditPanel(pdaep_, DATA_ANNOT_KEY);
     
-    prraep_ = new PertRegRestrictAddOrEditPanel(appState_, dacx_, parent_, pd, this, REG_RESTRICT_KEY, legacyModes);
+    prraep_ = new PertRegRestrictAddOrEditPanel(uics_, dacx_, parent_, pd, this, REG_RESTRICT_KEY, legacyModes);
     addEditPanel(prraep_, REG_RESTRICT_KEY);
             
     stack_ = new String[2];
@@ -277,7 +280,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     }
     
     currentScaleState_ = generateScalingState(scaleTypes);     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     TrueObjChoiceContent nativeTocc = new TrueObjChoiceContent(rMan.getString("pertManage.nativeScaling"), null);
     scaleTypes.add(0, nativeTocc);
     TrueObjChoiceContent saveScaleComboTocc = (TrueObjChoiceContent)displayScaleCombo_.getSelectedItem();
@@ -346,6 +349,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   ** 
   */
   
+  @Override
   public void editIsComplete(String key, int what) {
     String resultKey = currKey_;
     if (key.equals(DATA_KEY_)) {
@@ -353,13 +357,13 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
       List annotResult = pdpep_.getUpdatedAnnotResult();
       PerturbationData.RegionRestrict rrResult = pdpep_.getUpdatedRegionRestrictionResult();
       List userV = pdpep_.getUserVals();
-      UndoSupport support = new UndoSupport(appState_, (currKey_ == null) ? "undo.createDataPoint" 
-                                                                       : "undo.editDataPoint"); 
+      UndoSupport support = uFac_.provideUndoSupport((currKey_ == null) ? "undo.createDataPoint" 
+                                                                        : "undo.editDataPoint", dacx_); 
       if (currKey_ == null) {
         resultKey = pdp.getID();
       }
       PertDataChange pdc = pd_.setDataPoint(pdp);
-      support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       boolean allEmpty = true;
       int numV = (userV == null) ? 0 : userV.size();
       for (int i = 0; i < numV; i++) {
@@ -371,17 +375,17 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
       userV = (allEmpty) ? null : new ArrayList(userV);
       pdc = pd_.setUserFieldValues(resultKey, userV);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       }
       
       pdc = pd_.setFootnotesForDataPoint(resultKey, annotResult);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       }
       
       pdc = pd_.setRegionRestrictionForDataPoint(resultKey, rrResult);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       }
       
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
@@ -593,9 +597,9 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   
   protected void doADelete(String key) {
     String delKey = ((PertDataTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
-    UndoSupport support = new UndoSupport(appState_, "undo.deletePertDataPoint");
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertDataPoint", dacx_);
     PertDataChange pdc = pd_.deleteDataPoint(delKey);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -621,7 +625,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     Vector scaleTypes = md.getConvertibleScaleOptions();
     currentScaleState_ = generateScalingState(scaleTypes);
     ignoreScaleChange_ = true;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     TrueObjChoiceContent nativeTocc = new TrueObjChoiceContent(rMan.getString("pertManage.nativeScaling"), null);
     scaleTypes.add(0, nativeTocc);
     UiUtil.replaceComboItems(displayScaleCombo_, scaleTypes);
@@ -677,8 +681,8 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     
     private ArrayList hidden_;
     
-    PertDataTableModel(BTState appState, List prsList) {
-      super(appState, NUM_COL_);
+    PertDataTableModel(UIComponentSource uics, DataAccessContext dacx, List prsList) {
+      super(uics, dacx, NUM_COL_);
       hidden_ = new ArrayList();
       colNames_ = new String[] {"pertData.pert",
                                 "pertData.target",
@@ -695,7 +699,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
                                 "pertData.regRes"};
       comparators_ = new Comparator[] {String.CASE_INSENSITIVE_ORDER,
                                        String.CASE_INSENSITIVE_ORDER,
-                                       new PertManageHelper.TimeComparator(appState_),
+                                       new PertManageHelper.TimeComparator(dacx_),
                                        new PertManageHelper.DoubleStrComparator(),
                                        String.CASE_INSENSITIVE_ORDER,
                                        String.CASE_INSENSITIVE_ORDER,

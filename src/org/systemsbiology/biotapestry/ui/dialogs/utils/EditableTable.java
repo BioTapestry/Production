@@ -38,6 +38,7 @@ import java.util.Set;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
@@ -51,15 +52,20 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import javax.swing.table.TableCellEditor;
+import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.util.ComboBoxEditor;
 import org.systemsbiology.biotapestry.util.ComboBoxEditorTracker;
 import org.systemsbiology.biotapestry.util.ComboFinishedTracker;
 import org.systemsbiology.biotapestry.util.DoubleEditor;
+import org.systemsbiology.biotapestry.util.EditableComboBoxEditor;
 import org.systemsbiology.biotapestry.util.EditableComboBoxEditorTracker;
 import org.systemsbiology.biotapestry.util.EnumCell;
+import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.IntegerEditor;
 import org.systemsbiology.biotapestry.util.NumberEditorTracker;
@@ -69,6 +75,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TextEditor;
 import org.systemsbiology.biotapestry.util.TextEditorTracker;
 import org.systemsbiology.biotapestry.util.TextFinishedTracker;
+import org.systemsbiology.biotapestry.util.TrackingUnit;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
@@ -117,13 +124,14 @@ public class EditableTable {
   private boolean addAlwaysAtEnd_;
   private TextEditor textEdit_;
   private Set usedClasses_;
-  private HashMap editors_;
-  private HashMap renderers_;
-  private HashSet editableEnums_;
+  private HashMap<Integer, TableCellEditor> editors_;
+  private HashMap<Integer, TableCellRenderer> renderers_;
+  private HashSet<Integer> editableEnums_;
   private JFrame parent_;
   private boolean cancelEditOnDisable_;
   private EditButtonHandler ebh_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
  
   
   ////////////////////////////////////////////////////////////////////////////
@@ -133,8 +141,9 @@ public class EditableTable {
   ////////////////////////////////////////////////////////////////////////////   
   
   
-  public EditableTable(BTState appState, TableModel atm, JFrame parent) {
-    appState_ = appState;
+  public EditableTable(UIComponentSource uics, DataAccessContext dacx, TableModel atm, JFrame parent) {
+    uics_ = uics;
+    dacx_ = dacx;
     estm_ = atm;
     parent_ = parent;
   }
@@ -358,7 +367,7 @@ public class EditableTable {
       int numC = etp.colWidths.size();
       TableColumnModel tcm = qt_.getColumnModel();
       for (int i = 0; i < numC; i++) {
-        ColumnWidths cw = (ColumnWidths)etp.colWidths.get(i); 
+        ColumnWidths cw = etp.colWidths.get(i); 
         int viewColumn = qt_.convertColumnIndexToView(cw.colNum);
         TableColumn tfCol = tcm.getColumn(viewColumn);
         tfCol.setMinWidth(cw.min);
@@ -367,13 +376,13 @@ public class EditableTable {
       }
     }
 
-    UiUtil.installDefaultCellRendererForPlatform(qt_, String.class, true, appState_);
-    UiUtil.installDefaultCellRendererForPlatform(qt_, ProtoInteger.class, true, appState_);
-    UiUtil.installDefaultCellRendererForPlatform(qt_, Integer.class, true, appState_); // For non-edit number columns!
+    UiUtil.installDefaultCellRendererForPlatform(qt_, String.class, true, uics_.getHandlerAndManagerSource());
+    UiUtil.installDefaultCellRendererForPlatform(qt_, ProtoInteger.class, true, uics_.getHandlerAndManagerSource());
+    UiUtil.installDefaultCellRendererForPlatform(qt_, Integer.class, true, uics_.getHandlerAndManagerSource()); // For non-edit number columns!
     
-    editors_ = new HashMap();
-    renderers_ = new HashMap();
-    editableEnums_ = new HashSet();
+    editors_ = new HashMap<Integer, TableCellEditor>();
+    renderers_ = new HashMap<Integer, TableCellRenderer>();
+    editableEnums_ = new HashSet<Integer>();
     setDefaultEditors();   
     if (etp.perColumnEnums != null) {  
       setColumnEditorsAndRenderers(etp.perColumnEnums, renderers_, editors_, editableEnums_);
@@ -391,7 +400,7 @@ public class EditableTable {
   ** Refresh editors and renderers
   */       
  
-  public void refreshEditorsAndRenderers(Map perColumnEnums) { 
+  public void refreshEditorsAndRenderers(Map<Integer, EnumCellInfo> perColumnEnums) { 
     editors_.clear();
     renderers_.clear();
     editableEnums_.clear();
@@ -411,7 +420,7 @@ public class EditableTable {
  
   private void createButtons(TableParams etp) { 
     
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = dacx_.getRMan(); 
     if (etp.buttons != NO_BUTTONS) {
       if ((etp.buttons & ADD_BUTTON) != 0x00) {
         String aTag = rMan.getString("dialogs.addEntry");
@@ -425,7 +434,7 @@ public class EditableTable {
                 qt_.revalidate();
               }
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -449,7 +458,7 @@ public class EditableTable {
               qt_.getSelectionModel().setSelectionInterval(selectedRows_[0], selectedRows_[0]);
               qt_.revalidate();
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -469,7 +478,7 @@ public class EditableTable {
               qt_.getSelectionModel().setSelectionInterval(selectedRows_[0], selectedRows_[0]);
               qt_.revalidate();
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -488,7 +497,7 @@ public class EditableTable {
               qt_.getSelectionModel().clearSelection();        
               qt_.revalidate();
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -506,7 +515,7 @@ public class EditableTable {
               ebh_.pressed();
               qt_.revalidate();
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -660,21 +669,23 @@ public class EditableTable {
     while (cit.hasNext()) {
       Class used = (Class)cit.next();
       if (used.equals(ProtoDouble.class)) {
-        DoubleEditor dEdit = new DoubleEditor(appState_, parent_);
-        new NumberEditorTracker(dEdit, estm_, appState_);
+        DoubleEditor dEdit = new DoubleEditor(uics_.getHandlerAndManagerSource(), parent_);
+        new NumberEditorTracker(dEdit, estm_, uics_.getHandlerAndManagerSource());
         qt_.setDefaultEditor(ProtoDouble.class, dEdit);
       } else if (used.equals(String.class)) {
-        textEdit_ = new TextEditor(appState_);
-        new TextEditorTracker(textEdit_, estm_, estm_, appState_);
+        textEdit_ = new TextEditor(uics_.getHandlerAndManagerSource());
+        new TextEditorTracker(textEdit_, estm_, estm_, uics_.getHandlerAndManagerSource());
         qt_.setDefaultEditor(String.class, textEdit_);
       } else if (used.equals(ProtoInteger.class)) {
-        IntegerEditor intEdit = new IntegerEditor(appState_, parent_);
-        new NumberEditorTracker(intEdit, estm_, appState_);
+        IntegerEditor intEdit = new IntegerEditor(uics_.getHandlerAndManagerSource(), parent_);
+        new NumberEditorTracker(intEdit, estm_, uics_.getHandlerAndManagerSource());
         qt_.setDefaultEditor(ProtoInteger.class, intEdit);
       } else if (used.equals(Boolean.class)) {
         // Happy with the default!
-       } else if (used.equals(Integer.class)) {
+      } else if (used.equals(Integer.class)) {
         // Happy with the default!  (actually gotta be non-editable!)
+      } else if (used.equals(EnumChoiceContent.class)) {
+        // Happy with default 
       } else if (!used.equals(EnumCell.class)) {
         throw new IllegalStateException();
       }
@@ -715,6 +726,8 @@ public class EditableTable {
         // leave alone!
       } else if (used.equals(Integer.class)) {
         // leave alone!
+      } else if (used.equals(EnumChoiceContent.class)) {
+        // leave alone
       } else if (!used.equals(EnumCell.class)) {
         throw new IllegalStateException();
       }
@@ -729,27 +742,19 @@ public class EditableTable {
   */
 
   private void enableColumnEditorsAndRenderers(boolean enable) {
-    Iterator rkit = renderers_.keySet().iterator();
+    Iterator<Integer> rkit = renderers_.keySet().iterator();
     while (rkit.hasNext()) {
-      Integer key = (Integer)rkit.next();
-      if (editableEnums_.contains(key)) {
-        EnumCell.EditableComboBoxRenderer ecbr = (EnumCell.EditableComboBoxRenderer)renderers_.get(key);
-        ecbr.setEnabled(enable);
-      } else {
-        EnumCell.ReadOnlyComboBoxRenderer rocbr = (EnumCell.ReadOnlyComboBoxRenderer)renderers_.get(key);
-        rocbr.setEnabled(enable);
-      }
+      Integer key = rkit.next();
+      JComboBox ecbr = (JComboBox)renderers_.get(key);
+      ecbr.setEnabled(enable);
     }
-    Iterator ekit = editors_.keySet().iterator();
+    Iterator<Integer> ekit = editors_.keySet().iterator();
     while (ekit.hasNext()) {
-      Integer key = (Integer)ekit.next();
+      Integer key = ekit.next();
+      JComboBox eece = (JComboBox)editors_.get(key);
+      eece.setEnabled(enable);
       if (editableEnums_.contains(key)) {
-        EnumCell.EditableEnumCellEditor eece = (EnumCell.EditableEnumCellEditor)editors_.get(key);
-        eece.setEnabled(enable);
         eece.setEditable(enable);
-      } else {
-        EnumCell.ReadOnlyEnumCellEditor roene = (EnumCell.ReadOnlyEnumCellEditor)editors_.get(key);
-        roene.setEnabled(enable);
       }
     }
     return;
@@ -761,34 +766,66 @@ public class EditableTable {
   ** 
   */
 
-  private void setColumnEditorsAndRenderers(Map contents, Map renderers, Map editors, Set editableEnums) {  
-    Iterator cit = contents.keySet().iterator();
+  private void setColumnEditorsAndRenderers(Map<Integer, EnumCellInfo> contents, Map<Integer, TableCellRenderer> renderers,
+                                            Map<Integer, TableCellEditor> editors, Set<Integer> editableEnums) {  
+    Iterator<Integer> cit = contents.keySet().iterator();
     while (cit.hasNext()) {
-      Integer intObj = (Integer)cit.next();
-      EnumCellInfo eci = (EnumCellInfo)contents.get(intObj);
-      TableColumn tc = qt_.getColumnModel().getColumn(intObj.intValue());   
+      Integer intObj = cit.next();
+      EnumCellInfo eci = contents.get(intObj);
+      TableColumn tc = qt_.getColumnModel().getColumn(intObj.intValue());
+      Class colClass = eci.myClass;
       if (eci.editable) {
-        EnumCell.EditableComboBoxRenderer ecbr = new EnumCell.EditableComboBoxRenderer(eci.values, appState_);
+        TableCellRenderer ecbr;
+        if (colClass.equals(EnumCell.class)) {
+          ecbr = new EnumCell.EditableComboBoxRenderer(eci.values, uics_.getHandlerAndManagerSource());
+        } else if (colClass.equals(EnumChoiceContent.class)) {
+          ecbr = new EnumChoiceContent.EditableComboChoiceRenderer(eci.values, uics_.getHandlerAndManagerSource());
+        } else {
+          throw new IllegalStateException();
+        }
         tc.setCellRenderer(ecbr);
         renderers.put(intObj, ecbr);
         
-        EnumCell.EditableEnumCellEditor re = new EnumCell.EditableEnumCellEditor(eci.values, appState_);
-        new EditableComboBoxEditorTracker(re, estm_, appState_);
+        EditableComboBoxEditor re;
+        if (colClass.equals(EnumCell.class)) {
+          re = new EnumCell.EditableEnumCellEditor(eci.values, uics_.getHandlerAndManagerSource());
+        } else if (colClass.equals(EnumChoiceContent.class)) {
+          re = new EnumChoiceContent.EditableComboChoiceEditor(eci.values, uics_.getHandlerAndManagerSource());
+        } else {
+          throw new IllegalStateException();
+        }
+        new EditableComboBoxEditorTracker(re, estm_, uics_.getHandlerAndManagerSource());
         tc.setCellEditor(re);
         editors.put(intObj, re);
         editableEnums.add(intObj);
       } else {
-        EnumCell.ReadOnlyComboBoxRenderer rocbr;
-        if (eci.trackingUnits == null) {
-          rocbr = new EnumCell.ReadOnlyComboBoxRenderer(eci.values, appState_);
+        TableCellRenderer rocbr;
+        if (colClass.equals(EnumCell.class)) {
+          if (eci.trackingUnits == null) {
+            rocbr = new EnumCell.ReadOnlyComboBoxRenderer(eci.values, uics_.getHandlerAndManagerSource());
+          } else {
+            rocbr = new EnumCell.TrackingReadOnlyComboBoxRenderer(eci.values, eci.trackingUnits, uics_.getHandlerAndManagerSource());
+          }
+        } else if (colClass.equals(EnumChoiceContent.class)) {          
+          if (eci.trackingUnits == null) {
+            rocbr = new EnumChoiceContent.ReadOnlyComboChoiceRenderer(eci.values, uics_.getHandlerAndManagerSource());
+          } else {
+            rocbr = new EnumChoiceContent.TrackingReadOnlyComboChoiceRenderer(eci.values, eci.trackingUnits, uics_.getHandlerAndManagerSource());
+          }
         } else {
-          rocbr = new EnumCell.TrackingReadOnlyComboBoxRenderer(eci.values, eci.trackingUnits, appState_);
+          throw new IllegalStateException();
         }
         tc.setCellRenderer(rocbr);
         renderers.put(intObj, rocbr);
-        
-        EnumCell.ReadOnlyEnumCellEditor me = new EnumCell.ReadOnlyEnumCellEditor(eci.values, appState_);
-        new ComboBoxEditorTracker(me, estm_, estm_, appState_);     
+        ComboBoxEditor me;
+        if (colClass.equals(EnumCell.class)) {       
+          me = new EnumCell.ReadOnlyEnumCellEditor(eci.values, uics_.getHandlerAndManagerSource());
+        } else if (colClass.equals(EnumChoiceContent.class)) {
+          me = new EnumChoiceContent.ReadOnlyComboChoiceEditor(eci.values, uics_.getHandlerAndManagerSource());       
+        } else {
+          throw new IllegalStateException();
+        }
+        new ComboBoxEditorTracker(me, estm_, estm_, uics_.getHandlerAndManagerSource());     
         tc.setCellEditor(me);
         editors.put(intObj, me);
       }
@@ -806,10 +843,10 @@ public class EditableTable {
     Iterator cit = usedClasses_.iterator();
     while (cit.hasNext()) {
       Class used = (Class)cit.next();
-      if (!used.equals(EnumCell.class)) {
+      if (!used.equals(EnumCell.class) && !used.equals(EnumChoiceContent.class)) {
         // Ignore default editors:
         if (!used.equals(Integer.class) && !used.equals(Boolean.class)) {
-          TableCellEditor tce = (TableCellEditor)qt_.getDefaultEditor(used);
+          TableCellEditor tce = qt_.getDefaultEditor(used);
           if (doCancel) {
             tce.cancelCellEditing();
           } else {
@@ -821,7 +858,7 @@ public class EditableTable {
     Iterator ekit = editors_.keySet().iterator();
     while (ekit.hasNext()) {
       Integer key = (Integer)ekit.next();
-      TableCellEditor tce = (TableCellEditor)editors_.get(key);
+      TableCellEditor tce = editors_.get(key);
       if (doCancel) {
         tce.cancelCellEditing();
       } else {
@@ -893,19 +930,21 @@ public class EditableTable {
   public static class EnumCellInfo {
     public boolean editable;
     public List values;
-    public Map trackingUnits;
+    public Map<Integer, TrackingUnit> trackingUnits;
+    public Class myClass;
     
-    public EnumCellInfo(boolean editable, List values) {
-      this(editable, values, null);
+    public EnumCellInfo(boolean editable, List values, Class myClass) {
+      this(editable, values, null, myClass);
     }
     
-    public EnumCellInfo(boolean editable, List values, Map trackingUnits) {
+    public EnumCellInfo(boolean editable, List values, Map<Integer, TrackingUnit> trackingUnits, Class myClass) {
       this.editable = editable;
       this.values = values;
       this.trackingUnits = trackingUnits;
       if ((trackingUnits != null) && editable) {
         throw new IllegalArgumentException();
       }
+      this.myClass = myClass;
     }
   }
   
@@ -927,14 +966,16 @@ public class EditableTable {
     protected boolean[] canEdit_;
     protected boolean[] colUseDirect_;
     protected Set myEditableEnums_;
-    protected HashMap myRenderers_;
-    protected HashMap myEditors_;
+    protected HashMap<Integer, TableCellRenderer> myRenderers_;
+    protected HashMap<Integer, TableCellEditor> myEditors_;
     protected int collapseCount_;
     protected boolean isCollapsed_;
-    protected BTState tabAppState_;
+    protected UIComponentSource uics_;
+    protected DataAccessContext dacx_;
 
-    protected TableModel(BTState appState, int colNum) {
-      tabAppState_ = appState;
+    protected TableModel(UIComponentSource uics, DataAccessContext dacx, int colNum) {
+      uics_ = uics;
+      dacx_ = dacx;
       columns_ = new ArrayList[colNum];
       for (int i = 0; i < columns_.length; i++) {
         columns_[i] = new ArrayList();
@@ -945,8 +986,8 @@ public class EditableTable {
       colUseDirect_ = null;
       collapseCount_ = -1;
       isCollapsed_ = false;
-      myRenderers_ = new HashMap();
-      myEditors_ = new HashMap();
+      myRenderers_ = new HashMap<Integer, TableCellRenderer>();
+      myEditors_ = new HashMap<Integer, TableCellEditor>();
     }
     
     
@@ -982,7 +1023,7 @@ public class EditableTable {
       tmqt_ = tab; 
     }
     
-    void setEnums(Map renderers, Map editors, Set editableEnums) {
+    void setEnums(Map<Integer, TableCellRenderer> renderers, Map<Integer, TableCellEditor> editors, Set editableEnums) {
       myRenderers_.clear();
       myEditors_.clear();
       myRenderers_.putAll(renderers);
@@ -1088,7 +1129,7 @@ public class EditableTable {
         }
         return (columns_[c]);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -1105,13 +1146,13 @@ public class EditableTable {
           throw new IllegalArgumentException();
         }
         if ((colUseDirect_ == null) || !colUseDirect_[c]) {
-          ResourceManager rMan = tabAppState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           return (rMan.getString(colNames_[c]));
         } else {
           return (colNames_[c]);
         }
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -1123,7 +1164,7 @@ public class EditableTable {
         }
         return (colClasses_[c]);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -1136,7 +1177,7 @@ public class EditableTable {
         }
         return (list.get(mapSelectionIndex(r)));
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -1171,7 +1212,7 @@ public class EditableTable {
           } 
         } else if (colClass.equals(EnumCell.class)) {
           EnumCell currEC = (EnumCell)currVal;
-          if (myEditableEnums_.contains(new Integer(c))) {
+          if (myEditableEnums_.contains(Integer.valueOf(c))) {
             if ((currEC != null) && (currEC.internal != null) &&
                 currEC.internal.equals(((EnumCell)value).internal)) {
               return;
@@ -1181,12 +1222,24 @@ public class EditableTable {
               return;
             }
           }
+        } else if (colClass.equals(EnumChoiceContent.class)) {
+          EnumChoiceContent currEC = (EnumChoiceContent)currVal;
+          if (myEditableEnums_.contains(Integer.valueOf(c))) {
+            if ((currEC != null) && (currEC.name != null) &&
+                currEC.name.equals(((EnumChoiceContent)value).name)) {
+              return;
+            }
+          } else {
+            if ((currEC != null) && (currEC.val.equals(((EnumChoiceContent)value).val))) {
+              return;
+            }
+          }  
         } else {
           throw new IllegalStateException();
         }
         list.set(r, value);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     } 
@@ -1199,7 +1252,7 @@ public class EditableTable {
           return (canEdit_[c]);
         }
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (false);
     }
@@ -1252,36 +1305,24 @@ public class EditableTable {
       int currColumns = getColumnCount();
       TableColumnModel tcm = tmqt_.getColumnModel();
  
-      Iterator rkit = myRenderers_.keySet().iterator();
+      Iterator<Integer> rkit = myRenderers_.keySet().iterator();
       while (rkit.hasNext()) {
-        Integer key = (Integer)rkit.next();
-        if (key.intValue() >= currColumns) {
-          continue;
-        }
-        TableColumn tc = tcm.getColumn(key.intValue());  
-        if (myEditableEnums_.contains(key)) {
-          EnumCell.EditableComboBoxRenderer ecbr = (EnumCell.EditableComboBoxRenderer)myRenderers_.get(key);
-          tc.setCellRenderer(ecbr);
-        } else {
-          EnumCell.ReadOnlyComboBoxRenderer rocbr = (EnumCell.ReadOnlyComboBoxRenderer)myRenderers_.get(key);
-          tc.setCellRenderer(rocbr);
-        }
-      }
-      
-      Iterator ekit = myEditors_.keySet().iterator();
-      while (ekit.hasNext()) {
-        Integer key = (Integer)ekit.next();
+        Integer key = rkit.next();
         if (key.intValue() >= currColumns) {
           continue;
         }
         TableColumn tc = tcm.getColumn(key.intValue());
-        if (myEditableEnums_.contains(key)) {
-          EnumCell.EditableEnumCellEditor eece = (EnumCell.EditableEnumCellEditor)myEditors_.get(key);
-          tc.setCellEditor(eece);
-        } else {
-          EnumCell.ReadOnlyEnumCellEditor roene = (EnumCell.ReadOnlyEnumCellEditor)myEditors_.get(key);
-          tc.setCellEditor(roene);
+        tc.setCellRenderer(myRenderers_.get(key));
+      }
+      
+      Iterator<Integer> ekit = myEditors_.keySet().iterator();
+      while (ekit.hasNext()) {
+        Integer key = ekit.next();
+        if (key.intValue() >= currColumns) {
+          continue;
         }
+        TableColumn tc = tcm.getColumn(key.intValue());
+        tc.setCellEditor(myEditors_.get(key));
       }
       return;
     }
@@ -1326,7 +1367,7 @@ public class EditableTable {
         Object lastOrig = qt_.getLastOrig();
         int col = qt_.getLastColumn();
         if (lastOrig != null) {
-          EnumCell.EditableEnumCellEditor fixit = (EnumCell.EditableEnumCellEditor)editors_.get(new Integer(col));
+          TableCellEditor fixit = editors_.get(new Integer(col));
           fixit.getTableCellEditorComponent(qt_, lastOrig, 
                                             true, selectedRows_[0], qt_.getLastColumn());
           qt_.clearLastOrig();
@@ -1343,7 +1384,7 @@ public class EditableTable {
         trueButtonREnable_ = canRaise;  
         syncButtons();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;             
     } 
@@ -1395,9 +1436,18 @@ public class EditableTable {
     public TableCellEditor getCellEditor(int row, int column) {
       lastOrig_ = null;
       if ((lastCol_ == column) && editableEnums_.contains(new Integer(column))) {
-        EnumCell.EditableEnumCellEditor fixit = (EnumCell.EditableEnumCellEditor)editors_.get(new Integer(column));
-        if (((EnumCell)estm_.getValueAt(row, column)).display.equals(((EnumCell)fixit.getOriginalValue()).display)) {
-          lastOrig_ = estm_.getValueAt(row, column);
+        TableCellEditor tce = editors_.get(new Integer(column));
+        if (tce instanceof EnumCell.EditableEnumCellEditor) {
+          EnumCell.EditableEnumCellEditor fixit = (EnumCell.EditableEnumCellEditor)editors_.get(new Integer(column));
+          if (((EnumCell)estm_.getValueAt(row, column)).display.equals(((EnumCell)fixit.getOriginalValue()).display)) {
+            lastOrig_ = estm_.getValueAt(row, column);
+          }
+        } else if (tce instanceof EnumChoiceContent.EditableComboChoiceEditor) {
+          EnumChoiceContent.EditableComboChoiceEditor fixit = (EnumChoiceContent.EditableComboChoiceEditor)editors_.get(new Integer(column));
+          if (((EnumChoiceContent)estm_.getValueAt(row, column)).name.equals(((EnumChoiceContent)fixit.getOriginalValue()).name)) {
+            lastOrig_ = estm_.getValueAt(row, column);
+          }
+          
         }
       }
       lastCol_ = column;
@@ -1433,8 +1483,8 @@ public class EditableTable {
       }
     }
  
-    public OneValueModel(BTState appState, String title, boolean edit) {
-      super(appState, NUM_COL_);
+    public OneValueModel(UIComponentSource uics, DataAccessContext dacx, String title, boolean edit) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {String.class};
       canEdit_ = new boolean[] {edit};
@@ -1495,8 +1545,8 @@ public class EditableTable {
       }
     }
  
-    public TaggedValueModel(BTState appState, String title, boolean editable) {
-      super(appState, NUM_COL_);
+    public TaggedValueModel(UIComponentSource uics, DataAccessContext dacx, String title, boolean editable) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {String.class};
       canEdit_ = new boolean[] {editable};
@@ -1557,8 +1607,8 @@ public class EditableTable {
       }
     }
   
-    public OneEnumTableModel(BTState appState, String title, List currEnums) {
-      super(appState, NUM_COL_);
+    public OneEnumTableModel(UIComponentSource uics, DataAccessContext dacx, String title, List currEnums) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {EnumCell.class};
       canEdit_ = new boolean[] {true};

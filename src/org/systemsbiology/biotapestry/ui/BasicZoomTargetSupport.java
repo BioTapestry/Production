@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,6 @@ import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Rectangle2D;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
@@ -144,7 +143,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   ** Get the transform
   */
   
-  public AffineTransform getTransform() {
+  public AffineTransform getTransform() {    
     return (transform_);
   }  
 
@@ -159,7 +158,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
     // gives us the necessary component size we need to accommodate that world
     // at the given zoom level.
     //
-    Rectangle rect = rcx_.wSrc.getWorkspace().getWorkspace();
+    Rectangle rect = rcx_.getWorkspaceSource().getWorkspace().getWorkspace();
     int width = (int)(rect.width * zoom_); 
     int height = (int)(rect.height * zoom_);
     return (new Dimension(width, height));
@@ -171,7 +170,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public Rectangle getWorkspaceBounds() {
-    return ((Rectangle)rcx_.wSrc.getWorkspace().getWorkspace().clone());
+    return ((Rectangle)rcx_.getWorkspaceSource().getWorkspace().getWorkspace().clone());
   }  
   
   /***************************************************************************
@@ -180,7 +179,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public Point getCenterPoint() {
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Point2D center = ws.getCenter();
     Point2D centerPoint = (Point2D)center.clone();
     transform_.transform(centerPoint, centerPoint);
@@ -196,7 +195,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public Point2D getRawCenterPoint() {
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Point2D center = ws.getCenter();    
     return ((Point2D)center.clone());
   } 
@@ -238,7 +237,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public Rectangle getSelectedBounds() {  
-    if (rcx_.getGenome() == null) {
+    if (rcx_.getCurrentGenome() == null) {
       return (null);
     }
     return (myGenomePre_.getSelectionSize(rcx_));  
@@ -250,7 +249,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public boolean haveCurrentSelectionForBounds() {  
-    if (rcx_.getGenome() == null) {
+    if (rcx_.getCurrentGenome() == null) {
       return (false);
     }
     return (myGenomePre_.haveCurrentSelection());
@@ -262,7 +261,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public boolean haveMultipleSelectionsForBounds() {  
-    if (rcx_.getGenome() == null) {
+    if (rcx_.getCurrentGenome() == null) {
       return (false);
     }
     return (myGenomePre_.haveMultipleSelections());
@@ -274,7 +273,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
   
   public Rectangle getCurrentSelectedBounds() {  
-    if (rcx_.getGenome() == null) {
+    if (rcx_.getCurrentGenome() == null) {
       return (null);
     }
     return (myGenomePre_.getCurrentSelectionSize(rcx_));  
@@ -327,13 +326,13 @@ public class BasicZoomTargetSupport implements ZoomTarget {
  
   public void setZoomFactor(double zoom) {   
     zoom_ = zoom;
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Rectangle rect = ws.getWorkspace();
     transform_ = new AffineTransform();    
     transform_.translate((rect.getWidth() / 2.0) * zoom, (rect.getHeight() / 2.0) * zoom);
     transform_.scale(zoom, zoom);
     Point2D center = ws.getCenter();
-    transform_.translate(-center.getX(), -center.getY());    
+    transform_.translate(-center.getX(), -center.getY()); 
     myGenomePre_.setPresentationZoomFactor(zoom, rcx_); 
     return;
   }
@@ -347,8 +346,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
     //
     // If the viewport is larger than the preferred size, we center using that:
     //
-    
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Rectangle rect = ws.getWorkspace();
    
     int rectWidth = (int)(rect.getWidth() * zoom); 
@@ -362,7 +360,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
     transform_ = new AffineTransform();    
     transform_.translate((useWidth / 2.0), (useHeight / 2.0));
     transform_.scale(zoom, zoom);
-    transform_.translate(-center.getX(), -center.getY());    
+    transform_.translate(-center.getX(), -center.getY()); 
     myGenomePre_.setPresentationZoomFactor(zoom, rcx_); 
     return;
   }
@@ -375,8 +373,8 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   public void adjustWideZoomForSize(Dimension viewportDim) {   
     //
     // If the viewport is larger than the preferred size, we center using that:
-    //   
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    //
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Rectangle rect = ws.getWorkspace();
    
     int rectWidth = (int)(rect.getWidth() * zoom_); 
@@ -390,7 +388,8 @@ public class BasicZoomTargetSupport implements ZoomTarget {
     transform_ = new AffineTransform();    
     transform_.translate((useWidth / 2.0), (useHeight / 2.0));
     transform_.scale(zoom_, zoom_);
-    transform_.translate(-center.getX(), -center.getY());    
+    transform_.translate(-center.getX(), -center.getY());   
+
     return;
   }  
   
@@ -400,7 +399,7 @@ public class BasicZoomTargetSupport implements ZoomTarget {
   */
  
   public double getWorkspaceZoom(Dimension viewportDim, double percent) { 
-    Workspace ws = rcx_.wSrc.getWorkspace();
+    Workspace ws = rcx_.getWorkspaceSource().getWorkspace();
     Rectangle rect = ws.getWorkspace();
 
     double wZoom = viewportDim.width / rect.getWidth();

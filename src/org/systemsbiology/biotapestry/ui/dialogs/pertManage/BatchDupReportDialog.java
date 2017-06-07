@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,14 +22,15 @@ package org.systemsbiology.biotapestry.ui.dialogs.pertManage;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.SortedMap;
 import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
-import java.util.Map;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.BatchCollision;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -57,9 +58,11 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   ////////////////////////////////////////////////////////////////////////////  
 
   private ReadOnlyTable rot_;
-  private Map batchDups_;
+  private SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups_;
   private boolean keepGoing_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
+
   
   private static final long serialVersionUID = 1L;
   
@@ -74,12 +77,13 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   ** Constructor 
   */ 
   
-  public BatchDupReportDialog(BTState appState, JFrame parent, Map batchDups, String windowTitle, String tableTitle) {
-    super(parent, appState.getRMan().getString(windowTitle), true);
-    appState_ = appState;
+  public BatchDupReportDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups, String windowTitle, String tableTitle) {
+    super(uics.getTopFrame(), dacx.getRMan().getString(windowTitle), true);
+    uics_ = uics;
+    dacx_ = dacx;
     batchDups_ = batchDups;
     keepGoing_ = false;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(1000, 650);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -90,7 +94,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(appState_, new BatchDupReportModel(appState_), null);   
+    rot_ = new ReadOnlyTable(uics, dacx, new BatchDupReportModel(uics_, dacx_), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
     tp.tableIsUnselectable = true;
@@ -110,7 +114,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     rowNum += 8;
     cp.add(tabPan, gbc);
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true); 
     setLocationRelativeTo(parent);
     displayProperties(); 
@@ -193,16 +197,16 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
       }
     }
 
-    BatchDupReportModel(BTState appState) {
-      super(appState, NUM_COL_);
+    BatchDupReportModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"batchDupReport.expDesc",
                                 "batchDupReport.target",
                                 "batchDupReport.batchID",
                                 "batchDupReport.dataVals"};
     }    
     
-    List getValuesFromTable() {
-      ArrayList retval = new ArrayList();
+    List<TableRow> getValuesFromTable() {
+      ArrayList<TableRow> retval = new ArrayList<TableRow>();
       for (int i = 0; i < rowCount_; i++) {
         TableRow ent = new TableRow(i);
         retval.add(ent);
@@ -234,7 +238,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   */
   
   private void displayProperties() {
-    List tableRows = initTableRows();
+    List<BatchDupReportModel.TableRow> tableRows = initTableRows();
     // NO! Supposed to update table, not call extractValues directly, correct?? Fix this as shown?
     // rot_.updateTable(true, -1);
     ((BatchDupReportModel)rot_.getModel()).extractValues(tableRows);
@@ -247,22 +251,22 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   ** 
   */
 
-  private List initTableRows() {
+  private List<BatchDupReportModel.TableRow> initTableRows() {
     StringBuffer buf = new StringBuffer();
-    ArrayList retval = new ArrayList();
+    ArrayList<BatchDupReportModel.TableRow> retval = new ArrayList<BatchDupReportModel.TableRow>();
     BatchDupReportModel ctm = (BatchDupReportModel)rot_.getModel();
-    Iterator nbit = batchDups_.keySet().iterator();
+    Iterator<String> nbit = batchDups_.keySet().iterator();
     while (nbit.hasNext()) {
-      String expDesc = (String)nbit.next();
-      Map dups = (Map)batchDups_.get(expDesc);
-      Iterator tidit = dups.keySet().iterator();
+      String expDesc = nbit.next();
+      SortedMap<String, SortedMap<String, BatchCollision>> dups = batchDups_.get(expDesc);
+      Iterator<String> tidit = dups.keySet().iterator();
       while (tidit.hasNext()) {
-        String targetID = (String)tidit.next();
-        Map batches = (Map)dups.get(targetID);
-        Iterator bidit = batches.keySet().iterator();
+        String targetID = tidit.next();
+        SortedMap<String, BatchCollision> batches = dups.get(targetID);
+        Iterator<String> bidit = batches.keySet().iterator();
         while (bidit.hasNext()) {
-          String batchID = (String)bidit.next();
-          BatchCollision bc = (BatchCollision)batches.get(batchID);        
+          String batchID = bidit.next();
+          BatchCollision bc = batches.get(batchID);        
           BatchDupReportModel.TableRow tr = ctm.new TableRow();
           tr.expDesc = bc.expDesc;
           tr.targetName = bc.targetName;
@@ -270,7 +274,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
           buf.setLength(0);
           int numVal = bc.vals.size();
           for (int i = 0; i < numVal; i++) {
-            buf.append((String)bc.vals.get(i));
+            buf.append(bc.vals.get(i));
             if (i < (numVal - 1)) {
               buf.append(", ");
             }

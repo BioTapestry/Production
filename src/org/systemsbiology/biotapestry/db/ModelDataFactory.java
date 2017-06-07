@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2008 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,8 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
@@ -54,7 +55,10 @@ public class ModelDataFactory extends AbstractFactoryClient {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private MyWorkspaceGlue mwg_;
+  private MyStartupViewGlue svg_;
+  private TabNameData.TabNameDataWorker tndw_;
   
   private int charTarget_;
    
@@ -62,9 +66,6 @@ public class ModelDataFactory extends AbstractFactoryClient {
   private String attribKey_;
   private String dateKey_;
   private String keyKey_;
-  
-  private Set<String> timeAxisKeys_;
-  private String timeAxisStageKey_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -77,28 +78,27 @@ public class ModelDataFactory extends AbstractFactoryClient {
   ** Constructor for the model data factory
   */
 
-  public ModelDataFactory(BTState appState) {
-    super(new FactoryWhiteboard());
+  public ModelDataFactory(FactoryWhiteboard whiteboard, boolean forAppend) {
+    super(whiteboard);
  
-    appState_ = appState;
     modelDataKeys_ = ModelData.keywordsOfInterest();
     attribKey_ = ModelData.attributionKeyword();
     dateKey_ = ModelData.dateKeyword();
     keyKey_ = ModelData.keyEntryKeyword();
     
-    timeAxisKeys_ = TimeAxisDefinition.keywordsOfInterest();
-    timeAxisStageKey_ = TimeAxisDefinition.getStageKeyword();    
-    
-    FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
-    AbstractFactoryClient wfc = new Workspace.WorkspaceWorker(whiteboard);    
-    installWorker(wfc, new MyWorkspaceGlue(appState_));
+    AbstractFactoryClient wfc = new Workspace.WorkspaceWorker(whiteboard);
+    mwg_ = new MyWorkspaceGlue();
+    installWorker(wfc, mwg_);
     AbstractFactoryClient svfc = new StartupView.StartupViewWorker(whiteboard);
-    installWorker(svfc, new MyStartupViewGlue(appState_));
+    svg_ = new MyStartupViewGlue();
+    installWorker(svfc, svg_);
+    tndw_ = new TabNameData.TabNameDataWorker(whiteboard, forAppend);
+    installWorker(tndw_, null);
         
     myKeys_.addAll(wfc.keywordsOfInterest());
-    myKeys_.addAll(svfc.keywordsOfInterest());        
+    myKeys_.addAll(svfc.keywordsOfInterest());
+    myKeys_.addAll(tndw_.keywordsOfInterest());
     myKeys_.addAll(modelDataKeys_);
-    myKeys_.addAll(timeAxisKeys_);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -106,13 +106,28 @@ public class ModelDataFactory extends AbstractFactoryClient {
   // PUBLIC METHODS
   //
   //////////////////////////////////////////////////////////////////////////// 
-  
+
+  /***************************************************************************
+  **
+  ** Set data context
+  **
+  */  
+
+  public void setContext(DataAccessContext dacx, UIComponentSource uics, TabSource tSrc) {
+    dacx_ = dacx;
+    mwg_.setContext(dacx);
+    svg_.setContext(dacx);
+    tndw_.setContext(dacx, uics, tSrc);
+    return;
+  }
+
   /***************************************************************************
   **
   ** Callback for completion of the element
   **
   */
   
+  @Override
   public void localFinishElement(String elemName) {
     charTarget_ = NONE_;
     return;
@@ -123,6 +138,7 @@ public class ModelDataFactory extends AbstractFactoryClient {
   ** Handle incoming characters
   */
 
+  @Override
   public void localProcessCharacters(char[] chars, int start, int length) {
     String nextString = new String(chars, start, length);
     ModelData md = null;
@@ -155,8 +171,7 @@ public class ModelDataFactory extends AbstractFactoryClient {
     if (modelDataKeys_.contains(elemName)) {
       ModelData md = ModelData.buildFromXML(elemName, attrs);
       if (md != null) {
-        Database db = appState_.getDB();        
-        db.setModelData(md);
+        dacx_.getModelDataSource().setModelData(md);
         return (md);
       }
       return (null);
@@ -167,20 +182,7 @@ public class ModelDataFactory extends AbstractFactoryClient {
     } else if (keyKey_.equals(elemName)) {
       ModelData md = (ModelData)container_;
       md.startKey("");
-      charTarget_ = KEY_;            
-    } else if (timeAxisKeys_.contains(elemName)) {
-      TimeAxisDefinition tad = TimeAxisDefinition.buildFromXML(appState_, elemName, attrs);
-      if (tad != null) {
-        Database db = appState_.getDB();
-        db.setTimeAxisDefinition(tad);
-      }
-    } else if (timeAxisStageKey_.equals(elemName)) {
-      TimeAxisDefinition.NamedStage ns = TimeAxisDefinition.NamedStage.buildFromXML(elemName, attrs);
-      if (ns != null) {
-        Database db = appState_.getDB();
-        TimeAxisDefinition tad = db.getTimeAxisDefinition();
-        tad.addAStage(ns);
-      }
+      charTarget_ = KEY_;
     }
     return (null);
   }
@@ -193,16 +195,20 @@ public class ModelDataFactory extends AbstractFactoryClient {
   
   public static class MyWorkspaceGlue implements GlueStick {
     
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public MyWorkspaceGlue(BTState appState) {
-      appState_ = appState;
+    public MyWorkspaceGlue() {
     }
-       
+     
+    public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+    
     public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
                                   Object optionalArgs) throws IOException {
       FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
-      appState_.getDB().setWorkspace(board.workspace);
+      dacx_.getWorkspaceSource().setWorkspace(board.workspace);
       return (null);
     }
   } 
@@ -215,16 +221,20 @@ public class ModelDataFactory extends AbstractFactoryClient {
   
   public static class MyStartupViewGlue implements GlueStick {
     
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public MyStartupViewGlue(BTState appState) {
-      appState_ = appState;
+    public MyStartupViewGlue() {
     }   
     
+    public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+
     public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
                                   Object optionalArgs) throws IOException {
       FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
-      appState_.getDB().setStartupView(board.startupView);
+      dacx_.getGenomeSource().setStartupView(board.startupView);
       return (null);
     }
   } 

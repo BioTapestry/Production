@@ -1316,8 +1316,7 @@ public class DBGeneRegion implements Cloneable, Comparable<DBGeneRegion> {
   **
   */
   
-  public static DBGeneRegion buildFromXML(Genome genome,
-                                          Attributes attrs) throws IOException {
+  public static DBGeneRegion buildFromXML(Attributes attrs) throws IOException {
     String name = null;
     String startPad = null;
     String endPad = null;
@@ -1534,7 +1533,7 @@ public class DBGeneRegion implements Cloneable, Comparable<DBGeneRegion> {
     //
         
     TreeSet<String> errors = new TreeSet<String>();
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     Iterator<Gene> git = genome.getGeneIterator();
     while (git.hasNext()) {
       Gene gene = git.next();

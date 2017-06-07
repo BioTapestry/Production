@@ -35,16 +35,20 @@ public class TimeCourseChange {
   public static final int BASE_SERIAL    = 0;
   public static final int LINEAGE_SERIAL = 1;
   public static final int TOPO_SERIAL    = 2;
+  public static final int MAP_SERIAL     = 3;
   
+  public boolean forMaps;
   public long baseSerialNumberOrig;
   public long baseSerialNumberNew;
   public long linSerialNumberOrig;
   public long linSerialNumberNew;
   public long topoSerialNumberOrig;
   public long topoSerialNumberNew;
+  public long mapSerialNumberOrig;
+  public long mapSerialNumberNew;
   public String mapKey;
-  public List<TimeCourseData.TCMapping> mapListOrig;
-  public List<TimeCourseData.TCMapping> mapListNew;
+  public List<TimeCourseDataMaps.TCMapping> mapListOrig;
+  public List<TimeCourseDataMaps.TCMapping> mapListNew;
   public List<GroupUsage> groupMapListOrig;
   public List<GroupUsage> groupMapListNew;  
   public TimeCourseGene gOrig;
@@ -69,7 +73,10 @@ public class TimeCourseChange {
     linSerialNumberNew = -1L;
     topoSerialNumberOrig = -1L;
     topoSerialNumberNew = -1L;
+    mapSerialNumberOrig = -1L;
+    mapSerialNumberNew = -1L;    
     
+    forMaps = false;
     switch (whichSerial) {
       case BASE_SERIAL:
         baseSerialNumberOrig = serNum;
@@ -79,6 +86,10 @@ public class TimeCourseChange {
         return;
       case TOPO_SERIAL:
         topoSerialNumberOrig = serNum;
+        return;
+      case MAP_SERIAL:
+        mapSerialNumberOrig = serNum;
+        forMaps = true;
         return;
       default:
         throw new IllegalArgumentException();

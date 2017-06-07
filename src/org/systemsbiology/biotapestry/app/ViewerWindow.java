@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -62,17 +62,20 @@ public class ViewerWindow extends JFrame {
   ** Constructor 
   */ 
   
-  public ViewerWindow(BTState appState)  {     
-    super(appState.getRMan().getString("window.viewerTitle"));
-    appState_ = appState.setTopFrame(this, (JComponent)this.getContentPane());
-    appState_.setExceptionHandler(new ExceptionHandler(appState_, appState_.getRMan(), this));
+  public ViewerWindow(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc)  {     
+    super(uics.getRMan().getString("window.viewerTitle"));
+    appState_ = appState;
+    uics.setTopFrame(this, (JComponent)this.getContentPane());
+    uics.setExceptionHandler(new ExceptionHandler(uics, uics.getRMan(), this));
     Dimension dim = UiUtil.centerBigFrame(this, 1600, 1200, 1.0, 0);
-    appState_.setIsEditor(false);
-    CommonView cview = new CommonView(appState);
+    uics.setIsEditor(false);
+    CommonView cview = new CommonView(appState_, uics, cSrc, tSrc);
+    uics.setCommonView(cview);
     cview.buildTheView();
-    appState_.getContentPane().setSize(dim);
+    uics.getContentPane().setSize(dim);
     
     addWindowListener(new WindowAdapter() {
+      @Override
       public void windowClosing(WindowEvent e) {
         dispose();
         System.exit(0);
@@ -85,7 +88,7 @@ public class ViewerWindow extends JFrame {
     setResizable(true);
     setVisible(true);
     
-    LoadSaveSupport lssup = appState_.getLSSupport();
+    LoadSaveSupport lssup = uics.getLSSupport();
     URL gurl = null;
     URL saltUrl = null;    
     try { 

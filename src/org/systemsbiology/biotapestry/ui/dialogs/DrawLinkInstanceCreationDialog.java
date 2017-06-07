@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -45,9 +45,8 @@ import javax.swing.JRadioButton;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -56,7 +55,6 @@ import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.LinkageInstance;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
@@ -93,8 +91,9 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
   private Genome rootGenome_;
   private GenomeInstance tgi_;
   private boolean immediateAdd_;
-  private BTState appState_;
-  private DataAccessContext rcx_;
+  private UIComponentSource uics_;
+  private StaticDataAccessContext rcx_; // for local display
+  private StaticDataAccessContext dacx_; // real world
   
   private static final long serialVersionUID = 1L;
   
@@ -109,11 +108,12 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
   ** Constructor 
   */ 
   
-  public DrawLinkInstanceCreationDialog(BTState appState, Genome rootGenome, 
+  public DrawLinkInstanceCreationDialog(UIComponentSource uics, StaticDataAccessContext dacx, Genome rootGenome, 
                                         GenomeInstance tgi) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("licreate.title"), true);
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();    
+    super(uics.getTopFrame(), dacx.getRMan().getString("licreate.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -153,7 +153,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     //
     
     signLabel_ = new JLabel(rMan.getString("lcreate.sign"));
-    Vector<ChoiceContent> choices = DBLinkage.getSignChoices(appState_);
+    Vector<ChoiceContent> choices = DBLinkage.getSignChoices(dacx);
     signCombo_ = new JComboBox(choices);
     
     UiUtil.gbcSet(gbc, 0, 1, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
@@ -194,13 +194,13 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     importCombo_.addActionListener(this);
     
     // Note this is NOT legit, hitting the database from a dialog!
-    rcx_ = new DataAccessContext(appState_, (String)null, (Layout)null);
+    rcx_ = dacx_.getCustomDACX2();
     
     //
     // Build the position panel:
     //
 
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, rcx_);
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, rcx_);
     msp_ = mvpwz.getModelView();
  
     UiUtil.gbcSet(gbc, 0, 4, 3, 3, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
@@ -219,7 +219,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
             DrawLinkInstanceCreationDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -231,7 +231,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
           DrawLinkInstanceCreationDialog.this.setVisible(false);
           DrawLinkInstanceCreationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -246,7 +246,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     //
     UiUtil.gbcSet(gbc, 0, 7, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     setActiveFields(true);
   }
 
@@ -260,7 +260,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     try { 
       updateLinkDisplay(false);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }  
@@ -338,7 +338,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
         setActiveFields(isDrawNew);
         updateLinkDisplay(isDrawNew);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }
@@ -374,8 +374,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     // get the available instances in the root instance:
     //
     
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome();
+    Genome genome = dacx_.getDBGenome();
     GenomeInstance rgi = tgi.getVfgParentRoot();
     boolean buildInstances = (rgi != null);
     Iterator<Linkage> lit = genome.getLinkageIterator();
@@ -467,16 +466,16 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
           Linkage oldLink = rgi.getLinkage(idResult_);        
           String src = oldLink.getSource();
           String trg = oldLink.getTarget();
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           if ((tgi_.getNode(src) != null) && (tgi_.getNode(trg) != null)) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("drawNewLink.immediateAdd"),
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("drawNewLink.immediateAdd"),
                                           rMan.getString("drawNewLink.immediateAddTitle"), 
                                           JOptionPane.PLAIN_MESSAGE);
             immediateAdd_ = true;
             haveResult_ = true;
             return (true);
           } else {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("drawNewLink.noTargs")),
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("drawNewLink.noTargs")),
                                           rMan.getString("drawNewLink.noTargsTitle"), 
                                           JOptionPane.WARNING_MESSAGE);
             haveResult_ = false;
@@ -486,8 +485,8 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
         
         okSrcTrgMap_ = buildOKSrcTrgMap();
         if (okSrcTrgMap_.isEmpty()) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("drawNewLink.noTargs")),
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("drawNewLink.noTargs")),
                                         rMan.getString("drawNewLink.noTargsTitle"), 
                                         JOptionPane.WARNING_MESSAGE);
           haveResult_ = false;
@@ -501,8 +500,8 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
             rgiInst.removeAll(tgiInst);
             if (rgiInst.size() == 1) {
               idResult_ = rgiInst.iterator().next();
-              ResourceManager rMan = appState_.getRMan();
-              JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("drawNewLink.immediateAdd"),
+              ResourceManager rMan = dacx_.getRMan();
+              JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("drawNewLink.immediateAdd"),
                                             rMan.getString("drawNewLink.immediateAddTitle"), 
                                             JOptionPane.PLAIN_MESSAGE);
               immediateAdd_ = true;
@@ -542,7 +541,7 @@ public class DrawLinkInstanceCreationDialog extends JDialog implements ActionLis
     Genome genome = (GenomeItemInstance.isBaseID(linkID)) ? rootGenome_ : tgi_.getVfgParentRoot();    
     String genomeID = genome.getID();
     rcx_.setGenome(genome);
-    rcx_.setLayout(rcx_.lSrc.getLayoutForGenomeKey(genomeID));
+    rcx_.setLayout(rcx_.getLayoutSource().getLayoutForGenomeKey(genomeID));
     
     Linkage link = genome.getLinkage(linkID);
     Intersection linkInt = Intersection.pathIntersection(link, rcx_);

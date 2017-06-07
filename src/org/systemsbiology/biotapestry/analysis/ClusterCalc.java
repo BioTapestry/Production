@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.analysis;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -55,7 +56,7 @@ public class ClusterCalc {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private ArrayList clusters_;
+  private ArrayList<Cluster> clusters_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -68,8 +69,8 @@ public class ClusterCalc {
   ** Constructor
   */
 
-  public ClusterCalc(List seedClusters) {   
-    clusters_ = new ArrayList(seedClusters);  
+  public ClusterCalc(List<Cluster> seedClusters) {   
+    clusters_ = new ArrayList<Cluster>(seedClusters);  
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -84,7 +85,7 @@ public class ClusterCalc {
   */
 
   public Cluster getCluster(int i) {
-    return ((Cluster)clusters_.get(i)); 
+    return (clusters_.get(i)); 
   }
     
   /***************************************************************************
@@ -107,19 +108,19 @@ public class ClusterCalc {
       throw new IllegalStateException();
     }
     
-    TreeSet tdVals = new TreeSet();
+    TreeSet<TaggedDot> tdVals = new TreeSet<TaggedDot>();
     int numClust = clusters_.size();
     for (int i = 0; i < numClust; i++) {
-      Cluster nextClust = (Cluster)clusters_.get(i);
+      Cluster nextClust = clusters_.get(i);
       for (int j = i + 1; j < numClust; j++) {
-        Cluster otherClust = (Cluster)clusters_.get(j);
+        Cluster otherClust = clusters_.get(j);
         double dot = nextClust.dot(otherClust);
         TaggedDot noTag = new TaggedDot(dot, i, j);
         tdVals.add(noTag);
       }
     }
     // Biggest dot product is smallest distance!
-    TaggedDot winner = (TaggedDot)tdVals.last();
+    TaggedDot winner = tdVals.last();
     return (winner.dot);   
   }
 
@@ -134,25 +135,25 @@ public class ClusterCalc {
       throw new IllegalStateException();
     }
     
-    TreeSet tdVals = new TreeSet();
+    TreeSet<TaggedDot> tdVals = new TreeSet<TaggedDot>();
     int numClust = clusters_.size();
     for (int i = 0; i < numClust; i++) {
-      Cluster nextClust = (Cluster)clusters_.get(i);
+      Cluster nextClust = clusters_.get(i);
       for (int j = i + 1; j < numClust; j++) {
-        Cluster otherClust = (Cluster)clusters_.get(j);
+        Cluster otherClust = clusters_.get(j);
         double dot = nextClust.dot(otherClust);
         TaggedDot noTag = new TaggedDot(dot, i, j);
         tdVals.add(noTag);
       }
     }
     // Biggest dot product is smallest distance!
-    TaggedDot winner = (TaggedDot)tdVals.last();
+    TaggedDot winner = tdVals.last();
     
-    ArrayList newList = new ArrayList();
+    ArrayList<Cluster> newList = new ArrayList<Cluster>();
     for (int i = 0; i < numClust; i++) {
       if (i == winner.one) {
-        Cluster nextClust = (Cluster)clusters_.get(winner.one);
-        Cluster otherClust = (Cluster)clusters_.get(winner.two);
+        Cluster nextClust = clusters_.get(winner.one);
+        Cluster otherClust = clusters_.get(winner.two);
         newList.add(new Cluster(nextClust, otherClust));
       } else if (i == winner.two) {
         continue;
@@ -173,17 +174,17 @@ public class ClusterCalc {
   ////////////////////////////////////////////////////////////////////////////
 
   public static class ClusterVec implements Cloneable {
-    private Comparable tag_;
-    private ArrayList vals_;
+    private ClusterKey tag_;
+    private ArrayList<Double> vals_;
  
-    public ClusterVec(Comparable tag, List vals) {
+    public ClusterVec(ClusterKey tag, List<Double> vals) {
       tag_ = tag;
-      vals_ = new ArrayList(vals);
+      vals_ = new ArrayList<Double>(vals);
     }
     
-    public ClusterVec(Comparable tag, int dim) {
+    public ClusterVec(ClusterKey tag, int dim) {
       tag_ = tag;
-      vals_ = new ArrayList();     
+      vals_ = new ArrayList<Double>();     
       for (int i = 0; i < dim; i++) {
         vals_.add(new Double(0.0));
       }
@@ -194,7 +195,7 @@ public class ClusterCalc {
     }
       
     public Double getVal(int i) {
-      return ((Double)vals_.get(i));
+      return (vals_.get(i));
     }
       
     /***************************************************************************
@@ -205,9 +206,9 @@ public class ClusterCalc {
     public String valueString() {
       StringBuffer buf = new StringBuffer();
       buf.append("[");
-      Iterator vit = vals_.iterator();
+      Iterator<Double> vit = vals_.iterator();
       while (vit.hasNext()) {
-        Double val = (Double)vit.next();
+        Double val = vit.next();
         String out = (val == null) ? "(NoVal)" : UiUtil.doubleFormat(val.doubleValue(), false);
         buf.append(out);
         if (vit.hasNext()) {
@@ -223,7 +224,7 @@ public class ClusterCalc {
     ** Set the tag
     */
 
-    public void setTag(Comparable tag) {
+    public void setTag(ClusterKey tag) {
       tag_ = tag;
       return;     
     }
@@ -233,7 +234,7 @@ public class ClusterCalc {
     ** Get the tag
     */
 
-    public Comparable getTag() {
+    public ClusterKey getTag() {
       return (tag_);      
     }   
     
@@ -242,11 +243,12 @@ public class ClusterCalc {
     ** Clone
     */
 
-    public Object clone() {
+    @Override
+    public ClusterVec clone() {
       try {
         ClusterVec newVal = (ClusterVec)super.clone();
         // Warning!  Object tag not cloned!
-        newVal.vals_ = new ArrayList(this.vals_);
+        newVal.vals_ = new ArrayList<Double>(this.vals_);
         return (newVal);            
       } catch (CloneNotSupportedException ex) {
         throw new IllegalStateException();     
@@ -257,7 +259,8 @@ public class ClusterCalc {
     **
     ** Std. toString
     */
-     
+    
+    @Override     
     public String toString() {
       StringBuffer buf = new StringBuffer();
       buf.append(tag_.toString());
@@ -267,7 +270,7 @@ public class ClusterCalc {
     
     /***************************************************************************
     **
-    ** Calculate the dot product.  Missing vissing values treated as zero.
+    ** Calculate the dot product.  Missing missing values treated as zero.
     */
 
     public double dot(ClusterVec other) {
@@ -278,9 +281,9 @@ public class ClusterCalc {
       
       double sum = 0.0;
       for (int i = 0; i < numVal; i++) {
-        Double val = (Double)vals_.get(i);
+        Double val = vals_.get(i);
         double dVal = (val == null) ? 0.0 : val.doubleValue();
-        Double otherVal = (Double)other.vals_.get(i);
+        Double otherVal = other.vals_.get(i);
         double odVal = (otherVal == null) ? 0.0 : otherVal.doubleValue();
         sum += (dVal * odVal);
       }    
@@ -296,7 +299,7 @@ public class ClusterCalc {
       int count = 0;
       int numVal = vals_.size();
       for (int i = 0; i < numVal; i++) {
-        Double val = (Double)vals_.get(i);
+        Double val = vals_.get(i);
         if (val == null) {
           count++;
         }
@@ -325,7 +328,7 @@ public class ClusterCalc {
       }
       int numVal = vals_.size();
       for (int i = 0; i < numVal; i++) {
-        Double val = (Double)vals_.get(i);
+        Double val = vals_.get(i);
         if (val == null) {
           continue;
         } else {
@@ -341,29 +344,29 @@ public class ClusterCalc {
     ** Get a new weighted average ClusterVec
     */
 
-    public ClusterVec weightedAverage(Comparable newTag, double myWeight, ClusterVec other, double otherWeight) {
+    public ClusterVec weightedAverage(ClusterKey newTag, double myWeight, ClusterVec other, double otherWeight) {
 
       int numVal = vals_.size();
       if (other.vals_.size() != numVal) {
         throw new IllegalArgumentException();
       }       
-      ArrayList myWeightedSum = new ArrayList();
+      ArrayList<Double> myWeightedSum = new ArrayList<Double>();
       for (int i = 0; i < numVal; i++) {
-        Double val = (Double)vals_.get(i);
+        Double val = vals_.get(i);
         Double newVal = (val == null) ? null : new Double(val.doubleValue() * myWeight);
         myWeightedSum.add(newVal);
       }      
-      ArrayList otherWeightedSum = new ArrayList();
+      ArrayList<Double> otherWeightedSum = new ArrayList<Double>();
       for (int i = 0; i < numVal; i++) {
-        Double val = (Double)other.vals_.get(i);
+        Double val = other.vals_.get(i);
         Double newVal = (val == null) ? null :new Double(val.doubleValue() * otherWeight);
         otherWeightedSum.add(newVal);
       }      
       double weightSum = myWeight + otherWeight;
-      ArrayList retval = new ArrayList();
+      ArrayList<Double> retval = new ArrayList<Double>();
       for (int i = 0; i < numVal; i++) {
-        Double myVal = (Double)myWeightedSum.get(i);
-        Double otherVal = (Double)otherWeightedSum.get(i);
+        Double myVal = myWeightedSum.get(i);
+        Double otherVal = otherWeightedSum.get(i);
         Double newVal = ((myVal == null) || (otherVal == null)) ? null : new Double((myVal.doubleValue() + otherVal.doubleValue()) / weightSum);
         retval.add(newVal);
       }
@@ -375,10 +378,10 @@ public class ClusterCalc {
     ** Supply missing values (filled with mean of existing values)
     */
 
-    public static void supplyMissingValues(List clusterVecs) {
+    public static void supplyMissingValues(List<ClusterVec> clusterVecs) {
 
-      HashMap existingValSums = new HashMap();
-      HashMap existingCounts = new HashMap();
+      HashMap<Integer, Double> existingValSums = new HashMap<Integer, Double>();
+      HashMap<Integer, Integer> existingCounts = new HashMap<Integer, Integer>();
       int vecSize = -1;
       
       //
@@ -387,7 +390,7 @@ public class ClusterCalc {
       
       int numClust = clusterVecs.size();
       for (int i = 0; i < numClust; i++) {
-        ClusterVec cVec = (ClusterVec)clusterVecs.get(i);
+        ClusterVec cVec = clusterVecs.get(i);
         int numVal = cVec.vals_.size();
         if (i == 0) {
           vecSize = numVal;
@@ -395,17 +398,17 @@ public class ClusterCalc {
           throw new IllegalArgumentException();
         } 
         for (int j = 0; j < vecSize; j++) {
-          Double val = (Double)cVec.vals_.get(j);
+          Double val = cVec.vals_.get(j);
           if (val != null) {
-            Integer indexObj = new Integer(j);
-            Double existing = (Double)existingValSums.get(indexObj);
+            Integer indexObj = Integer.valueOf(j);
+            Double existing = existingValSums.get(indexObj);
             if (existing == null) {
               existingValSums.put(indexObj, val);
             } else {
               Double newVal = new Double(existing.doubleValue() + val.doubleValue());
               existingValSums.put(indexObj, newVal);
             }
-            Integer count = (Integer)existingCounts.get(indexObj);
+            Integer count = existingCounts.get(indexObj);
             if (count == null) {
               existingCounts.put(indexObj, new Integer(1));              
             } else {
@@ -419,13 +422,13 @@ public class ClusterCalc {
       // Average:
       //
       
-      HashMap averages = new HashMap();
+      HashMap<Integer, Double> averages = new HashMap<Integer, Double>();
       
-      Iterator kit = existingValSums.keySet().iterator();
+      Iterator<Integer> kit = existingValSums.keySet().iterator();
       while (kit.hasNext()) {
-        Integer index = (Integer)kit.next();
-        Double existingSum = (Double)existingValSums.get(index);
-        Integer existingCount = (Integer)existingCounts.get(index);
+        Integer index = kit.next();
+        Double existingSum = existingValSums.get(index);
+        Integer existingCount = existingCounts.get(index);
         Double avg = new Double(existingSum.doubleValue() / existingCount.doubleValue());
         averages.put(index, avg);
       }
@@ -435,12 +438,12 @@ public class ClusterCalc {
       //
           
       for (int i = 0; i < numClust; i++) {
-        ClusterVec cVec = (ClusterVec)clusterVecs.get(i);
+        ClusterVec cVec = clusterVecs.get(i);
         for (int j = 0; j < vecSize; j++) {
-          Double val = (Double)cVec.vals_.get(j);
+          Double val = cVec.vals_.get(j);
           if (val == null) {            
             Integer indexObj = new Integer(j);
-            Double avg = (Double)averages.get(indexObj);
+            Double avg = averages.get(indexObj);
             cVec.vals_.set(j, avg);
           }
         }
@@ -450,23 +453,23 @@ public class ClusterCalc {
   }       
 
   public static class Cluster implements Cloneable {
-    private TreeMap components_;
+    private TreeMap<ClusterKey, ClusterVec> components_;
     private ClusterVec consensus_;
 
     public Cluster(ClusterVec seed) {
-      components_ = new TreeMap();
+      components_ = new TreeMap<ClusterKey, ClusterVec>();
       components_.put(seed.getTag(), seed);
-      consensus_ = (ClusterVec)seed.clone();
-      consensus_.setTag(components_.keySet().toString());
+      consensus_ = seed.clone();
+      consensus_.setTag(new ClusterKey(components_.keySet().toString()));
     }
     
     public Cluster(Cluster clust1, Cluster clust2) { 
-      components_ = new TreeMap();
+      components_ = new TreeMap<ClusterKey, ClusterVec>();
       components_.putAll(clust1.components_);
       components_.putAll(clust2.components_);
       ClusterVec vec1 = clust1.getClusterVec();
       ClusterVec vec2 = clust2.getClusterVec();
-      consensus_ = vec1.weightedAverage(components_.keySet().toString(), (double)clust1.getClusterWeight(), vec2, (double)clust2.getClusterWeight());     
+      consensus_ = vec1.weightedAverage(new ClusterKey(components_.keySet()), clust1.getClusterWeight(), vec2, clust2.getClusterWeight());     
       consensus_.normalize();  // shouldn't need, right? 
     }
     
@@ -475,12 +478,13 @@ public class ClusterCalc {
     ** Collapse (drop all components to a single vector with a new tag)
     */
 
-    public void collapse(Comparable seedTag) {
+    public void collapse(ClusterKey seedTag) {
       components_.clear();
-      ClusterVec newCons = (ClusterVec)consensus_.clone();
-      HashSet newKeySet = new HashSet();
-      newKeySet.add(seedTag);
-      newCons.setTag(newKeySet.toString());
+      ClusterVec newCons = consensus_.clone();
+    //  HashSet<ClusterKey> newKeySet = new HashSet<ClusterKey>();
+    //  newKeySet.add(seedTag);
+    //  newCons.setTag(new ClusterKey(newKeySet));
+      newCons.setTag(seedTag);
       components_.put(seedTag, newCons);
       consensus_ = newCons;
       return;
@@ -491,8 +495,8 @@ public class ClusterCalc {
     ** Return original seed tags
     */
 
-    public Set getSeedTags() {
-      return (new HashSet(components_.keySet()));
+    public Set<ClusterKey> getSeedTags() {
+      return (new HashSet<ClusterKey>(components_.keySet()));
     }    
        
     /***************************************************************************
@@ -500,18 +504,19 @@ public class ClusterCalc {
     ** Clone
     */
 
-    public Object clone() {
+    @Override
+    public Cluster clone() {
       try {
         Cluster newVal = (Cluster)super.clone();
         // Warning!  Object tag not cloned!
-        newVal.components_ = new TreeMap();
-        Iterator tcit = this.components_.keySet().iterator();
+        newVal.components_ = new TreeMap<ClusterKey, ClusterVec>();
+        Iterator<ClusterKey> tcit = this.components_.keySet().iterator();
         while (tcit.hasNext()) {
-          Comparable key = (Comparable)tcit.next();
-          ClusterVec nextThis = (ClusterVec)this.components_.get(key);
+          ClusterKey key = tcit.next();
+          ClusterVec nextThis = this.components_.get(key);
           newVal.components_.put(key, nextThis.clone());
         }
-        newVal.consensus_ = (ClusterVec)this.consensus_.clone();        
+        newVal.consensus_ = this.consensus_.clone();        
         return (newVal);            
       } catch (CloneNotSupportedException ex) {
         throw new IllegalStateException();     
@@ -533,9 +538,9 @@ public class ClusterCalc {
     public String toString() {
       StringBuffer buf = new StringBuffer();
       buf.append(" [");
-      Iterator vit = components_.keySet().iterator();
+      Iterator<ClusterKey> vit = components_.keySet().iterator();
       while (vit.hasNext()) {
-        Object tag = vit.next();
+        ClusterKey tag = vit.next();
         buf.append(tag.toString());
         if (vit.hasNext()) {
           buf.append(" ");
@@ -547,7 +552,7 @@ public class ClusterCalc {
     }
   }   
   
-  public static class TaggedDot implements Comparable {
+  public static class TaggedDot implements Comparable<TaggedDot> {
     public double dot;
     public int one;
     public int two;
@@ -558,11 +563,10 @@ public class ClusterCalc {
       this.two = two;
     }
     
-    public int compareTo(Object o) {
-      if (this == o) {
+    public int compareTo(TaggedDot other) {
+      if (this == other) {
         return (0);
       }
-      TaggedDot other = (TaggedDot)o;
       double diff = this.dot - other.dot;
       if (diff != 0.0) {
         return ((diff < 0.0) ? (int)Math.floor(diff) : (int)Math.ceil(diff));
@@ -570,10 +574,140 @@ public class ClusterCalc {
       return (one - two);
     }
     
+    @Override
     public String toString() {
       return (dot + " " + one + " " + two);
-    }    
-  }   
+    }
+    
+    @Override
+    public int hashCode() {
+      return ((int)Math.round(100.0 * dot) + one + two);
+    }
+    
+    @Override
+    public boolean equals(Object other) {
+      if (other == null) {
+        return (false);
+      }
+      if (other == this) {
+        return (true);
+      }
+      if (!(other instanceof TaggedDot)) {
+        return (false);
+      }
+      TaggedDot otherDot = (TaggedDot)other;
+      if (otherDot.dot != this.dot) {
+        return (false);
+      }
+      if (otherDot.one != this.one) {
+        return (false);
+      }
+      if (otherDot.two != this.two) {
+        return (false);
+      }
+      return (true);
+    }
+  } 
+  
+  //
+  // Designed to be extensible to anything else the user wants to use as a key
+  //
+  
+  public static class ClusterKey implements Comparable<ClusterKey> {
+    protected final String myString_;
+     
+    protected ClusterKey() {
+      myString_ = null;
+    }
+    
+    public ClusterKey(String tag) {
+      myString_ = tag;
+    }
+    
+    public ClusterKey(Collection<ClusterKey> keys) {
+      myString_ = keys.toString();
+    }
+
+    protected Integer hashCodeVote() {
+      return (null);
+    }
+
+    protected String toStringVote() {
+      return (null);
+    }
+    
+    @SuppressWarnings("unused")
+    protected Boolean equalsVote(ClusterKey otherKey) {
+      return (null);
+    }
+    
+    @SuppressWarnings("unused")
+    protected Integer compareToVote(ClusterKey otherKey) {
+      return (null);
+    }
+      
+    @Override
+    public int hashCode() {
+      Integer hcv = hashCodeVote();
+      if (hcv == null) {
+        return (myString_.hashCode());
+      } else {
+        return (hcv.intValue());
+      }
+    }
+
+    @Override
+    public String toString() {
+      String tsv = toStringVote();
+      if (tsv == null) {
+        return (myString_.toString());
+      } else {
+        return (tsv);
+      }
+    }
+    
+    @Override
+    public boolean equals(Object other) {
+      if (other == null) {
+        return (false);
+      }
+      if (other == this) {
+        return (true);
+      }
+      if (!(other instanceof ClusterKey)) {
+        return (false);
+      }
+      ClusterKey otherKey = (ClusterKey)other;
+      Boolean ev = equalsVote(otherKey);
+      if (ev != null) {
+        return (ev.booleanValue());
+      }
+      if ((otherKey.myString_ != null) && (this.myString_ != null)) {
+        return (otherKey.myString_.equals(this.myString_));  
+      } else {
+        return (false);
+      }
+    }
+    
+    public int compareTo(ClusterKey otherKey) {
+      if (this == otherKey) {
+        return (0);
+      }
+      Integer ctv = compareToVote(otherKey);
+      if (ctv != null) {
+        return (ctv.intValue());
+      }
+      if ((otherKey.myString_ != null) && (this.myString_ != null)) {
+        return (otherKey.myString_.compareTo(this.myString_));  
+      } else if (this.myString_ != null) {
+        return (-1);
+      } else if (otherKey.myString_ != null) {
+        return (1);
+      } else {
+        throw new IllegalStateException();
+      }
+    } 
+  }
   
   ////////////////////////////////////////////////////////////////////////////
   //

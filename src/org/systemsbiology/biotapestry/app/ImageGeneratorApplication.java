@@ -38,7 +38,8 @@ import org.systemsbiology.biotapestry.cmd.flow.io.ExportWeb;
 import org.systemsbiology.biotapestry.cmd.flow.io.ImportCSV;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveOps;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.ImageExporter;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
@@ -99,6 +100,8 @@ public class ImageGeneratorApplication {
   private HashSet<WebPublisher.ModelScale> publishKeys_;
   private Map<String, Object> args_;
   private BTState appState_;
+  private BTState.AppSources appSrc_;
+
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -256,26 +259,34 @@ public class ImageGeneratorApplication {
       }
 
       try {  
-        ResourceManager rMan = appState_.getRMan();
         HashMap<String, Object> args = new HashMap<String, Object>();   
         if (needInit) {
           appState_ = new BTState("WJRL", args, true, false);
-          appState_.setExceptionHandler(new ExceptionHandler(appState_, appState_.getRMan(), true));
-          appState_.getDB().newModelViaDACX(); // Bogus, but no DACX yet
-          appState_.setIsEditor(true);
-          CommonView cview = new CommonView(appState_);
+          appSrc_ = appState_.getAppSources();
+          appSrc_.uics.setExceptionHandler(new ExceptionHandler(appSrc_.uics, appSrc_.uics.getRMan(), true));
+
+          Metabase mb = appState_.getMetabase();
+          mb.newModelViaDACX();
+          String tabID = appSrc_.tSrc.getDbIdForIndex(appSrc_.tSrc.getCurrentTabIndex());
+          Database newDB = mb.getDB(tabID);
+          DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState()); 
+          newDB.newModelViaDACX(ddacx.getTabContext(tabID));
+          appSrc_.uics.setIsEditor(true);
+          CommonView cview = new CommonView(appState_, appSrc_.uics, appSrc_.cSrc, appSrc_.tSrc);
+          appSrc_.uics.setCommonView(cview);
           cview.buildTheView();       
         }
-        FlowMeister flom = appState_.getFloM();
+        FlowMeister flom = appSrc_.cSrc.getFloM();
         boolean haveInput = false;
-        DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+        StaticDataAccessContext dacx = new StaticDataAccessContext(appState_);
+        ResourceManager rMan = appSrc_.uics.getRMan();
 
         switch (inputType_) {
           case BTP_INPUT:
             Object[] osArgs = new Object[2];
             osArgs[0] = Boolean.valueOf(false);
             osArgs[1] = input_;
-            BatchJobControlFlowHarness dcf0 = new BatchJobControlFlowHarness(appState_, null); 
+            BatchJobControlFlowHarness dcf0 = appSrc_.hBld.genBatchHarness();
             ControlFlow myFlow0 = flom.getControlFlow(FlowMeister.MainFlow.LOAD, null);
             LoadSaveOps.StepState pre0 = (LoadSaveOps.StepState)myFlow0.getEmptyStateForPreload(dacx);
             pre0.setParams(osArgs);     
@@ -295,7 +306,7 @@ public class ImageGeneratorApplication {
             osArgs[4] = input_;
             osArgs[5] = nodeIDMap_;
             osArgs[6] = modelIDMap_;
-            BatchJobControlFlowHarness dcf1 = new BatchJobControlFlowHarness(appState_, null); 
+            BatchJobControlFlowHarness dcf1 = appSrc_.hBld.genBatchHarness();
             ControlFlow myFlow1 = flom.getControlFlow(FlowMeister.MainFlow.LOAD, null);
             ImportCSV.StepState pre1 = (ImportCSV.StepState)myFlow1.getEmptyStateForPreload(dacx);
             pre1.setParams(osArgs);     
@@ -310,7 +321,7 @@ public class ImageGeneratorApplication {
             osArgs = new Object[2];
             osArgs[0] = Boolean.valueOf(false);
             osArgs[1] = input_;
-            BatchJobControlFlowHarness dcf2 = new BatchJobControlFlowHarness(appState_, null); 
+            BatchJobControlFlowHarness dcf2 = appSrc_.hBld.genBatchHarness();
             ControlFlow myFlow2 = flom.getControlFlow(FlowMeister.MainFlow.LOAD, null);
             LoadSaveOps.StepState pre2 = (LoadSaveOps.StepState)myFlow2.getEmptyStateForPreload(dacx);
             pre2.setParams(osArgs);     
@@ -327,7 +338,7 @@ public class ImageGeneratorApplication {
             osArgs[4] = input2_;
             osArgs[5] = nodeIDMap_;
             osArgs[6] = modelIDMap_;
-            BatchJobControlFlowHarness dcf3 = new BatchJobControlFlowHarness(appState_, null); 
+            BatchJobControlFlowHarness dcf3 = appSrc_.hBld.genBatchHarness(); 
             ControlFlow myFlow3 = flom.getControlFlow(FlowMeister.MainFlow.IMPORT_FULL_HIERARCHY_FROM_CSV, null);
             ImportCSV.StepState pre3 = (ImportCSV.StepState)myFlow3.getEmptyStateForPreload(dacx);
             pre3.setParams(osArgs);     
@@ -350,7 +361,7 @@ public class ImageGeneratorApplication {
           case PNG_OUTPUT:
             Object[] osArgs = imageExportPrepForStream(args, output_);       
             if (osArgs != null) {
-              BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+              BatchJobControlFlowHarness dcf = appSrc_.hBld.genBatchHarness(); 
               ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.EXPORT, null);
               LoadSaveOps.StepState pre = (LoadSaveOps.StepState)myFlow.getEmptyStateForPreload(dacx);
               pre.setParams(osArgs);     
@@ -369,7 +380,8 @@ public class ImageGeneratorApplication {
             osArgs = new Object[2];
             osArgs[0] = Boolean.valueOf(false);
             osArgs[1] = output_;
-            BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+            
+            BatchJobControlFlowHarness dcf = appSrc_.hBld.genBatchHarness(); 
             ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.SAVE_AS, null);
             LoadSaveOps.StepState pre = (LoadSaveOps.StepState)myFlow.getEmptyStateForPreload(dacx);
             pre.setParams(osArgs);     
@@ -387,7 +399,7 @@ public class ImageGeneratorApplication {
             osArgs[1] = noss_;
             osArgs[2] = intersectionMap_;
             osArgs[3] = publishKeys_;
-            BatchJobControlFlowHarness dcf2 = new BatchJobControlFlowHarness(appState_, null); 
+            BatchJobControlFlowHarness dcf2 = appSrc_.hBld.genBatchHarness(); 
             ControlFlow myFlow2 = flom.getControlFlow(FlowMeister.MainFlow.WEB, null);
             ExportWeb.StepState pre2 = (ExportWeb.StepState)myFlow2.getEmptyStateForPreload(dacx);
             pre2.setParams(osArgs);     
@@ -407,7 +419,7 @@ public class ImageGeneratorApplication {
           throw new GeneratorException(rMan.getString("headless.totalExportFailure"));
         }
       } catch (ExceptionHandler.HeadlessException hex) {
-        throw new GeneratorException(appState_.getRMan().getString("headless.wrappedExceptionFailure"), hex);
+        throw new GeneratorException(appSrc_.uics.getRMan().getString("headless.wrappedExceptionFailure"), hex);
       }
     }
  
@@ -435,7 +447,7 @@ public class ImageGeneratorApplication {
     ArgParser ap = new ArgParser(); 
     Map<String, Object> argMap = ap.parse(ArgParser.AppType.PIPELINE, argv);
     if (argMap == null) {
-      System.err.print(ap.getUsage(new BTState(), ArgParser.AppType.PIPELINE));
+      System.err.print(ap.getUsage((new BTState()).getUIComponentSource().getRMan(), ArgParser.AppType.PIPELINE));
       System.exit(1);
     }
     ImageGeneratorApplication iga = new ImageGeneratorApplication(argMap);
@@ -535,14 +547,23 @@ public class ImageGeneratorApplication {
       
       System.setProperty("java.awt.headless", "true");   
       appState_ = new BTState("WJRL", args_, true, false);
-      appState_.setExceptionHandler(new ExceptionHandler(appState_, appState_.getRMan(), false));
-      appState_.getDB().newModelViaDACX(); // Bogus, but no DACX yet
-      appState_.setIsEditor(true);
-      CommonView cview = new CommonView(appState_);
+      BTState.AppSources appSrc = appState_.getAppSources();
+      appSrc.uics.setExceptionHandler(new ExceptionHandler(appSrc.uics, appSrc.uics.getRMan(), false));
+      Metabase mb = appState_.getMetabase();
+      mb.newModelViaDACX();
+      String tabID = appSrc.tSrc.getDbIdForIndex(appSrc.tSrc.getCurrentTabIndex());
+      Database newDB = mb.getDB(tabID);
+      DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState()); 
+      newDB.newModelViaDACX(ddacx.getTabContext(tabID));
+      
+      appSrc_.uics.setIsEditor(true);
+      CommonView cview = new CommonView(appState_, appSrc_.uics, appSrc.cSrc, appSrc.tSrc);
+      appSrc_.uics.setCommonView(cview);
       cview.buildTheView();
-      ResourceManager rMan = appState_.getRMan();
-      FlowMeister flom = appState_.getFloM();
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+      ResourceManager rMan = ddacx.getRMan();
+
+      FlowMeister flom = appSrc.cSrc.getFloM();
+      StaticDataAccessContext dacx = new StaticDataAccessContext(appState_);
   
       //
       // Input operations.  Gotta have one and only one
@@ -555,7 +576,7 @@ public class ImageGeneratorApplication {
         Object[] osArgs = new Object[2];
         osArgs[0] = new Boolean(true);  // we are loading from file...
         osArgs[1] = inFileName;
-        BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+        BatchJobControlFlowHarness dcf = appSrc.hBld.genBatchHarness(); 
         ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.LOAD, null);
         LoadSaveOps.StepState pre = (LoadSaveOps.StepState)myFlow.getEmptyStateForPreload(dacx);
         pre.setParams(osArgs);     
@@ -583,7 +604,7 @@ public class ImageGeneratorApplication {
         osArgs[4] = csvFileName; 
         osArgs[5] = null;
         osArgs[6] = null;
-        BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+        BatchJobControlFlowHarness dcf = appSrc.hBld.genBatchHarness(); 
         ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.IMPORT_FULL_HIERARCHY_FROM_CSV, null);
         ImportCSV.StepState pre = (ImportCSV.StepState)myFlow.getEmptyStateForPreload(dacx);
         pre.setParams(osArgs);     
@@ -608,7 +629,7 @@ public class ImageGeneratorApplication {
         Object[] osArgs = new Object[2];
         osArgs[0] = new Boolean(true);  // we are loading from directory...
         osArgs[1] = webDirectory;
-        BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+        BatchJobControlFlowHarness dcf = appSrc.hBld.genBatchHarness(); 
         ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.WEB, null);
         ExportWeb.StepState pre = (ExportWeb.StepState)myFlow.getEmptyStateForPreload(dacx);
         pre.setParams(osArgs);     
@@ -625,7 +646,7 @@ public class ImageGeneratorApplication {
       if (imageFileName != null) {
         Object[] osArgs = imageExportPrepForFile(args_, imageFileName);
         if (osArgs != null) {
-          BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+          BatchJobControlFlowHarness dcf = appSrc.hBld.genBatchHarness(); 
           ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.EXPORT, null);
           LoadSaveOps.StepState pre = (LoadSaveOps.StepState)myFlow.getEmptyStateForPreload(dacx);
           pre.setParams(osArgs);     
@@ -646,7 +667,7 @@ public class ImageGeneratorApplication {
         Object[] osArgs = new Object[2];
         osArgs[0] = new Boolean(true);
         osArgs[1] = btpFileName;
-        BatchJobControlFlowHarness dcf = new BatchJobControlFlowHarness(appState_, null); 
+        BatchJobControlFlowHarness dcf = appSrc.hBld.genBatchHarness(); 
         ControlFlow myFlow = flom.getControlFlow(FlowMeister.MainFlow.SAVE_AS, null);
         LoadSaveOps.StepState pre = (LoadSaveOps.StepState)myFlow.getEmptyStateForPreload(dacx);
         pre.setParams(osArgs);     
@@ -705,7 +726,7 @@ public class ImageGeneratorApplication {
    
   private ExportPublish.ExportSettings imageExportPrepGuts(Map<String, Object> args) {
 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = appSrc_.uics.getRMan();
                        
     List suppRes = ImageExporter.getSupportedResolutions(false);
     List<String> suppForms = ImageExporter.getSupportedExports();    
@@ -735,10 +756,10 @@ public class ImageGeneratorApplication {
       settings.res = null;
     }
     
-    appState_.getZoomTarget().setZoomFactor(settings.zoomVal);    
-    Dimension dim = appState_.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);   
-    double currentZoomHeight = Math.round(((double)dim.height) * settings.zoomVal);
-    double currentZoomWidth = Math.round(((double)dim.width) * settings.zoomVal);    
+    appSrc_.uics.getZoomTarget().setZoomFactor(settings.zoomVal);    
+    Dimension dim = appSrc_.uics.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);   
+    double currentZoomHeight = Math.round(dim.height * settings.zoomVal);
+    double currentZoomWidth = Math.round(dim.width * settings.zoomVal);    
     settings.size = new Dimension((int)currentZoomWidth, (int)currentZoomHeight);    
     return (settings);
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,11 +31,13 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.SuperAdd;
@@ -58,10 +60,12 @@ import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -85,7 +89,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   // PRIVATE INSTANCE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////  
-    
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -97,8 +101,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public MergeDuplicateNodes(BTState appState) {
-    super(appState);
+  public MergeDuplicateNodes() {
     name = "nodePopup.MergeNodes";
     desc = "nodePopup.MergeNodes";
     mnem = "nodePopup.MergeNodesMnem";             
@@ -117,8 +120,9 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {  
-    CheckGutsCache cache = new CheckGutsCache(appState_, rcx.getGenome(), CheckGutsCache.GENERAL);
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    CheckGutsCache cache = new CheckGutsCache(uics, rcx, CheckGutsCache.Checktype.GENERAL);
     return (cache.haveANodeSelection() && cache.genomeIsRoot());
   }
   
@@ -129,8 +133,8 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new StepState(appState_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new StepState(dacx));  
   }
   
   /***************************************************************************
@@ -147,9 +151,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         throw new IllegalArgumentException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("mergeDups")) {
           next = ans.mergeDups();          
         } else if (ans.getNextStep().equals("stepToDeny")) {
@@ -182,14 +184,10 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.MultiSelectCmdState, DialogAndInProcessCmd.PopupPointCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.MultiSelectCmdState, DialogAndInProcessCmd.PopupPointCmdState {
      
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
     private Set<String> nodes_;
     private Set<String> genes_;
-    private DataAccessContext rcxT_;
     private Map<String, Layout.PadNeedsForLayout> globalPadNeeds_;
     private HashMap<String, String> mergeMap_;
     private Map<String, List<FullGenomeHierarchyOracle.NodeUsage>> nuMap_;
@@ -200,9 +198,8 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepToDeny";
     }
     
@@ -235,15 +232,6 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
     public void setPopupPoint(Point2D ptp) {
       return;
     }
-    
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
  
     /***************************************************************************
     **
@@ -256,11 +244,11 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // The gottaGene case should not happen, since we do not make this command part of the popup menu for genes!
       //
       
-      Node node = rcxT_.getGenome().getNode(inter_.getObjectID());
+      Node node = dacx_.getCurrentGenome().getNode(inter_.getObjectID());
       int popType = node.getNodeType();
       boolean gottaGene = (popType == Node.GENE);
       if (!genes_.isEmpty() || gottaGene) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rMan.getString("mergeWarning.geneDeny"), rMan.getString("mergeWarning.geneDenyTitle"));
         nextStep_ = "stepWillExit";
         return (new DialogAndInProcessCmd(suf, this)); 
@@ -271,7 +259,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       //
       
       if ((nodes_.size() == 1) && nodes_.contains(inter_.getObjectID())) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rMan.getString("mergeWarning.singleDeny"), rMan.getString("mergeWarning.singleDenyTitle"));
         nextStep_ = "stepWillExit";
         return (new DialogAndInProcessCmd(suf, this)); 
@@ -283,9 +271,9 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       //
      
       for (String nodeID : nodes_) {
-        Node testNode = rcxT_.getGenome().getNode(nodeID);
+        Node testNode = dacx_.getCurrentGenome().getNode(nodeID);
         if (popType != testNode.getNodeType()) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rMan.getString("mergeWarning.mixedTypeDeny"), rMan.getString("mergeWarning.mixedTypeDenyTitle"));
           nextStep_ = "stepWillExit";
           return (new DialogAndInProcessCmd(suf, this));           
@@ -313,8 +301,8 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToWarn() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, rMan.getString("instructWarning.changeMessage"), rMan.getString("instructWarning.changeTitle"));     
         daipc = new DialogAndInProcessCmd(suf, this);      
       } else {
@@ -368,13 +356,14 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       boolean warnUser = false;
       HashSet<String> deadSet = new HashSet<String>(mergeMap_.keySet());
       for (String deadID : deadSet) {
-        String deadName = rcxT_.getGenome().getNode(deadID).getRootName();
-        TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
-        TemporalInputRangeData tird = rcxT_.getExpDataSrc().getTemporalInputRangeData();  
-        PerturbationData pd = rcxT_.getExpDataSrc().getPertData();
-        if (((tcd != null) && tcd.haveDataForNodeOrName(deadID, deadName)) ||
+        String deadName = dacx_.getCurrentGenome().getNode(deadID).getRootName();
+        TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+        TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();  
+        PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+        PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+        if (((tcd != null) && tcd.haveDataForNodeOrName(deadID, deadName, dacx_.getDataMapSrc())) ||
             ((tird != null) && tird.haveDataForNodeOrName(deadID, deadName)) ||
-            ((pd != null) && pd.haveDataForNode(deadID, null))) {
+            ((pd != null) && pd.haveDataForNode(deadID, null, pdms))) {
           warnUser = true;
           break;
         }
@@ -382,7 +371,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
   
       DialogAndInProcessCmd daipc;
       if (warnUser) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = UiUtil.convertMessageToHtml(rMan.getString("mergeWarning.dataMessage"));
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, rMan.getString("mergeWarning.dataTitle"));
         daipc = new DialogAndInProcessCmd(suf, this);
@@ -419,8 +408,9 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
     */ 
        
     private void mergeTCMaps(UndoSupport support) {
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
-      if (!tcd.haveData()) {
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      if (((tcd == null) || !tcd.haveDataEntries()) && !tcdm.haveData()) {
         return;
       }
       boolean aChange = false;
@@ -428,15 +418,15 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
      
       Map<String, Set<String>> fromForTo = invertMergeMap(mergeMap_);
       for (String toNode : fromForTo.keySet()) {
-        List<TimeCourseData.TCMapping> mapped = tcd.getCustomTCMTimeCourseDataKeys(toNode);
-        TimeCourseData.TCMapping tcmd = tcd.getTimeCourseDefaultMap(toNode);
-        HashSet<TimeCourseData.TCMapping> mapSet = new HashSet<TimeCourseData.TCMapping>();
+        List<TimeCourseDataMaps.TCMapping> mapped = tcdm.getCustomTCMTimeCourseDataKeys(toNode);
+        TimeCourseDataMaps.TCMapping tcmd = tcdm.getTimeCourseDefaultMap(toNode, dacx_.getGenomeSource());
+        HashSet<TimeCourseDataMaps.TCMapping> mapSet = new HashSet<TimeCourseDataMaps.TCMapping>();
         if (mapped != null) {
           mapSet.addAll(mapped);
         }
         Set<String> fromNodes = fromForTo.get(toNode);
         for (String fromNode : fromNodes) {
-          List<TimeCourseData.TCMapping> tcml = tcd.getCustomTCMTimeCourseDataKeys(fromNode);
+          List<TimeCourseDataMaps.TCMapping> tcml = tcdm.getCustomTCMTimeCourseDataKeys(fromNode);
           if ((tcml != null) && !tcml.isEmpty()) {
             mapSet.addAll(tcml);
             needDefaultToo = true;
@@ -446,15 +436,15 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           mapSet.add(tcmd);
         }
         if (!mapSet.isEmpty()) {
-          TimeCourseChange tcc = tcd.addTimeCourseTCMMap(toNode, new ArrayList<TimeCourseData.TCMapping>(mapSet), true);
+          TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(toNode, new ArrayList<TimeCourseDataMaps.TCMapping>(mapSet), true);
           if (tcc != null) {
-            support.addEdit(new TimeCourseChangeCmd(appState_, rcxT_, tcc));
+            support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
             aChange = true;
           }
         } else {
-          TimeCourseChange tchg = tcd.dropDataKeys(toNode);
+          TimeCourseChange tchg = tcdm.dropDataKeys(toNode);
           if (tchg != null) {
-            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(appState_, rcxT_, tchg, false);
+            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
             support.addEdit(cmd);
             aChange = true;
           }
@@ -472,7 +462,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
     */
     
     public String getDefaultMap(String nodeId) {
-      Node node = rcxT_.getGenome().getNode(nodeId);      
+      Node node = dacx_.getCurrentGenome().getNode(nodeId);      
       if (node == null) { // for when node has been already deleted...
         throw new IllegalStateException();
       }      
@@ -489,7 +479,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
     */ 
        
     private void mergeTIRDMaps(UndoSupport support) {
-      TemporalInputRangeData tird = rcxT_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       if (!tird.haveData()) {
         return;
       }
@@ -499,7 +489,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       Map<String, Set<String>> fromForTo = invertMergeMap(mergeMap_);
       for (String toNode : fromForTo.keySet()) {
         List<String> mappedS = tird.getCustomTemporalInputRangeSourceKeys(toNode);
-        String seDef = tird.getTemporalInputRangeDefaultMap(toNode);
+        String seDef = tird.getTemporalInputRangeDefaultMap(toNode, dacx_.getGenomeSource());
         List<String> mappedE = tird.getCustomTemporalInputRangeEntryKeys(toNode);
  
         HashSet<String> mapSetS = new HashSet<String>();
@@ -535,21 +525,21 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         if (!mapSetS.isEmpty() || !mapSetE.isEmpty()) {
           TemporalInputChange[] tic = tird.addTemporalInputRangeMaps(toNode, new ArrayList<String>(mapSetE), new ArrayList<String>(mapSetS));
           for (int i = 0; i < tic.length; i++) {
-            support.addEdit(new TemporalInputChangeCmd(appState_, rcxT_, tic[i]));
+            support.addEdit(new TemporalInputChangeCmd(dacx_, tic[i]));
           }
           aChange = true;
         } 
         if (mapSetE.size() == 0) {
           TemporalInputChange tic = tird.dropDataEntryKeys(toNode);
           if (tic != null) {
-            support.addEdit(new TemporalInputChangeCmd(appState_, rcxT_, tic, false));
+            support.addEdit(new TemporalInputChangeCmd(dacx_, tic, false));
             aChange = true;
           }
         }   
         if (mapSetS.size() == 0) {
           TemporalInputChange tic = tird.dropDataSourceKeys(toNode);
           if (tic != null) {
-            support.addEdit(new TemporalInputChangeCmd(appState_, rcxT_, tic, false));
+            support.addEdit(new TemporalInputChangeCmd(dacx_, tic, false));
             aChange = true;
           }
         }
@@ -567,14 +557,15 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
        
     private void mergePertMaps(UndoSupport support) {
          
-      PerturbationData pd = rcxT_.getExpDataSrc().getPertData();
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+      PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
      
       boolean aChange = false;
       boolean needDefaultSToo = false;
       boolean needDefaultEToo = false;
       Map<String, Set<String>> fromForTo = invertMergeMap(mergeMap_);
       for (String toNode : fromForTo.keySet()) {
-        List<String> srcEntries = pd.getCustomDataSourceKeys(toNode);
+        List<String> srcEntries = pdms.getCustomDataSourceKeys(toNode);
         String sDef = getDefaultMap(toNode);
         if (!pd.getSourceNameSet().contains(sDef)) {
           sDef = null;
@@ -584,7 +575,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           eDef = null;
         }
         
-        List<String> entries = pd.getCustomDataEntryKeys(toNode);
+        List<String> entries = pdms.getCustomDataEntryKeys(toNode);
    
         HashSet<String> mapSetS = new HashSet<String>();
         if (srcEntries != null) {
@@ -596,12 +587,12 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         }
         Set<String> fromNodes = fromForTo.get(toNode);
         for (String fromNode : fromNodes) {
-          List<String> tirS = pd.getCustomDataSourceKeys(fromNode);
+          List<String> tirS = pdms.getCustomDataSourceKeys(fromNode);
           if ((tirS != null) && !tirS.isEmpty()) {
             mapSetS.addAll(tirS);
             needDefaultSToo = true;
           }
-          List<String> tirE = pd.getCustomDataEntryKeys(fromNode);
+          List<String> tirE = pdms.getCustomDataEntryKeys(fromNode);
           if ((tirE != null) && !tirE.isEmpty()) {
             mapSetE.addAll(tirE);
             needDefaultEToo = true;
@@ -616,32 +607,32 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         }
 
         if (!mapSetS.isEmpty()) {
-          PertDataChange pdc = pd.setSourceMap(toNode, new ArrayList<String>(mapSetS));
+          PertDataChange pdc = pdms.setSourceMap(toNode, new ArrayList<String>(mapSetS));
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(appState_, rcxT_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
             support.addEdit(pdcc);
             aChange = true;
           }
         } else {
-          PertDataChange pdc = pd.dropDataSourceKeys(toNode);
+          PertDataChange pdc = pdms.dropDataSourceKeys(toNode);
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(appState_, rcxT_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
             support.addEdit(pdcc);
             aChange = true; // Not strictly true: if it was empty before, it is still empty, so no change....
           }
         }
     
         if (!mapSetE.isEmpty()) {
-          PertDataChange pdc = pd.setEntryMap(toNode, new ArrayList<String>(mapSetE));
+          PertDataChange pdc = pdms.setEntryMap(toNode, new ArrayList<String>(mapSetE));
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(appState_, rcxT_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
             support.addEdit(pdcc);
             aChange = true;
           }
         } else {         
-          PertDataChange pdc = pd.dropDataEntryKeys(toNode);
+          PertDataChange pdc = pdms.dropDataEntryKeys(toNode);
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(appState_, rcxT_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
             support.addEdit(pdcc);
             aChange = true; // Not strictly true: if it was empty before, it is still empty, so no change.... 
           }
@@ -664,7 +655,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // Root-level module layout can change due to loss of merged nodes. Record state to fix: 
       //
       
-      globalPadNeeds_ = (new FullGenomeHierarchyOracle(appState_)).getGlobalNetModuleLinkPadNeeds();    
+      globalPadNeeds_ = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();    
   
       //
       // The user-pulled-down node has to be last man standing. If it was not selected, add it to the pile
@@ -682,7 +673,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // what overlay modules the various nodes belong to.
       //
  
-      DBGenome dbg = rcxT_.getDBGenome();
+      DBGenome dbg = dacx_.getDBGenome();
       Map<String, Map<String, Set<String>>> allNodesModMem = new HashMap<String, Map<String, Set<String>>>();
       HashSet<String> rootOnly = new HashSet<String>();
       
@@ -690,7 +681,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       Iterator<String> nit = nodes_.iterator();
       while (nit.hasNext()) {
         String nodeID = nit.next();
-        List<FullGenomeHierarchyOracle.NodeUsage> usages = rcxT_.fgho.getAllNodeInstances(nodeID);
+        List<FullGenomeHierarchyOracle.NodeUsage> usages = dacx_.getFGHO().getAllNodeInstances(nodeID);
         if (usages.isEmpty()) {
           rootOnly.add(nodeID);
         } else {
@@ -803,7 +794,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       }   
  
       if (results.size() > 1) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = UiUtil.convertMessageToHtml(rMan.getString("mergeWarning.partialMerge"));
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, rMan.getString("mergeWarning.partialMergeTitle"));
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(suf, this);      
@@ -823,7 +814,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       
     private DialogAndInProcessCmd mergeDups() {
       
-      DBGenome dbg = rcxT_.getDBGenome();
+      DBGenome dbg = dacx_.getDBGenome();
       HashSet<String> changingGs = new HashSet<String>(); 
       HashSet<String> changingLOs = new HashSet<String>(); 
       
@@ -854,7 +845,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         sapMap.put(merged, sapList);
       } 
       
-      Iterator<GenomeInstance> giit = rcxT_.getGenomeSource().getInstanceIterator();
+      Iterator<GenomeInstance> giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         List<FullGenomeHierarchyOracle.NodeUsage> nusi = nuMap_.get(gi.getID());
@@ -892,7 +883,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // Start the edits:
       //
         
-      UndoSupport support = new UndoSupport(appState_, "undo.mergeNodes");
+      UndoSupport support = uFac_.provideUndoSupport("undo.mergeNodes", dacx_);
       
       //
       // Add new nodes to instances. The SuperAddPairs also say which modules the new nodes need
@@ -902,21 +893,21 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       for (String toMerge : sapMap.keySet()) { 
         List<SuperAdd.SuperAddPair> sapList = sapMap.get(toMerge);
         String mergeTo = mergeMap_.get(toMerge);
-        SuperAdd.superAddForNode(appState_, rcxT_, mergeTo, sapList, support);
+        SuperAdd.superAddForNode(dacx_, mergeTo, sapList, support, uFac_);
       }
 
       //
       // Root model changes for links:
       //
 
-      Layout rlo = rcxT_.getLayout();
+      Layout rlo = dacx_.getCurrentLayout();
       for (String sCh : srcChanges) {
         Linkage link = dbg.getLinkage(sCh);
         String srcSwitch = mergeMap_.get(link.getSource());
         BusProperties bp = rlo.getLinkPropertiesForSource(srcSwitch);
         int lp = (bp != null) ? bp.getLaunchPad(dbg, rlo) : 0;
         GenomeChange gc = dbg.changeLinkageSourceNode(link, srcSwitch, lp);
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
         changingGs.add(dbg.getID());
       }
@@ -924,9 +915,9 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         Linkage link = dbg.getLinkage(tCh);
         String trgSwitch = mergeMap_.get(link.getTarget());
         PadCalculatorToo pcalc = new PadCalculatorToo();
-        PadCalculatorToo.PadResult pads = pcalc.padCalc(rcxT_.getGenomeSource(), link.getSource(), trgSwitch, null, false);
+        PadCalculatorToo.PadResult pads = pcalc.padCalc(dacx_.getGenomeSource(), link.getSource(), trgSwitch, null, false);
         GenomeChange gc = dbg.changeLinkageTargetNode(link, trgSwitch, pads.landing);
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
         changingGs.add(dbg.getID());
       } 
@@ -945,7 +936,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       HashMap<String, Map<String, String>> targPlans = new HashMap<String, Map<String, String>>();
       HashMap<String, Map<String, String>> nodeMoves = new HashMap<String, Map<String, String>>();
          
-      giit = rcxT_.getGenomeSource().getInstanceIterator();
+      giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         if (!gi.isRootInstance()) { // Node group membership testing is only robust in root instances.
@@ -986,19 +977,19 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // Linkage resets for instances:
       //
  
-      giit = rcxT_.getGenomeSource().getInstanceIterator();
+      giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         String gID = ((gi.isRootInstance()) ? gi : gi.getVfgParentRoot()).getID();
         Map<String, String> newSources = sourcePlans.get(gID);
         Map<String, String> newTargs = targPlans.get(gID); 
-        DataAccessContext rcxi = new DataAccessContext(rcxT_, gi.getID());
+        DataAccessContext rcxi = new StaticDataAccessContext(dacx_, gi.getID());
         for (String lkey : newSources.keySet()) {
           Linkage childLink = gi.getLinkage(lkey);
           if (childLink != null) { // Those darn VfNs!
             String newSrc = newSources.get(lkey);
             GenomeChange gc = gi.changeLinkageSourceNode(childLink, newSrc, childLink.getLaunchPad());
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxi, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxi, gc);
             support.addEdit(gcc);
             changingGs.add(gi.getID());
           }
@@ -1008,7 +999,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           if (childLink != null) { // Those darn VfNs!
             String newTrg = newTargs.get(lkey);
             GenomeChange gc = gi.changeLinkageTargetNode(childLink, newTrg, childLink.getLandingPad());
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxi, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxi, gc);
             support.addEdit(gcc);
             changingGs.add(gi.getID());
           }
@@ -1030,8 +1021,8 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         BusProperties bp = rlo.getLinkPropertiesForSource(mergeTo);
         if (bp != null) {
           if (bp.isDirect()) {
-            PropChange pc = rlo.splitDirectLinkInHalf(mergeTo, rcxT_); 
-            PropChangeCmd pcc = new PropChangeCmd(appState_, rcxT_, pc);
+            PropChange pc = rlo.splitDirectLinkInHalf(mergeTo, dacx_); 
+            PropChangeCmd pcc = new PropChangeCmd(dacx_, pc);
             support.addEdit(pcc);
             changingLOs.add(rlo.getID());
           }
@@ -1043,7 +1034,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
                                                                 new HashSet<String>(bpO.getLinkageList()), 
                                                                 mergeTo, dest);
         if ((pca != null) && (pca.length != 0)) {
-          PropChangeCmd pcc = new PropChangeCmd(appState_, rcxT_, pca);
+          PropChangeCmd pcc = new PropChangeCmd(dacx_, pca);
           support.addEdit(pcc);
           changingLOs.add(rlo.getID());
         }
@@ -1053,14 +1044,14 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       // Repair instance layouts:
       //
  
-      giit = rcxT_.getGenomeSource().getInstanceIterator();
+      giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         if (!gi.isRootInstance()) { // only need layouts for root instances.
           continue;
         }
-        DataAccessContext rcxi = new DataAccessContext(rcxT_, gi.getID());
-        Layout lo = rcxi.getLayout();
+        DataAccessContext rcxi = new StaticDataAccessContext(dacx_, gi.getID());
+        Layout lo = rcxi.getCurrentLayout();
         Map<String, String> newMoves = nodeMoves.get(gi.getID());
         for (String nkey : newMoves.keySet()) {
           NodeProperties copyProp = lo.getNodeProperties(nkey);
@@ -1068,7 +1059,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           NodeProperties oldProp = lo.getNodeProperties(newNode);
           NodeProperties newProp = new NodeProperties(newNode, copyProp);
           PropChange pc = lo.replaceNodeProperties(oldProp, newProp);
-          PropChangeCmd pcc = new PropChangeCmd(appState_, rcxi, pc);
+          PropChangeCmd pcc = new PropChangeCmd(rcxi, pc);
           support.addEdit(pcc);
           changingLOs.add(lo.getID());
         } 
@@ -1084,7 +1075,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           String newSrc = newSources.get(lkey);
           BusProperties repl = new BusProperties(lProp, newSrc);
           PropChange pc = lo.replaceLinkProperties(lProp, repl);
-          PropChangeCmd pcc = new PropChangeCmd(appState_, rcxi, pc);
+          PropChangeCmd pcc = new PropChangeCmd(rcxi, pc);
           support.addEdit(pcc);
         }
       }
@@ -1100,7 +1091,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       //
       
       for (String merged : mergeMap_.keySet()) {
-        RemoveNode.deleteNodeFromModelCore(appState_, merged, rcxT_, support, null, false);
+        RemoveNode.deleteNodeFromModelCore(uics_, merged, dacx_, support, null, false, uFac_);
       }
       
       //
@@ -1111,18 +1102,18 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       HashSet<String> done = new HashSet<String>();
       for (String linkID : mergeLinkCandidates) {
         if (!done.contains(linkID)) {
-          Set<String> elim = MergeDuplicateLinks.mergeDuplicateLinks(appState_, linkID, rcxT_, support);     
+          Set<String> elim = MergeDuplicateLinks.mergeDuplicateLinks(linkID, dacx_, support, uFac_);     
           done.addAll(elim);
         }
       }
       
-      appState_.getGenomePresentation().clearSelections(rcxT_, support);   
+      uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);   
       if (globalPadNeeds_ != null) {
-        ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcxT_, globalPadNeeds_, false, support);
+        ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds_, false, support);
       }  
 
       for (String gid : changingGs) {
-        ModelChangeEvent mce = new ModelChangeEvent(gid, ModelChangeEvent.UNSPECIFIED_CHANGE);
+        ModelChangeEvent mce = new ModelChangeEvent(dacx_.getGenomeSource().getID(), gid, ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mce); 
       }
       

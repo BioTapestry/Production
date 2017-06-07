@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -38,7 +38,6 @@ import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.UiUtil;
-
 
 /****************************************************************************
 **
@@ -80,13 +79,13 @@ public class NodeBounder {
   ** Figure out bounding rectangle for the nodes
   */
   
-  public static Rectangle nodeBounds(Set<String> nodes, DataAccessContext rcx, Rectangle minRect, 
+  public static Rectangle nodeBounds(Set<String> nodes, StaticDataAccessContext rcx, Rectangle minRect, 
                                      Rectangle extraRect, int extraPad, Map<String, Rectangle> eachRect) {
 
     Rectangle extent = minRect;
 
     Iterator<String> mit = nodes.iterator();
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
     while (mit.hasNext()) {
       String nodeID = mit.next();
@@ -94,7 +93,7 @@ public class NodeBounder {
       if (node == null) {
         continue;
       }
-      NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
       if (np == null) { // useful for partial layouts...
         continue;
       }
@@ -124,10 +123,10 @@ public class NodeBounder {
   ** Figure out a place to put a label
   */
   
-  public static Point2D prelimLabelLocation(String firstNodeID, DataAccessContext rcx, int extraPad) {
-    Genome genome = rcx.getGenome();
+  public static Point2D prelimLabelLocation(String firstNodeID, StaticDataAccessContext rcx, int extraPad) {
+    Genome genome = rcx.getCurrentGenome();
     Node node = genome.getNode(firstNodeID);
-    NodeProperties np = rcx.getLayout().getNodeProperties(firstNodeID);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(firstNodeID);
     INodeRenderer rend = np.getRenderer(); 
     Rectangle bounds = rend.getModuleBounds(node, rcx, extraPad, null);
     return (new Point2D.Double(bounds.getCenterX(), bounds.getY() - (UiUtil.GRID_SIZE * 5.0)));
@@ -138,10 +137,10 @@ public class NodeBounder {
   ** Figure out set of individual rectangles for the nodes
   */
   
-  public static Map<String, Rectangle> nodeRects(Set<String> nodes, DataAccessContext rcx, int extraPad) {
+  public static Map<String, Rectangle> nodeRects(Set<String> nodes, StaticDataAccessContext rcx, int extraPad) {
 
     HashMap<String, Rectangle> retval = new HashMap<String, Rectangle>();
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
     Iterator<String> mit = nodes.iterator();
     while (mit.hasNext()) {
@@ -150,7 +149,7 @@ public class NodeBounder {
       if (node == null) {
         continue;
       }
-      NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
       if (np == null) { // useful for partial layouts...
         continue;
       }
@@ -166,15 +165,15 @@ public class NodeBounder {
   ** Figure out nodes inside the given rectangle
   */
   
-  public static Set<String> getNodesInRect(Rectangle rect, DataAccessContext rcx) {  
+  public static Set<String> getNodesInRect(Rectangle rect, StaticDataAccessContext rcx) {  
   
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     HashSet<String> retval = new HashSet<String>();
     Iterator<Node> git = genome.getAllNodeIterator();    
     while (git.hasNext()) {
       Node node = git.next();
       String nodeID = node.getID();
-      IRenderer render = rcx.getLayout().getNodeProperties(nodeID).getRenderer();      
+      IRenderer render = rcx.getCurrentLayout().getNodeProperties(nodeID).getRenderer();      
       Intersection inter = render.intersects(node, rect, true, rcx, null);
       if (inter != null) {
         retval.add(nodeID);
@@ -188,7 +187,7 @@ public class NodeBounder {
         while (ait.hasNext()) {
           DynamicInstanceProxy.AddedNode node = ait.next();
           String nodeID = node.nodeName;
-          IRenderer render = rcx.getLayout().getNodeProperties(nodeID).getRenderer();      
+          IRenderer render = rcx.getCurrentLayout().getNodeProperties(nodeID).getRenderer();      
           Intersection inter = render.intersects(dgi.getNode(nodeID), rect, true, rcx, null);
           if (inter != null) {
             retval.add(nodeID);

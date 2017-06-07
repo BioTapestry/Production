@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,11 +39,13 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -99,9 +101,10 @@ public class PathDisplayFrameFactory extends DialogFactory {
    
     switch(platform.getPlatform()) {
       case DESKTOP:   
-        return (new DesktopPathFrame(cfh.getBTState(), dniba.genomeID, dniba.srcID, dniba.targID));   
+        return (new DesktopPathFrame(cfh.getUI(), cfh.getDataAccessContext(), cfh.getHarnessBuilder(), 
+                                     cfh.getTabSource().getCurrentTab(), dniba.genomeID, dniba.srcID, dniba.targID));   
       case WEB:
-    	  return new SerializableWindow(cfh.getBTState(),dniba.srcID, dniba.targID, cfh.getCurrDAIPC());
+    	  return new SerializableWindow(dniba.srcID, dniba.targID, cfh.getDataAccessContext().getRMan(), cfh.getCurrDAIPC());
       default:
         throw new IllegalArgumentException("The platform is not supported: " + platform.getPlatform());
     }   
@@ -138,7 +141,6 @@ public class PathDisplayFrameFactory extends DialogFactory {
 	  
 	  private final int DEFAULT_DEPTH_ = 4;
 	  
-	  private BTState appState_;
 	  private ResourceManager rMan_;
 	  private XPlatPrimitiveElementFactory primElemFac_;
 	  private XPlatUIDialog dialogWrapper_;
@@ -147,9 +149,8 @@ public class PathDisplayFrameFactory extends DialogFactory {
 	  int height;
 	  int width;
 
-	  public SerializableWindow(BTState appState, String srcId, String trgId,DialogAndInProcessCmd diagpc) {
-		  this.appState_ = appState;
-		  this.rMan_ = appState.getRMan();
+	  public SerializableWindow(String srcId, String trgId, ResourceManager rMan, DialogAndInProcessCmd diagpc) {
+		  this.rMan_ = rMan;
 		  this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan_);
 		  
 		  dialogWrapper_ = new XPlatUIDialog(this.rMan_.getString("showPath.title"),250,800);
@@ -208,7 +209,9 @@ public class PathDisplayFrameFactory extends DialogFactory {
 		  XPlatUIPrimitiveElement zoomOut = this.primElemFac_.makeBasicButton(this.rMan_.getString("mvpwz.zoomOut"), null, "MAIN_ZOOM_OUT", null);
 		  XPlatUIPrimitiveElement zoomToSelected = this.primElemFac_.makeBasicButton(this.rMan_.getString("mvpwz.zoomToSelected"), null, "MAIN_ZOOM_TO_ALL_SELECTED", null);
 		  modelDrawingArea.setParameter("disabledContent", this.rMan_.getString("showPath.noPathAtDepth"));
-		  modelDrawingArea.setValidity("havePath", "true");		  
+		  modelDrawingArea.setValidity("havePath", "true");
+		  
+		  dialogWrapper_.setParameter("canvasId", modelDrawingArea.getParameter("id"));
 		  
 		  zoomIn.getEvent("click").addParameter("drawingAreaId", modelDrawingArea.getParameter("id"));
 		  zoomIn.setValidity("havePath","true");
@@ -225,17 +228,16 @@ public class PathDisplayFrameFactory extends DialogFactory {
 		  Map<String,Object> hopValues = new HashMap<String,Object>();
 		  
 		  for(int i = 1; i <= Math.max(10,DEFAULT_DEPTH_ + 4); i++) {
-			  hopValues.put(new Integer(i).toString(), new Integer(i));
+			  hopValues.put(Integer.toString(i), Integer.toString(i));
 		  }
 		  
-		  XPlatUIPrimitiveElement hopComboBox = this.primElemFac_.makeTxtComboBox("maxHops", "4", null, true, this.rMan_.getString("showPath.depth"), hopValues);
+		  XPlatUIPrimitiveElement hopComboBox = this.primElemFac_.makeTxtComboBox("maxHops", "4", null, this.rMan_.getString("showPath.depth"), hopValues);
 		  
 		  hopComboBox.setEvent("change",  new XPlatUIEvent("change","CLIENT_PATH_SET_DEPTH"));
 		  hopComboBox.getEvent("change").addParameter("drawingAreaId", modelDrawingArea.getParameter("id"));
 		  hopComboBox.setParameter("bundleAs", "pathDepth");
 		  hopComboBox.getEvent("change").addParameter("pathSrc", srcId);
 		  hopComboBox.getEvent("change").addParameter("pathTrg", trgId);
-		  hopComboBox.setParameter("convertNumericIds", true);
 		  hopComboBox.setValidity("neverAPath","false");
 		  hopComboBox.setParameter("longerOK", true);
 		  
@@ -327,25 +329,30 @@ public class PathDisplayFrameFactory extends DialogFactory {
 
 
 
-	public boolean isModal() {
-		return false;
-	}
-
-	public SimpleUserFeedback checkForErrors(UserInputs ui) {
-		return null;
-	}
-
-	public XPlatUIDialog getDialog() {
-		return this.getDialog(null);
-	}
-
-	public XPlatUIDialog getDialog(FlowKey keyVal) {
-		return this.dialogWrapper_;
-	}
-	  
-  }
-
+  	public boolean dialogIsModal() {
+  		return false;
+  	}
   
+  	public SimpleUserFeedback checkForErrors(UserInputs ui) {
+  		return null;
+  	}
+  
+  	public XPlatUIDialog getDialog() {
+  		return this.getDialog(null);
+  	}
+  
+  	public XPlatUIDialog getDialog(FlowKey keyVal) {
+  		return this.dialogWrapper_;
+  	}
+  
+  
+  
+  	public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+  		// TODO Auto-generated method stub
+  		return null;
+  	} 
+  }
+ 
   public static class DesktopPathFrame extends JFrame implements DesktopDialogPlatform.Dialog {
 
     ////////////////////////////////////////////////////////////////////////////
@@ -355,10 +362,12 @@ public class PathDisplayFrameFactory extends DialogFactory {
     ////////////////////////////////////////////////////////////////////////////  
      
     private PathDisplay pd_;
-    private BTState appState_;
+    private String tabKey_;
     private String genomeKey_;
     private String srcID_;
     private String targID_;
+    private UIComponentSource uics_;
+    private DataAccessContext dacx_;
     private static final long serialVersionUID = 1L;
      
     ////////////////////////////////////////////////////////////////////////////
@@ -372,25 +381,29 @@ public class PathDisplayFrameFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopPathFrame(BTState appState, String giKey, String srcID, String targID) {
+    public DesktopPathFrame(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, String tabKey, String giKey, String srcID, String targID) {
       super();
-      appState_ = appState;
+      uics_ = uics;
+      dacx_ = dacx;
+      tabKey_ = tabKey;
       URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/BioTapFab16White.gif");  
       setIconImage(new ImageIcon(ugif).getImage());
-      setTitle(appState.getRMan().getString("showPath.title"));
+      setTitle(dacx_.getRMan().getString("showPath.title"));
 
       addWindowListener(new WindowAdapter() {
+        @Override
         public void windowClosing(WindowEvent e) {
-          appState_.getDataPopupMgr().dropPathWindow();
+          uics_.getDataPopupMgr().dropPathWindow();
           if (pd_ != null) {
             pd_.unregister();
           }
         }
+        @Override
         public void windowOpened(WindowEvent e) { 
           try {
             pd_.updateNetworkDisplay();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -398,10 +411,10 @@ public class PathDisplayFrameFactory extends DialogFactory {
       srcID_ = srcID;          
       targID_ = targID;   
       genomeKey_ = giKey;
-      boolean showPert = appState_.getIsEditor() && appState_.getDB().getPertData().haveData();
-      pd_ = new PathDisplay(appState_, srcID, targID, showPert);
+      boolean showPert = uics_.getIsEditor() && dacx_.getExpDataSrc().getPertData().haveData();
+      pd_ = new PathDisplay(uics_, dacx_, hBld, tabKey_, srcID_, targID_, showPert);
           
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       setSize(1200, 550);
       JPanel cp = (JPanel)getContentPane();
       cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -421,12 +434,12 @@ public class PathDisplayFrameFactory extends DialogFactory {
         public void actionPerformed(ActionEvent ev) {
           try {
             DesktopPathFrame.this.setVisible(false);
-            appState_.getDataPopupMgr().dropPathWindow();
+            uics_.getDataPopupMgr().dropPathWindow();
             if (pd_ != null) {
               pd_.unregister();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -441,7 +454,7 @@ public class PathDisplayFrameFactory extends DialogFactory {
       //
       UiUtil.gbcSet(gbc, 0, 21, 10, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
       cp.add(buttonPanel, gbc);
-      setLocationRelativeTo(appState_.getTopFrame());
+      setLocationRelativeTo(uics_.getTopFrame());
     }     
 
     ////////////////////////////////////////////////////////////////////////////
@@ -455,7 +468,7 @@ public class PathDisplayFrameFactory extends DialogFactory {
     ** These are required. Note we are a frame, i.e. not modal:
     */  
     
-    public boolean isModal() {
+    public boolean dialogIsModal() {
       return (false);
     }
 
@@ -473,12 +486,16 @@ public class PathDisplayFrameFactory extends DialogFactory {
     public String getCurrentModel() {
       return (genomeKey_);  
     }
-        
-    public void refresh(String genomeID, String srcID, String targID) {
+    public String getTabKey() {
+      return (tabKey_);
+    } 
+   
+    public void refresh(String tabKey, String genomeID, String srcID, String targID) {
       genomeKey_ = genomeID;
       targID_ = targID;
       srcID_ = srcID;
-      pd_.installNewData(null, genomeID, srcID,  targID, null);
+      tabKey_ = tabKey;
+      pd_.installNewData(null, tabKey, genomeID, srcID,  targID, null);
       return; 
     }
 

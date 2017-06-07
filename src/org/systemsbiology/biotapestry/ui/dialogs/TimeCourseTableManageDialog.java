@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,19 +38,21 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.timeCourse.GeneTemplateEntry;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseGene;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ListWidget;
 import org.systemsbiology.biotapestry.util.ListWidgetClient;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -68,8 +70,10 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   
   private ListWidget lw_;
   private TimeCourseData tcd_;
-  private BTState appState_;
+  private TimeCourseDataMaps tcdm_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -84,12 +88,13 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   ** Constructor 
   */ 
   
-  public TimeCourseTableManageDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tctmd.title"), true);
-    appState_ = appState;
+  public TimeCourseTableManageDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tctmd.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -100,7 +105,8 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     // Create a list of the target genes available:
     //
     
-    tcd_ = appState_.getDB().getTimeCourseData();
+    tcd_ = dacx.getExpDataSrc().getTimeCourseData();
+    tcdm_  = dacx.getDataMapSrc().getTimeCourseDataMaps();
     Iterator<TimeCourseGene> genes = tcd_.getGenes();
     ArrayList<String> srcs = new ArrayList<String>();
     while (genes.hasNext()) {
@@ -118,17 +124,17 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
       public void actionPerformed(ActionEvent ev) {
         try {
           TimeCourseGene targ = tcd_.getTimeCourseDataCaseInsensitive((String)(lw_.getSelectedObjects()[0]));
-          PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(appState_, dacx_, targ.getName());
+          PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(uics_, dacx_, targ.getName(), uFac_);
           if (tced != null) {
             tced.setVisible(true);
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
     
-    lw_ = new ListWidget(appState_, srcs, this, ListWidget.FULL_MODE, buttonPE);    
+    lw_ = new ListWidget(uics_.getHandlerAndManagerSource(), srcs, this, ListWidget.FULL_MODE, buttonPE);    
     UiUtil.gbcSet(gbc, 1, 0, 5, 5, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
     cp.add(lw_, gbc);
         
@@ -143,7 +149,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
           TimeCourseTableManageDialog.this.setVisible(false);
           TimeCourseTableManageDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -155,7 +161,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     //
     UiUtil.gbcSet(gbc, 0, 6, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -170,20 +176,20 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   */
   
   public List<String> addRow(ListWidget widget) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     //
     // If data table is not set up, do it right now:
     //
     
     if (!tcd_.hasGeneTemplate()) {        
-      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(appState_, dacx_);
+      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
       if (tcsd == null) {
         return (null);
       }
       tcsd.setVisible(true);
       if (!tcd_.hasGeneTemplate()) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tcmdNoTemplate.message"), 
                                       rMan.getString("tcmdNoTemplate.title"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -192,7 +198,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     }
  
     String newGene = 
-      (String)JOptionPane.showInputDialog(appState_.getTopFrame(), 
+      (String)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                           rMan.getString("tctmd.newGene"), 
                                           rMan.getString("tctmd.newGeneTitle"),     
                                           JOptionPane.QUESTION_MESSAGE, null, 
@@ -209,19 +215,19 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     }
    
     if (!tcd_.nameIsUnique(newGene)) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("tctmd.nameNotUnique"), 
                                     rMan.getString("tctmd.errorTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }      
      
-    UndoSupport support = new UndoSupport(appState_, "undo.tctmdadd"); 
+    UndoSupport support = uFac_.provideUndoSupport("undo.tctmdadd", dacx_); 
     
     Iterator<GeneTemplateEntry> template = tcd_.getGeneTemplate();
-    TimeCourseGene tcg = new TimeCourseGene(appState_, newGene, template);
+    TimeCourseGene tcg = new TimeCourseGene(dacx_, newGene, template);
     TimeCourseChange tcc = tcd_.addTimeCourseGene(tcg);
-    support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));    
+    support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));    
  
     Iterator<TimeCourseGene> genes = tcd_.getGenes();
     ArrayList<String> srcs = new ArrayList<String>();
@@ -247,16 +253,16 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.tctmddelete");    
+    UndoSupport support = uFac_.provideUndoSupport("undo.tctmddelete", dacx_);    
     
     for (int i = 0; i < rows.length; i++) {
       String geneName = (String)widget.getElementAt(rows[i]);
-      TimeCourseChange[] changes = tcd_.dropMapsTo(geneName);
+      TimeCourseChange[] changes = tcdm_.dropMapsTo(geneName);
       for (int j = 0; j < changes.length; j++) {
-        support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, changes[j]));
+        support.addEdit(new TimeCourseChangeCmd(dacx_, changes[j]));
       }
       TimeCourseChange tcc = tcd_.dropGene(geneName);
-      support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
       for (int j = i + 1; j < rows.length; j++) {
         if (rows[j] > rows[i]) {
           rows[j]--;
@@ -283,7 +289,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   */
   
   public List<String> editRow(ListWidget widget, int[] selectedRows) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     if (selectedRows.length != 1) {
       throw new IllegalArgumentException();
     }
@@ -293,13 +299,13 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     //
     
     if (!tcd_.hasGeneTemplate()) {
-      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(appState_, dacx_);
+      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
       if (tcsd == null) {
         return (null);
       }
       tcsd.setVisible(true);
       if (!tcd_.hasGeneTemplate()) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tcmdNoTemplate.message"), 
                                       rMan.getString("tcmdNoTemplate.title"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -311,7 +317,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     ArrayList<String> list = new ArrayList<String>();
     list.add(geneName);
            
-    TimeCourseEntryDialog tced = new TimeCourseEntryDialog(appState_, dacx_, list, true);
+    TimeCourseEntryDialog tced = new TimeCourseEntryDialog(uics_, dacx_, list, true, uFac_);
     tced.setVisible(true);
 
     Iterator<TimeCourseGene> genes = tcd_.getGenes();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,14 +21,11 @@
 package org.systemsbiology.biotapestry.cmd.flow.io;
 
 import java.awt.Dimension;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -39,17 +36,19 @@ import javax.swing.filechooser.FileFilter;
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.CommonView;
 import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.export.ExportPublish;
+import org.systemsbiology.biotapestry.cmd.flow.tabs.TabOps;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.nav.RecentFilesManager;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.parser.ParserClient;
@@ -59,7 +58,6 @@ import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoFormatFactory;
 import org.systemsbiology.biotapestry.timeCourse.PerturbedTimeCourseGeneCSVFormatFactory;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
-import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeFormatFactory;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseFormatFactory;
 import org.systemsbiology.biotapestry.ui.ImageExporter;
@@ -69,10 +67,10 @@ import org.systemsbiology.biotapestry.ui.dialogs.FileChooserWrapperFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.pertManage.DesignBatchKeyDialog;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 import org.systemsbiology.biotapestry.util.FilePreparer;
-import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.InvalidInputException;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -105,6 +103,7 @@ public class LoadSaveOps extends AbstractControlFlow {
     PERT_EXPRESS("command.ImportPerturbedExpressionCSV", "command.ImportPerturbedExpressionCSV", "FIXME24.gif", "command.ImportPerturbedExpressionCSVMnem", null),
     TIME_COURSE("command.ImportTimeCourseXml", "command.ImportTimeCourseXml", "FIXME24.gif", "command.ImportTimeCourseXmlMnem", null),
     PERTURB("command.ImportPerturbCsv", "command.ImportPerturbCsv", "FIXME24.gif", "command.ImportPerturbCsvMnem", null),
+    LOAD_AS_NEW_TABS("command.LoadAsNewTabs", "command.LoadAsNewTabs", "FIXME24.gif", "command.LoadAsNewTabsMnem", null),
     LOAD_RECENT(),
     ;
     
@@ -159,6 +158,7 @@ public class LoadSaveOps extends AbstractControlFlow {
   
   private IOAction action_;
   private String filePath_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -172,7 +172,7 @@ public class LoadSaveOps extends AbstractControlFlow {
   */ 
   
   public LoadSaveOps(BTState appState, IOAction action) {
-    super(appState);
+    appState_ = appState;
     if (action.equals(IOAction.LOAD_RECENT)) {
       throw new IllegalArgumentException();
     }
@@ -190,7 +190,7 @@ public class LoadSaveOps extends AbstractControlFlow {
   */ 
    
   public LoadSaveOps(BTState appState, IOAction action, FileArg args) {
-    super(appState);
+    appState_ = appState;
     if (!action.equals(IOAction.LOAD_RECENT)) {
       throw new IllegalArgumentException();
     }
@@ -233,6 +233,9 @@ public class LoadSaveOps extends AbstractControlFlow {
       case TIME_COURSE:
       case PERTURB:
         return (true);
+      case LOAD_AS_NEW_TABS:
+        UiUtil.fixMePrintout("Actually only if not empty: e.g. cache.tabCount>1");
+        return (true);
       case EXPORT:
         return (cache.genomeNotNull());      
       case PERT_EXPRESS:   
@@ -266,8 +269,9 @@ public class LoadSaveOps extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, filePath_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    // I/O needs to track dynamic state changes, so we ignore the provided static DACX
+    StepState retval = new StepState(action_, filePath_, dacx, new DynamicDataAccessContext(appState_));
     return (retval);
   }
   
@@ -284,12 +288,10 @@ public class LoadSaveOps extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, filePath_, cfh.getDataAccessContext());
+        ans = new StepState(action_, filePath_, cfh, new DynamicDataAccessContext(appState_));
       } else {
         ans = (StepState)last.currStateX;
-      }
-      if (ans.cfh == null) {
-        ans.cfh = cfh;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -300,7 +302,7 @@ public class LoadSaveOps extends AbstractControlFlow {
       } else if (ans.getNextStep().equals("stepToCheck")) {
         next = ans.stepToCheck(last);
       } else if (ans.getNextStep().equals("stepExtractFileChoice")) {
-        next = ans.stepExtractFileChoice(last);  
+        next = ans.stepExtractFileChoice(last);
       } else if (ans.getNextStep().equals("stepToProcessUsingFile")) {
         next = ans.stepToProcessUsingFile();      
       } else {
@@ -318,20 +320,30 @@ public class LoadSaveOps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
     private IOAction myAction_;
-    private BTState appState_;
     private LoadSaveSupport myLsSup_;
     private Object[] headlessArgs_;
     private String myFilePath_;
-    private ServerControlFlowHarness cfh;
     private File myFile_;
-    private DynamicDataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+    private UndoSupport appendSupport_;
+    private DynamicDataAccessContext ddacx_;
+      
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(IOAction action, String filePath, StaticDataAccessContext dacx, DynamicDataAccessContext ddacx) {
+      super(dacx);
+      myAction_ = action;
+    //  myLsSup_ = appState_.getLSSupport(); need cfh loaded
+      myFilePath_ = filePath;
+      nextStep_ = "stepToProcess";
+      myFile_ = null;
+      ddacx_ = ddacx;
+      appendSupport_ = null;
     }
     
     /***************************************************************************
@@ -339,16 +351,32 @@ public class LoadSaveOps extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, IOAction action, String filePath, DataAccessContext dacx) {
+    public StepState(IOAction action, String filePath, ServerControlFlowHarness cfh, DynamicDataAccessContext ddacx) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
-      myLsSup_ = appState_.getLSSupport();
+      myLsSup_ = uics_.getLSSupport();
       myFilePath_ = filePath;
       nextStep_ = "stepToProcess";
       myFile_ = null;
-      dacx_ = new DynamicDataAccessContext(dacx, appState);
+      ddacx_ = ddacx;
+      appendSupport_ = null;
     }
-     
+    
+    /***************************************************************************
+    **
+    ** Gotta override to make sure myLsSup_ can get initialized.
+    */
+    
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      myLsSup_ = uics_.getLSSupport();
+      return;
+    }
+    
     /***************************************************************************
     **
     ** Set the popup params
@@ -394,6 +422,11 @@ public class LoadSaveOps extends AbstractControlFlow {
         case LOAD_RECENT:
         case LOAD:
           return (stepUndoWarning());
+        case LOAD_AS_NEW_TABS:
+          appendSupport_ = uFac_.provideUndoSupport("undo.appendFileAsNewTabs", ddacx_);
+          UiUtil.fixMePrintout("This puts an add a tab on the undo stack");
+          UiUtil.fixMePrintout("This cannot be undone right now");
+          return (stepToLoad());
         case TEMPORAL_INPUT:
           return (stepTemporalInputWarning());
         case EMBRYO_COUNTS:
@@ -440,6 +473,7 @@ public class LoadSaveOps extends AbstractControlFlow {
         case SAVE_AS:    
         case CLEAR_RECENT:        
         case PERT_EXPRESS:
+        case LOAD_AS_NEW_TABS:
         default:
           throw new IllegalStateException();
       }
@@ -470,9 +504,10 @@ public class LoadSaveOps extends AbstractControlFlow {
           doLoadRecent();
           break;  
         case CLEAR_RECENT: 
-          doClearRecent();
+          doClearRecent(); // IS THIS SUPPOSED TO DO SOMETHING?
           break;  
         case LOAD:
+        case LOAD_AS_NEW_TABS:
           return (stepFinalLoadFromFile());
         case NEW_MODEL: 
           doNewModel();
@@ -500,11 +535,11 @@ public class LoadSaveOps extends AbstractControlFlow {
     */
     
     private boolean doAnExport() {        
-      SUPanel sup = appState_.getSUPanel();      
-      Dimension dim = appState_.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);
+      SUPanel sup = uics_.getSUPanel();      
+      Dimension dim = ddacx_.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);
       ExportPublish.ExportSettings set;
-      if (!appState_.isHeadless()) {
-        ExportSettingsDialog esd = new ExportSettingsDialog(appState_, appState_.getTopFrame(), dim.width, dim.height);
+      if (!uics_.isHeadless()) {
+        ExportSettingsDialog esd = new ExportSettingsDialog(uics_, ddacx_, uics_.getTopFrame(), dim.width, dim.height);
         esd.setVisible(true);
         set = (ExportPublish.ExportSettings)esd.getUserInputs();
         if (set == null) {
@@ -517,19 +552,19 @@ public class LoadSaveOps extends AbstractControlFlow {
       File file = null;
       OutputStream stream = null;
       
-      if (!appState_.isHeadless()) {  // not headless...       
+      if (!uics_.isHeadless()) {  // not headless...       
         List<String> supported = ImageExporter.getSupportedFileSuffixes();
         ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-        filts.add(new FileExtensionFilters.MultiExtensionFilter(appState_, supported, "filterName.img"));
+        filts.add(new FileExtensionFilters.MultiExtensionFilter(ddacx_, supported, "filterName.img"));
         String pref = ImageExporter.getPreferredSuffixForType(set.formatType);
-        file = myLsSup_.getFprep().getOrCreateWritableFileWithSuffix("ExportDirectory", filts, supported, pref);   
+        file = myLsSup_.getFprep(ddacx_).getOrCreateWritableFileWithSuffix("ExportDirectory", filts, supported, pref);   
         if (file == null) {
           return (true);
         }
       } else {
         if (((Boolean)headlessArgs_[1]).booleanValue()) {
           file = new File((String)headlessArgs_[2]);
-          if (!myLsSup_.getFprep().checkWriteFile(file, true)) {  // Legacy, but why check if headless?
+          if (!myLsSup_.getFprep(ddacx_).checkWriteFile(file, true)) {  // Legacy, but why check if headless?
             return (false);
           }
         } else {
@@ -538,16 +573,16 @@ public class LoadSaveOps extends AbstractControlFlow {
       }
       try {
         if (file != null) {
-          sup.exportToFile(file, false, set.formatType, set.res, set.zoomVal, set.size, appState_);
+          sup.exportToFile(uics_, ddacx_, file, false, set.formatType, set.res, set.zoomVal, set.size);
         } else {
-          sup.exportToStream(stream, false, set.formatType, set.res, set.zoomVal, set.size, appState_);
+          sup.exportToStream(uics_, ddacx_, stream, false, set.formatType, set.res, set.zoomVal, set.size);
         }
-        if (!appState_.isHeadless()) {
-          myLsSup_.getFprep().setPreference("ExportDirectory", file.getAbsoluteFile().getParent());
+        if (!uics_.isHeadless()) {
+          myLsSup_.getFprep(ddacx_).setPreference("ExportDirectory", file.getAbsoluteFile().getParent());
         }
         return (true);
       } catch (IOException ioe) {
-        myLsSup_.getFprep().displayFileOutputError();
+        myLsSup_.getFprep(ddacx_).displayFileOutputError();
         return (false);
       }
     }
@@ -559,20 +594,14 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private void doASave() { 
       try {
-        File cf = appState_.getCurrentFile();
+        File cf = pafs_.getCurrentFile();
         if (cf != null) {
-           Database db = appState_.getDB();
-           PrintWriter out
-             = new PrintWriter(new BufferedWriter(new OutputStreamWriter(new FileOutputStream(cf), "UTF-8")));
-           Indenter ind = new Indenter(out, Indenter.DEFAULT_INDENT);
-           db.writeXML(out, ind);
-           out.close();
-           appState_.clearUndoTracking();
+           myLsSup_.saveToOutputStream(new FileOutputStream(cf));
         } else {
           myLsSup_.saveToFile(null);
         }
       } catch (IOException ioe) {
-        myLsSup_.getFprep().displayFileOutputError();
+        myLsSup_.getFprep(ddacx_).displayFileOutputError();
       }
       return;
     } 
@@ -583,7 +612,7 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
    
     public boolean doASaveAs() {
-      if (appState_.isWebApplication() || !appState_.isHeadless()) {
+      if (dacx_.isForWeb() || !uics_.isHeadless()) {
         return (myLsSup_.saveToFile(null));
       } else {
         if (((Boolean)headlessArgs_[0]).booleanValue()) {
@@ -594,7 +623,7 @@ public class LoadSaveOps extends AbstractControlFlow {
           try {
             myLsSup_.saveToOutputStream(stream);
           } catch (IOException ioe) {
-            myLsSup_.getFprep().displayFileOutputError(); // Which is kinda bogus...
+            myLsSup_.getFprep(dacx_).displayFileOutputError(); // Which is kinda bogus...
             return (false);
           }
           return (true);
@@ -609,10 +638,11 @@ public class LoadSaveOps extends AbstractControlFlow {
    
     private DialogAndInProcessCmd doLoadRecent() {
       File file = new File(myFilePath_);
-      if (!myLsSup_.getFprep().checkExistingImportFile(file)) {
+      if (!myLsSup_.getFprep(dacx_).checkExistingImportFile(file)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
-      FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromFile(file, dacx_);
+      TabOps.clearOutTabs(tSrc_, uics_, 1);
+      FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromFile(file, false, null);
       if (firc.wasSuccessful()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       } else {
@@ -627,12 +657,12 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
    
     private void doClearRecent() {    
-      RecentFilesManager rfm = appState_.getRecentFilesMgr();
+      RecentFilesManager rfm = pafs_.getRecentFilesMgr();
       rfm.drop();
-      appState_.getRecentMenu().clearRecentMenu();
+      uics_.getRecentMenu().clearRecentMenu();
       return;
     }
-    
+
     /***************************************************************************
     **
     ** Warn of undo
@@ -640,8 +670,8 @@ public class LoadSaveOps extends AbstractControlFlow {
       
     private DialogAndInProcessCmd stepUndoWarning() {
       DialogAndInProcessCmd daipc;
-      if ((appState_.isWebApplication() || !appState_.isHeadless()) && appState_.hasAnUndoChange()) {
-        ResourceManager rMan = appState_.getRMan();
+      if ((dacx_.isForWeb() || !uics_.isHeadless()) && cmdSrc_.hasAnUndoChange()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("loadAction.warningMessage");
         String title = rMan.getString("loadAction.warningMessageTitle");
         Map<String,String> clickActions = new HashMap<String,String>();
@@ -665,10 +695,11 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private DialogAndInProcessCmd stepTimeCourseWarning() {
       DialogAndInProcessCmd daipc;    
-      TimeCourseData tcdat = dacx_.getExpDataSrc().getTimeCourseData();
-      if ((tcdat != null) && (tcdat.haveData())) {
-        String message = dacx_.rMan.getString("importTCXml.warningMessage");
-        String title = dacx_.rMan.getString("importTCXml.warningMessageTitle");
+      TimeCourseData tcdat = ddacx_.getExpDataSrc().getTimeCourseData();
+      if ((tcdat != null) && (tcdat.haveDataEntries())) {
+        ResourceManager rMan = ddacx_.getRMan();
+        String message = rMan.getString("importTCXml.warningMessage");
+        String title = rMan.getString("importTCXml.warningMessageTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);     
         daipc = new DialogAndInProcessCmd(suf, this);
         nextStep_ = "stepToCheck";
@@ -686,10 +717,11 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private DialogAndInProcessCmd stepCopiesPerEmbryoWarning() {
       DialogAndInProcessCmd daipc;    
-      CopiesPerEmbryoData cpedat = dacx_.getExpDataSrc().getCopiesPerEmbryoData();
+      CopiesPerEmbryoData cpedat = ddacx_.getExpDataSrc().getCopiesPerEmbryoData();
       if ((cpedat != null) && (cpedat.haveData())) {
-        String message = dacx_.rMan.getString("importCPEXml.warningMessage");
-        String title = dacx_.rMan.getString("importCPEXml.warningMessageTitle");
+        ResourceManager rMan = ddacx_.getRMan();
+        String message = rMan.getString("importCPEXml.warningMessage");
+        String title = rMan.getString("importCPEXml.warningMessageTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);     
         daipc = new DialogAndInProcessCmd(suf, this);
         nextStep_ = "stepToCheck";  
@@ -707,10 +739,11 @@ public class LoadSaveOps extends AbstractControlFlow {
   
     private DialogAndInProcessCmd stepTemporalInputWarning() {
       DialogAndInProcessCmd daipc;     
-      TemporalInputRangeData tirdat = dacx_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tirdat = ddacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       if ((tirdat != null) && (tirdat.haveData())) {
-        String message = dacx_.rMan.getString("importTIXml.warningMessage");
-        String title = dacx_.rMan.getString("importTIXml.warningMessageTitle");
+        ResourceManager rMan = ddacx_.getRMan();
+        String message = rMan.getString("importTIXml.warningMessage");
+        String title = rMan.getString("importTIXml.warningMessageTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);     
         daipc = new DialogAndInProcessCmd(suf, this);
         nextStep_ = "stepToCheck";
@@ -728,9 +761,9 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private DialogAndInProcessCmd stepPerturbWarning() {
       DialogAndInProcessCmd daipc;
-      CommonView cview = appState_.getCommonView();  
+      CommonView cview = uics_.getCommonView();  
       if (cview.havePerturbationEditsInProgress()) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = ddacx_.getRMan();
         String message = rMan.getString("importPertCSV.droppingPendingEdits");
         String title = rMan.getString("importPertCSV.droppingPendingEditsTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);     
@@ -770,12 +803,12 @@ public class LoadSaveOps extends AbstractControlFlow {
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
         return (retval);
       }
-      if (appState_.isWebApplication()) {
+      if (ddacx_.isForWeb()) {
         String scrubbedName = (crq.fileName.indexOf(File.separatorChar) == -1) ? crq.fileName : null;
         if (scrubbedName == null) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
         }
-        myFile_ = new File(appState_.getFullServletContextPath() + appState_.getServerBtpDirectory(), scrubbedName);
+        myFile_ = new File(pafs_.getFullServletContextPath() + pafs_.getServerBtpDirectory(), scrubbedName);
       } else {
         myFile_ = new File(crq.filePath, crq.fileName);
       }
@@ -784,16 +817,26 @@ public class LoadSaveOps extends AbstractControlFlow {
       return (ret);     
     }
     
-    
     /***************************************************************************
     **
     ** Extract and install model data
     */ 
        
-    private DialogAndInProcessCmd stepFinalLoadFromFile() {     
-      FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromFile(myFile_, dacx_);
+    private DialogAndInProcessCmd stepFinalLoadFromFile() {
+      FilePreparer.FileInputResultClosure firc;
+      if (myAction_ == IOAction.LOAD) {
+        TabOps.clearOutTabs(tSrc_, uics_, 1);
+        firc = myLsSup_.loadFromFile(myFile_, false, null);
+      } else if (myAction_ == IOAction.LOAD_AS_NEW_TABS) {
+        firc = myLsSup_.addNewTabs(myFile_, appendSupport_);       
+      } else {
+        throw new IllegalStateException();
+      }
       if (firc.wasSuccessful()) {
-        return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
+    	  DialogAndInProcessCmd diapc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
+    	  diapc.commandResults = new HashMap<String,Object>();
+    	  diapc.commandResults.put("tabs", tSrc_.getTabs());
+    	  return (diapc);
       } else {
         SimpleUserFeedback errSUF = firc.getSUF();
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
@@ -809,32 +852,38 @@ public class LoadSaveOps extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToLoad() {
       File file = null;     
       if (headlessArgs_ == null) { // Note args may be non-null even though not headless (Embedded Viewer Panel)         
-        FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(appState_, ".btp", "filterName.btp");
+        FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".btp", "filterName.btp");
         FileChooserWrapperFactory.BuildArgs ba = 
            new FileChooserWrapperFactory.BuildArgs(FileChooserWrapperFactory.BuildArgs.DialogMode.EXISTING_IMPORT,
-                                                   appState_, myLsSup_.getFprep(), filt, "LoadDirectory");
-        FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh);
+                                                   myLsSup_.getFprep(ddacx_), filt, "LoadDirectory");
+        FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh_);
         ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
-        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
+        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);
         nextStep_ = "stepExtractFileChoice";
         return (retval);
       } else {
         if (((Boolean)headlessArgs_[0]).booleanValue()) {
           file = new File((String)headlessArgs_[1]);
-          if (!myLsSup_.getFprep().checkExistingImportFile(file)) {           
+          if (!myLsSup_.getFprep(ddacx_).checkExistingImportFile(file)) {           
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
           }
-          FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromFile(file, dacx_);
+          FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromFile(file, (myAction_ == IOAction.LOAD_AS_NEW_TABS), appendSupport_);
           if (firc.wasSuccessful()) {
-            return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
+        	  DialogAndInProcessCmd diapc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
+        	  diapc.commandResults = new HashMap<String,Object>();
+        	  diapc.commandResults.put("tabs", tSrc_.getTabs());
+        	  return (diapc);
           } else {
             SimpleUserFeedback errSUF = firc.getSUF();
             return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
           }
         } else {
-          FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromStream((InputStream)headlessArgs_[1], dacx_);
+          FilePreparer.FileInputResultClosure firc = myLsSup_.loadFromStream((InputStream)headlessArgs_[1], (myAction_ == IOAction.LOAD_AS_NEW_TABS), appendSupport_);
           if (firc.wasSuccessful()) {
-            return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
+        	  DialogAndInProcessCmd diapc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
+        	  diapc.commandResults = new HashMap<String,Object>();
+        	  diapc.commandResults.put("tabs", tSrc_.getTabs());
+        	  return (diapc);
           } else {
             SimpleUserFeedback errSUF = firc.getSUF();
             return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
@@ -842,15 +891,16 @@ public class LoadSaveOps extends AbstractControlFlow {
         }
       }
     }
-  
+    
     /***************************************************************************
     **
     ** Command
     */ 
  
     private void doNewModel() {
-      appState_.getCommonView().manageWindowTitle(null);
-      myLsSup_.newModelOperations(dacx_);
+      uics_.getCommonView().manageWindowTitle(null);
+      TabOps.clearOutTabs(tSrc_, uics_, 1);
+      myLsSup_.newModelOperations(ddacx_);
       return;
     }
        
@@ -860,38 +910,40 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
  
     private void doTimeCourse() {
-      if (!myLsSup_.prepTimeAxisForDataImport(dacx_)) {
+      if (!myLsSup_.prepTimeAxisForDataImport(ddacx_)) {
         return;
       }    
       ArrayList<FileFilter> filters = new ArrayList<FileFilter>();
-      filters.add(new FileExtensionFilters.SimpleFilter(appState_, ".xml", "filterName.xml"));
-      filters.add(new FileExtensionFilters.SimpleFilter(appState_, ".btp", "filterName.btp"));         
-      File file = myLsSup_.getFprep().getExistingImportFile("ImportDirectory", filters);
+      filters.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".xml", "filterName.xml"));
+      filters.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".btp", "filterName.btp"));         
+      File file = myLsSup_.getFprep(ddacx_).getExistingImportFile("ImportDirectory", filters);
       if (file == null) {
         return;
       }
       
       DatabaseChange dc = null;
       try {
-        UndoSupport support = new UndoSupport(appState_, "undo.tcxml");
-        dc = dacx_.getExpDataSrc().startTimeCourseUndoTransaction();
+        UndoSupport support = uFac_.provideUndoSupport("undo.tcxml", ddacx_);
+        dc = ddacx_.getExpDataSrc().startTimeCourseUndoTransaction();
         ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-        alist.add(new TimeCourseFormatFactory(appState_, true, true));
-        SUParser sup = new SUParser(appState_, alist);
+        TimeCourseFormatFactory tcff = new TimeCourseFormatFactory(true, true, false, false);
+        tcff.setContext(ddacx_);
+        alist.add(tcff);
+        SUParser sup = new SUParser(ddacx_, alist);
         sup.parse(file);
-        dc = dacx_.getExpDataSrc().finishTimeCourseUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
+        dc = ddacx_.getExpDataSrc().finishTimeCourseUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
         support.finish();
-        myLsSup_.getFprep().setPreference("ImportDirectory", file.getAbsoluteFile().getParent());
+        myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", file.getAbsoluteFile().getParent());
       } catch (IOException ioe) {
         if (dc != null) {
-          dacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
+          ddacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
         }
-        myLsSup_.getFprep().getFileInputError(ioe).displayFileInputError();
+        myLsSup_.getFprep(ddacx_).getFileInputError(ioe).displayFileInputError();
       }
       // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
+      ddacx_.getGenomeSource().clearAllDynamicProxyCaches();
       // FIX ME!!! Gotta send out event so CommonView knows to refresh current loaded model!   
       return;
     }
@@ -902,11 +954,11 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
  
     private DialogAndInProcessCmd doPerturbedExpressionGetFileChoice() { 
-      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv");
+      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".csv", "filterName.csv");
       FileChooserWrapperFactory.BuildArgs ba = 
            new FileChooserWrapperFactory.BuildArgs(FileChooserWrapperFactory.BuildArgs.DialogMode.EXISTING_IMPORT,
-                                                   appState_, myLsSup_.getFprep(), filt, "ImportDirectory");
-      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh);
+                                                   myLsSup_.getFprep(dacx_), filt, "ImportDirectory");
+      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractFileChoice";
@@ -920,19 +972,19 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private DialogAndInProcessCmd doPerturbedExpression() {   
       try {
-        PerturbedTimeCourseGeneCSVFormatFactory csvff= new PerturbedTimeCourseGeneCSVFormatFactory(appState_, dacx_);
-        if (csvff.readPerturbedExpressionCSV(myFile_, appState_)) {
-          myLsSup_.getFprep().setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
+        PerturbedTimeCourseGeneCSVFormatFactory csvff= new PerturbedTimeCourseGeneCSVFormatFactory(ddacx_, uFac_);
+        if (csvff.readPerturbedExpressionCSV(myFile_)) {
+          myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
         }
       } catch (InvalidInputException iiex) {
         SimpleUserFeedback errSUF = myLsSup_.displayInvalidInputError(iiex); 
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
       } catch (IOException ioe) {
-        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep().getFileInputError(ioe);
+        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep(ddacx_).getFileInputError(ioe);
         SimpleUserFeedback errSUF = firc.getSUF();
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -944,17 +996,17 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
  
     private DialogAndInProcessCmd doCopiesPerEmbryoGetFileChoice() {
-      if (!myLsSup_.prepTimeAxisForDataImport(dacx_)) {
+      if (!myLsSup_.prepTimeAxisForDataImport(ddacx_)) {
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this);
         return (retval);
       }
       ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-      filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".xml", "filterName.xml"));
-      filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".btp", "filterName.btp"));     
+      filts.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".xml", "filterName.xml"));
+      filts.add(new FileExtensionFilters.SimpleFilter(ddacx_.getRMan(), ".btp", "filterName.btp"));     
       FileChooserWrapperFactory.BuildArgs ba = 
            new FileChooserWrapperFactory.BuildArgs(FileChooserWrapperFactory.BuildArgs.DialogMode.EXISTING_IMPORT,
-                                                   appState_, myLsSup_.getFprep(), filts, "ImportDirectory");
-      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh);
+                                                   myLsSup_.getFprep(ddacx_), filts, "ImportDirectory");
+      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractFileChoice";
@@ -969,27 +1021,30 @@ public class LoadSaveOps extends AbstractControlFlow {
     private DialogAndInProcessCmd doCopiesPerEmbryo() {
       DatabaseChange dc = null;
       try {
-        UndoSupport support = new UndoSupport(appState_, "undo.cpexml");
-        dc = dacx_.getExpDataSrc().startCopiesPerEmbryoUndoTransaction();
+        UndoSupport support = uFac_.provideUndoSupport("undo.cpexml", ddacx_);
+        dc = ddacx_.getExpDataSrc().startCopiesPerEmbryoUndoTransaction();
         ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-        alist.add(new CopiesPerEmbryoFormatFactory(appState_, true));
-        SUParser sup = new SUParser(appState_, alist);
+        UiUtil.fixMePrintout("Meta or not?? Depends on sharing state of current tab.");
+        CopiesPerEmbryoFormatFactory ceff = new CopiesPerEmbryoFormatFactory(true, false);
+        ceff.setContext(ddacx_);
+        alist.add(ceff);
+        SUParser sup = new SUParser(ddacx_, alist);
         sup.parse(myFile_);
-        dc = dacx_.getExpDataSrc().finishCopiesPerEmbryoUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
+        dc = ddacx_.getExpDataSrc().finishCopiesPerEmbryoUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
         support.finish();
-        myLsSup_.getFprep().setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
+        myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
       } catch (IOException ioe) {
         if (dc != null) {
-          dacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
+          ddacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
         }
-        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep().getFileInputError(ioe);
+        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep(ddacx_).getFileInputError(ioe);
         SimpleUserFeedback errSUF = firc.getSUF();
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
       }
       // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
+      ddacx_.getGenomeSource().clearAllDynamicProxyCaches();
       // FIX ME!!! Gotta send out event so CommonView knows to refresh current loaded model!
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -1000,17 +1055,17 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
   
     private DialogAndInProcessCmd doTemporalInputGetFileChoice() {
-      if (!myLsSup_.prepTimeAxisForDataImport(dacx_)) {
+      if (!myLsSup_.prepTimeAxisForDataImport(ddacx_)) {
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this);
         return (retval);
       }            
       ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-      filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".xml", "filterName.xml"));
-      filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".btp", "filterName.btp"));     
+      filts.add(new FileExtensionFilters.SimpleFilter(dacx_.getRMan(), ".xml", "filterName.xml"));
+      filts.add(new FileExtensionFilters.SimpleFilter(dacx_.getRMan(), ".btp", "filterName.btp"));     
       FileChooserWrapperFactory.BuildArgs ba = 
            new FileChooserWrapperFactory.BuildArgs(FileChooserWrapperFactory.BuildArgs.DialogMode.EXISTING_IMPORT,
-                                                   appState_, myLsSup_.getFprep(), filts, "ImportDirectory");
-      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh);
+                                                   myLsSup_.getFprep(ddacx_), filts, "ImportDirectory");
+      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractFileChoice";
@@ -1025,27 +1080,29 @@ public class LoadSaveOps extends AbstractControlFlow {
     private DialogAndInProcessCmd doImportTemporalInputXml() {
       DatabaseChange dc = null;
       try {
-        UndoSupport support = new UndoSupport(appState_, "undo.tixml");
-        dc = dacx_.getExpDataSrc().startTemporalInputUndoTransaction();
+        UndoSupport support = uFac_.provideUndoSupport("undo.tixml", ddacx_);
+        dc = ddacx_.getTemporalRangeSrc().startTemporalInputUndoTransaction();
         ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-        alist.add(new TemporalInputRangeFormatFactory(appState_, true));
-        SUParser sup = new SUParser(appState_, alist);
+        TemporalInputRangeData.TemporalInputRangeWorker tirw = new TemporalInputRangeData.TemporalInputRangeWorker(new FactoryWhiteboard(), true);
+        tirw.setContext(ddacx_);
+        alist.add(tirw);  
+        SUParser sup = new SUParser(ddacx_, alist);
         sup.parse(myFile_);
-        dc = dacx_.getExpDataSrc().finishTemporalInputUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
+        dc = ddacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
         support.finish();
-        myLsSup_.getFprep().setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
+        myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
       } catch (IOException ioe) {
         if (dc != null) {
-          dacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
+          ddacx_.getExpDataSrc().rollbackDataUndoTransaction(dc);
         }
-        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep().getFileInputError(ioe);
+        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep(ddacx_).getFileInputError(ioe);
         SimpleUserFeedback errSUF = firc.getSUF();
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
       }
       // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
+      ddacx_.getGenomeSource().clearAllDynamicProxyCaches();
       // FIX ME!!! Gotta send out event so CommonView knows to refresh current loaded model!
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -1056,15 +1113,15 @@ public class LoadSaveOps extends AbstractControlFlow {
     */ 
  
     private DialogAndInProcessCmd doPerturbGetFileChoice() {
-      CommonView cview = appState_.getCommonView();  
+      CommonView cview = uics_.getCommonView();  
       if (cview.havePerturbationEditsInProgress()) {
         cview.dropAllPendingPerturbationEdits(); 
       }      
-      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv");
+      FileExtensionFilters.SimpleFilter filt = new FileExtensionFilters.SimpleFilter(dacx_.getRMan(), ".csv", "filterName.csv");
       FileChooserWrapperFactory.BuildArgs ba = 
         new FileChooserWrapperFactory.BuildArgs(FileChooserWrapperFactory.BuildArgs.DialogMode.EXISTING_IMPORT, 
-                                                appState_, myLsSup_.getFprep(), filt, "ImportDirectory");
-      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh);
+                                                myLsSup_.getFprep(ddacx_), filt, "ImportDirectory");
+      FileChooserWrapperFactory nopd = new FileChooserWrapperFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractFileChoice";
@@ -1082,7 +1139,7 @@ public class LoadSaveOps extends AbstractControlFlow {
       } 
       try {
         // STILL MORE UI TO PORT!
-        DesignBatchKeyDialog dbkd = new DesignBatchKeyDialog(appState_);
+        DesignBatchKeyDialog dbkd = new DesignBatchKeyDialog(uics_, ddacx_);
         dbkd.setVisible(true);
         if (!dbkd.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -1093,19 +1150,19 @@ public class LoadSaveOps extends AbstractControlFlow {
         boolean useInvest = dbkd.useInvest();  
         boolean useCondition = dbkd.useCondition();
         
-        PerturbCsvFormatFactory csvff = new PerturbCsvFormatFactory(appState_, dacx_, useDate, useTime, useBatch, 
+        PerturbCsvFormatFactory csvff = new PerturbCsvFormatFactory(uics_, ddacx_, uFac_, useDate, useTime, useBatch, 
                                                                     useInvest, useCondition);
         // SORRY LOTS OF DIALOGS BURIED DOWN IN THIS CALL:
         if (csvff.parsePerturbCSV(myFile_)) {
-          myLsSup_.getFprep().setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
+          myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
         }
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       } catch (IOException ioe) {
-        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep().getFileInputError(ioe);
+        FilePreparer.FileInputResultClosure firc = myLsSup_.getFprep(ddacx_).getFileInputError(ioe);
         SimpleUserFeedback errSUF = firc.getSUF();
         return (new DialogAndInProcessCmd(errSUF, this, DialogAndInProcessCmd.Progress.DONE_WITH_ERROR_AND_SIMPLE_USER_FEEDBACK));
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }      
     }

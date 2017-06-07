@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,8 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.FontManager;
 
 /****************************************************************************
@@ -57,7 +58,8 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
   private JPanel emptyPanel_;
   private double midFrac_;
   private AnimatedSplitPaneLayoutManager asplLM_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -67,10 +69,11 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  public AnimatedSplitPane(BTState appState, AnimatedSplitPaneLayoutManager.PanelForSplit newTopComponent, 
+  public AnimatedSplitPane(UIComponentSource uics, DataAccessContext dacx, AnimatedSplitPaneLayoutManager.PanelForSplit newTopComponent, 
                            AnimatedSplitPaneLayoutManager.PanelForSplit newBottomComponent, AnimatedSplitListener asl) {
     super();
-    appState_ = appState;
+    uics_ = uics;
+    dacx_ = dacx;
     asplLM_ = new AnimatedSplitPaneLayoutManager();
     setLayout(asplLM_);
     myTop_ = newTopComponent;
@@ -80,8 +83,8 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
     barPanel_.setBackground(Color.LIGHT_GRAY.darker());
     emptyPanel_ = new JPanel();
     emptyPanel_.setLayout(new GridLayout(1, 1));
-    JLabel warning = new JLabel(appState_.getRMan().getString("asp.tooSmallToDisplay"), JLabel.CENTER);
-    warning.setFont(appState_.getFontMgr().getFixedFont(FontManager.WORKSHEET_TITLES_LARGE));
+    JLabel warning = new JLabel(dacx_.getRMan().getString("asp.tooSmallToDisplay"), JLabel.CENTER);
+    warning.setFont(dacx_.getFontManager().getFixedFont(FontManager.WORKSHEET_TITLES_LARGE));
     emptyPanel_.add(warning);
     add(myTop_, new AnimatedSplitPaneLayoutManager.ASPRole(AnimatedSplitPaneLayoutManager.IS_TOP));
     add(barPanel_, new AnimatedSplitPaneLayoutManager.ASPRole(AnimatedSplitPaneLayoutManager.IS_BAR));
@@ -182,7 +185,7 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
       revalidate();
       repaint();
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
   }
   
@@ -195,8 +198,8 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
   public void doFixie() {
     Dimension size = getSize();
     Dimension rmin = myBottom_.getTrueMinimumSize();
-    double useHeight = (double)rmin.height * 1.2;
-    midFrac_ = 1.0 - (useHeight / (double)size.height);
+    double useHeight = rmin.height * 1.2;
+    midFrac_ = 1.0 - (useHeight / size.height);
     if (midFrac_ < 0.33) {  
       midFrac_ = 0.33;
     }

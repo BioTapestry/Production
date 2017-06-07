@@ -41,12 +41,14 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   // Categories:
   //
   
-  public final static int NEVER_OP  = 0;
-  public final static int ALWAYS_OP = 1;
-  public final static int NO_OP     = 2;
-  public final static int AND_OP    = 3;
-  public final static int OR_OP     = 4; 
-  public final static int NOT_OP    = 5;
+  public enum Op {
+   NEVER_OP,
+   ALWAYS_OP,
+   NO_OP,
+   AND_OP,
+   OR_OP,
+   NOT_OP,
+  }
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -54,7 +56,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private int op_;
+  private Op op_;
   private PertFilterOpTarget target1_;
   private PertFilterOpTarget target2_;
  
@@ -69,7 +71,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Constructor
   */  
   
-  public PertFilterExpression(int op, PertFilterOpTarget targ1, PertFilterOpTarget targ2) {    
+  public PertFilterExpression(Op op, PertFilterOpTarget targ1, PertFilterOpTarget targ2) {    
     op_ = op;
     target1_ = targ1;
     target2_ = targ2;
@@ -81,7 +83,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   */  
   
   public PertFilterExpression(PertFilter filter) {    
-    op_ = NO_OP;
+    op_ = Op.NO_OP;
     target1_ = filter;
     target2_ = null;
   }
@@ -91,8 +93,8 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Constructor for a null or never filter
   */  
   
-  public PertFilterExpression(int useop) {
-    if ((useop == NEVER_OP) || (useop == ALWAYS_OP)) {
+  public PertFilterExpression(Op useop) {
+    if ((useop == Op.NEVER_OP) || (useop == Op.ALWAYS_OP)) {
       op_ = useop;
       target1_ = null;
       target2_ = null;
@@ -113,7 +115,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   */
   
   public boolean isAlwaysFilter() {
-    return (op_ == ALWAYS_OP);
+    return (op_ == Op.ALWAYS_OP);
   }
   
   /***************************************************************************
@@ -122,7 +124,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   */
   
   public boolean isNeverFilter() {
-    return (op_ == NEVER_OP);
+    return (op_ == Op.NEVER_OP);
   }
    
   /***************************************************************************
@@ -158,7 +160,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Get the operator
   */
   
-  public int getOperator() {
+  public Op getOperator() {
     return (op_);
   }
   
@@ -185,6 +187,7 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
   ** Get string
   */
   
+  @Override
   public String toString() {
     return ("(pertExp: " + op_ + "," + target1_ + "," + target2_ + ")");
   }
@@ -205,9 +208,9 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
 
     SortedSet<String> t1Result = target1_.getFilteredResult(input, source, ss);
     
-    if (op_ == NO_OP) {
+    if (op_ == Op.NO_OP) {
       return (t1Result);
-    } else if (op_ == NOT_OP) {
+    } else if (op_ == Op.NOT_OP) {
       TreeSet<String> retval = new TreeSet<String>(input);
       retval.removeAll(t1Result);
       return (retval);
@@ -216,9 +219,9 @@ public class PertFilterExpression implements Cloneable, PertFilterOpTarget {
     SortedSet<String> t2Result = target2_.getFilteredResult(input, source, ss);
     
     TreeSet<String> retval = new TreeSet<String>(t1Result);
-    if (op_ == AND_OP) { 
+    if (op_ == Op.AND_OP) { 
       retval.retainAll(t2Result); // Intersection
-    } else if (op_ == OR_OP) {
+    } else if (op_ == Op.OR_OP) {
       retval.addAll(t2Result);  // Union
     } else {
       throw new IllegalStateException();

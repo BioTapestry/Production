@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -79,7 +79,7 @@ public class FixOrthoOptions  {
     strats_ = new ArrayList<TreeStrategy>();
     foti_ = foti;
     
-    PointDOFsPerSeg pdps = (PointDOFsPerSeg)foti.ptDofs.get(segID);
+    PointDOFsPerSeg pdps = foti.ptDofs.get(segID);
     if ((pdps == null) || (pdps.p0d == null)) {
       return;
     }
@@ -160,7 +160,7 @@ public class FixOrthoOptions  {
   
   private boolean buildRecursiveStrategy(LinkSegmentID segID, List<TreeStrategy> strats, int recursionType) {
  
-    PointDOFsPerSeg pdps = (PointDOFsPerSeg)foti_.ptDofs.get(segID);
+    PointDOFsPerSeg pdps = foti_.ptDofs.get(segID);
     if ((pdps == null) || (pdps.p0d == null) || (pdps.p1d == null)) {
       return (false);
     }
@@ -289,7 +289,7 @@ public class FixOrthoOptions  {
       //
       // Point can only be moved if the conditional DOF allows it!
       //
-      LinkSegmentID plisd = (LinkSegmentID)foti_.parentIDs.get(segID);
+      LinkSegmentID plisd = foti_.parentIDs.get(segID);
       Iterator<LinkSegmentID> dit = moveDOF.getDependencies();    
       while (dit.hasNext()) {
         LinkSegmentID depend = dit.next();
@@ -417,7 +417,7 @@ public class FixOrthoOptions  {
     
     if (recursionType != STOP_RECURSION_) {
       if (move0DOF.getType() == DegreeOfFreedom.CONDITIONAL) {
-        LinkSegmentID parentID = (LinkSegmentID)foti_.parentIDs.get(segID);
+        LinkSegmentID parentID = foti_.parentIDs.get(segID);
         Iterator<LinkSegmentID> dit = move0DOF.getDependencies();
         while (dit.hasNext()) {
           LinkSegmentID depend = dit.next();
@@ -1188,7 +1188,7 @@ public class FixOrthoOptions  {
     private PointDegreesOfFreedom genP1DoFForStartDrop(LinkProperties lp, Point2D point, 
                                                        Vector2D forceDir, int runAxis, int normAxis) {
       
-      LinkSegment startGeom = (LinkSegment)segGeoms.get(LinkSegmentID.buildIDForStartDrop());
+      LinkSegment startGeom = segGeoms.get(LinkSegmentID.buildIDForStartDrop());
       List<LinkSegmentID> csegs = lp.getChildSegs(lp.getRootSegmentID());
       int normDOF = (startGeom.isOrthogonal()) ? DegreeOfFreedom.FIXED : DegreeOfFreedom.UNCONDITIONAL;
       int runDOF = DegreeOfFreedom.UNCONDITIONAL;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,8 @@ import java.awt.GridBagConstraints;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
@@ -52,9 +53,10 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   ////////////////////////////////////////////////////////////////////////////  
 
   private ReadOnlyTable rot_;
-  private List messages_;
+  private List<String> messages_;
   private boolean keepGoing_;
-  private BTState appState_;
+  private UIComponentSource uics_; 
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -69,12 +71,13 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   ** Constructor 
   */ 
   
-  public MessageTableReportingDialog(BTState appState, List messages, String title, 
+  public MessageTableReportingDialog(UIComponentSource uics, DataAccessContext dacx, List<String> messages, String title, 
                                      String tableLabel, String colLabel, Dimension dim, boolean showCancel, boolean modal) {
-    super(appState.getTopFrame(), appState.getRMan().getString(title), modal);
-    appState_ = appState;
+    super(uics.getTopFrame(), dacx.getRMan().getString(title), modal);
     messages_ = messages;
-    ResourceManager rMan = appState_.getRMan();
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx.getRMan();
     setSize(dim.width, dim.height);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -85,7 +88,7 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(appState_, new CheckoutTableModel(appState_, colLabel), null);   
+    rot_ = new ReadOnlyTable(uics_, dacx_, new CheckoutTableModel(uics_, dacx_, colLabel), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = true;
     tp.tableIsUnselectable = true;
@@ -99,13 +102,13 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
     cp.add(tabPan, gbc);
    
     if (showCancel) {
-      DialogSupport ds = new DialogSupport(this, appState_, gbc);
+      DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
       ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true);
     } else {
-      DialogSupport ds = new DialogSupport(appState_, gbc, this);
+      DialogSupport ds = new DialogSupport(uics_, dacx_, gbc, this);
       ds.buildAndInstallCloseButtonBox(cp, rowNum, 1, null);
     }
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties(); 
   }
   
@@ -176,13 +179,13 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
       }
     }
     
-    CheckoutTableModel(BTState appState, String title) {
-      super(appState, NUM_COL_);
+    CheckoutTableModel(UIComponentSource uics, DataAccessContext dacx, String title) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {title};
     }
     
-    List getValuesFromTable() {
-      ArrayList retval = new ArrayList();
+    List<TableRow> getValuesFromTable() {
+      ArrayList<TableRow> retval = new ArrayList<TableRow>();
       for (int i = 0; i < rowCount_; i++) {
         TableRow ent = new TableRow(i);
         retval.add(ent);
@@ -192,9 +195,9 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   
     public void extractValues(List prsList) {
       super.extractValues(prsList);
-      Iterator rit = prsList.iterator();
+      Iterator<TableRow> rit = prsList.iterator();
       while (rit.hasNext()) { 
-        TableRow ent = (TableRow)rit.next();
+        TableRow ent = rit.next();
         ent.toCols();
       }
       return;
@@ -225,13 +228,13 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   ** 
   */
 
-  private List initTableRows() {
-    ArrayList retval = new ArrayList();
+  private List<CheckoutTableModel.TableRow> initTableRows() {
+    ArrayList<CheckoutTableModel.TableRow> retval = new ArrayList<CheckoutTableModel.TableRow>();
     CheckoutTableModel ctm = (CheckoutTableModel)rot_.getModel();  
     int numMsg = messages_.size();
     for (int i = 0; i < numMsg; i++) {
       CheckoutTableModel.TableRow tr = ctm.new TableRow();
-      tr.message = (String)messages_.get(i);
+      tr.message = messages_.get(i);
       retval.add(tr);
     }
     return (retval);

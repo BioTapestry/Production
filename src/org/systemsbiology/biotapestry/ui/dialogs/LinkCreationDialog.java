@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2008 Institute for Systems Biology 
+**    Copyright (C) 2003-20017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,8 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -60,7 +61,8 @@ public class LinkCreationDialog extends JDialog {
   private String nameResult_;
   private int signResult_;
   private boolean haveResult_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -75,11 +77,12 @@ public class LinkCreationDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public LinkCreationDialog(BTState appState) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("lcreate.title"), true);
-    appState_ = appState;
+  public LinkCreationDialog(UIComponentSource uics, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("lcreate.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 200);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -93,7 +96,7 @@ public class LinkCreationDialog extends JDialog {
     //
     
     JLabel label = new JLabel(rMan.getString("lcreate.sign"));
-    Vector<ChoiceContent> choices = DBLinkage.getSignChoices(appState_);
+    Vector<ChoiceContent> choices = DBLinkage.getSignChoices(dacx);
     signCombo_ = new JComboBox(choices);
 
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
@@ -126,7 +129,7 @@ public class LinkCreationDialog extends JDialog {
           LinkCreationDialog.this.setVisible(false);
           LinkCreationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -138,7 +141,7 @@ public class LinkCreationDialog extends JDialog {
           LinkCreationDialog.this.setVisible(false);
           LinkCreationDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -153,7 +156,7 @@ public class LinkCreationDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 2, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
 

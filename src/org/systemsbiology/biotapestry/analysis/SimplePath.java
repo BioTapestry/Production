@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,7 @@ import org.systemsbiology.biotapestry.genome.Linkage;
 ** instead of a Genome model
 */
 
-public class SimplePath implements Comparable<SimplePath>, Cloneable {
+public class SimplePath<T extends Link> implements Comparable<SimplePath<T>>, Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -42,7 +42,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   //
   //////////////////////////////////////////////////////////////////////////// 
    
-  private ArrayList<SignedLink> links_;
+  private ArrayList<T> links_;
   private int ranking_;
   private boolean simpleLoop_;
   
@@ -70,7 +70,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   */
 
   public SimplePath() {
-    links_ = new ArrayList<SignedLink>();
+    links_ = new ArrayList<T>();
     ranking_ = 0;
     simpleLoop_ = false;
   }  
@@ -81,20 +81,22 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public SimplePath clone() {
+  @Override
+  @SuppressWarnings("unchecked")
+  public SimplePath<T> clone() {
     try {
-      SimplePath retval = (SimplePath)super.clone();
-      retval.links_ = new ArrayList<SignedLink>();
+      SimplePath<T> retval = (SimplePath<T>)super.clone();
+      retval.links_ = new ArrayList<T>();
       int numLink = this.links_.size();
       for (int i = 0; i < numLink; i++) {
-        retval.links_.add(this.links_.get(i).clone());
+        retval.links_.add((T)this.links_.get(i).clone());
       }
       return (retval);
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
     }
   }    
-   
+
   /***************************************************************************
   **
   ** Set the path ranking
@@ -119,11 +121,17 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Return whether this path is just the link!
   */
   
-  public boolean justTheLink(SignedLink link) {
-    return ((getDepth() == 1) && 
-            getStart().equals(link.getSrc()) && 
-            getEnd().equals(link.getTrg()) &&
-            getSign() == link.getSign());
+  public boolean justTheLink(T link) {
+    if (getDepth() != 1) {
+      return (false);
+    }
+   
+    if (!(getStart().equals(link.getSrc()) && getEnd().equals(link.getTrg()))) {
+      return (false);
+    }
+    
+    T myFirst = links_.get(0);  
+    return (getLinkSign(myFirst) == getLinkSign(link));
   }  
     
   /***************************************************************************
@@ -150,7 +158,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Add a single simple loop
   */
   
-  public void addSimpleLoopLink(SignedLink link) {
+  public void addSimpleLoopLink(T link) {
 
     String srcKey = link.getSrc();
     String trgKey = link.getTrg();
@@ -171,7 +179,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Add a link to the end of the path.  True iff successful.
   */
   
-  public boolean addLink(SignedLink link) {
+  public boolean addLink(T link) {
     //
     // Check the link to see that:
     //  1) source is the target of the previous link
@@ -194,12 +202,12 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
       links_.add(link);
       return (true);
     }
-    SignedLink lastLink = links_.get(size - 1);
+    T lastLink = links_.get(size - 1);
     if (!lastLink.getTrg().equals(srcKey)) {
       throw new IllegalArgumentException();
     }
     for (int i = 0; i < size; i++) {
-      SignedLink pathLink = links_.get(i);
+      Link pathLink = links_.get(i);
       String source = pathLink.getSrc();
       String target = pathLink.getTrg();
       if (newTarget.equals(source) || newTarget.equals(target)) {
@@ -215,7 +223,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Get an iterator over the links
   */
   
-  public Iterator<SignedLink> pathIterator() {
+  public Iterator<T> pathIterator() {
     return (links_.iterator());
   }  
 
@@ -278,7 +286,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Answer if the given link shows up in the path as an indirect path
   */
   
-  public boolean containsLinkIndirectly(SignedLink link) {
+  public boolean containsLinkIndirectly(T link) {
     int srcPos = position(link.getSrc());
     if (srcPos == -1) {
       return (false);
@@ -290,7 +298,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     if ((trgPos - srcPos) < 2) {
       return (false);
     }
-    if (getSubSign(srcPos, trgPos) != link.getSign()) {
+    if (getSubSign(srcPos, trgPos) != getLinkSign(link)) {
       return (false);
     }
     return (true);
@@ -301,10 +309,10 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Answer if the given link shows up in the path
   */
   
-  public boolean containsLink(SignedLink link) {
+  public boolean containsLink(Link link) {
     int size = links_.size();
     for (int i = 0; i < size; i++) {
-      SignedLink clink = links_.get(i);
+      Link clink = links_.get(i);
       if (clink.equals(link)) {
         return (true);
       }
@@ -320,7 +328,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   public int position(String node) {
     int size = links_.size();
     for (int i = 0; i < size; i++) {
-      SignedLink link = links_.get(i);
+      Link link = links_.get(i);
       if (link.getSrc().equals(node)) {
         return (i);
       } else if ((i == (size - 1)) && (link.getTrg().equals(node))) {
@@ -335,16 +343,16 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Return the tail.  Will be null if the node does not show up.
   */
   
-  public SimplePath tail(String start) {
+  public SimplePath<T> tail(String start) {
     int position = position(start);
     int size = links_.size();
     if (position == -1) {
       return (null);
     } else if (position == size) {
-      return (new SimplePath());
+      return (new SimplePath<T>());
     } else {
-      ArrayList<SignedLink> retList = new ArrayList<SignedLink>(links_.subList(position, size - 1));
-      return (new SimplePath(retList));
+      ArrayList<T> retList = new ArrayList<T>(links_.subList(position, size - 1));
+      return (new SimplePath<T>(retList));
     }
   }   
 
@@ -353,15 +361,15 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Return the head.  Will be null if the node does not show up.
   */
   
-  public SimplePath head(String end) {
+  public SimplePath<T> head(String end) {
     int position = position(end);
     if (position == -1) {
       return (null);
     } else if (position == 0) {
-      return (new SimplePath());
+      return (new SimplePath<T>());
     } else {
-      ArrayList<SignedLink> retList = new ArrayList<SignedLink>(links_.subList(0, position - 1));
-      return (new SimplePath(retList));
+      ArrayList<T> retList = new ArrayList<T>(links_.subList(0, position - 1));
+      return (new SimplePath<T>(retList));
     }
   }   
     
@@ -374,7 +382,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     HashSet<String> retval = new HashSet<String>();
     int size = links_.size();
     for (int i = 0; i < size; i++) {
-      SignedLink link = links_.get(i);
+      Link link = links_.get(i);
       retval.add(link.getSrc());
       if (i == (size - 1)) {
         retval.add(link.getTrg());
@@ -389,7 +397,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** contains a cycle.
   */
   
-  public SimplePath mergeTail(SimplePath tail) {
+  public SimplePath<T> mergeTail(SimplePath<T> tail) {
     String tailStart = tail.getStart();
     String headEnd = this.getEnd();
     if ((tailStart != null) && (headEnd != null) && (!headEnd.equals(tailStart))) {
@@ -397,10 +405,10 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
       throw new IllegalArgumentException();
     }
     Set<String> headNodes = pathNodes();
-    ArrayList<SignedLink> retlinks = new ArrayList<SignedLink>(links_);
+    ArrayList<T> retlinks = new ArrayList<T>(links_);
     int tailSize = tail.links_.size();
     for (int i = 0; i < tailSize; i++) {
-      SignedLink link = tail.links_.get(i);
+      T link = tail.links_.get(i);
       String linkSource = link.getSrc();
       String linkTarget = link.getTrg();      
       if ((i != 0) && headNodes.contains(linkSource)) {
@@ -411,7 +419,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
       }
       retlinks.add(link);
     }
-    return (new SimplePath(retlinks));
+    return (new SimplePath<T>(retlinks));
   }
 
   /***************************************************************************
@@ -425,14 +433,28 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     if (size == 0) {
       return (Linkage.NONE);
     }
-    int retval = links_.get(0).getSign(); 
+    int retval = getLinkSign(links_.get(0)); 
     for (int i = 1; i < size; i++) {
-      SignedLink link = links_.get(i);
-      retval = resolveSign(retval, link.getSign());
+      T link = links_.get(i);
+      retval = resolveSign(retval, getLinkSign(link));
     }
     return (retval);
   }  
   
+  /***************************************************************************
+  **
+  ** Get the sign of the link. If dealing with unsigned links, we return Linkage.NONE
+  */
+  
+  private int getLinkSign(T daLink) {
+    if (daLink instanceof SignedLink) {
+      SignedLink slink = (SignedLink)daLink;
+      return (slink.getSign());
+    } else {
+      return (Linkage.NONE);
+    }
+  }  
+
   /***************************************************************************
   **
   ** Get the sign of a chunk of the path
@@ -443,10 +465,10 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     if ((startPos >= endPos) || (startPos > size - 1) || (endPos > size)) {
       throw new IllegalArgumentException();
     }
-    int retval = links_.get(startPos).getSign(); 
+    int retval = getLinkSign(links_.get(startPos)); 
     for (int i = (startPos + 1); i < endPos; i++) {
-      SignedLink link = links_.get(i);
-      retval = resolveSign(retval, link.getSign());
+      T link = links_.get(i);
+      retval = resolveSign(retval, getLinkSign(link));
     }
     return (retval);
   }
@@ -479,17 +501,18 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Get string representation
   */
   
+  @Override
   public String toString() {
     StringBuffer buf = new StringBuffer();
     
     int size = links_.size();
     for (int i = 0; i < size; i++) {
-      SignedLink link = links_.get(i);
+      T link = links_.get(i);
       String display = link.getSrc();
       buf.append(display);
-      if (link.getSign() == Linkage.NEGATIVE) {
+      if (getLinkSign(link) == Linkage.NEGATIVE) {
         buf.append("-|");
-      } else if (link.getSign() == Linkage.POSITIVE) {
+      } else if (getLinkSign(link) == Linkage.POSITIVE) {
         buf.append("->");
       } else {
         buf.append("--");
@@ -506,6 +529,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Equals
   */
   
+  @Override
   public boolean equals(Object o) {
     if (this == o) {
       return (true);
@@ -513,7 +537,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     if (!(o instanceof SimplePath)) {
       return (false);
     }
-    SimplePath other = (SimplePath)o;
+    SimplePath<?> other = (SimplePath<?>)o;
     
     //
     // We are considering ranking!
@@ -532,12 +556,13 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
       return (false);
     }
     for (int i = 0; i < size; i++) {
-      SignedLink thisLink = links_.get(i);
-      SignedLink otherLink = other.links_.get(i);
+      Object thisLink = links_.get(i);
+      Object otherLink = other.links_.get(i);
       if (thisLink == otherLink) {
         continue;
       }
-      if (!thisLink.equals(otherLink)) {
+      // If one is signed and the other is not, this will return false:
+      if (!thisLink.equals(otherLink) || !otherLink.equals(thisLink)) {
         return (false);
       }
     }
@@ -549,6 +574,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** HashCode
   */
   
+  @Override
   public int hashCode() {
     int size = links_.size();
     if (size == 0) {
@@ -564,7 +590,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   **
   */
   
-  public int compareTo(SimplePath other) {
+  public int compareTo(SimplePath<T> other) {
     if (this == other) {
       return (0);
     }
@@ -594,8 +620,8 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
     //
     
     for (int i = 0; i < size; i++) {
-      SignedLink thisLink = links_.get(i);
-      SignedLink otherLink = other.links_.get(i);
+      T thisLink = links_.get(i);
+      T otherLink = other.links_.get(i);
       if (thisLink == otherLink) {
         continue;
       }
@@ -609,8 +635,8 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
       if (!thisTarget.equals(otherTarget)) {
         return (thisTarget.compareToIgnoreCase(otherTarget));
       }
-      int thisSign = thisLink.getSign();
-      int otherSign = otherLink.getSign();
+      int thisSign = getLinkSign(thisLink);
+      int otherSign = getLinkSign(otherLink);
       if (thisSign != otherSign) {
         if (thisSign == Linkage.NONE) {
           return (1);
@@ -648,7 +674,7 @@ public class SimplePath implements Comparable<SimplePath>, Cloneable {
   ** Constructor with list
   */
 
-  private SimplePath(ArrayList<SignedLink> list) {
+  private SimplePath(ArrayList<T> list) {
     links_ = list;
     ranking_ = 0;
     simpleLoop_ = false;

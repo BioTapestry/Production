@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,9 +28,9 @@ import java.util.List;
 
 import javax.swing.filechooser.FileFilter;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
@@ -54,8 +54,6 @@ public class ExportPublish extends AbstractControlFlow {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private FilePreparer fprep_;
- 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -67,9 +65,7 @@ public class ExportPublish extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ExportPublish(BTState appState) {
-    super(appState);
-    fprep_ = appState_.getLSSupport().getFprep(); 
+  public ExportPublish() {
     name = "command.ExportPublish";
     desc = "command.ExportPublish";
     icon = "Export24.gif";
@@ -114,15 +110,15 @@ public class ExportPublish extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        ExportPublishState nss = new ExportPublishState(appState_);
-        nss.fprep = fprep_;
+        ExportPublishState nss = new ExportPublishState(cfh);
         next = nss.getSettingsDialog(cfh);    
       } else {
         ExportPublishState ans = (ExportPublishState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("extractExportSettings")) {
           next = ans.extractExportSettings(last);       
         } else if (ans.getNextStep().equals("getFileDialog")) {
-          next = ans.getFileDialog(last);
+          next = ans.getFileDialog();
         } else if (ans.getNextStep().equals("processCommand")) {
           next = ans.processCommand();
         } else {
@@ -141,22 +137,39 @@ public class ExportPublish extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class ExportPublishState implements DialogAndInProcessCmd.CmdState {
+  public static class ExportPublishState extends AbstractStepState  {
      
-    private BTState appState_;
-    private ExportSettings set;
-    private File file;
-    private FilePreparer fprep;
-    private String nextStep_;
- 
-    public String getNextStep() {
-      return (nextStep_);
-    }
+    private ExportSettings set_;
+    private File file_;
+    private FilePreparer fprep_;
       
-    public ExportPublishState(BTState appState) {
-      appState_ = appState;      
+    /***************************************************************************
+    **
+    ** Construct
+    ** 
+    */
+    
+    public ExportPublishState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      fprep_ = uics_.getLSSupport().getFprep(dacx_);
+      nextStep_ = "getSettingsDialog";
     }
-       
+    
+    /***************************************************************************
+    **
+    ** Add cfh in if StepState was pre-built
+    */
+     
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      fprep_ = uics_.getLSSupport().getFprep(dacx_);
+      return;
+    }
+
     /***************************************************************************
     **
     ** Get the export settings dialog
@@ -164,7 +177,7 @@ public class ExportPublish extends AbstractControlFlow {
     */
  
     DialogAndInProcessCmd getSettingsDialog(ServerControlFlowHarness cfh) {
-      Dimension dim = appState_.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);
+      Dimension dim = uics_.getZoomTarget().getBasicSize(true, true, ZoomTarget.VISIBLE_MODULES);
       ExportSettingsPublishDialogFactory.BuildArgs ba = 
         new ExportSettingsPublishDialogFactory.BuildArgs(null, dim.width, dim.height);
       ExportSettingsPublishDialogFactory df = new ExportSettingsPublishDialogFactory(cfh);
@@ -179,7 +192,7 @@ public class ExportPublish extends AbstractControlFlow {
     */
  
     DialogAndInProcessCmd extractExportSettings(DialogAndInProcessCmd cmd) {
-      set = (ExportSettings)cmd.cfhui;     
+      set_ = (ExportSettings)cmd.cfhui;     
       nextStep_ = "getFileDialog"; 
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this));
     }
@@ -190,13 +203,13 @@ public class ExportPublish extends AbstractControlFlow {
     ** 
     */
    
-    DialogAndInProcessCmd getFileDialog(DialogAndInProcessCmd cmd) {
-      List<String> suffs = ImageExporter.getFileSuffixesForType(set.formatType);     
+    DialogAndInProcessCmd getFileDialog() {
+      List<String> suffs = ImageExporter.getFileSuffixesForType(set_.formatType);     
       ArrayList<FileFilter> filts = new ArrayList<FileFilter>();
-      filts.add(new FileExtensionFilters.MultiExtensionFilter(appState_, suffs, "filterName.img"));
-      String pref = ImageExporter.getPreferredSuffixForType(set.formatType);
-      file = fprep.getOrCreateWritableFileWithSuffix("ExportDirectory", filts, suffs, pref); 
-      if (file == null) {
+      filts.add(new FileExtensionFilters.MultiExtensionFilter(dacx_, suffs, "filterName.img"));
+      String pref = ImageExporter.getPreferredSuffixForType(set_.formatType);
+      file_ = fprep_.getOrCreateWritableFileWithSuffix("ExportDirectory", filts, suffs, pref); 
+      if (file_ == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));       
       }
       nextStep_ = "processCommand";
@@ -210,11 +223,11 @@ public class ExportPublish extends AbstractControlFlow {
      
     private DialogAndInProcessCmd processCommand() {
       try {
-        appState_.getSUPanel().exportToFile(file, false, set.formatType, set.res, set.zoomVal, set.size, appState_);
-        fprep.setPreference("ExportDirectory", file.getAbsoluteFile().getParent());
+        uics_.getSUPanel().exportToFile(uics_, dacx_, file_, false, set_.formatType, set_.res, set_.zoomVal, set_.size);
+        fprep_.setPreference("ExportDirectory", file_.getAbsoluteFile().getParent());
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       } catch (IOException ioe) {
-        SimpleUserFeedback suf = fprep.generateSUFForWriteError(ioe);
+        SimpleUserFeedback suf = fprep_.generateSUFForWriteError(ioe);
         return (new DialogAndInProcessCmd(suf, this));
       }
     }
@@ -245,7 +258,12 @@ public class ExportPublish extends AbstractControlFlow {
     }   
     public boolean haveResults() {
       return (haveResult);
-    }     
+    }  
+    
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     
     public boolean isForApply() {
       return (false);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,6 +39,7 @@ public class GroupUsage implements Cloneable {
     this.usage = other.usage;
   }
   
+  @Override
   public GroupUsage clone() { 
     try {
       return ((GroupUsage)super.clone());

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,10 +28,12 @@ import java.util.Set;
 
 import javax.swing.tree.TreeNode;
 
+import org.systemsbiology.biotapestry.app.TabChange;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatStackPage;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 
 /****************************************************************************
@@ -59,6 +61,7 @@ public class DialogAndInProcessCmd {
     MOUSE_MODE_RESULT(false),
     SIMPLE_USER_FEEDBACK(false),
     SIMPLE_USER_FEEDBACK_AND_MOUSE_RESULT(false),
+    HAVE_STACK_PAGE(false),
     HAVE_FRAME_TO_LAUNCH_AND_MOUSE_RESULT(false),
     HAVE_DIALOG_TO_SHOW(false),
     HAVE_FRAME_TO_LAUNCH(false),
@@ -88,6 +91,7 @@ public class DialogAndInProcessCmd {
  
   public Progress state; 
   public SimpleUserFeedback suf;
+  public XPlatStackPage stackPage;
   public ServerControlFlowHarness.Dialog dialog;
   public ServerControlFlowHarness.UserInputs cfhui; 
   public ServerControlFlowHarness.ClickResult pccr;
@@ -142,7 +146,7 @@ public class DialogAndInProcessCmd {
   }
  
   public DialogAndInProcessCmd(ServerControlFlowHarness.Dialog dialog, CmdState cmdState) {
-    state = (dialog.isModal()) ? Progress.HAVE_DIALOG_TO_SHOW : Progress.HAVE_FRAME_TO_LAUNCH;
+    state = (dialog.dialogIsModal()) ? Progress.HAVE_DIALOG_TO_SHOW : Progress.HAVE_FRAME_TO_LAUNCH;
     this.dialog = dialog;
     currStateX = cmdState;
     cfhui = null;
@@ -218,7 +222,7 @@ public class DialogAndInProcessCmd {
   */ 
   
   public interface ModelTreeCmdState extends CmdState {
-    public void setPreload(Genome popupTarget, TreeNode popupNode);
+    public void setPreload(Genome popupTarget, Genome popupModelAncestor, TreeNode popupNode);
   } 
    
   /***************************************************************************
@@ -229,7 +233,16 @@ public class DialogAndInProcessCmd {
   public interface PopupCmdState extends CmdState {
     public void setIntersection(Intersection intersect);
   }  
-   
+  
+  /***************************************************************************
+  **
+  ** Command State for Tab Popup
+  */ 
+  
+  public interface TabPopupCmdState extends CmdState {
+    public void setTab(int tabNum, boolean viaUI, TabChange tc);
+  }  
+  
   /***************************************************************************
   **
   ** Command State for Popup with a point

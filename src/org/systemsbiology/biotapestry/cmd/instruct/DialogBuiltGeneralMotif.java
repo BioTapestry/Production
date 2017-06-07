@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -94,6 +94,7 @@ public class DialogBuiltGeneralMotif extends DialogBuiltMotif {
   ** Find out what nodes and links exist in the motif
   */
 
+  @Override
   public void getExistingNodesAndLinks(Set<String> nodes, Set<String> links) {
     super.getExistingNodesAndLinks(nodes, links);
     if (linkId_ != null) {
@@ -107,6 +108,7 @@ public class DialogBuiltGeneralMotif extends DialogBuiltMotif {
   ** Assign the nodes to source and target regions
   */
 
+  @Override
   public void getRegionAssignments(Set<String> srcRegionNodes, Set<String> targRegionNodes, Map<String, Integer> linkTupleMap) {
     super.getRegionAssignments(srcRegionNodes, targRegionNodes, linkTupleMap);    
     if (linkId_ != null) {
@@ -119,7 +121,8 @@ public class DialogBuiltGeneralMotif extends DialogBuiltMotif {
   **
   ** toString override
   */
-  
+
+  @Override
   public String toString() {
     return ("DialogBuiltGeneralMotif: (" + super.toString() + ")" 
             + " linkId = " + linkId_);

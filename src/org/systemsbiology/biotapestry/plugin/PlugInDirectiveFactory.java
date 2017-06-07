@@ -46,10 +46,12 @@ public class PlugInDirectiveFactory implements ParserClient {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private Set legacyKeys_;
-  private Set instKeys_;
-  private Set linkInstKeys_;
-  private HashSet allKeys_;
+  private Set<String> legacyKeys_;
+  private Set<String>instKeys_;
+  private Set<String> linkInstKeys_;
+  private Set<String> simKeys_;
+  private Set<String> mbKeys_;
+  private HashSet<String> allKeys_;
   private PlugInManager mgr_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -67,9 +69,13 @@ public class PlugInDirectiveFactory implements ParserClient {
     legacyKeys_ = PlugInDirective.keywordsOfInterest();
     instKeys_ = NodePlugInDirective.keywordsOfInterest();
     linkInstKeys_ = LinkPlugInDirective.keywordsOfInterest();
-    allKeys_ = new HashSet(instKeys_);
+    simKeys_ = SimulatorPlugInDirective.keywordsOfInterest();
+    mbKeys_ = ModelBuilderPlugInDirective.keywordsOfInterest();
+    allKeys_ = new HashSet<String>(instKeys_);
     allKeys_.addAll(linkInstKeys_);
     allKeys_.addAll(legacyKeys_);
+    allKeys_.addAll(simKeys_);
+    allKeys_.addAll(mbKeys_);
     mgr_ = mgr;
   }
 
@@ -113,7 +119,7 @@ public class PlugInDirectiveFactory implements ParserClient {
   **
   */
   
-  public Set keywordsOfInterest() {
+  public Set<String> keywordsOfInterest() {
     return (allKeys_);
   }
     
@@ -143,7 +149,19 @@ public class PlugInDirectiveFactory implements ParserClient {
         mgr_.addLinkDirective(pid);
         return (pid);
       }
-    }
+    } else if (simKeys_.contains(elemName)) {
+      SimulatorPlugInDirective pid = SimulatorPlugInDirective.buildFromXML(elemName, attrs);
+      if (pid != null) {
+        mgr_.addSimDirective(pid);
+        return (pid);
+      }
+    } else if (mbKeys_.contains(elemName)) {
+      ModelBuilderPlugInDirective pid = ModelBuilderPlugInDirective.buildFromXML(elemName, attrs);
+      if (pid != null) {
+        mgr_.addModelBuilderDirective(pid);
+        return (pid);
+      }
+    } 
     return (null);
   }
 }

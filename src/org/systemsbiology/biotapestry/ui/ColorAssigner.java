@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -102,7 +102,7 @@ public class ColorAssigner {
     Iterator<String> ncmkit = nodeColorMap.keySet().iterator(); 
     while (ncmkit.hasNext()) {
       String nodeID = ncmkit.next();
-      NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
       String mapColor = nodeColorMap.get(nodeID); 
       np.setColor(mapColor);
     }
@@ -110,7 +110,7 @@ public class ColorAssigner {
     Iterator<String> lcmkit = linkColorMap.keySet().iterator(); 
     while (lcmkit.hasNext()) {
       String linkID = lcmkit.next();
-      LinkProperties lp = rcx.getLayout().getLinkProperties(linkID);        
+      LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(linkID);        
       String mapColor = linkColorMap.get(linkID); 
       lp.setColor(mapColor);
     }    
@@ -168,14 +168,14 @@ public class ColorAssigner {
     Iterator<Link> crit = crossings.iterator();
     while (crit.hasNext()) {
       Link gcl = crit.next();
-      LinkProperties lp1 = rcx.getLayout().getLinkPropertiesForSource(gcl.getSrc());
-      LinkProperties lp2 = rcx.getLayout().getLinkPropertiesForSource(gcl.getTrg());      
+      LinkProperties lp1 = rcx.getCurrentLayout().getLinkPropertiesForSource(gcl.getSrc());
+      LinkProperties lp2 = rcx.getCurrentLayout().getLinkPropertiesForSource(gcl.getTrg());      
       if (lp1.getColorName().equals(lp2.getColorName())) {
-        String nodeName1 = rcx.getGenome().getNode(gcl.getSrc()).getName();
+        String nodeName1 = rcx.getCurrentGenome().getNode(gcl.getSrc()).getName();
         if (nodeName1 == null) {
           nodeName1 = "";
         }
-        String nodeName2 = rcx.getGenome().getNode(gcl.getTrg()).getName();
+        String nodeName2 = rcx.getCurrentGenome().getNode(gcl.getTrg()).getName();
         if (nodeName2 == null) {
           nodeName2 = "";
         }        
@@ -217,22 +217,22 @@ public class ColorAssigner {
   **
   ** Change the colors from black
   */
-  
+  @SuppressWarnings("unused")
   private void changeColors(String linkID, DataAccessContext rcx, Map<String, String> colorMap) {
-    Linkage link = rcx.getGenome().getLinkage(linkID);    
-    LinkProperties lp = rcx.getLayout().getLinkProperties(linkID);
+    Linkage link = rcx.getCurrentGenome().getLinkage(linkID);    
+    LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(linkID);
     String src = link.getSource();
-    NodeProperties np = rcx.getLayout().getNodeProperties(src);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(src);
     String colTag = null;
     if (colorMap != null) {
       colTag = colorMap.get(src);
     }
     if (colTag == null) {
-      colTag = rcx.cRes.getNextColor();
+      colTag = rcx.getColorResolver().getNextColor(rcx.getGenomeSource(), rcx.getLayoutSource());
       np.setColor(colTag);
       lp.setColor(colTag);
     } else if (colTag.equals("white")) {
-      colTag = rcx.cRes.getNextColor();
+      colTag = rcx.getColorResolver().getNextColor(rcx.getGenomeSource(), rcx.getLayoutSource());
       np.setColor(colTag);
       lp.setColor(colTag);
     } else {
@@ -247,11 +247,11 @@ public class ColorAssigner {
   */
   
   private void keepColors(DataAccessContext rcx, Map<String, String> colorMap) {
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
-      LinkProperties lp = rcx.getLayout().getLinkProperties(linkID);
+      LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(linkID);
       String color = lp.getColorName();
       String mappedColor = colorMap.get(linkID);
       if (!color.equals(mappedColor)) {
@@ -293,7 +293,7 @@ public class ColorAssigner {
     HashSet<String> nodesWithLinksOut = null;
     if ((colorMap != null) && (colorMap.size() > 0)) {    
       nodesWithLinksOut = new HashSet<String>();
-      Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+      Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
       while (lit.hasNext()) {
         Linkage link = lit.next();
         nodesWithLinksOut.add(link.getSource());
@@ -304,11 +304,11 @@ public class ColorAssigner {
     // Build a set of available colors:
     //
     
-    int numColors = rcx.cRes.getNumColors();    
+    int numColors = rcx.getColorResolver().getNumColors();    
     HashSet<String> availColors = new HashSet<String>();
     HashSet<String> legacyUnused = new HashSet<String>();       
     for (int i = 0; i < numColors; i++) {
-      String color = rcx.cRes.getGeneColor(i);
+      String color = rcx.getColorResolver().getGeneColor(i);
       availColors.add(color);
       legacyUnused.add(color);
     }
@@ -321,7 +321,7 @@ public class ColorAssigner {
     Iterator<String> ncit = needColors.iterator();
     while (ncit.hasNext()) {
       String linkID = ncit.next();
-      Linkage link = rcx.getGenome().getLinkage(linkID);    
+      Linkage link = rcx.getCurrentGenome().getLinkage(linkID);    
       String src = link.getSource();
       linkForSource.put(src, linkID);
     }
@@ -512,12 +512,12 @@ public class ColorAssigner {
       colorCycles.put(colorClass, remainingColors);
       while (nsit.hasNext()) {
         if (remainingColors.isEmpty()) {
-          rcx.cRes.getRarestColors(colorList, remainingColors, rcx.getDBGenome(), rcx.getRootLayout());
+          rcx.getColorResolver().getRarestColors(colorList, remainingColors, rcx.getDBGenome(), rcx.getRootLayout());
         }
         String nodeID = nsit.next();
-        NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+        NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
         String linkID = linkForSource.get(nodeID);
-        LinkProperties lp = rcx.getLayout().getLinkProperties(linkID);        
+        LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(linkID);        
         if (!incremental && (colorMap != null)) {
           if (bigGroupList) {
             retval |= COLOR_REASSIGNMENT;
@@ -575,7 +575,7 @@ public class ColorAssigner {
       while (cmit.hasNext()) {
         String nodeID = cmit.next();
         String useColor = colorMap.get(nodeID);
-        NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);   
+        NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);   
         String nodeColor = np.getColorName();
         if (!nodeColor.equals(useColor)) {
           if (nodesWithLinksOut.contains(nodeID)) {

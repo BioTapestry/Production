@@ -31,7 +31,8 @@ import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -55,7 +56,8 @@ public class ModelViewPanelWithZoom extends JPanel {
   private JButton buttonZoom_; 
   private JButton buttonModel_;
   private ModelViewPanel msp_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
      
@@ -70,8 +72,8 @@ public class ModelViewPanelWithZoom extends JPanel {
   ** Constructor 
   */ 
   
-  public ModelViewPanelWithZoom(BTState appState, ClickableClient optionalClient, DataAccessContext rcx) {      
-    this(appState, optionalClient, true, rcx);
+  public ModelViewPanelWithZoom(UIComponentSource uics, ClickableClient optionalClient, StaticDataAccessContext rcx) {      
+    this(uics, optionalClient, true, rcx);
   }
   
   /***************************************************************************
@@ -79,8 +81,8 @@ public class ModelViewPanelWithZoom extends JPanel {
   ** Constructor 
   */ 
   
-  public ModelViewPanelWithZoom(BTState appState, ClickableClient optionalClient, boolean selectionZoom, DataAccessContext rcx) { 
-    this(appState, optionalClient, selectionZoom, false, rcx);   
+  public ModelViewPanelWithZoom(UIComponentSource uics, ClickableClient optionalClient, boolean selectionZoom, StaticDataAccessContext rcx) { 
+    this(uics, optionalClient, selectionZoom, false, rcx);   
   }
    
   /***************************************************************************
@@ -88,13 +90,14 @@ public class ModelViewPanelWithZoom extends JPanel {
   ** Constructor 
   */ 
   
-  public ModelViewPanelWithZoom(BTState appState, ClickableClient optionalClient, boolean selectionZoom, boolean centerZoom, DataAccessContext rcx) { 
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();
+  public ModelViewPanelWithZoom(UIComponentSource uics, ClickableClient optionalClient, boolean selectionZoom, boolean centerZoom, StaticDataAccessContext rcx) { 
+    uics_ = uics;
+    dacx_ = rcx;
+    ResourceManager rMan = dacx_.getRMan();
     setLayout(new GridBagLayout()); 
     GridBagConstraints gbc = new GridBagConstraints();
 
-    msp_ = (optionalClient != null) ? new ClickableModelViewPanel(appState_, optionalClient, rcx) : new ModelViewPanel(appState_, rcx);
+    msp_ = (optionalClient != null) ? new ClickableModelViewPanel(uics_, optionalClient, rcx) : new ModelViewPanel(uics_, rcx);
     msp_.setMinimumSize(new Dimension(200, 200));
     JScrollPane jspm = new JScrollPane(msp_);
     jspm.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
@@ -110,7 +113,7 @@ public class ModelViewPanelWithZoom extends JPanel {
         try {
           msp_.getZoomController().bumpZoomWrapper('-');
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -121,7 +124,7 @@ public class ModelViewPanelWithZoom extends JPanel {
         try {
           msp_.getZoomController().bumpZoomWrapper('+');
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -133,7 +136,7 @@ public class ModelViewPanelWithZoom extends JPanel {
           try {
             msp_.zoomToSelected();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -146,7 +149,7 @@ public class ModelViewPanelWithZoom extends JPanel {
           try {
             msp_.getZoomController().zoomToModel();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -212,7 +215,7 @@ public class ModelViewPanelWithZoom extends JPanel {
     try {
       msp_.getZoomController().bumpZoomWrapper(sign);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }

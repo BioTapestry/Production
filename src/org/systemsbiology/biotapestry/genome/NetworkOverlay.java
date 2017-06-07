@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,7 @@ import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.TaggedSet;
 
 /****************************************************************************
@@ -73,7 +73,7 @@ public class NetworkOverlay implements Cloneable {
   private ArrayList<NetModuleLinkage> linkages_;
   private TaggedSet firstViewMods_;
   private TaggedSet firstViewRevs_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -87,7 +87,10 @@ public class NetworkOverlay implements Cloneable {
   */
 
   public NetworkOverlay(NetworkOverlay other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
+    if (dacx_ == null) {
+      System.out.println("Hello world");
+    }
     this.id_ = other.id_;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
@@ -113,7 +116,10 @@ public class NetworkOverlay implements Cloneable {
   */
 
   public NetworkOverlay(NetworkOverlay other, String newID) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
+       if (dacx_ == null) {
+      System.out.println("Hello world");
+    }
     this.id_ = newID;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
@@ -140,13 +146,16 @@ public class NetworkOverlay implements Cloneable {
 
   public NetworkOverlay(NetworkOverlay other, String newID, Map<String, String> groupMap, Map<String, String> nodeMap, 
                         Map<String, String> modIDMap, Map<String, String> linkIDMap) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
+       if (dacx_ == null) {
+      System.out.println("Hello world");
+    }
     this.id_ = newID;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
     this.modules_ = new ArrayList<NetModule>();
     Iterator<NetModule> mit = other.modules_.iterator();
-    DBGenome rootGenome = (DBGenome)appState_.getDB().getGenome();  
+    DBGenome rootGenome = dacx_.getDBGenome();
     while (mit.hasNext()) {
       NetModule mod = mit.next();
       String newModID = rootGenome.getNextKey();
@@ -190,8 +199,11 @@ public class NetworkOverlay implements Cloneable {
   ** Make an empty overlay
   */
 
-  public NetworkOverlay(BTState appState, String id, String name, String desc) {
-    appState_ = appState;
+  public NetworkOverlay(DataAccessContext dacx, String id, String name, String desc) {
+    dacx_ = dacx;
+       if (dacx_ == null) {
+      System.out.println("Hello world");
+    }
     id_ = id;
     name_ = name;
     desc_ = desc;    
@@ -318,6 +330,7 @@ public class NetworkOverlay implements Cloneable {
   ** 
   */  
   
+  @Override
   public NetworkOverlay clone() { 
     try {
       NetworkOverlay retval = (NetworkOverlay)super.clone();
@@ -350,7 +363,7 @@ public class NetworkOverlay implements Cloneable {
   
   public NetworkOverlay getMemberStrippedOverlay() {
    
-    NetworkOverlay retval = new NetworkOverlay(appState_, id_, name_, desc_);
+    NetworkOverlay retval = new NetworkOverlay(dacx_, id_, name_, desc_);
     
     Iterator<NetModule> mit = this.modules_.iterator();
     while (mit.hasNext()) {
@@ -781,6 +794,7 @@ public class NetworkOverlay implements Cloneable {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("NetOverlay: id = " + id_ + " name = " + name_ + " desc = " + desc_ + " modules = " + modules_);
   }
@@ -876,18 +890,18 @@ public class NetworkOverlay implements Cloneable {
     if ((undo.nmOrig != null) && (undo.nmNew != null)) {
       throw new IllegalArgumentException();
     } else if ((undo.nmOrig == null) && (undo.nmNew != null)) {     
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(undo.nmNew.getID());
+      dacx_.getDBGenome().removeKey(undo.nmNew.getID());
       modules_.remove(undo.index);
     } else if ((undo.nmOrig != null) && (undo.nmNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(undo.nmOrig.getID());
+      dacx_.getDBGenome().addKey(undo.nmOrig.getID());
       modules_.add(undo.index, undo.nmOrig.clone());
     } else if ((undo.nmlOrig != null) && (undo.nmlNew != null)) {
       linkages_.set(undo.index, undo.nmlOrig.clone());
     } else if ((undo.nmlOrig == null) && (undo.nmlNew != null)) {     
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(undo.nmlNew.getID());
+      dacx_.getDBGenome().removeKey(undo.nmlNew.getID());
       linkages_.remove(undo.index);
     } else if ((undo.nmlOrig != null) && (undo.nmlNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(undo.nmlOrig.getID());
+      dacx_.getDBGenome().addKey(undo.nmlOrig.getID());
       linkages_.add(undo.index, undo.nmlOrig.clone()); 
     } else if (undo.firstViewChanged) {
       firstViewMods_ = (undo.firstViewModOrig == null) ? null : (TaggedSet)undo.firstViewModOrig.clone();
@@ -913,18 +927,18 @@ public class NetworkOverlay implements Cloneable {
     if ((redo.nmOrig != null) && (redo.nmNew != null)) {
       throw new IllegalArgumentException();
     } else if ((redo.nmOrig == null) && (redo.nmNew != null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(redo.nmNew.getID());
+      dacx_.getDBGenome().addKey(redo.nmNew.getID());
       modules_.add(redo.index, redo.nmNew.clone());
     } else if ((redo.nmOrig != null) && (redo.nmNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(redo.nmOrig.getID());
+      dacx_.getDBGenome().removeKey(redo.nmOrig.getID());
       modules_.remove(redo.index);
     } else if ((redo.nmlOrig != null) && (redo.nmlNew != null)) {
       linkages_.set(redo.index, redo.nmlNew.clone());
     } else if ((redo.nmlOrig == null) && (redo.nmlNew != null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(redo.nmlNew.getID());
+      dacx_.getDBGenome().addKey(redo.nmlNew.getID());
       linkages_.add(redo.index, redo.nmlNew.clone());
     } else if ((redo.nmlOrig != null) && (redo.nmlNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(redo.nmlOrig.getID());
+      dacx_.getDBGenome().removeKey(redo.nmlOrig.getID());
       linkages_.remove(redo.index);
     } else if (redo.firstViewChanged) {
       firstViewMods_ = (redo.firstViewModNew == null) ? null : (TaggedSet)redo.firstViewModNew.clone();
@@ -948,19 +962,27 @@ public class NetworkOverlay implements Cloneable {
   public static class NetOverlayWorker extends AbstractFactoryClient {
     
     private StringBuffer charBuf_;
-    private BTState appState_;
+    private DataAccessContext dacx_;
+    private NetModuleLinkage.NetModuleLinkageWorker nmlw_;
     
-    public NetOverlayWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public NetOverlayWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      appState_ = appState;
+      dacx_ = null;
       myKeys_.add("netOverlay");
       installWorker(new NetModule.NetModuleWorker(whiteboard), new MyGlue());
-      installWorker(new NetModuleLinkage.NetModuleLinkageWorker(appState_, whiteboard), new MyLinkageGlue());
+      nmlw_ = new NetModuleLinkage.NetModuleLinkageWorker(whiteboard);
+      installWorker(nmlw_, new MyLinkageGlue());
       installWorker(new FirstModWorker(whiteboard), null);
       installWorker(new FirstVizWorker(whiteboard), null);      
       charBuf_ = new StringBuffer();
     }
   
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      nmlw_.installContext(dacx);
+      return;
+    }
+
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("netOverlay")) {
@@ -973,6 +995,7 @@ public class NetworkOverlay implements Cloneable {
       return (retval);     
     }
 
+    @Override
     protected void localFinishElement(String elemName) throws IOException {
       if (elemName.equals("descrip")) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
@@ -981,6 +1004,7 @@ public class NetworkOverlay implements Cloneable {
       return;
     }
 
+    @Override
     protected void localProcessCharacters(char[] chars, int start, int length) {
       String nextString = new String(chars, start, length);
       charBuf_.append(nextString);
@@ -991,7 +1015,7 @@ public class NetworkOverlay implements Cloneable {
       String id = AttributeExtractor.extractAttribute(elemName, attrs, "netOverlay", "id", true);
       String name = AttributeExtractor.extractAttribute(elemName, attrs, "netOverlay", "name", true);
       name = CharacterEntityMapper.unmapEntities(name, false);
-      return (new NetworkOverlay(appState_, id, name, null));
+      return (new NetworkOverlay(dacx_, id, name, null));
     }
   }
   

@@ -164,7 +164,7 @@ public class LayoutDataSource implements Cloneable {
   
   public String getDisplayString(GenomeSource gSrc) {
        
-    Genome rootGenome = gSrc.getGenome();
+    Genome rootGenome = gSrc.getRootDBGenome();
     GenomeInstance gi = (GenomeInstance)gSrc.getGenome(modelID_);
     Group newGrp = gi.getGroup(groupID_);
     String baseDisplayString = gi.getName() + ": " + newGrp.getInheritedDisplayName(gi);  

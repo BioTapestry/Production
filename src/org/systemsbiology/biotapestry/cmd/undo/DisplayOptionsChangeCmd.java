@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 
@@ -51,8 +50,8 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public DisplayOptionsChangeCmd(BTState appState, DataAccessContext dacx, DisplayOptionsChange restore) {
-    super(appState, dacx);
+  public DisplayOptionsChangeCmd(DataAccessContext dacx, DisplayOptionsChange restore) {
+    super(dacx);
     restore_ = restore;
   }  
   
@@ -80,7 +79,7 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    appState_.getDisplayOptMgr().changeUndo(restore_);
+    dacx_.getDisplayOptsSource().changeUndo(restore_);
     return;
   }  
   
@@ -92,7 +91,7 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    appState_.getDisplayOptMgr().changeRedo(restore_);
+    dacx_.getDisplayOptsSource().changeRedo(restore_);
     return;
   }
 }

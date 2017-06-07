@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,7 @@ import org.xml.sax.Attributes;
 ** Used to specify plugins
 */
   
-public abstract class AbstractPlugInDirective implements Comparable {
+public abstract class AbstractPlugInDirective implements Comparable<AbstractPlugInDirective> {
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -42,8 +42,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  public static final int INTERNAL_DATA_DISPLAY = 0;
-  public static final int EXTERNAL_DATA_DISPLAY = 1;
+  public enum DirType {INTERNAL_DATA_DISPLAY, EXTERNAL_DATA_DISPLAY, SIMULATION, MODEL_BUILDER}; 
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -51,7 +50,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  protected int type_;
+  protected DirType type_;
   protected String className_;
   protected int order_;
   protected File jar_;  
@@ -94,7 +93,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   ** Get the plugin type
   */
   
-  public int getType() {
+  public DirType getType() {
     return (type_);
   }
   
@@ -131,7 +130,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   **
   */
   
-  public DataDisplayPlugIn buildPlugIn() {
+  public BioTapestryPlugIn buildPlugIn() {
     if (jar_ == null) {
       return (manufacture());
     } else {
@@ -145,8 +144,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   **
   */
     
-  public int compareTo(Object o) {
-    AbstractPlugInDirective other = (AbstractPlugInDirective)o;
+  public int compareTo(AbstractPlugInDirective other) {
     
     if (this.order_ != other.order_) {
       return ((this.order_ > other.order_) ? 1 : -1);
@@ -162,7 +160,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   ** Map types
   */
 
-  public abstract String mapToTypeTag(int val);
+  public abstract String mapToTypeTag(DirType val);
   
  
   /***************************************************************************
@@ -170,7 +168,7 @@ public abstract class AbstractPlugInDirective implements Comparable {
   ** Map types to values
   */
 
-  public abstract int mapFromTypeTag(String tag);
+  public abstract DirType mapFromTypeTag(String tag);
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -232,15 +230,16 @@ public abstract class AbstractPlugInDirective implements Comparable {
   ** Create a plug-in from the directive:
   **
   */
-      
-  private DataDisplayPlugIn load() {
+   
+  @SuppressWarnings("unchecked")
+  private BioTapestryPlugIn load() {
     try {
       URL purl = jar_.toURI().toURL(); // As recommended in docs, to create escape chars
-      URLClassLoader loader = new URLClassLoader(new URL[] {purl},DataDisplayPlugIn.class.getClassLoader());  
+      URLClassLoader loader = new URLClassLoader(new URL[] {purl},BioTapestryPlugIn.class.getClassLoader());  
       
-      Class pluggedIn = Class.forName(className_, true, loader);
+      Class<BioTapestryPlugIn> pluggedIn = (Class<BioTapestryPlugIn>)Class.forName(className_, true, loader);
 
-      DataDisplayPlugIn instance = (DataDisplayPlugIn)pluggedIn.newInstance();
+      BioTapestryPlugIn instance = pluggedIn.newInstance();
       return (instance);
     } catch (MalformedURLException muex) {
       System.err.println("PlugIn " + className_ + " not loaded: " + muex);      
@@ -259,10 +258,10 @@ public abstract class AbstractPlugInDirective implements Comparable {
   ** Create a plug-in from the directive:
   */
 
-  private DataDisplayPlugIn manufacture() {
+  private BioTapestryPlugIn manufacture() {
     try {
       Class plugClass = Class.forName(className_);
-      DataDisplayPlugIn instance = (DataDisplayPlugIn)plugClass.newInstance();
+      BioTapestryPlugIn instance = (BioTapestryPlugIn)plugClass.newInstance();
       return (instance);      
     } catch (ClassNotFoundException cnfex) {
       System.err.println("PlugIn " + className_ + " not loaded: " + cnfex);

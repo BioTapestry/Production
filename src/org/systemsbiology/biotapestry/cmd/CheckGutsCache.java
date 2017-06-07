@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,17 +20,19 @@
 
 package org.systemsbiology.biotapestry.cmd;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
 import org.systemsbiology.biotapestry.ui.SUPanel;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.gaggle.GooseAppInterface;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 
 /****************************************************************************
@@ -46,23 +48,27 @@ public class CheckGutsCache {
   // PUBLIC CONSTANTS
   //
   //////////////////////////////////////////////////////////////////////////// 
-  
-  public static final int NONE    = 0;
-  public static final int LAYOUT  = 1;
-  public static final int MODEL   = 2;
-  public static final int SELECT  = 3;
-  public static final int GENERAL = 4;    
-  public static final int OVERLAY = 5;       
-  
+
+  public enum Checktype {
+    NONE,
+    LAYOUT,
+    MODEL,
+    SELECT,
+    GENERAL,
+    OVERLAY
+  };
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private int type_;
+  private Checktype type_;
   private Genome genome_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+ 
   private Integer genomeCount_;
   private Boolean gaggleIsActive_;
   private Boolean showingModule_;    
@@ -76,9 +82,10 @@ public class CheckGutsCache {
   private Boolean hasAModule_;
   private Boolean linksHidden_;
 
-  public CheckGutsCache(BTState appState, Genome genome, int type) {
-    appState_ = appState;
-    genome_ = genome;
+  public CheckGutsCache(UIComponentSource uics, DataAccessContext dacx, Checktype type) {
+    uics_ = uics;
+    dacx_ = dacx;
+    genome_ = dacx_.getCurrentGenome();
     type_ = type;
     genomeCount_ = null;
     gaggleIsActive_ = null;
@@ -92,7 +99,7 @@ public class CheckGutsCache {
     hasAModule_ = null;
   }
 
-  int getType() {
+  Checktype getType() {
     return (type_);
   } 
 
@@ -113,6 +120,10 @@ public class CheckGutsCache {
     } else {
       return (genome_.canWriteSBML());
     }
+  }
+  
+  public boolean currNodeHasGroupImage(boolean forMap) {
+    return (uics_.getTree().currNodeHasGroupImage(forMap));
   }
 
   public boolean moreThanOneModel() {
@@ -280,7 +291,7 @@ public class CheckGutsCache {
     if (genome_ == null) {
       return (false);
     } 
-    return (appState_.getDB().haveBuildInstructions());      
+    return (dacx_.getInstructSrc().haveBuildInstructions());      
   }
 
   public boolean gooseIsActive() {
@@ -297,22 +308,25 @@ public class CheckGutsCache {
     return ((genome_ != null) && !genome_.isEmpty() && gotModules);    
   }
   
+  public boolean haveTemporalInputData() {
+    TemporalInputRangeData tirdat = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
+    return ((tirdat != null) && tirdat.haveData());
+  }
+    
   public boolean haveTimeCourseData() {
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData();
-    return ((tcd != null) && tcd.haveData());
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+    return (((tcd != null) && tcd.haveDataEntries()) || ((tcdm != null) && tcdm.haveData()));
   }
 
   public boolean timeCourseNotEmpty() { // not exactly the same test as above....
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData(); 
-    return (!tcd.isEmpty());
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    return ((tcd != null) && tcd.haveDataEntries());
   }
   
   public boolean timeCourseHasTemplate() {
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData(); 
-    return (tcd.hasGeneTemplate());
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData(); 
+    return ((tcd != null) && tcd.hasGeneTemplate());
   }
   
   public boolean genomeHasModule() {
@@ -358,15 +372,18 @@ public class CheckGutsCache {
   }
 
   public boolean hasPerturbationData() {
-    Database db = appState_.getDB();
-    PerturbationData pd = db.getPertData();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     return (pd.haveData());      
   }
   
   public boolean hasPertSources() {
-    Database db = appState_.getDB();
-    PerturbationData pd = db.getPertData();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     return (pd.havePertSources());      
+  }
+  
+  public boolean moreThanOneTab() {
+    Metabase mb = dacx_.getMetabase();
+    return (mb.getNumDB() > 1);      
   }
 
   public boolean canSquash() {
@@ -398,37 +415,37 @@ public class CheckGutsCache {
 
   private int loadGenomeCount() {
     if (genomeCount_ == null) {
-      Database db = appState_.getDB();
-      genomeCount_ = new Integer(db.getGenomeCount());
+      genomeCount_ = new Integer(dacx_.getGenomeSource().getGenomeCount());
     }
     return (genomeCount_.intValue());
   } 
 
   private boolean loadGooseActive() {
     if (gaggleIsActive_ == null) {
-      GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+      GooseAppInterface goose = uics_.getGooseMgr().getGoose();
       gaggleIsActive_ = new Boolean((goose != null) && goose.isActivated());
     }
     return (gaggleIsActive_.booleanValue());
   }
 
   private boolean loadShowingModule() {
-    if (showingModule_ == null) {    
-      showingModule_ = new Boolean((appState_.getCurrentOverlay() != null) && !appState_.getCurrentNetModules().set.isEmpty());
+    if (showingModule_ == null) {
+      OverlayStateOracle oso = dacx_.getOSO();
+      showingModule_ = new Boolean((oso.getCurrentOverlay() != null) && !oso.getCurrentNetModules().set.isEmpty());
     }
     return (showingModule_.booleanValue());
   }   
 
   private boolean loadOverlayExists() {
     if (overlayExists_ == null) {  
-      overlayExists_ = new Boolean((new FullGenomeHierarchyOracle(appState_)).overlayExists());
+      overlayExists_ = new Boolean(dacx_.getFGHO().overlayExists());
     }
     return (overlayExists_.booleanValue());
   }
 
   private boolean loadHasSelection() {
     if (hasSelection_ == null) { 
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       hasSelection_ = new Boolean(sup.hasASelection());
     }
     return (hasSelection_.booleanValue());
@@ -436,8 +453,8 @@ public class CheckGutsCache {
   
   private boolean loadHasNodeSelection() {
     if (hasNodeSelection_ == null) { 
-      SUPanel sup = appState_.getSUPanel();
-      hasNodeSelection_ = new Boolean(!sup.getSelectedNodes().isEmpty());
+      SUPanel sup = uics_.getSUPanel();
+      hasNodeSelection_ = new Boolean(!sup.getSelectedNodes(dacx_).isEmpty());
     }
     return (hasNodeSelection_.booleanValue());
   } 
@@ -445,16 +462,14 @@ public class CheckGutsCache {
   
   private boolean loadHasMultiSelections() {
     if (hasMultiSelections_ == null) { 
-      hasMultiSelections_ = new Boolean(appState_.getZoomTarget().haveMultipleSelectionsForBounds());
+      hasMultiSelections_ = new Boolean(dacx_.getZoomTarget().haveMultipleSelectionsForBounds());
     }
     return (hasMultiSelections_.booleanValue());
   }  
  
   private boolean loadLinksHidden() {
     if (linksHidden_ == null) { 
-      SUPanel sup = appState_.getSUPanel();
-      DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-      linksHidden_ = new Boolean(sup.linksAreHidden(rcx));
+      linksHidden_ = new Boolean(uics_.getGenomePresentation().linksAreHidden(dacx_));
     }
     return (linksHidden_.booleanValue());
   }          

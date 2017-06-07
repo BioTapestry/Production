@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,8 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.SuggestedDrawStyle;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -55,8 +56,8 @@ public class SuggestedDrawStylePanel extends JPanel {
   //
   //////////////////////////////////////////////////////////////////////////// 
   
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   
   private JCheckBox setColorBox_;
   private ColorSelectionWidget colorWidget_;
@@ -86,8 +87,8 @@ public class SuggestedDrawStylePanel extends JPanel {
   ** whether a feature is set; used for per-link override cases!
   */ 
   
-  public SuggestedDrawStylePanel(BTState appState, DataAccessContext dacx, boolean optional) {   
-    this(appState, dacx, false, optional, false, null);
+  public SuggestedDrawStylePanel(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, boolean optional) {   
+    this(uics, dacx, hBld, false, optional, false, null);
   }
   
   /***************************************************************************
@@ -95,9 +96,9 @@ public class SuggestedDrawStylePanel extends JPanel {
   ** Constructor 
   */ 
   
-  public SuggestedDrawStylePanel(BTState appState, DataAccessContext dacx,
+  public SuggestedDrawStylePanel(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld,
                                  boolean optional, List<ColorDeletionListener> colorListeners) { 
-    this(appState, dacx, true, optional, false, colorListeners);
+    this(uics, dacx, hBld, true, optional, false, colorListeners);
   }
  
   /***************************************************************************
@@ -105,17 +106,17 @@ public class SuggestedDrawStylePanel extends JPanel {
   ** Constructor 
   */ 
   
-  public SuggestedDrawStylePanel(BTState appState, DataAccessContext dacx,
+  public SuggestedDrawStylePanel(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld,
                                  boolean doColor, boolean optional, 
                                  boolean forMulti, List<ColorDeletionListener> colorListeners) {     
-    appState_ = appState;
+    uics_ = uics;
     dacx_ = dacx;
     optional_ = optional;
     doColor_ = doColor;
        
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
     //
     // Build the color panel:
@@ -132,14 +133,14 @@ public class SuggestedDrawStylePanel extends JPanel {
             try {
               enableColor(setColorBox_.isSelected());
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
             return;
           }
         });
       }
 
-      colorWidget_ = new ColorSelectionWidget(appState_, dacx_, colorListeners, !optional, null, true, forMulti);
+      colorWidget_ = new ColorSelectionWidget(uics_, dacx_, hBld, colorListeners, !optional, null, true, forMulti);
 
       if (optional) {
         UiUtil.gbcSet(gbc, colNum++, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);       
@@ -161,7 +162,7 @@ public class SuggestedDrawStylePanel extends JPanel {
           try {
             enableStyle(setStyleBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -173,7 +174,7 @@ public class SuggestedDrawStylePanel extends JPanel {
       add(new JLabel(rMan.getString("drawStyle.lineStyle")), gbc);            
     }
     
-    Vector<ChoiceContent> styleChoices = SuggestedDrawStyle.getStyleChoices(appState_.getRMan()); 
+    Vector<ChoiceContent> styleChoices = SuggestedDrawStyle.getStyleChoices(dacx_.getRMan()); 
     if (forMulti) {
       styleChoices.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), SuggestedDrawStyle.VARIOUS_STYLE));
     }
@@ -194,7 +195,7 @@ public class SuggestedDrawStylePanel extends JPanel {
           try {
             enableThick(setThicknessBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -206,7 +207,7 @@ public class SuggestedDrawStylePanel extends JPanel {
       add(new JLabel(rMan.getString("drawStyle.setThickness")), gbc);            
     }
  
-    Vector<ChoiceContent> thicknessChoices = SuggestedDrawStyle.getThicknessChoices(appState_.getRMan());
+    Vector<ChoiceContent> thicknessChoices = SuggestedDrawStyle.getThicknessChoices(dacx_.getRMan());
     if (forMulti) {
       thicknessChoices.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), SuggestedDrawStyle.VARIOUS_THICKNESS));
     }
@@ -216,7 +217,7 @@ public class SuggestedDrawStylePanel extends JPanel {
         try {
           syncCustomThick();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -254,13 +255,13 @@ public class SuggestedDrawStylePanel extends JPanel {
     if (clp.consensusStyle == SuggestedDrawStyle.VARIOUS_STYLE) {
       styleCombo_.setSelectedIndex(0);
     } else {          
-      styleCombo_.setSelectedItem(SuggestedDrawStyle.lineStyleForCombo(appState_.getRMan(), clp.consensusStyle));
+      styleCombo_.setSelectedItem(SuggestedDrawStyle.lineStyleForCombo(dacx_.getRMan(), clp.consensusStyle));
     }
   
     if (clp.consensusThickness == SuggestedDrawStyle.VARIOUS_THICKNESS) {
       thicknessCombo_.setSelectedIndex(0);
     } else {          
-      thicknessCombo_.setSelectedItem(SuggestedDrawStyle.thicknessForCombo(appState_.getRMan(), clp.consensusThickness));
+      thicknessCombo_.setSelectedItem(SuggestedDrawStyle.thicknessForCombo(dacx_.getRMan(), clp.consensusThickness));
     }
     
     if (SuggestedDrawStyle.customThicknessRequest(clp.consensusThickness)) {
@@ -309,7 +310,7 @@ public class SuggestedDrawStylePanel extends JPanel {
       // FIX ME!!!!   Make this the tree value
       showStyle = SuggestedDrawStyle.SOLID_STYLE;
     }
-    styleCombo_.setSelectedItem(SuggestedDrawStyle.lineStyleForCombo(appState_.getRMan(), showStyle));
+    styleCombo_.setSelectedItem(SuggestedDrawStyle.lineStyleForCombo(dacx_.getRMan(), showStyle));
 
     int showThickness = sds.getThickness();
     if (showThickness == SuggestedDrawStyle.NO_THICKNESS_SPECIFIED) {
@@ -322,7 +323,7 @@ public class SuggestedDrawStylePanel extends JPanel {
     } else {
       thicknessField_.setText("");
     }
-    thicknessCombo_.setSelectedItem(SuggestedDrawStyle.thicknessForCombo(appState_.getRMan(), showThickness));
+    thicknessCombo_.setSelectedItem(SuggestedDrawStyle.thicknessForCombo(dacx_.getRMan(), showThickness));
     return;
   }
 
@@ -369,8 +370,8 @@ public class SuggestedDrawStylePanel extends JPanel {
           badVal = true;
         }
         if (badVal) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("segSpecial.badThick"), 
                                         rMan.getString("segSpecial.badThickTitle"),
                                         JOptionPane.ERROR_MESSAGE);

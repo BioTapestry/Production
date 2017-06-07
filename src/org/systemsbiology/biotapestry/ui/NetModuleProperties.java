@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@ import java.util.Vector;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
@@ -268,10 +268,28 @@ public class NetModuleProperties implements Cloneable {
 
   /***************************************************************************
   **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    String nk = ctm.get(colorTag_);
+    if (nk != null) {
+      colorTag_ = nk;
+    }
+    nk = ctm.get(fillColorTag_);
+    if (nk != null) {
+      fillColorTag_ = nk;
+    }
+    return;
+  }  
+
+  /***************************************************************************
+  **
   ** Clone support
   ** 
   */  
   
+  @Override
   public NetModuleProperties clone() { 
     try {
       NetModuleProperties retval = (NetModuleProperties)super.clone();
@@ -617,7 +635,7 @@ public class NetModuleProperties implements Cloneable {
   ** Convert between shape types
   */
   
-  public List<Rectangle2D> convertShapes(int newType, Set<String> nodes, DataAccessContext rcx) {
+  public List<Rectangle2D> convertShapes(int newType, Set<String> nodes, StaticDataAccessContext rcx) {
     ArrayList<Rectangle2D> retval = new ArrayList<Rectangle2D>();
     switch (type_) {
       case CONTIG_RECT:
@@ -1958,13 +1976,13 @@ public class NetModuleProperties implements Cloneable {
   ** Return possible type choices values
   */
   
-  public static Vector<ChoiceContent> getDisplayTypes(BTState appState, boolean includeMemberOnly) {
+  public static Vector<ChoiceContent> getDisplayTypes(DataAccessContext dacx, boolean includeMemberOnly) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_TYPES_; i++) {
       if ((i == MEMBERS_ONLY) && !includeMemberOnly) {
         continue;
       }
-      retval.add(typeForCombo(appState, i));
+      retval.add(typeForCombo(dacx, i));
     }
     return (retval);
   }  
@@ -1974,8 +1992,8 @@ public class NetModuleProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent typeForCombo(BTState appState, int type) {
-    return (new ChoiceContent(mapTypeToDisplay(appState, type), type));
+  public static ChoiceContent typeForCombo(DataAccessContext dacx, int type) {
+    return (new ChoiceContent(mapTypeToDisplay(dacx, type), type));
   }  
 
   /***************************************************************************
@@ -1983,9 +2001,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map display types
   */
 
-  public static String mapTypeToDisplay(BTState appState, int type) {
+  public static String mapTypeToDisplay(DataAccessContext dacx, int type) {
     String typeTag = mapToTypeTag(type);
-    return (appState.getRMan().getString("nModProp." + typeTag));
+    return (dacx.getRMan().getString("nModProp." + typeTag));
   }  
   
   /***************************************************************************
@@ -1993,9 +2011,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map display types to instructions
   */
 
-  public static String mapTypeToInstruction(BTState appState, int type) {
+  public static String mapTypeToInstruction(DataAccessContext dacx, int type) {
     String typeTag = mapToTypeTag(type);
-    return (appState.getRMan().getString("nModProp.instruction_" + typeTag));
+    return (dacx.getRMan().getString("nModProp.instruction_" + typeTag));
   }    
   
   /***************************************************************************
@@ -2038,10 +2056,10 @@ public class NetModuleProperties implements Cloneable {
   ** Return possible name fade choices values
   */
   
-  public static Vector<ChoiceContent> getNameFades(BTState appState) {
+  public static Vector<ChoiceContent> getNameFades(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_FADES_; i++) {
-      retval.add(fadeForCombo(appState, i));
+      retval.add(fadeForCombo(dacx, i));
     }
     return (retval);
   }  
@@ -2051,8 +2069,8 @@ public class NetModuleProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent fadeForCombo(BTState appState, int fade) {
-    return (new ChoiceContent(mapFadeToDisplay(appState, fade), fade));
+  public static ChoiceContent fadeForCombo(DataAccessContext dacx, int fade) {
+    return (new ChoiceContent(mapFadeToDisplay(dacx, fade), fade));
   }  
 
   /***************************************************************************
@@ -2060,9 +2078,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map fade types
   */
 
-  public static String mapFadeToDisplay(BTState appState, int fade) {
+  public static String mapFadeToDisplay(DataAccessContext dacx, int fade) {
     String fadeTag = mapToFadeTag(fade);
-    return (appState.getRMan().getString("nModProp." + fadeTag));
+    return (dacx.getRMan().getString("nModProp." + fadeTag));
   }
   
   /***************************************************************************

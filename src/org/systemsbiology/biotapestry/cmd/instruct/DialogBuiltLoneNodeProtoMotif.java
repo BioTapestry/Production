@@ -138,7 +138,7 @@ public class DialogBuiltLoneNodeProtoMotif extends DialogBuiltProtoMotif {
     String oldID = oldLone.getSourceId();    
     if ((oldID != null) || !bd.existingOnly) {
       if (real.getSourceId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
         String newID = newNode.getID();
         real.setSourceId(newID);
         String normSrc = bd.normNames.get(sourceName_);

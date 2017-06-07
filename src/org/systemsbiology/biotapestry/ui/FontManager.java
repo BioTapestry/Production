@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,6 +20,7 @@
 package org.systemsbiology.biotapestry.ui;
 
 import java.awt.Font;
+import java.text.MessageFormat;
 import java.util.*;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -28,12 +29,16 @@ import java.awt.font.FontRenderContext;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.parser.GlueStick;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 
 /****************************************************************************
 **
-** Font Manager.  This is a Singleton.
+** Font Manager.
 */
 
 public class FontManager {
@@ -150,7 +155,22 @@ public class FontManager {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+  
+  /***************************************************************************
+  ** 
+  ** Return merge mismatches
+  */
 
+  public List<String> getMergeMismatches(FontManager ofm) {
+    ArrayList<String> retval = new ArrayList<String>();
+    for (int i = 0; i < NUM_FONTS_; i++) {
+      if (!fonts_[i].equals(ofm.fonts_[i])) {
+        retval.add(tags_[i]);
+      }
+    }  
+    return (retval);
+  }  
+  
   /***************************************************************************
   ** 
   ** Get the number of variable fonts
@@ -211,7 +231,7 @@ public class FontManager {
     // FIX ME!  We can accumulate dead fonts over time unless we do reference
     // counting and deregistering!  Could use a weak map instead?
     //
-    Font retval = (Font)overrides_.get(over);
+    Font retval = overrides_.get(over);
     if (retval == null) {
       String type = (over.makeSansSerif) ? "SansSerif" : "Serif";
       int style = calcStyle(over.makeBold, over.makeItalic);
@@ -231,7 +251,7 @@ public class FontManager {
     // FIX ME!  We can accumulate dead fonts over time unless we do reference
     // counting and deregistering!  Could use a weak map instead?
     //
-    Font retval = (Font)overrides_.get(over);
+    Font retval = overrides_.get(over);
     if (retval == null) {
       String type = (over.makeSansSerif) ? "SansSerif" : "Serif";
       int style = calcStyle(over.makeBold, over.makeItalic); 
@@ -259,7 +279,7 @@ public class FontManager {
       }     
       retval = charBounds_[fontType];    
     } else {
-      retval = (Rectangle2D)overBounds_.get(fo);
+      retval = overBounds_.get(fo);
       if (retval == null) {
         AnnotatedFont overFont = getOverrideFont(fontType, fo);
         retval = overFont.getFont().getMaxCharBounds(frc);
@@ -316,6 +336,17 @@ public class FontManager {
     int style = calcStyle(makeBold, makeItalic); 
     fonts_[fontType] = new Font(type, style, size);
     flushSizeCache();
+    return;
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Install the font for IO
+  */
+
+  void installFont(IndexedFont iFont) {
+    fonts_[iFont.index] = iFont.font;
+    init_[iFont.index] = true;
     return;
   } 
 
@@ -505,129 +536,6 @@ public class FontManager {
     return (name.equals("SansSerif"));
   }  
   
-  /***************************************************************************
-  **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("fonts");
-    return (retval);
-  }
-
-  /***************************************************************************
-  **
-  ** Get Font keyword
-  **
-  */
-  
-  public static String getFontKeyword() {
-    return ("font");
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle font creation
-  **
-  */
-  
-  public static void installFromXML(BTState appState, String elemName, 
-                                    Attributes attrs) throws IOException {
-    String name = null;
-    String type = null;
-    String isBold = null;
-    String isItalic = null;    
-    String size = null;    
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("name")) {
-          name = val;
-        } else if (key.equals("type")) {
-          type = val;          
-        } else if (key.equals("isBold")) {
-          isBold = val;
-        } else if (key.equals("isItalic")) {
-          isItalic = val;          
-        } else if (key.equals("size")) {
-          size = val;
-        }   
-      }
-    }
-    
-    // IsItalic can be null from legacy IO:
-    
-    if ((name == null) || (type == null) || (isBold == null) || (size == null)) {
-      throw new IOException();
-    }
-    
-    int index = -1;
-    name = name.trim();
-    if (name.equalsIgnoreCase("small")) {
-      index = SMALL;
-    } else if (name.equalsIgnoreCase("medium")) {
-      index = MEDIUM;
-    } else if (name.equalsIgnoreCase("cisRegName")) {
-      index = MODULE_NAME;        
-    } else if (name.equalsIgnoreCase("geneName")) {
-      index = GENE_NAME;      
-    } else if (name.equalsIgnoreCase("link")) {
-      index = LINK_LABEL;            
-    } else if (name.equalsIgnoreCase("netModule")) {
-      index = NET_MODULE;     
-    } else if (name.equalsIgnoreCase("mediumLarge")) {
-      index = MED_LARGE;           
-    } else if (name.equalsIgnoreCase("large")) {
-      index = LARGE;
-    } else if (name.equalsIgnoreCase("notes")) {
-      index = NOTES;      
-    } else if (name.equalsIgnoreCase("date")) {
-      index = DATE;
-    } else if (name.equalsIgnoreCase("title")) {
-      index = TITLE;
-    } else { 
-      throw new IOException();
-    }
-
-    type = type.trim();
-    if (type.equalsIgnoreCase("serif")) {
-      type = "Serif";
-    } else if (type.equalsIgnoreCase("sanSerif")) {
-      type = "SansSerif";
-    } else { 
-      throw new IOException();
-    }
-    
-    boolean doItalic = (isItalic == null) ? false : Boolean.valueOf(isItalic).booleanValue();
-    boolean doBold = Boolean.valueOf(isBold).booleanValue();
-    
-    int style = calcStyle(doBold, doItalic);  
-    
-    int pts;
-    try {
-      pts = Integer.parseInt(size); 
-    } catch (NumberFormatException nfe) {
-      throw new IOException();
-    }
-    
-    if ((pts < MIN_SIZE) || (pts > MAX_SIZE)) {
-      throw new IOException();
-    }
-
-    FontManager mgr = appState.getFontMgr();
-    mgr.fonts_[index] = new Font(type, style, pts);
-    mgr.init_[index] = true;
-
-    return;
-  }
-  
   ////////////////////////////////////////////////////////////////////////////
   //
   // INNER CLASSES
@@ -665,6 +573,10 @@ public class FontManager {
     public boolean makeBold;
     public boolean makeItalic;    
     public boolean makeSansSerif; 
+    
+    public FontOverride() {
+    	this(-1,false,false,false);
+    }
 
     public FontOverride(int size, boolean makeBold, boolean makeItalic, boolean makeSansSerif) {
       this.size = size;
@@ -673,6 +585,7 @@ public class FontManager {
       this.makeSansSerif = makeSansSerif;       
     }
    
+    @Override
     public FontOverride clone() { 
       try {
         FontOverride retval = (FontOverride)super.clone();
@@ -682,14 +595,17 @@ public class FontManager {
       }
     }
     
+    @Override    
     public String toString() {
       return ("FontOverride: size=" + size + " bold=" + makeBold + " italic=" + makeItalic  + " sans=" + makeSansSerif);
     }        
 
+    @Override
     public int hashCode() {
       return (size + ((makeBold) ? 200 : 100) + ((makeItalic) ? 2000 : 1000) + ((makeSansSerif) ? 20000 : 10000));
     }
 
+    @Override
     public boolean equals(Object other) {
       if (this == other) {
         return (true);
@@ -708,6 +624,191 @@ public class FontManager {
     }
   }  
  
+  /***************************************************************************
+  **
+  ** For XML I/O
+  */ 
+
+  public static class FontManagerWorker extends AbstractFactoryClient {
+ 
+    private boolean isForAppend_;
+    private MyFontGlue mfg_;
+    private DataAccessContext dacx_;
+    
+    public FontManagerWorker(FactoryWhiteboard whiteboard, boolean isForAppend) {
+      super(whiteboard);
+      myKeys_.add("fonts");
+      isForAppend_ = isForAppend;
+      mfg_ = new MyFontGlue(isForAppend);
+      installWorker(new FontWorker(whiteboard), mfg_);
+    }
+    
+   public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      mfg_.installContext(dacx_);
+      return;
+    }
+
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("fonts")) {
+        if (isForAppend_) {
+          FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+          board.appendMgr = new FontManager();
+          retval = board.appendMgr;
+        } else {
+          retval = dacx_.getFontManager();
+        }
+      }
+      return (retval);     
+    }
+    
+   /***************************************************************************
+    **
+    ** Callback for completion of the element
+    **
+    */
+    
+    @Override
+    public void localFinishElement(String elemName) throws IOException {
+      if (isForAppend_) {
+        FontManager existing = dacx_.getFontManager();
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        List<String> mm = existing.getMergeMismatches(board.appendMgr);
+        if (!mm.isEmpty()) {
+          if (board.mergeIssues == null) {
+            board.mergeIssues = new ArrayList<String>();
+          }  
+          String fmt = dacx_.getRMan().getString("tabMerge.FontConflictFmt");
+          for (String failMerge : mm) {
+            String userName = dacx_.getRMan().getString("fontDialog.fontLabel_" + failMerge);
+            String desc = MessageFormat.format(fmt, new Object[] {userName});
+            board.mergeIssues.add(desc);
+          }
+        }
+      }
+      return;
+    }
+  }
+ 
+  public static class IndexedFont {
+    public int index;
+    public Font font;
+    
+    public IndexedFont(int index, Font font) {
+      this.index = index;
+      this.font = font;
+    }
+  }
+
+  public static class FontWorker extends AbstractFactoryClient {
+ 
+    public FontWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("font");
+    }
+    
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("font")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.ifont = buildFromXML(elemName, attrs);
+        retval = board.ifont;
+      }
+      return (retval);     
+    }  
+    
+    private IndexedFont buildFromXML(String elemName, Attributes attrs) throws IOException {
+      String name = AttributeExtractor.extractAttribute(elemName, attrs, "font", "name", true); 
+      String type = AttributeExtractor.extractAttribute(elemName, attrs, "font", "type", true); 
+      String isBold = AttributeExtractor.extractAttribute(elemName, attrs, "font", "isBold", true); 
+      String isItalic = AttributeExtractor.extractAttribute(elemName, attrs, "font", "isItalic", false); 
+      String size = AttributeExtractor.extractAttribute(elemName, attrs, "font", "size", true); 
+      
+      int index = -1;
+      name = name.trim();
+      if (name.equalsIgnoreCase("small")) {
+        index = SMALL;
+      } else if (name.equalsIgnoreCase("medium")) {
+        index = MEDIUM;
+      } else if (name.equalsIgnoreCase("cisRegName")) {
+        index = MODULE_NAME;        
+      } else if (name.equalsIgnoreCase("geneName")) {
+        index = GENE_NAME;      
+      } else if (name.equalsIgnoreCase("link")) {
+        index = LINK_LABEL;            
+      } else if (name.equalsIgnoreCase("netModule")) {
+        index = NET_MODULE;     
+      } else if (name.equalsIgnoreCase("mediumLarge")) {
+        index = MED_LARGE;           
+      } else if (name.equalsIgnoreCase("large")) {
+        index = LARGE;
+      } else if (name.equalsIgnoreCase("notes")) {
+        index = NOTES;      
+      } else if (name.equalsIgnoreCase("date")) {
+        index = DATE;
+      } else if (name.equalsIgnoreCase("title")) {
+        index = TITLE;
+      } else { 
+        throw new IOException();
+      }
+  
+      type = type.trim();
+      if (type.equalsIgnoreCase("serif")) {
+        type = "Serif";
+      } else if (type.equalsIgnoreCase("sanSerif")) {
+        type = "SansSerif";
+      } else { 
+        throw new IOException();
+      }
+      
+      boolean doItalic = (isItalic == null) ? false : Boolean.valueOf(isItalic).booleanValue();
+      boolean doBold = Boolean.valueOf(isBold).booleanValue();
+      
+      int style = calcStyle(doBold, doItalic);  
+      
+      int pts;
+      try {
+        pts = Integer.parseInt(size); 
+      } catch (NumberFormatException nfe) {
+        throw new IOException();
+      }
+      
+      if ((pts < MIN_SIZE) || (pts > MAX_SIZE)) {
+        throw new IOException();
+      }     
+      return (new IndexedFont(index, new Font(type, style, pts)));    
+    }
+  }
+  
+  public static class MyFontGlue implements GlueStick {
+     
+    private boolean isForAppend_;
+    private DataAccessContext dacx_;
+     
+    
+    public MyFontGlue(boolean isForAppend) {
+      isForAppend_ = isForAppend;
+    }
+   
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      IndexedFont ifont = board.ifont;
+      try {
+        FontManager mgr = (isForAppend_) ? board.appendMgr : dacx_.getFontManager();
+        mgr.installFont(ifont);
+      } catch (IllegalArgumentException iaex) {
+        throw new IOException();
+      }
+      return (null);
+    }
+  } 
   
   ////////////////////////////////////////////////////////////////////////////
   //

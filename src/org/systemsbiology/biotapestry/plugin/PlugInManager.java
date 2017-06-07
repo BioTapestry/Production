@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,8 @@ import java.io.InputStreamReader;
 import org.systemsbiology.biotapestry.parser.ParserClient;
 import org.systemsbiology.biotapestry.parser.SUParser;
 import org.systemsbiology.biotapestry.app.ArgParser;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 
 /****************************************************************************
 **
@@ -54,11 +55,18 @@ public class PlugInManager {
 
   private ArrayList<DataDisplayPlugIn> dataDisplay_;
   private ArrayList<DataDisplayPlugIn> linkDataDisplay_;
+  private ArrayList<SimulatorPlugIn> engines_;
+  private ArrayList<ModelBuilderPlugIn> builders_;
   private int maxCount_;
   private int maxLinkCount_;
+  private int maxEngineCount_;
+  private int maxBuilderCount_;
   private TreeSet<AbstractPlugInDirective> directives_;
   private TreeSet<LinkPlugInDirective> linkDirectives_;
-  private BTState appState_;
+  private TreeSet<SimulatorPlugInDirective> simDirectives_;
+  private TreeSet<ModelBuilderPlugInDirective> mbDirectives_;
+  private DynamicDataAccessContext ddacx_;
+  private UIComponentSource uics_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,14 +79,21 @@ public class PlugInManager {
   ** Basic Constructor
   */
 
-  public PlugInManager(BTState appState) {
-    appState_ = appState;
+  public PlugInManager(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    uics_ = uics;
+    ddacx_ = ddacx;
     dataDisplay_ = new ArrayList<DataDisplayPlugIn>();
     linkDataDisplay_ = new ArrayList<DataDisplayPlugIn>();
     linkDirectives_ = new TreeSet<LinkPlugInDirective>();
     directives_ = new TreeSet<AbstractPlugInDirective>();
+    simDirectives_ = new TreeSet<SimulatorPlugInDirective>();
+    mbDirectives_ = new TreeSet<ModelBuilderPlugInDirective>();
     maxCount_ = Integer.MIN_VALUE;
     maxLinkCount_ = Integer.MIN_VALUE;
+    engines_ = new ArrayList<SimulatorPlugIn>();
+    builders_ = new ArrayList<ModelBuilderPlugIn>();
+    maxEngineCount_ = Integer.MIN_VALUE;
+    maxBuilderCount_ = Integer.MIN_VALUE;
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -115,6 +130,34 @@ public class PlugInManager {
     return;
   }   
   
+  /***************************************************************************
+  ** 
+  ** Add a directive
+  */
+
+  public void addSimDirective(SimulatorPlugInDirective dir) {
+    simDirectives_.add(dir);
+    int order = dir.getOrder();
+    if (maxEngineCount_ < order) {
+      maxEngineCount_ = order;
+    }
+    return;
+  }   
+
+  /***************************************************************************
+  ** 
+  ** Add a directive
+  */
+
+  public void addModelBuilderDirective(ModelBuilderPlugInDirective dir) {
+    mbDirectives_.add(dir);
+    int order = dir.getOrder();
+    if (maxBuilderCount_ < order) {
+      maxBuilderCount_ = order;
+    }
+    return;
+  } 
+   
   /***************************************************************************
   ** 
   ** Get an iterator over live node data display plugins (class DataDisplayPlugIn)
@@ -158,7 +201,7 @@ public class PlugInManager {
       if (!plugDirectory.exists() || !plugDirectory.isDirectory() || !plugDirectory.canRead()) {
         return (false);
       }
-      if (!readJarFiles(plugDirectory, maxCount_ + 1, maxLinkCount_ + 1)) {
+      if (!readJarFiles(plugDirectory, maxCount_ + 1, maxLinkCount_ + 1, maxEngineCount_ + 1, maxBuilderCount_ + 1)) {
          return (false);
       }
     }
@@ -167,10 +210,10 @@ public class PlugInManager {
     while (drit.hasNext()) {
       // May be either legacy type or modern type:
       AbstractPlugInDirective pid = drit.next();
-      DataDisplayPlugIn pi = pid.buildPlugIn();
+      DataDisplayPlugIn pi = (DataDisplayPlugIn)pid.buildPlugIn();
       if (pi != null) {
         if (pi instanceof InternalDataDisplayPlugInV2) {
-          ((InternalDataDisplayPlugInV2)pi).setAppState(appState_);
+          ((InternalDataDisplayPlugInV2)pi).setDataAccessContext(ddacx_, uics_);
         }     
         dataDisplay_.add(pi);
       }
@@ -179,16 +222,71 @@ public class PlugInManager {
     Iterator<LinkPlugInDirective> ldrit = linkDirectives_.iterator();
     while (ldrit.hasNext()) {
       LinkPlugInDirective pid = ldrit.next();
-      DataDisplayPlugIn pi = pid.buildPlugIn();
+      DataDisplayPlugIn pi = (DataDisplayPlugIn)pid.buildPlugIn();
       if (pi != null) {
         if (pi instanceof InternalDataDisplayPlugInV2) {
-          ((InternalDataDisplayPlugInV2)pi).setAppState(appState_);
+          ((InternalDataDisplayPlugInV2)pi).setDataAccessContext(ddacx_, uics_);
         }     
         linkDataDisplay_.add(pi);
       }
     }
-   
+    
+    Iterator<SimulatorPlugInDirective> spdit = simDirectives_.iterator();
+    while (spdit.hasNext()) {
+      SimulatorPlugInDirective pid = spdit.next();
+      SimulatorPlugIn pi = (SimulatorPlugIn)pid.buildPlugIn();
+      if (pi != null) {
+        engines_.add(pi);
+      }
+    }
+    
+    Iterator<ModelBuilderPlugInDirective> mbdit = mbDirectives_.iterator();
+    while (mbdit.hasNext()) {
+      ModelBuilderPlugInDirective pid = mbdit.next();
+      ModelBuilderPlugIn pi = (ModelBuilderPlugIn)pid.buildPlugIn();
+      if (pi != null) {
+        pi.setDataAccessContext(ddacx_);   
+        builders_.add(pi);
+        ddacx_.getRMan().addBundleForPlugin(pi.getPluginResources());
+      }
+    }
     return (true);
+  }
+
+  /***************************************************************************
+  ** 
+  ** Get simulator plugin
+  */
+  
+  public SimulatorPlugIn getSimulatorPlugin(int engineIndex) {
+    return (engines_.get(engineIndex));
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Get iterator for simulator plugins
+  */
+  
+  public Iterator<SimulatorPlugIn> getEngineIterator() {
+	  return engines_.iterator();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Get  builder plugin
+  */
+  
+  public ModelBuilderPlugIn getBuilderPlugin(int mbIndex) {
+    return (builders_.get(mbIndex));
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Get iterator for builder plugins
+  */
+  
+  public Iterator<ModelBuilderPlugIn> getBuilderIterator() {
+    return (builders_.iterator());
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -202,7 +300,7 @@ public class PlugInManager {
   ** Read jars
   */
 
-  private boolean readJarFiles(File plugInDir, int currMax, int currLinkMax) {
+  private boolean readJarFiles(File plugInDir, int currMax, int currLinkMax, int currSimMax, int currMbMax) {
     try {
       ExtensionFilter filter = new ExtensionFilter(".jar");
       if (plugInDir.isDirectory()) {
@@ -229,7 +327,7 @@ public class PlugInManager {
           sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugIn");
           numSvc = sl.size();
           for (int j = 0; j < numSvc; j++) {
-            String plugin = (String)sl.get(j);
+            String plugin = sl.get(j);
             PlugInDirective pid = new PlugInDirective(PlugInDirective.INTERNAL_DATA_DISPLAY_TAG, 
                                                       plugin, Integer.toString(currMax++), files[i]); 
             addDirective(pid);
@@ -242,7 +340,7 @@ public class PlugInManager {
           sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.ExternalNodeDataDisplayPlugIn");
           numSvc = sl.size();
           for (int j = 0; j < numSvc; j++) {
-            String plugin = (String)sl.get(j);
+            String plugin = sl.get(j);
             NodePlugInDirective pid = new NodePlugInDirective(NodePlugInDirective.EXTERNAL_NODE_DATA_DISPLAY_TAG, 
                                                       plugin, Integer.toString(currMax++), files[i]);
             addDirective(pid);
@@ -250,7 +348,7 @@ public class PlugInManager {
           sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.InternalNodeDataDisplayPlugIn");
           numSvc = sl.size();
           for (int j = 0; j < numSvc; j++) {
-            String plugin = (String)sl.get(j);
+            String plugin = sl.get(j);
             NodePlugInDirective pid = new NodePlugInDirective(NodePlugInDirective.INTERNAL_NODE_DATA_DISPLAY_TAG, 
                                                       plugin, Integer.toString(currMax++), files[i]); 
             addDirective(pid);
@@ -263,7 +361,7 @@ public class PlugInManager {
           sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.ExternalLinkDataDisplayPlugIn");
           numSvc = sl.size();
           for (int j = 0; j < numSvc; j++) {
-            String plugin = (String)sl.get(j);
+            String plugin = sl.get(j);
             LinkPlugInDirective pid = new LinkPlugInDirective(LinkPlugInDirective.EXTERNAL_LINK_DATA_DISPLAY_TAG, 
                                                               plugin, Integer.toString(currLinkMax++), files[i]); 
             addLinkDirective(pid);
@@ -271,10 +369,39 @@ public class PlugInManager {
           sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.InternalLinkDataDisplayPlugIn");
           numSvc = sl.size();
           for (int j = 0; j < numSvc; j++) {
-            String plugin = (String)sl.get(j);
+            String plugin = sl.get(j);
             LinkPlugInDirective pid = new LinkPlugInDirective(LinkPlugInDirective.INTERNAL_LINK_DATA_DISPLAY_TAG, 
                                                               plugin, Integer.toString(currLinkMax++), files[i]); 
             addLinkDirective(pid);
+          }
+          
+          //
+          // Simulator services:
+          //
+          
+          sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.SimulatorPlugIn");
+          numSvc = sl.size();
+          for (int j = 0; j < numSvc; j++) {
+            String plugin = sl.get(j);
+            SimulatorPlugInDirective spid = new SimulatorPlugInDirective(SimulatorPlugInDirective.SIMULATOR_TAG, 
+                                                                         plugin, Integer.toString(currSimMax++), files[i]); 
+            this.addSimDirective(spid);
+          }
+            
+          //
+          // Builder services:
+          //
+          
+          sl = getServiceList(jar, "org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn");
+          numSvc = sl.size();
+          if (numSvc > 1) {
+            return (false);
+          } else if (numSvc == 1) {
+            String plugin = sl.get(0);
+            ModelBuilderPlugInDirective mbpid = new ModelBuilderPlugInDirective(ModelBuilderPlugInDirective.MODEL_BUILDER_TAG, 
+                                                                                plugin, Integer.toString(currMbMax++), files[i]); 
+          
+            this.addModelBuilderDirective(mbpid);
           }
         }
       }
@@ -335,7 +462,7 @@ public class PlugInManager {
     }
     ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
     alist.add(new PlugInDirectiveFactory(this));
-    SUParser sup = new SUParser(appState_, alist);
+    SUParser sup = new SUParser(ddacx_, alist);
     try {
       sup.parse(url);
     } catch (IOException ioe) {

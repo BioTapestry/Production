@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -62,7 +62,7 @@ public class ExceptionDialog extends JDialog {
   //
   //////////////////////////////////////////////////////////////////////////// 
   
-  private BTState appState_;
+  private UIComponentSource uics_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -75,10 +75,10 @@ public class ExceptionDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public ExceptionDialog(BTState appState, JFrame parent, Exception ex, String version) {     
-    super(parent, appState.getRMan().getString("exception.title"), true);
-    appState_ = appState;   
-    ResourceManager rMan = appState_.getRMan();    
+  public ExceptionDialog(UIComponentSource uics, JFrame parent, Exception ex, String version) {     
+    super(parent, uics.getRMan().getString("exception.title"), true);
+    uics_ = uics;   
+    ResourceManager rMan = uics.getRMan();    
     setSize(800, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -123,7 +123,7 @@ public class ExceptionDialog extends JDialog {
           ExceptionDialog.this.setVisible(false);
           ExceptionDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });

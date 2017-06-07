@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,15 +27,14 @@ import java.util.List;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.ProxyChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
@@ -76,8 +75,8 @@ public class AddExtraProxyNode extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddExtraProxyNode(BTState appState) {
-    super(appState);
+  public AddExtraProxyNode() {
+    super();
     name = "command.AddExtraProxyNode";
     desc = "command.AddExtraProxyNode";
     mnem = "command.AddExtraProxyNodeMnem";
@@ -112,11 +111,11 @@ public class AddExtraProxyNode extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext()); 
+        ans = new StepState(cfh); 
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
-      
       if (ans.getNextStep().equals("stepSetToMode")) {
         next = ans.stepSetToMode();      
       } else if (ans.getNextStep().equals("stepDoExtraProxyNodeAdd")) {   
@@ -142,9 +141,9 @@ public class AddExtraProxyNode extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = "stepDoExtraProxyNodeAdd"; 
+    ans.setNextStep("stepDoExtraProxyNodeAdd"); 
     return (retval);
   }
   
@@ -153,34 +152,21 @@ public class AddExtraProxyNode extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
-     
-    private DataAccessContext rcxT_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
+    
     private int x;
     private int y;
-    private String nextStep_;   
-    private BTState appState_;
-
+    
     /***************************************************************************
     **
     ** Constructor
     */
      
-    private StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    private StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepSetToMode";
     }
-    
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+     
     /***************************************************************************
     **
     ** mouse masking
@@ -261,11 +247,11 @@ public class AddExtraProxyNode extends AbstractControlFlow {
       // smarter!  07/27/09
       //
       
-      if (rcxT_.getGenome() instanceof DynamicGenomeInstance) {
-        GenomeInstance parent = rcxT_.getGenomeAsInstance().getVfgParent();
+      if (dacx_.currentGenomeIsADynamicInstance()) {
+        GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         if (parent != null) {
-          List<Intersection> itemList = appState_.getGenomePresentation().selectFromParent(x, y, rcxT_);
-          Intersection inter = (new IntersectionChooser(true, rcxT_).intersectionRanker(itemList));
+          List<Intersection> itemList = uics_.getGenomePresentation().selectFromParent(x, y, dacx_);
+          Intersection inter = (new IntersectionChooser(true, dacx_).intersectionRanker(itemList));
           if (inter == null) {
             return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.UNSELECTED, this));
           }
@@ -282,7 +268,7 @@ public class AddExtraProxyNode extends AbstractControlFlow {
           //
           if (parent instanceof DynamicGenomeInstance) {
             String parentProxID = ((DynamicGenomeInstance)parent).getProxyID();
-            DynamicInstanceProxy parProx = rcxT_.getGenomeSource().getDynamicProxy(parentProxID);
+            DynamicInstanceProxy parProx = dacx_.getGenomeSource().getDynamicProxy(parentProxID);
             if (parProx.getGroupForExtraNode(startID) == null) {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.UNSELECTED, this));
             }
@@ -291,7 +277,7 @@ public class AddExtraProxyNode extends AbstractControlFlow {
             if (nodeGroup != null) {  // if null->included by way of extra proxy node, i.e. OK 
               int generation = parent.getGeneration();
               String myID = Group.buildInheritedID(nodeGroup.getID(), generation + 1);
-              Group myGroup = rcxT_.getGenomeAsInstance().getGroup(myID);         
+              Group myGroup = dacx_.getCurrentGenomeAsInstance().getGroup(myID);         
               if (myGroup != null) {
                 String activeID = myGroup.getActiveSubset();
                 if (activeID == null) {  // actual group is in instance, so cannot include.
@@ -306,8 +292,8 @@ public class AddExtraProxyNode extends AbstractControlFlow {
             }
           }
 
-          String proxID = ((DynamicGenomeInstance)rcxT_.getGenome()).getProxyID();
-          DynamicInstanceProxy prox = rcxT_.getGenomeSource().getDynamicProxy(proxID);
+          String proxID = ((DynamicGenomeInstance)dacx_.getCurrentGenome()).getProxyID();
+          DynamicInstanceProxy prox = dacx_.getGenomeSource().getDynamicProxy(proxID);
           if (prox.hasAddedNode(startID)) {  // Already present
             return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ERROR, this));
           }
@@ -318,7 +304,7 @@ public class AddExtraProxyNode extends AbstractControlFlow {
           String useGroupID = null;
           if (parent instanceof DynamicGenomeInstance) {
             String parentProxID = ((DynamicGenomeInstance)parent).getProxyID();
-            DynamicInstanceProxy parProx = rcxT_.getGenomeSource().getDynamicProxy(parentProxID);
+            DynamicInstanceProxy parProx = dacx_.getGenomeSource().getDynamicProxy(parentProxID);
             useGroupID = parProx.getGroupForExtraNode(startID);
           } else {
             // 3-25-08 Could be returned as null, though MAIN_GROUP_AS_FALLBACK arg should reduce that.
@@ -343,8 +329,8 @@ public class AddExtraProxyNode extends AbstractControlFlow {
               } 
             }
 
-            ResourceManager rMan = appState_.getRMan();
-            Object piggyGroup = JOptionPane.showInputDialog(appState_.getTopFrame(), 
+            ResourceManager rMan = dacx_.getRMan();
+            Object piggyGroup = JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                                  rMan.getString("addExtraProxyNode.PiggyBackGroup"), 
                                                  rMan.getString("addExtraProxyNode.Title"),
                                                  JOptionPane.QUESTION_MESSAGE, null,
@@ -369,20 +355,22 @@ public class AddExtraProxyNode extends AbstractControlFlow {
    
     private boolean addExtraProxyNode(NodeInstance useNode, String groupToUse) {
                                         
-      Genome genome = rcxT_.getGenome();
-      if (!(genome instanceof DynamicGenomeInstance)) {   
+
+      if (!dacx_.currentGenomeIsADynamicInstance()) {   
         throw new IllegalArgumentException();    
       }
+      
+      Genome genome = dacx_.getCurrentGenome();
       DynamicGenomeInstance dgi = (DynamicGenomeInstance)genome;
-      DynamicInstanceProxy dip = rcxT_.getGenomeSource().getDynamicProxy(dgi.getProxyID());
+      DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(dgi.getProxyID());
    
       DynamicInstanceProxy.AddedNode added = new DynamicInstanceProxy.AddedNode(useNode.getID(), groupToUse);
       ProxyChange pc = dip.addExtraNode(added);
       if (pc != null) {
-        ProxyChangeCmd pcc = new ProxyChangeCmd(appState_, rcxT_, pc);
-        UndoSupport support = new UndoSupport(appState_, "undo.addExtraProxyNode");        
+        ProxyChangeCmd pcc = new ProxyChangeCmd(dacx_, pc);
+        UndoSupport support = uFac_.provideUndoSupport("undo.addExtraProxyNode", dacx_);        
         support.addEdit(pcc);
-        support.addEvent(new ModelChangeEvent(genome.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), genome.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         support.finish();
       } 
       return (true); 

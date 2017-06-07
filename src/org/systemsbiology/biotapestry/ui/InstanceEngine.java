@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,8 +27,7 @@ import java.awt.geom.Point2D;
 
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -59,8 +58,6 @@ public class InstanceEngine {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
-  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -72,8 +69,7 @@ public class InstanceEngine {
   ** Constructor
   */
 
-  public InstanceEngine(BTState appState) {
-    appState_ = appState;
+  public InstanceEngine() {
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -87,9 +83,8 @@ public class InstanceEngine {
   ** Layout the given nodes by groups
   */
   
-  public Map<String, Point2D> layout(Map<String, Set<String>> regions, String genomeKey) {
-    Database db = appState_.getDB();
-    GenomeInstance gi = (GenomeInstance)db.getGenome(genomeKey);
+  public Map<String, Point2D> layout(Map<String, Set<String>> regions, DataAccessContext dacx) {
+    GenomeInstance gi = dacx.getCurrentGenomeAsInstance();
     HashMap<String, Point2D> retval = new HashMap<String, Point2D>();
    
     int row = 0;

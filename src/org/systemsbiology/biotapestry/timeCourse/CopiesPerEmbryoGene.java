@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 
 
@@ -176,7 +176,7 @@ public class CopiesPerEmbryoGene implements Cloneable {
   ** Get an HTML count table suitable for display.
   */
   
-  public void getCountTable(PrintWriter out, BTState appState) {
+  public void getCountTable(PrintWriter out, DataAccessContext dacx) {
                                    
     Set<Integer> timeKeys = data_.keySet();
     int numTimes = timeKeys.size();
@@ -204,7 +204,7 @@ public class CopiesPerEmbryoGene implements Cloneable {
         int currEntry = rowBase + j;
         if (currEntry < numTimes) {
           Integer timeKey = times.get(currEntry);
-          buildTimeCell(out, timeKey, appState);
+          buildTimeCell(out, timeKey, dacx);
         } else {
           buildEmptyCell(out);
         }
@@ -296,10 +296,10 @@ public class CopiesPerEmbryoGene implements Cloneable {
   **
   */
   
-  public void buildTimeCell(PrintWriter out, Integer timeObj, BTState appState) {
+  public void buildTimeCell(PrintWriter out, Integer timeObj, DataAccessContext dacx) {
     out.print("<td width=\"70\" align=\"center\" valign=\"center\"><b>");    
     out.print("<b>");
-    String timeLabel = TimeAxisDefinition.getTimeDisplay(appState, timeObj, true, false);
+    String timeLabel = TimeAxisDefinition.getTimeDisplay(dacx, timeObj, true, false);
     out.print(timeLabel);
     out.print("</b>");
     out.println("</td>");        

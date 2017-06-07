@@ -1,5 +1,6 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +22,6 @@ package org.systemsbiology.biotapestry.ui.freerender;
 
 import java.awt.Color;
 import java.awt.geom.Point2D;
-import java.awt.geom.Ellipse2D;
 import java.awt.geom.GeneralPath;
 import java.awt.BasicStroke;
 import java.util.Iterator;
@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -46,10 +47,10 @@ import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.util.Vector2D;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.LinkBusDrop;
 import org.systemsbiology.biotapestry.ui.NetModuleLinkageProperties;
 import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
-import org.systemsbiology.biotapestry.ui.RenderObjectCache;
 import org.systemsbiology.biotapestry.ui.SuggestedDrawStyle;
 import org.systemsbiology.biotapestry.ui.ResolvedDrawStyle;
 import org.systemsbiology.biotapestry.ui.PerLinkDrawStyle;
@@ -77,11 +78,6 @@ public class DrawTree {
 
   // PRE-RESIZE:
   private static final int REG_THICK        = 3;
-  private static final float THIN_DASH      = 4.0F;
-  private static final float THIN_DASH_SP   = 6.0F;
-  private static final float THICK_DASH     = 10.0F;
-  private static final float THICK_DASH_SP  = 6.0F;
- // private static final double INTERSECT_TOL = 5.0;
   private static final int SELECTED_THICK   = 5;
   private static final int SELECTED_DELTA   = SELECTED_THICK - REG_THICK;
 
@@ -182,8 +178,8 @@ public class DrawTree {
           if (llsm.isActive) {
             dts.setActive();
           }
-          if ((perLink != null) || (llsm.perLinkForEvidence != null) || (llsm.perLinkActivity != null)) {
-            dts.addPerLinkProps(perLink, linkID, llsm.perLinkForEvidence, llsm.perLinkActivity);
+          if ((perLink != null) || (llsm.perLinkForEvidence != null) || (llsm.perLinkActivity != null) || (llsm.simDiff != null)) {
+            dts.addPerLinkProps(perLink, linkID, llsm.perLinkForEvidence, llsm.perLinkActivity, llsm.simDiff);
           }
           lastDts = dts;
         }
@@ -206,8 +202,8 @@ public class DrawTree {
 
   public void renderToCache(ModalShapeContainer group, 
                             DrawTreeModelDataSource mds,                          
-                            LinkProperties lp, Set skipDrops,
-                            DataAccessContext rcx) {
+                            LinkProperties lp, Set<String> skipDrops,
+                            DataAccessContext rcx, IRenderer.Mode mode) {
 
     if (startForLink_.isEmpty()) {  // Nothing to draw...
       return;
@@ -218,7 +214,7 @@ public class DrawTree {
     BasicStroke padStroke = new BasicStroke(1);
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
     Color basePadCol = (isGhosted) ? dop.getInactiveGray() : Color.BLACK;
-    Color padCol = applyAlphaToColor(basePadCol, rcx.oso);
+    Color padCol = applyAlphaToColor(basePadCol, rcx.getOSO());
     GeneralPath currPath = new GeneralPath();
     DrawTreeSegment lastDts = null;
     FlipStatus flipStat = null;
@@ -234,7 +230,8 @@ public class DrawTree {
     //
 
     HashMap<LinkSegmentID, List<LinkSegmentID>> kiddies = new HashMap<LinkSegmentID, List<LinkSegmentID>>();
-    LinkSegmentID rootSegID = resolveDrawStyles(lp, isGhosted, kiddies, lsMod.linkModulation, lsMod.forModules, rcx.cRes, dop);
+    DisplayOptions dopt = rcx.getDisplayOptsSource().getDisplayOptions();
+    LinkSegmentID rootSegID = resolveDrawStyles(lp, isGhosted, kiddies, lsMod.linkModulation, lsMod.forModules, rcx.getColorResolver(), mode, dopt);
     clearTags();
 
     //
@@ -335,18 +332,18 @@ public class DrawTree {
         //
         if (isDrop) {
           if (!skipDrop) {
-        	renderTipToCache(group, rcx, mds, currDts, linkID, lp, llsm, isGhosted, lsMod.forModules);
+          	renderTipToCache(group, rcx, mds, currDts, linkID, lp, isGhosted);
           }
           isDrop = false;
         } else {
           if ((lsMod.branchRenderMode != DisplayOptions.NO_BUS_BRANCHES) && currDts.needsBranchPoint()) {
             Color baseCol = flipStat.styleUsed.getColor();
-            Color useCol = applyAlphaToColor(baseCol, rcx.oso);
+            Color useCol = applyAlphaToColor(baseCol, rcx.getOSO());
             drawABusBranch(group, end, useCol, padCol, lsMod.branchRenderMode,
                            branchStroke, currDts.isActive());
           }
-          if (rcx.showBubbles && !isDrop) {
-            drawAPad(group, end, padCol, padStroke, currDts.isActive(), rcx.pixDiam);
+          if (rcx.getShowBubbles() && !isDrop) {
+            drawAPad(group, end, padCol, padStroke, currDts.isActive(), rcx.getPixDiam());
           }
         }
         currDts.setTag();
@@ -371,8 +368,8 @@ public class DrawTree {
     return;
   }
 
-  public void exportLinkages(LinkageExportForWeb lefw, DataAccessContext rcx, LinkProperties lp) {
-	  Genome genome = rcx.getGenome();
+  public void exportLinkages(LinkageExportForWeb lefw, StaticDataAccessContext rcx, LinkProperties lp) {
+	  Genome genome = rcx.getCurrentGenome();
 	  Iterator<LinkSegmentID> iter = segments_.keySet().iterator();
 
 	  while (iter.hasNext()) {
@@ -415,7 +412,7 @@ public class DrawTree {
   }
   
   public void exportNetModuleLinkages(NetModuleLinkageExportForWeb lefw, DataAccessContext rcx, String ovrID, NetModuleLinkageProperties lp) {
-	  NetworkOverlay overlay = rcx.getGenome().getNetworkOverlay(ovrID);
+	  NetworkOverlay overlay = rcx.getCurrentGenome().getNetworkOverlay(ovrID);
 	  Iterator<LinkSegmentID> iter = segments_.keySet().iterator();
 
 	  while (iter.hasNext()) {
@@ -520,7 +517,8 @@ public class DrawTree {
 
   private LinkSegmentID resolveDrawStyles(LinkProperties lp, boolean isGhosted,
                                           Map<LinkSegmentID, List<LinkSegmentID>> kiddies, 
-                                          int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {
+                                          int activityDrawChange, boolean forModules, 
+                                          ColorResolver cRes, IRenderer.Mode mode, DisplayOptions dopt) {
     LinkSegmentID retval = null;
     clearTags();
     Iterator<String> kit = startForLink_.keySet().iterator();
@@ -546,7 +544,7 @@ public class DrawTree {
         } else {
           lsid = currDts.getParent();
         }
-        currDts.setResolvedStyle(currDts.resolveDrawStyle(lp, isGhosted, activityDrawChange, forModules, cRes, dopt));
+        currDts.setResolvedStyle(currDts.resolveDrawStyle(lp, isGhosted, activityDrawChange, forModules, cRes, mode, dopt));
         currDts.setTag();
         lastDts = currDts;
         if (lsid == null) {
@@ -669,35 +667,6 @@ public class DrawTree {
 					currStyle, pathLayer));
 		}
 	}
-	
-  @SuppressWarnings("unused")
-  private FlipStatus pathFlipper(RenderObjectCache cache,
-                                 boolean isGhosted,
-                                 DrawTreeSegment currDts,
-                                 DrawTreeSegment lastDts,
-                                 FlipStatus lastStat, DataAccessContext rcx) {
-    //
-    // Figure out current style:
-    //
-
-    ResolvedDrawStyle currStyle = currDts.getResolvedStyle();
-    Integer pathLayer = (currDts.isActive()) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-
-    //
-    // Flip the path if the drawing style or activity changes
-    //
-
-    if (lastStat == null) {
-      return (new FlipStatus(FlipStatus.SAME_PATH_JUMP, new GeneralPath(), currStyle, pathLayer));
-    } else if (!currStyle.equals(lastStat.styleUsed) || !pathLayer.equals(lastStat.currentLayer)) {
-      flushPath(cache, lastStat, rcx);
-      return (new FlipStatus(FlipStatus.NEW_PATH, new GeneralPath(), currStyle, pathLayer));
-    } else if (lastDts == null) {  // New drop comes along...
-      return (new FlipStatus(FlipStatus.SAME_PATH_JUMP, lastStat.currPath, currStyle, pathLayer));
-    } else {
-      return (new FlipStatus(FlipStatus.SAME_PATH_CONTINUE, lastStat.currPath, currStyle, pathLayer));
-    }
-  }
 
   /***************************************************************************
   **
@@ -707,23 +676,12 @@ public class DrawTree {
   private void flushPath(ModalShapeContainer group, FlipStatus flipStat, DataAccessContext rcx) {
     Integer pathLayer = flipStat.currentLayer;
     Color baseCol = flipStat.styleUsed.getColor();
-    Color col = applyAlphaToColor(baseCol, rcx.oso);
+    Color col = applyAlphaToColor(baseCol, rcx.getOSO());
     BasicStroke stroke = flipStat.styleUsed.calcStroke();
 
     ModelObjectCache.SegmentedPathShape sps = new ModelObjectCache.SegmentedPathShape(DrawMode.DRAW, col, stroke, flipStat.currPath);
     group.addShape(sps, pathLayer, MINOR_NORMAL_LAYER_);
 
-    return;
-  }
-
-  private void flushPath(RenderObjectCache cache, FlipStatus flipStat, DataAccessContext rcx) {
-    Integer pathLayer = flipStat.currentLayer;
-    Color baseCol = flipStat.styleUsed.getColor();
-    Color col = applyAlphaToColor(baseCol, rcx.oso);
-    BasicStroke stroke = flipStat.styleUsed.calcStroke();
-    RenderObjectCache.ModalShape ms =
-      new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.DRAW, col, stroke, flipStat.currPath);
-    cache.addObject(ms, pathLayer, MINOR_NORMAL_LAYER_);
     return;
   }
 
@@ -750,9 +708,7 @@ public class DrawTree {
 
 	private void renderTipToCache(ModalShapeContainer group, DataAccessContext icx,
 			DrawTreeModelDataSource mds, 
-			DrawTreeSegment dts, String linkID, LinkProperties lp,
-			DrawTreeModelDataSource.LinkLineStyleModulation llsm, boolean isGhosted,
-			boolean forModules) {
+			DrawTreeSegment dts, String linkID, LinkProperties lp, boolean isGhosted) {
 
 		DrawTreeModelDataSource.ModelDataForTip tipData = mds.getModelDataForTip(icx, linkID, lp);
 
@@ -760,7 +716,7 @@ public class DrawTree {
 		ResolvedDrawStyle rds = dts.getResolvedStyle();
 
 		Color baseCol = rds.getColor();
-		Color col = applyAlphaToColor(baseCol, icx.oso);
+		Color col = applyAlphaToColor(baseCol, icx.getOSO());
 
 		if (tipData.sign == Linkage.NEGATIVE) {
 			BasicStroke negStroke = new BasicStroke(tipData.negThick,
@@ -785,52 +741,11 @@ public class DrawTree {
 		// forModules!
 		// 11/25/09: Now the info is embedded in the tip data!
 		if (tipData.hasDiamond) {
-			renderEvidenceGlyphToCache(group, icx.getGenome(), dts, linkID, isGhosted, tipData, icx);
+			renderEvidenceGlyphToCache(group, icx.getCurrentGenome(), dts, linkID, isGhosted, tipData, icx);
 		}
 
 		return;
 	}
-
-	@SuppressWarnings("unused")
-  private void renderTipToCache(RenderObjectCache cache, DataAccessContext icx,
-                                DrawTreeModelDataSource mds,                               
-                                DrawTreeSegment dts,
-                                String linkID, LinkProperties lp,
-                                DrawTreeModelDataSource.LinkLineStyleModulation llsm,
-                                boolean isGhosted, boolean forModules) {
-
-    DrawTreeModelDataSource.ModelDataForTip tipData = mds.getModelDataForTip(icx, linkID, lp);
-
-    Integer pathLayer = (tipData.isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-    ResolvedDrawStyle rds = dts.getResolvedStyle();
-
-    Color baseCol = rds.getColor();
-    Color col = applyAlphaToColor(baseCol, icx.oso);
-
-    if (tipData.sign == Linkage.NEGATIVE) {
-      BasicStroke negStroke = new BasicStroke(tipData.negThick, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
-      GeneralPath gp = negativeTipPath(dts, tipData);
-      RenderObjectCache.ModalShape ms =
-        new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.DRAW, col, negStroke, gp);
-      cache.addObject(ms, pathLayer, MINOR_NORMAL_LAYER_);
-    } else if (tipData.sign == Linkage.POSITIVE) {
-      BasicStroke posStroke = new BasicStroke(1, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
-      GeneralPath gp = positiveTipPath(dts, tipData);
-      RenderObjectCache.ModalShape ms =
-        new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.FILL, col, posStroke, gp);
-      cache.addObject(ms, pathLayer, MINOR_NORMAL_LAYER_);
-    }
-
-    // Fixes BT-10-27-09:2; previously required llsm.perLinkForEvidence to be non-null,
-    // which isn't true for diamond-only. But dropping that req'd us to check forModules!
-    // 11/25/09: Now the info is embedded in the tip data!
-    if (tipData.hasDiamond) {
-      renderEvidenceGlyphToCache(cache, icx.getGenome(), dts, linkID, isGhosted, tipData, icx);
-    }
-
-    return;
-  }
-
 
   /***************************************************************************
   **
@@ -875,7 +790,6 @@ public class DrawTree {
   private GeneralPath positiveTipPath(DrawTreeSegment dts, DrawTreeModelDataSource.ModelDataForTip mdt) {
 
 
-    double padWidth = mdt.padWidth;
     Vector2D arrival = mdt.arrival;
     Point2D lanLoc = mdt.lanLoc;
 
@@ -1008,13 +922,11 @@ public class DrawTree {
 			return;
 		}
 
-		int sign = link.getSign();
 		boolean checkForActive = (genome instanceof GenomeInstance);
 		boolean isActive = (checkForActive) ? (((LinkageInstance) link)
 				.getActivity((GenomeInstance) genome) == LinkageInstance.ACTIVE) : true;
 
 		Vector2D run = dts.getRun();
-		Vector2D norm = dts.getNormal();
 		Point2D end = dts.getEnd();
 		Point2D start = dts.getStart();
 
@@ -1035,7 +947,6 @@ public class DrawTree {
 			if (fromEnd.dot(arrival) > 0.0) {
 				end = lanLoc;
 			}
-			norm = run.normal();
 		}
 
 		double lf = mdt.levelFudge;
@@ -1057,66 +968,6 @@ public class DrawTree {
 		return;
 	}
 
-	// TODO remove old implementation
-  private void renderEvidenceGlyphToCache(RenderObjectCache cache, Genome genome,
-                                          DrawTreeSegment dts, String linkID,
-                                          boolean isGhosted,
-                                          DrawTreeModelDataSource.ModelDataForTip mdt, DataAccessContext rcx) {
-
-    Vector2D arrival = mdt.arrival;
-    Point2D lanLoc = mdt.lanLoc;
-
-    Linkage link = genome.getLinkage(linkID);
-    int level = link.getTargetLevel();
-    if (level == Linkage.LEVEL_NONE) {
-      return;
-    }
-
-    int sign = link.getSign();
-    boolean checkForActive = (genome instanceof GenomeInstance);
-    boolean isActive = (checkForActive)
-                         ? (((LinkageInstance)link).getActivity((GenomeInstance)genome) == LinkageInstance.ACTIVE)
-                         : true;
-
-    Vector2D run = dts.getRun();
-    Vector2D norm = dts.getNormal();
-    Point2D end = dts.getEnd();
-    Point2D start = dts.getStart();
-
-    //
-    // Things get really weird close into odd-width nodes like boxes and text, particularly
-    // since fonts aren't being scaled exactly for speed.
-    // If the last segment is a fragment very, very close to the landing point, we ignore
-    // its direction. We also fall back on the landing location as the end if last point
-    // is closer to the end than the pad point.
-    //
-    Vector2D finalRun = new Vector2D(start, lanLoc);
-    if (finalRun.length() <= mdt.plusArrowDepth) {
-      run = arrival;
-      Vector2D fromEnd = new Vector2D(lanLoc, end);
-      if (fromEnd.dot(arrival) > 0.0) {
-        end = lanLoc;
-      }
-      norm = run.normal();
-    }
-
-    double lf = mdt.levelFudge;
-    float glyphBaseX = (float)(end.getX() + (run.getX() * lf));
-    float glyphBaseY = (float)(end.getY() + (run.getY() * lf));
-    GeneralPath glyphPath = new GeneralPath();
-    EvidenceGlyph.addGlyphToPath(glyphPath, glyphBaseX, glyphBaseY);
-
-    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Integer pathLayer = (isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-    Color col = (isGhosted || !isActive) ? dop.getInactiveGray() : evidenceToGlyphColor(level, dop);
-    BasicStroke tagStroke = new BasicStroke(REG_THICK, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
-    RenderObjectCache.ModalShape ms =
-      new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.FILL, col, tagStroke, glyphPath);
-    cache.addObject(ms, pathLayer, MINOR_TARGET_LABEL_LAYER_);
-
-    return;
-  }
-
   /***************************************************************************
   **
   ** Render the pads
@@ -1136,25 +987,6 @@ public class DrawTree {
 
     Integer pathLayer = (isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
     group.addShape(circ, pathLayer, MINOR_PAD_LAYER_);
-  }
-
-  private void drawAPad(RenderObjectCache cache, Point2D pt, Color col, BasicStroke padStroke, boolean isActive, double pixDiam) {
-    double x = pt.getX();
-    double y = pt.getY();
-    //
-    // Start doing scale-dependent rendering.  NOTE that this is only godd at the moment since pads are
-    // shown in editing, and cache is used for view only.  Obviously, cache would need to be scale-aware
-    // if this is used with a real cache situation!
-    //
-    double useRad = (pixDiam < PAD_RADIUS_) ? PAD_RADIUS_ : UiUtil.forceToGridValue(2.0 * pixDiam, UiUtil.GRID_SIZE);
-
-    Ellipse2D circ = new Ellipse2D.Double(x - useRad, y - useRad,
-                                          2.0 * useRad, 2.0 * useRad);
-    Integer pathLayer = (isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-    RenderObjectCache.ModalShape ms
-      = new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.DRAW, col, padStroke, circ);
-    cache.addObject(ms, pathLayer, MINOR_PAD_LAYER_);
-    return;
   }
 
   /***************************************************************************
@@ -1236,6 +1068,7 @@ public class DrawTree {
     DrawTreeModelDataSource.ModelLineStyleModulation lsMod = mds.getModelLineStyleModulation(icx);
 
     HashMap<LinkSegmentID, DrawTreeSegment> segments = new HashMap<LinkSegmentID, DrawTreeSegment>();
+    DisplayOptions dopt = icx.getDisplayOptsSource().getDisplayOptions(); 
 
     //
     // Crank through drops.  Get segmentID for each end drop, get a path
@@ -1267,15 +1100,14 @@ public class DrawTree {
           }
           dts.incrementPathCount();
           if ((perLink != null) || (llsm.perLinkForEvidence != null) || (llsm.perLinkActivity != null)) {
-            dts.addPerLinkProps(perLink, linkID, llsm.perLinkForEvidence, llsm.perLinkActivity);
+            dts.addPerLinkProps(perLink, linkID, llsm.perLinkForEvidence, llsm.perLinkActivity, llsm.simDiff);
           }
         }
       }
     }
 
     DrawTreeSegment answerDts = segments.get(getID);
-    return (answerDts.resolveDrawStyle(lp, true, lsMod.linkModulation, lsMod.forModules, icx.cRes, 
-                                       icx.getDisplayOptsSource().getDisplayOptions()).getThickness());
+    return (answerDts.resolveDrawStyle(lp, true, lsMod.linkModulation, lsMod.forModules, icx.getColorResolver(), IRenderer.Mode.NORMAL, dopt).getThickness());
   }
 
   /***************************************************************************

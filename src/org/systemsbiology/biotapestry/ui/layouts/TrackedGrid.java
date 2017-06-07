@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,9 +33,8 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.Grid;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
@@ -93,7 +92,7 @@ public class TrackedGrid implements Cloneable {
   */
         
   public TrackedGrid(Grid grid, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                     DataAccessContext irx, String coreID, boolean textToo) {
+                     StaticDataAccessContext irx, String coreID, boolean textToo) {
     this(grid, nps, irx, coreID, textToo, false);
   }
   
@@ -103,7 +102,7 @@ public class TrackedGrid implements Cloneable {
   */
         
   public TrackedGrid(Grid grid, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                     DataAccessContext irx, String coreID, boolean textToo, boolean revColZero) {
+                     StaticDataAccessContext irx, String coreID, boolean textToo, boolean revColZero) {
     grid_ = grid;
     widths_ = new HashMap<Integer, Double>();
     heights_= new HashMap<Integer, Double>();
@@ -286,7 +285,7 @@ public class TrackedGrid implements Cloneable {
 
   public void convertToPoints(SpecialtyLayoutLinkData sin, Point2D upperLeft,
                               SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                              DataAccessContext irx, String coreID, double fixVal) {
+                              StaticDataAccessContext irx, String coreID, double fixVal) {
     Iterator<String> vit = sin.getLinkList().iterator();
     while (vit.hasNext()) {
       String linkID = vit.next();
@@ -330,7 +329,7 @@ public class TrackedGrid implements Cloneable {
   */
 
   public void convertPositionListToPoints(List<SpecialtyLayoutLinkData.TrackPos> pointList, Point2D upperLeft, 
-                                          SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID) {
+                                          SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String coreID) {
     int numpts = pointList.size();
     for (int i = 0; i < numpts; i++) {
       SpecialtyLayoutLinkData.TrackPos rct = pointList.get(i);
@@ -347,7 +346,7 @@ public class TrackedGrid implements Cloneable {
   */
 
   public Point2D convertPositionToPoint(TrackPosRC tprc, Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                        DataAccessContext irx, String coreID) {
+                                        StaticDataAccessContext irx, String coreID) {
     if (tprc.needsConversion()) {
       tprc = tprc.clone();
       convertRCTrack(tprc, upperLeft, nps, irx, coreID, 0.0);
@@ -361,7 +360,7 @@ public class TrackedGrid implements Cloneable {
   */
 
   public void convertRCTrack(TrackPosRC tprc, Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                             DataAccessContext irx, String coreID, double fixVal) {
+                             StaticDataAccessContext irx, String coreID, double fixVal) {
     if (tprc.needsConversion()) {
       RCTrack rct = tprc.rcTrack;
       if (!rct.isMyGrid(this)) {
@@ -413,8 +412,8 @@ public class TrackedGrid implements Cloneable {
   ** Build a pure track
   */
 
-  public RCTrack buildRCTrack(BTState appState, TrackSpec rowSpec, TrackSpec colSpec) {
-    return (new RCTrack(appState, rowSpec, colSpec));
+  public RCTrack buildRCTrack(TrackSpec rowSpec, TrackSpec colSpec) {
+    return (new RCTrack(rowSpec, colSpec));
   }   
 
   /***************************************************************************
@@ -440,10 +439,10 @@ public class TrackedGrid implements Cloneable {
   ** Build a hybrid
   */
 
-  public RCTrack buildRCTrackForRowMidline(BTState appState, TrackSpec colSpec,
+  public RCTrack buildRCTrackForRowMidline(TrackSpec colSpec,
                                            int padNum, String nodeID, String linkID, 
                                            boolean isLanding, int linkSign, int rowNum) {
-    return (new RCTrack(appState, colSpec, RCTrack.ROW_MIDLINE, padNum, nodeID, linkID, isLanding, linkSign, rowNum));
+    return (new RCTrack(colSpec, RCTrack.ROW_MIDLINE, padNum, nodeID, linkID, isLanding, linkSign, rowNum));
   } 
   
   /***************************************************************************
@@ -451,9 +450,9 @@ public class TrackedGrid implements Cloneable {
   ** Build a hybrid
   */
 
-  public RCTrack buildRCTrackForColMidline(BTState appState, TrackSpec rowSpec, int padNum, 
+  public RCTrack buildRCTrackForColMidline(TrackSpec rowSpec, int padNum, 
                                            String nodeID, String linkID, boolean isLanding, int linkSign, int colNum) {
-    return (new RCTrack(appState, rowSpec, RCTrack.COLUMN_MIDLINE, padNum, nodeID, linkID, isLanding, linkSign, colNum));
+    return (new RCTrack(rowSpec, RCTrack.COLUMN_MIDLINE, padNum, nodeID, linkID, isLanding, linkSign, colNum));
   }  
   
   /***************************************************************************
@@ -470,10 +469,10 @@ public class TrackedGrid implements Cloneable {
   ** Build a pure midline track
   */
 
-  public RCTrack buildRCTrackForDualMidline(BTState appState, int colPadNum, String colNodeID, boolean colIsLanding, 
+  public RCTrack buildRCTrackForDualMidline(int colPadNum, String colNodeID, boolean colIsLanding, 
                                             int rowPadNum, String rowNodeID, boolean rowIsLanding,             
                                             int linkSign, String linkID, int colNum, int rowNum) {
-    return (new RCTrack(appState, colPadNum, colNodeID, colIsLanding, rowPadNum, rowNodeID, rowIsLanding, linkSign, linkID, colNum, rowNum));
+    return (new RCTrack(colPadNum, colNodeID, colIsLanding, rowPadNum, rowNodeID, rowIsLanding, linkSign, linkID, colNum, rowNum));
   }   
 
   /***************************************************************************
@@ -481,8 +480,7 @@ public class TrackedGrid implements Cloneable {
   ** Build a hybrid
   */
 
-  public RCTrack inheritRCTrackNewRowMidline(RCTrack rct,
-                                             int padNum, String nodeID, String linkID, 
+  public RCTrack inheritRCTrackNewRowMidline(RCTrack rct, int padNum, String nodeID, String linkID, 
                                              boolean isLanding, int linkSign, int rowNum) {
     return (new RCTrack(rct, RCTrack.ROW_MIDLINE, padNum, nodeID, linkID, isLanding, linkSign, rowNum));
   } 
@@ -793,7 +791,7 @@ public class TrackedGrid implements Cloneable {
   ** get the height
   */
 
-  public double getExactVerticalOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID) {
+  public double getExactVerticalOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String coreID) {
     if (exactVerticalOffset_ == Double.NEGATIVE_INFINITY) {
       exactVerticalOffset_ = calcExactVerticalOffset(nps, irx, coreID);
     }
@@ -894,10 +892,11 @@ public class TrackedGrid implements Cloneable {
   ** A function
   */
   
-  public static Vector2D launchPadToOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, int padNum, String nodeID) {
-    NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+  @SuppressWarnings("unused")
+  public static Vector2D launchPadToOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, int padNum, String nodeID) {
+    NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
     INodeRenderer rend = np.getRenderer();
-    Node srcNode = irx.getGenome().getNode(nodeID);
+    Node srcNode = irx.getCurrentGenome().getNode(nodeID);
     Vector2D futureOff = rend.getLaunchPadOffsetForLayout(srcNode, irx, NodeProperties.RIGHT, nps.inboundLinkCount(nodeID));    
     Vector2D currentOff = rend.getLaunchPadOffsetForLayout(srcNode, irx, NodeProperties.RIGHT, null);     
     Vector2D useOff = (futureOff.lengthSq() > currentOff.lengthSq()) ? futureOff : currentOff;
@@ -909,10 +908,10 @@ public class TrackedGrid implements Cloneable {
   ** A function
   */
   
-  public static Rectangle2D layoutBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String nodeID, boolean textToo) {
-    NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+  public static Rectangle2D layoutBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String nodeID, boolean textToo) {
+    NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
     INodeRenderer rend = np.getRenderer();
-    Node node = irx.getGenome().getNode(nodeID);
+    Node node = irx.getCurrentGenome().getNode(nodeID);
     Rectangle2D rectFuture = rend.getBoundsForLayout(node, irx, NodeProperties.RIGHT, textToo, nps.inboundLinkCount(nodeID));
     Rectangle2D rectCurrent = rend.getBoundsForLayout(node, irx, NodeProperties.RIGHT, textToo, null);    
     Rectangle2D useRect = (rectFuture.getWidth() > rectCurrent.getWidth()) ? rectFuture : rectCurrent; 
@@ -941,11 +940,11 @@ public class TrackedGrid implements Cloneable {
   ** A function
   */
   
-  public static Vector2D landingPadToOffset(BTState appState, int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                            DataAccessContext irx, String nodeID, int sign) { 
-    NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+  public static Vector2D landingPadToOffset(int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, 
+                                            StaticDataAccessContext irx, String nodeID, int sign) { 
+    NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
     INodeRenderer rend = np.getRenderer();
-    Node srcNode = irx.getGenome().getNode(nodeID);   
+    Node srcNode = irx.getCurrentGenome().getNode(nodeID);   
     int currOrient = np.getOrientation();
     if (currOrient == NodeProperties.RIGHT) {
       Vector2D offset = rend.getLandingPadOffset(padNum, srcNode, sign, irx);
@@ -954,13 +953,13 @@ public class TrackedGrid implements Cloneable {
 
     //
     // Kinda bogus:  Need to calculate based on final orientation:
-    // FIX ME! Get this like the laucnch pad calculation, with specified props, etc.
+    // FIX ME! Get this like the launch pad calculation, with specified props, etc.
     //
-    Layout bogus = new Layout(appState, "bogus", nps.getGenomeID());
+    Layout bogus = new Layout("bogus", nps.getGenomeID());
     NodeProperties newProp = np.clone();
     newProp.setOrientation(NodeProperties.RIGHT);
     bogus.setNodeProperties(nodeID, newProp);
-    DataAccessContext bogorcx = new DataAccessContext(irx);
+    StaticDataAccessContext bogorcx = new StaticDataAccessContext(irx);
     bogorcx.setLayout(bogus);
     Vector2D offset = rend.getLandingPadOffset(padNum, srcNode, sign, bogorcx);
     return (offset);  
@@ -977,7 +976,7 @@ public class TrackedGrid implements Cloneable {
   ** Calculate the nodal dimensions
   */
 
-  private Dimension calcFanNodalDims(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx,
+  private Dimension calcFanNodalDims(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx,
                                      String ignoreID, boolean textToo, Map<String, Rectangle2D> holdBounds) {
 
     Dimension retval = new Dimension();
@@ -1003,8 +1002,8 @@ public class TrackedGrid implements Cloneable {
         if ((nodeID == null) || nodeID.equals(ignoreID)) {
           continue;
         }
-        Node node = irx.getGenome().getNode(nodeID);
-        NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+        Node node = irx.getCurrentGenome().getNode(nodeID);
+        NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
         INodeRenderer rend = np.getRenderer();  
         Rectangle2D useRect = layoutBounds(nps, irx, nodeID, textToo);
         holdBounds.put(node.getID(), useRect);
@@ -1053,7 +1052,7 @@ public class TrackedGrid implements Cloneable {
   ** the top 0 row reservations are not included in the calculation. 
   */
 
-  private double calcExactVerticalOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID) {
+  private double calcExactVerticalOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String coreID) {
     
     if (!grid_.contains(coreID)) {
       return (0.0);
@@ -1089,9 +1088,9 @@ public class TrackedGrid implements Cloneable {
     halfHeight = UiUtil.forceToGridValue(halfHeight, UiUtil.GRID_SIZE);
     nodeTotal += halfHeight;
     
-    INodeRenderer rend = irx.getLayout().getNodeProperties(coreID).getRenderer();
+    INodeRenderer rend = irx.getCurrentLayout().getNodeProperties(coreID).getRenderer();
     Node srcNode = nps.getNode(coreID);
-    int launch = launchForGrid(coreID, new SpecialtyLayoutEngine.NodePlaceSupport(irx.getGenome(), irx.getLayout()));
+    int launch = launchForGrid(coreID, new SpecialtyLayoutEngine.NodePlaceSupport(irx.getCurrentGenome(), irx.getCurrentLayout()));
     Vector2D lpOffset = rend.getLaunchPadOffset(launch, srcNode, irx);   
     double stOffset = rend.getStraightThroughOffset();
     return (nodeTotal - lpOffset.getY() - stOffset);    
@@ -1239,7 +1238,6 @@ public class TrackedGrid implements Cloneable {
     private double fixedX_;
     private double fixedY_;
     private int whichFixed_;
-    private BTState appState_;
 
     //
     // Dual defined track:
@@ -1260,8 +1258,7 @@ public class TrackedGrid implements Cloneable {
     // Dual defined track:
     //    
     
-    public RCTrack(BTState appState, TrackSpec row, TrackSpec col) {
-      appState_ = appState;
+    public RCTrack(TrackSpec row, TrackSpec col) {
       this.row_ = row;
       this.col_ = col;
       whichFixed_ = NONE_FIXED;
@@ -1347,9 +1344,8 @@ public class TrackedGrid implements Cloneable {
     // This puts a track definition on one dimension, and a pad definition on the other:
     //
     
-    public RCTrack(BTState appState, TrackSpec spec, int whichMidline, int padNum, 
+    public RCTrack(TrackSpec spec, int whichMidline, int padNum, 
                    String nodeID, String linkID, boolean isLanding, int linkSign, int trackNum) {
-      appState_ = appState;
       whichFixed_ = NONE_FIXED;
       if (whichMidline == COLUMN_MIDLINE) {
         row_ = spec;
@@ -1414,10 +1410,9 @@ public class TrackedGrid implements Cloneable {
     // Dual pad definition:
     //
     
-    public RCTrack(BTState appState, int colPadNum, String colNodeID, boolean colIsLanding, 
+    public RCTrack(int colPadNum, String colNodeID, boolean colIsLanding, 
                    int rowPadNum, String rowNodeID, boolean rowIsLanding,             
                    int linkSign, String linkID, int colNum, int rowNum) {
-      appState_ = appState;
       whichFixed_ = NONE_FIXED;      
       colPadNum_ = colPadNum; 
       colNodeID_ = colNodeID; 
@@ -1433,7 +1428,6 @@ public class TrackedGrid implements Cloneable {
     }
 
     private void copyGuts(RCTrack other, int which) {
-      this.appState_ = other.appState_;
       this.whichFixed_ = other.whichFixed_;
       this.linkSign_ = other.linkSign_; 
       if ((which == COPY_BOTH_) || (which == COPY_ROW_)) {
@@ -1540,7 +1534,8 @@ public class TrackedGrid implements Cloneable {
       return (TrackedGrid.this == grid);
     }
     
-    public Point2D convert(Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID, double fixFloating) {    
+    public Point2D convert(Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, 
+                           StaticDataAccessContext irx, String coreID, double fixFloating) {    
 
       int colNum = grid_.getNumCols();
       if (colNum == 0) {
@@ -1610,7 +1605,7 @@ public class TrackedGrid implements Cloneable {
       return (retval);        
     }
     
-    private Point2D padPoint(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, int whichMidline) {
+    private Point2D padPoint(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, int whichMidline) {
       
       String nodeID;
       String linkID;
@@ -1640,7 +1635,7 @@ public class TrackedGrid implements Cloneable {
       Point2D nodeLoc = nps.getPosition(nodeID);
       Vector2D offset;
       if (isLanding) {
-        offset = landingPadToOffset(appState_, padNum, nps, irx, nodeID, linkSign_); 
+        offset = landingPadToOffset(padNum, nps, irx, nodeID, linkSign_); 
       } else {
         offset = launchPadToOffset(nps, irx, padNum, nodeID);
       }
@@ -1659,7 +1654,7 @@ public class TrackedGrid implements Cloneable {
       return ((pres == null) ? oldPad : pres.launch);
     }
     
-    private Point2D getTrackRoot(Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID) {
+    private Point2D getTrackRoot(Point2D upperLeft, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String coreID) {
 
       double xVal = upperLeft.getX();  // back-up default value only...
       double yVal = upperLeft.getY();
@@ -1680,7 +1675,7 @@ public class TrackedGrid implements Cloneable {
               continue;
             }
             Point2D pos = nps.getPosition(nodeID);
-            NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+            NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
             INodeRenderer rend = np.getRenderer();
             double yOffset = rend.getStraightThroughOffset();            
             double centerY = pos.getY() - yOffset;
@@ -1709,7 +1704,7 @@ public class TrackedGrid implements Cloneable {
               continue;
             }
             Point2D pos = nps.getPosition(nodeID);
-            NodeProperties np = irx.getLayout().getNodeProperties(nodeID);
+            NodeProperties np = irx.getCurrentLayout().getNodeProperties(nodeID);
             Rectangle2D forCell = cellBounds_.get(nodeID);
            
             INodeRenderer rend = np.getRenderer();

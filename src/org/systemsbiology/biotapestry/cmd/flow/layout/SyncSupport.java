@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -50,7 +49,6 @@ public class SyncSupport {
   //
   ////////////////////////////////////////////////////////////////////////////    
    
-  private BTState appState_;
   private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -64,8 +62,7 @@ public class SyncSupport {
   ** Constructor:
   */ 
   
-  public SyncSupport(BTState appState, DataAccessContext dacx) {
-    appState_ = appState;
+  public SyncSupport(DataAccessContext dacx) {
     dacx_ = dacx;
   }  
   
@@ -108,10 +105,10 @@ public class SyncSupport {
         GenomeChange[] changes = gi.syncAllLinkagePads(useGroups);
         int numCh = changes.length;
         for (int i = 0; i < numCh; i++) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, changes[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, changes[i]);
           support.addEdit(gcc); 
         }
-        support.addEvent(new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }
     }
     //
@@ -139,13 +136,13 @@ public class SyncSupport {
       boolean doEvent = false;
       for (int i = 0; i < gca.length; i++) {
         if (gca[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gca[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gca[i]);
           support.addEdit(gcc);
           doEvent = true;
         }              
       }
       if (doEvent) {
-        support.addEvent(new ModelChangeEvent(dbg.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dbg.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }
     }
     return;

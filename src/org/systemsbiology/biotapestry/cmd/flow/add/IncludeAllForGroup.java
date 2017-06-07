@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.add;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -54,8 +56,7 @@ public class IncludeAllForGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public IncludeAllForGroup(BTState appState) {
-    super(appState);  
+  public IncludeAllForGroup() {
     name = "groupPopup.PullDownAllElements" ;
     desc = "groupPopup.PullDownAllElements";
     mnem = "groupPopup.PullDownAllElementsMnem";
@@ -74,13 +75,14 @@ public class IncludeAllForGroup extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    GenomeInstance gi = rcx.getGenomeAsInstance();
+   public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                          DataAccessContext rcx, UIComponentSource uics) {
+    GenomeInstance gi = rcx.getCurrentGenomeAsInstance();
     Group group = gi.getGroup(inter.getObjectID());
     if (gi.getVfgParent() == null) {  
       return (!rcx.getDBGenome().isEmpty());    
     } else { 
-      boolean showIt = !(gi instanceof DynamicGenomeInstance);
+      boolean showIt = !rcx.currentGenomeIsADynamicInstance();
       if (showIt) {
         Group parentGroup = group.getGroupInParent(gi);
         showIt = !parentGroup.inheritedIsEmpty(gi.getVfgParent());
@@ -96,8 +98,8 @@ public class IncludeAllForGroup extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -116,6 +118,7 @@ public class IncludeAllForGroup extends AbstractControlFlow {
         throw new IllegalArgumentException();
       } else { 
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepState")) {
         next = ans.stepState();
@@ -134,26 +137,18 @@ public class IncludeAllForGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepState";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -172,14 +167,14 @@ public class IncludeAllForGroup extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepState() {
-      GenomeInstance parent = dacx_.getGenomeAsInstance().getVfgParent();
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       if (parent != null) {
-        PropagateSupport.addAllElementsInGroupToSubsetInstance(appState_, dacx_, parent, intersect_.getObjectID());             
+        PropagateSupport.addAllElementsInGroupToSubsetInstance(dacx_, parent, intersect_.getObjectID(), uFac_);             
       } else {
-        DataAccessContext rcxR = dacx_.getContextForRoot(); // Root genome
-        PropagateSupport.propagateDownEntireRootToGroup(appState_, dacx_, rcxR, intersect_.getObjectID());
+        StaticDataAccessContext rcxR = dacx_.getContextForRoot(); // Root genome
+        PropagateSupport.propagateDownEntireRootToGroup(dacx_, rcxR, intersect_.getObjectID(), uFac_);
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }  

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,8 +24,11 @@ import java.io.StringWriter;
 import java.util.List;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
@@ -40,7 +43,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -64,15 +67,13 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
   
   /***************************************************************************
   **
-  ** Internal plugins need to have access to internal state
+  ** Internal plugins need to have access to data state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
-
-  
   
   /***************************************************************************
   **
@@ -89,7 +90,7 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (false);
   }
   
@@ -108,7 +109,7 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String nodeID) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String nodeID) {
     return (null);
   }
   
@@ -117,12 +118,12 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
   ** Show the Time course data
   */
   
-  public String getDataAsHTML(String genomeIDX, String nodeID) {
-  
+  public String getDataAsHTML(String dbID, String genomeIDX, String nodeID) {
+    StaticDataAccessContext dacx = new StaticDataAccessContext(new TabPinnedDynamicDataAccessContext(ddacx_, dbID)).getContextForRoot();
     StringBuffer buf = new StringBuffer(); 
-    Database db = appState_.getDB(); 
-    TimeCourseData tcd = db.getTimeCourseData();
-    if ((tcd == null) || !tcd.haveData()) {
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
+    TimeCourseDataMaps tcdm = dacx.getDataMapSrc().getTimeCourseDataMaps();
+    if ((tcd == null) || !tcd.haveDataEntries()) {
       return ("");
     }
     
@@ -130,18 +131,18 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
     
     nodeID = GenomeItemInstance.getBaseID(nodeID);
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     buf.append("<center><h1>"); 
     buf.append(rMan.getString("dataWindow.perturbedExpressionProfiles")); 
     buf.append("</h1>\n");
     
     boolean gotData = false;
-    List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(nodeID);
+    List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(nodeID, dacx.getGenomeSource());
     if (dataKeys != null) {
-      Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
+      Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
       int needKey = TimeCourseTableDrawer.NO_TABLE_KEY;
       while (dkit.hasNext()) {
-        TimeCourseData.TCMapping tcm = dkit.next();
+        TimeCourseDataMaps.TCMapping tcm = dkit.next();
         TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
         if (tcg == null) {  // If no table at all, still get back default name...
           continue;
@@ -152,7 +153,7 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
           StringWriter sw = new StringWriter();
           PrintWriter out = new PrintWriter(sw);
           PerturbedTimeCourseGene pertGene = tcg.getPerturbedState(pss);
-          int nextKey = pertGene.getExpressionTable(out, tcg, tcd);        
+          int nextKey = pertGene.getExpressionTable(out, tcg, tcd, dacx);        
           needKey |= nextKey;
           String tab = sw.getBuffer().toString();
           if ((tab != null) && (!tab.trim().equals(""))) {
@@ -163,7 +164,7 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
           }
         }
       }
-      buf.append(TimeCourseTableDrawer.buildKey(appState_, needKey, false, true));
+      buf.append(TimeCourseTableDrawer.buildKey(dacx, needKey, false, true));
     }
     
     if (!gotData) {

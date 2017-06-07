@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -49,7 +49,7 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
   
   private DefaultMutableTreeNode myNode_;
   private static final long serialVersionUID = 1L;
-  private BTState appState_;
+  private UIComponentSource uics_;
   private DataAccessContext dacx_;
   private Icon vfgIcon_;
   private Icon vfaIcon_;
@@ -66,9 +66,9 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
   ** Constructor 
   */ 
   
-  public PopupCellRenderer(BTState appState, DataAccessContext dacx) {
+  public PopupCellRenderer(UIComponentSource uics, DataAccessContext dacx) {
     super();
-    appState_ = appState;
+    uics_ = uics;
     dacx_ = dacx;
     URL vfgi = getClass().getResource( "/org/systemsbiology/biotapestry/images/VfGIconB.gif");
     URL vfai = getClass().getResource( "/org/systemsbiology/biotapestry/images/VfAIconB.gif");
@@ -140,7 +140,7 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
                                                   leaf, row, hasFocus);    
       
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return (retval);
   }

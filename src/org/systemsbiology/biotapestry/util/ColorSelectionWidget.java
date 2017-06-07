@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,32 +20,34 @@
 
 package org.systemsbiology.biotapestry.util;
 
-import java.util.Vector;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JPanel;
-import javax.swing.JLabel;
-import javax.swing.DefaultComboBoxModel;
-import java.awt.Color;
-import java.awt.GridBagLayout;
-import java.awt.GridBagConstraints;
-import javax.swing.ListCellRenderer;
-import javax.swing.JList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
-import java.awt.Component;
+import java.util.Vector;
 
-import java.awt.event.ActionListener;
-import java.awt.event.ActionEvent;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JList;
+import javax.swing.JPanel;
+import javax.swing.ListCellRenderer;
 
-import org.systemsbiology.biotapestry.ui.NamedColor;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
+import org.systemsbiology.biotapestry.cmd.flow.settings.DoSettings;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.ui.dialogs.ColorEditorDialog;
+import org.systemsbiology.biotapestry.ui.NamedColor;
 
 /****************************************************************************
 **
@@ -64,8 +66,9 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   //////////////////////////////////////////////////////////////////////////// 
   
   private JComboBox colorCombo_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   private DataAccessContext dacx_;
+  private HarnessBuilder hBld_;
   private HashMap<String, String> changedColors_;
   private ColorListRenderer renderer_;
   private JButton editLaunch_;
@@ -86,17 +89,19 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   ** Constructor 
   */ 
   
-  public ColorSelectionWidget(BTState appState,
+  public ColorSelectionWidget(UIComponentSource uics,
                               DataAccessContext dacx,
+                              HarnessBuilder hBld,
                               List<ColorDeletionListener> colorDeletionListeners, 
                               boolean showLabel, String altTag, 
                               boolean showButton, boolean addVarious) {     
    
-    appState_ = appState;
+    uics_ = uics;
     dacx_= dacx;
+    hBld_ = hBld;
     setLayout(new GridBagLayout());    
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     addVarious_ = addVarious;
     if (addVarious) {
       variousChoice_ = new NamedColor(VARIOUS_TAG, new Color(225, 225, 225), rMan.getString("colorSelector.unchanged"));
@@ -132,10 +137,12 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
         public void actionPerformed(ActionEvent ev) {
           try {
             changedColors_.clear();
-            ColorEditorDialog ced = new ColorEditorDialog(appState_, dacx_, colorDeletionListeners_);
-            ced.setVisible(true);
+            HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.MainFlow.EDIT_COLORS);
+            DoSettings.StepState agis = (DoSettings.StepState)pH.getCmdState();
+            agis.setListeners(colorDeletionListeners_);
+            hBld_.runHarness(pH);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -200,7 +207,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
     if (addVarious_ && colorKey.equals(VARIOUS_TAG)) {
       nc= variousChoice_;
     } else {
-      nc = dacx_.cRes.getNamedColor(colorKey);
+      nc = dacx_.getColorResolver().getNamedColor(colorKey);
     }
     colorCombo_.setSelectedItem(new ObjChoiceContent(nc.name, nc.key));
     return;
@@ -256,9 +263,11 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
     if (choices.contains(selected)) {
       colorCombo_.setSelectedItem(selected);
     } else {
-      String newColor = (String)changedColors_.get(selected.val); 
-      NamedColor nc = appState_.getDB().getNamedColor(newColor);
-      colorCombo_.setSelectedItem(new ObjChoiceContent(nc.name, nc.key));
+      String newColor = changedColors_.get(selected.val); 
+      if (newColor != null) {
+        NamedColor nc = dacx_.getColorResolver().getNamedColor(newColor);
+        colorCombo_.setSelectedItem(new ObjChoiceContent(nc.name, nc.key));
+      }
     }
     return;
   }  
@@ -270,10 +279,10 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   */
   
   private void stockColorLists(Vector<ObjChoiceContent> comboChoices, List<NamedColor> renderList) {
-    Iterator<String> ckit = dacx_.cRes.getColorKeys();
+    Iterator<String> ckit = dacx_.getColorResolver().getColorKeys();
     while (ckit.hasNext()) {
       String colorKey = ckit.next();
-      NamedColor nc = dacx_.cRes.getNamedColor(colorKey);
+      NamedColor nc = dacx_.getColorResolver().getNamedColor(colorKey);
       renderList.add(new NamedColor(nc));
     }
     
@@ -331,7 +340,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
       try {
         selIndex_ = localColorCombo_.getSelectedIndex();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }            
@@ -362,7 +371,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
         setEnabled(!ghosted_);
         setBackground((isSelected) ? list.getSelectionBackground() : list.getBackground());
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }      
       return (this);             
     }

@@ -36,7 +36,11 @@ import flexjson.transformer.AbstractTransformer;
  * 
  *
  */
-public class XPlatUICollectionElement implements XPlatUIElement {
+public class XPlatUICollectionElement implements XPlatUIElement, XPlatResponse {
+	
+	// If this is an element used for an xplat response, eg. a page or tab to be
+	// added to a stacking layout container, this will be set, otherwise it is null
+	private XPlatResponseType xplatResponseType_ = null;
 		
 	private XPlatUIElementType elementType_;
 
@@ -44,7 +48,9 @@ public class XPlatUICollectionElement implements XPlatUIElement {
   	// any label it might need, default value, action, etc.
 	private Map<String,Object> parameters_;
 	
-	// A Map of the elements this collection holds
+	// A Map of the groups (lists) of elements this collection holds
+	// Element groups are typically display related, such as sections of a page
+	// or separate tabs
 	private Map<String,List<XPlatUIElement>> collectionElements_;
 	
 	// Optional 
@@ -154,6 +160,10 @@ public class XPlatUICollectionElement implements XPlatUIElement {
 	public Map<String, List<XPlatUIElement>> getCollectionElements() {
 		return Collections.unmodifiableMap(collectionElements_);
 	}
+
+	public List<XPlatUIElement> getCollectionElement(String key) {
+		return Collections.unmodifiableList(collectionElements_.get(key));
+	}
 	
 	public void addElement(String listKey,XPlatUIElement element) {
 		List<XPlatUIElement> elementCollection = this.collectionElements_.get(listKey);
@@ -165,6 +175,8 @@ public class XPlatUICollectionElement implements XPlatUIElement {
 		elementCollection.add(element);
 	}
 	
+	// Add a set of elements to a pre-existing group; if the group does not already
+	// exist it must first be generated via createList
 	public void addElements(String listKey,List<XPlatUIElement> elements) {
 		List<XPlatUIElement> elementCollection = this.collectionElements_.get(listKey);
 		if(elementCollection == null) {
@@ -218,7 +230,11 @@ public class XPlatUICollectionElement implements XPlatUIElement {
 	
 	public void addList(String listKey,List<XPlatUIElement> elementList) {
 		this.collectionElements_.put(listKey, elementList);
-	}	
+	}
+
+	public List<XPlatUIElement> getList(String listKey) {
+		return this.collectionElements_.get(listKey);
+	}
 
 	public List<XPlatUIElement> createList(String listKey) {
 		List<XPlatUIElement> elementList = new ArrayList<XPlatUIElement>();
@@ -266,6 +282,14 @@ public class XPlatUICollectionElement implements XPlatUIElement {
 			// Do nothing, null objects are not serialized.
 			return;
 		}
+	}
+
+	public void setXplatResponseType(XPlatResponseType type) {
+		this.xplatResponseType_ = type;
+	}	
+	
+	public XPlatResponseType getXplatResponseType() {
+		return this.xplatResponseType_;
 	}	
 	
 

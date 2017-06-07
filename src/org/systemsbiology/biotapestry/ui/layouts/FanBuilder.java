@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ import java.util.HashMap;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Linkage;
 
@@ -176,7 +175,7 @@ public class FanBuilder {
     queue.add(targetID);
     survivors.add(targetID);
     while (!queue.isEmpty()) {
-      String cand = (String)queue.remove(0);
+      String cand = queue.remove(0);
       Set<String> candSrcs = sources.get(cand);
       testSet.clear();
       testSet.addAll((candSrcs == null) ? emptySet : candSrcs);      

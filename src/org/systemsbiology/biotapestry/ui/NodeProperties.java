@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,8 +31,8 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -202,7 +202,7 @@ public class NodeProperties implements Cloneable {
   ** Used to propagate a new node property to other layouts.
   */
 
-  public NodeProperties(NodeProperties other, Layout layout, int nodeType) {
+  public NodeProperties(NodeProperties other, int nodeType) {
     this(other);
     this.myRenderer_ = buildRenderer(nodeType);
   }  
@@ -212,7 +212,7 @@ public class NodeProperties implements Cloneable {
   ** Basic Constructor for UI creation
   */
 
-  public NodeProperties(ColorResolver cRes, Layout layout, int nodeType, String ref, 
+  public NodeProperties(ColorResolver cRes, int nodeType, String ref, 
                         double xPos, double yPos, boolean hideName) {
     cRes_ = cRes;
     colorTag_ = defaultColor(nodeType);                          
@@ -233,7 +233,7 @@ public class NodeProperties implements Cloneable {
   ** Constructor
   */
 
-  public NodeProperties(ColorResolver cRes, Layout layout, String ref, String color, String color2, 
+  public NodeProperties(ColorResolver cRes, String ref, String color, String color2, 
                         String orient, double xPos, double yPos, 
                         boolean hideName, String growth, String lineBreaks, int nodeType) throws IOException {
     
@@ -281,9 +281,29 @@ public class NodeProperties implements Cloneable {
 
   /***************************************************************************
   **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    String nk = ctm.get(colorTag_);
+    if (nk != null) {
+      colorTag_ = nk;
+    }
+    if (color2Tag_ != null) {
+      nk = ctm.get(color2Tag_);
+      if (nk != null) {
+        color2Tag_ = nk;
+      }
+    }
+    return;
+  }  
+  
+  /***************************************************************************
+  **
   ** Clone
   */
 
+  @Override
   public NodeProperties clone() {
     try {
       NodeProperties retval = (NodeProperties)super.clone();
@@ -682,12 +702,16 @@ public class NodeProperties implements Cloneable {
  
     private ColorResolver cRes_;
     
-    public NodePropertiesWorker(ColorResolver cRes, FactoryWhiteboard whiteboard) {
+    public NodePropertiesWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      cRes_ = cRes;
       myKeys_.add("nprop");
     }
   
+    public void installContext(DataAccessContext dacx) {
+      cRes_ = dacx.getColorResolver();
+      return;
+    }
+ 
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("nprop")) {
@@ -738,8 +762,7 @@ public class NodeProperties implements Cloneable {
         growth = HORIZONTAL_GROWTH_TAG_;
       }
 
-      NodeProperties nprop = new NodeProperties(cRes_, board.layout, id, color, color2, 
-                                                orient, xPos, yPos, doHide, growth, breakDef, nodeType);
+      NodeProperties nprop = new NodeProperties(cRes_, id, color, color2, orient, xPos, yPos, doHide, growth, breakDef, nodeType);
       if (fsize != null) {      
         boolean makeBold = Boolean.valueOf(fbold).booleanValue();
         boolean makeItalic = Boolean.valueOf(fital).booleanValue();
@@ -946,25 +969,25 @@ public class NodeProperties implements Cloneable {
   ** Return possible orientation values
   */
   
-  public static Vector<ChoiceContent> getOrientTypeChoices(BTState appState, int nodeType) {
+  public static Vector<ChoiceContent> getOrientTypeChoices(DataAccessContext dacx, int nodeType) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     switch (nodeType) {
       case Node.GENE:
-        retval.add(orientTypeForCombo(appState, LEFT));
-        retval.add(orientTypeForCombo(appState, RIGHT));
+        retval.add(orientTypeForCombo(dacx, LEFT));
+        retval.add(orientTypeForCombo(dacx, RIGHT));
         return (retval);
       case Node.INTERCELL:
       case Node.SLASH:        
-        retval.add(orientTypeForCombo(appState, LEFT));
-        retval.add(orientTypeForCombo(appState, RIGHT));
-        retval.add(orientTypeForCombo(appState, UP));
-        retval.add(orientTypeForCombo(appState, DOWN)); 
+        retval.add(orientTypeForCombo(dacx, LEFT));
+        retval.add(orientTypeForCombo(dacx, RIGHT));
+        retval.add(orientTypeForCombo(dacx, UP));
+        retval.add(orientTypeForCombo(dacx, DOWN)); 
         return (retval);
       case Node.BARE:
       case Node.BUBBLE:        
       case Node.DIAMOND:
       case Node.BOX:
-        retval.add(orientTypeForCombo(appState, RIGHT));
+        retval.add(orientTypeForCombo(dacx, RIGHT));
         return (retval);
       default:
         throw new IllegalArgumentException();
@@ -976,8 +999,8 @@ public class NodeProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent orientTypeForCombo(BTState appState, int orientType) {
-    return (new ChoiceContent(appState.getRMan().getString("nprop." + mapOrientTypes(orientType)), orientType));
+  public static ChoiceContent orientTypeForCombo(DataAccessContext dacx, int orientType) {
+    return (new ChoiceContent(dacx.getRMan().getString("nprop." + mapOrientTypes(orientType)), orientType));
   }
   
   /***************************************************************************
@@ -1053,7 +1076,7 @@ public class NodeProperties implements Cloneable {
   ** Return possible orientation values
   */
   
-  public static Vector<ChoiceContent> getExtraGrowthChoices(BTState appState, int nodeType) {
+  public static Vector<ChoiceContent> getExtraGrowthChoices(DataAccessContext dacx, int nodeType) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     switch (nodeType) {
       case Node.GENE:
@@ -1064,8 +1087,8 @@ public class NodeProperties implements Cloneable {
         return (retval);
       case Node.DIAMOND:        
       case Node.BUBBLE:
-        retval.add(growthTypeForCombo(appState, HORIZONTAL_GROWTH));
-        retval.add(growthTypeForCombo(appState, VERTICAL_GROWTH));        
+        retval.add(growthTypeForCombo(dacx, HORIZONTAL_GROWTH));
+        retval.add(growthTypeForCombo(dacx, VERTICAL_GROWTH));        
         return (retval);        
       default:
         throw new IllegalArgumentException();
@@ -1077,8 +1100,8 @@ public class NodeProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent growthTypeForCombo(BTState appState, int growthType) {
-    return (new ChoiceContent(appState.getRMan().getString("nprop." + mapGrowthTypes(growthType)), growthType));
+  public static ChoiceContent growthTypeForCombo(DataAccessContext dacx, int growthType) {
+    return (new ChoiceContent(dacx.getRMan().getString("nprop." + mapGrowthTypes(growthType)), growthType));
   }
   
   /***************************************************************************

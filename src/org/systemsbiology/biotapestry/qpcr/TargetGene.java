@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.qpcr;
 
+import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.List;
@@ -30,8 +31,9 @@ import java.util.SortedMap;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
+import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.Splitter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -50,7 +52,7 @@ class TargetGene {
 
   private String notes_;
   private String name_;
-  private ArrayList perturbations_;
+  private ArrayList<Perturbation> perturbations_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -66,7 +68,7 @@ class TargetGene {
    TargetGene(String name, String notes) {
     name_ = name;
     notes_ = notes;
-    perturbations_ = new ArrayList();
+    perturbations_ = new ArrayList<Perturbation>();
   }
   
   /***************************************************************************
@@ -78,10 +80,10 @@ class TargetGene {
     this.notes_ = other.notes_;
     this.name_ = other.name_;
 
-    this.perturbations_ = new ArrayList();
-    Iterator opit = other.perturbations_.iterator();
+    this.perturbations_ = new ArrayList<Perturbation>();
+    Iterator<Perturbation> opit = other.perturbations_.iterator();
     while (opit.hasNext()) {
-      this.perturbations_.add(new Perturbation((Perturbation)opit.next()));
+      this.perturbations_.add(new Perturbation(opit.next()));
     }    
   }
   
@@ -145,7 +147,7 @@ class TargetGene {
   ** Get an iterator over the perturbations
   */
   
-   Iterator getPerturbations() {
+   Iterator<Perturbation> getPerturbations() {
     return (perturbations_.iterator());
   }
   
@@ -155,7 +157,7 @@ class TargetGene {
   */
   
    Perturbation getPerturbation(int i) {
-    return ((Perturbation)perturbations_.get(i));
+    return (perturbations_.get(i));
   }
   
   /***************************************************************************
@@ -163,19 +165,19 @@ class TargetGene {
   ** Get the set of footnote numbers used by this target entry
   */
   
-   Set getFootnoteNumbers() {
-    HashSet retval = new HashSet();
+   Set<String> getFootnoteNumbers() {
+    HashSet<String> retval = new HashSet<String>();
     //
     // Footnotes are found here, in a perturbation source, and in measurements
     //    
-    Iterator pers = getPerturbations();
+    Iterator<Perturbation> pers = getPerturbations();
     while (pers.hasNext()) {
-      Perturbation per = (Perturbation)pers.next();
-      Set notes = per.getFootnoteNumbers();
+      Perturbation per = pers.next();
+      Set<String> notes = per.getFootnoteNumbers();
       retval.addAll(notes);
     }
     if (notes_ != null) {
-      ArrayList foots = Splitter.stringBreak(notes_, ",", 0, true);
+      List<String> foots = Splitter.stringBreak(notes_, ",", 0, true);
       retval.addAll(foots);
     }
     return (retval);
@@ -186,11 +188,11 @@ class TargetGene {
   ** Get the list footnote numbers associated just with this target (not digging down)
   */
   
-   List getTranslatedNotes() {
+   List<String> getTranslatedNotes() {
     if (notes_ != null) {
       return (Splitter.stringBreak(notes_, ",", 0, true));
     } else {
-      return (new ArrayList());
+      return (new ArrayList<String>());
     }
   }  
 
@@ -200,9 +202,9 @@ class TargetGene {
   **
   */
   
-   int writeHTML(PrintWriter out, Indenter ind, ArrayList timeCols, 
+   int writeHTML(PrintWriter out, Indenter ind, ArrayList<MinMax> timeCols, 
                  QpcrTablePublisher qtp, int rowCount, boolean breakOutInvest, 
-                 List srcNames, Set usedFootnotes, BTState appState) {
+                 List<String> srcNames, Set<String> usedFootnotes, DataAccessContext dacx) {
     ind.indent();    
     out.println("<tbody>");
     ind.up();
@@ -215,38 +217,38 @@ class TargetGene {
       usedFootnotes.addAll(getTranslatedNotes());
     }
     
-    ArrayList perInvest = null;
+    ArrayList<SortedMap<String, Map<MinMax, TimeSpan>>> perInvest = null;
     int totalCount = 0;
-    Iterator tcpit = getPerturbations();
+    Iterator<Perturbation> tcpit = getPerturbations();
     while (tcpit.hasNext()) {
-      Perturbation p = (Perturbation)tcpit.next();
+      Perturbation p = tcpit.next();
       if (p.matchesForHTML(srcNames)) {
         totalCount++;
       }
     }
  
     if (breakOutInvest) {
-      perInvest = new ArrayList();
-      Iterator pit = getPerturbations();
+      perInvest = new ArrayList<SortedMap<String, Map<MinMax, TimeSpan>>>();
+      Iterator<Perturbation> pit = getPerturbations();
       while (pit.hasNext()) {
-        Perturbation p = (Perturbation)pit.next();
+        Perturbation p = pit.next();
         p.prepForHTML(perInvest, srcNames);
       }
       totalCount = 0;
       int numPI = perInvest.size();
       for (int i = 0; i < numPI; i++) {
-        SortedMap gpi = (SortedMap)perInvest.get(i);
+        SortedMap<String, Map<MinMax, TimeSpan>> gpi = perInvest.get(i);
         totalCount += gpi.keySet().size();    
       }  
     }
     // Print out the rows:
-    Iterator pit = getPerturbations();
+    Iterator<Perturbation> pit = getPerturbations();
     int count = 0;
     while (pit.hasNext()) {
-      Perturbation p = (Perturbation)pit.next();
-      SortedMap gpi = (perInvest != null) ? (SortedMap)perInvest.get(count) : null; 
-      if (p.writeHTML(out, ind, geneName, totalCount, timeCols, qtp, gpi, breakOutInvest, srcNames, appState)) {
-        Set notes = p.getFootnoteNumbers();
+      Perturbation p = pit.next();
+      SortedMap<String, Map<MinMax, TimeSpan>> gpi = (perInvest != null) ? perInvest.get(count) : null; 
+      if (p.writeHTML(out, ind, geneName, totalCount, timeCols, qtp, gpi, breakOutInvest, srcNames, dacx)) {
+        Set<String> notes = p.getFootnoteNumbers();
         usedFootnotes.addAll(notes);      
         count++;
         geneName = null;
@@ -262,11 +264,11 @@ class TargetGene {
   ** Get the set of single-source perturbation names
   */
   
-   Set getSources() {
-    HashSet retval = new HashSet();
-    Iterator pit = getPerturbations();
+   Set<String> getSources() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<Perturbation> pit = getPerturbations();
     while (pit.hasNext()) {
-      Perturbation p = (Perturbation)pit.next();
+      Perturbation p = pit.next();
       if (p.getSourceCount() == 1) {
         String srcName = p.getCombinedSourceName(false);
         retval.add(srcName.toUpperCase().replaceAll(" ", ""));

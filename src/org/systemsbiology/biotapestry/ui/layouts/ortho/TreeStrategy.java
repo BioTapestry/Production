@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -262,7 +263,7 @@ public class TreeStrategy implements Cloneable {
                                      LinkProperties lp, Set<Line2D> skipSegs,
                                      boolean returnOnFirst, String overID) {
    
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     //
     // During the BIG NETWORK test, this call would take 12-13 seconds. Using the InvertedLinkProps, 
     // and using the mapped set, it is now down to ~200ms. Need to try to improve this
@@ -303,7 +304,7 @@ public class TreeStrategy implements Cloneable {
       
       if (isStart) {
         String aLink = throughLinks.iterator().next();
-        if ((overID == null) && crappyStart(genome, icx.getLayout(), src, geom, mapOLines, aLink, retval)) {
+        if ((overID == null) && crappyStart(genome, icx.getCurrentLayout(), src, geom, mapOLines, aLink, retval)) {
           continue;
         }
       }
@@ -319,7 +320,7 @@ public class TreeStrategy implements Cloneable {
         if (overID == null) {
           Linkage trgLink = genome.getLinkage(trgLinkID);
           trg = trgLink.getTarget();
-          LinkSegment modGeom = crappyTarg(genome, icx.getLayout(), geom, trgLinkID, segGeoms, segID);
+          LinkSegment modGeom = crappyTarg(genome, icx.getCurrentLayout(), geom, trgLinkID, segGeoms, segID);
           if (modGeom == null) {
             continue;
           } else {

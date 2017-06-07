@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,8 @@
 
 package org.systemsbiology.biotapestry.genome;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 
 /****************************************************************************
 **
@@ -38,7 +38,7 @@ public class TopOfTheHeap {
 
   protected String genomeID_;  
   protected boolean isInstance_;
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -51,10 +51,10 @@ public class TopOfTheHeap {
   ** Constructor
   */
 
-  public TopOfTheHeap(BTState appState, String genomeID) {
-    appState_ = appState;
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome(genomeID);
+  public TopOfTheHeap(DataAccessContext dacx, String genomeID) {
+    dacx_ = dacx;
+    GenomeSource gs = dacx_.getGenomeSource();
+    Genome genome = gs.getGenome(genomeID);
     if (genome instanceof GenomeInstance) {
       GenomeInstance thisGI = (GenomeInstance)genome;
       GenomeInstance rootGI = thisGI.getVfgParentRoot();
@@ -97,6 +97,6 @@ public class TopOfTheHeap {
   */
 
   public Genome getGenome() {
-    return (appState_.getDB().getGenome(genomeID_));
+    return (dacx_.getGenomeSource().getGenome(genomeID_));
   }  
 }

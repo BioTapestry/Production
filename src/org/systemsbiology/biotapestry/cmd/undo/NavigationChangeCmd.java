@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.NavigationChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 
@@ -52,8 +51,8 @@ public class NavigationChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public NavigationChangeCmd(BTState appState, DataAccessContext dacx, NavigationChange restore) {
-    super(appState, dacx);
+  public NavigationChangeCmd(DataAccessContext dacx, NavigationChange restore) {
+    super(dacx);
     restore_ = restore;
   }
 
@@ -91,7 +90,7 @@ public class NavigationChangeCmd extends BTUndoCmd {
   @Override
   public void undo() { 
     super.undo();
-    restore_.commonView.changeUndo(restore_); 
+    uics_.getCommonView().changeUndo(restore_, dacx_); 
     return;
   }  
  
@@ -103,7 +102,7 @@ public class NavigationChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    restore_.commonView.changeRedo(restore_); 
+    uics_.getCommonView().changeRedo(restore_, dacx_); 
     return;
   }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.Set;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.LinkageInstance;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -168,8 +168,8 @@ public class BuildInstructionInstance implements Cloneable {
   **
   */
   
-  public String toCSVString(BTState appState, StringBuffer buf, String modelName) {
-    BuildInstruction bi = appState.getDB().getBuildInstruction(baseID_);
+  public String toCSVString(DataAccessContext dacx, StringBuffer buf, String modelName) {
+    BuildInstruction bi = dacx.getInstructSrc().getBuildInstruction(baseID_);
     String base = bi.toCSVString(buf, modelName);
     buf.setLength(0);
     buf.append(base);

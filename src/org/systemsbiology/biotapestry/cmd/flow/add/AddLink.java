@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -16,7 +16,6 @@
 **    License along with this library; if not, write to the Free Software
 **    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
-
 
 package org.systemsbiology.biotapestry.cmd.flow.add;
 
@@ -35,7 +34,7 @@ import java.util.Vector;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
@@ -44,6 +43,7 @@ import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.PadConstraints;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -52,7 +52,6 @@ import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGeneRegion;
@@ -69,6 +68,8 @@ import org.systemsbiology.biotapestry.genome.NetModuleLinkage;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlayChange;
 import org.systemsbiology.biotapestry.genome.Node;
+import org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn;
+import org.systemsbiology.biotapestry.plugin.PlugInManager;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.GenomePresentation;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
@@ -91,8 +92,6 @@ import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.Vector2D;
-
-
 
 /****************************************************************************
 **
@@ -120,8 +119,7 @@ public class AddLink extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddLink(BTState appState, boolean forModules) {
-    super(appState);
+  public AddLink(boolean forModules) {
     forModules_ = forModules;
     name = (forModules_) ? "command.DrawNetworkModuleLink" : "command.AddLink";
     desc = (forModules_) ? "command.DrawNetworkModuleLink" : "command.AddLink";
@@ -186,17 +184,14 @@ public class AddLink extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, forModules_);
-        ans.rcxT_ = new DataAccessContext(appState_, appState_.getDB().getGenome(appState_.getGenome()), 
-                                         appState_.getDB().getLayout(appState_.getLayoutKey())); 
-        ans.rcxR_ = new DataAccessContext(appState_); 
-        ans.currentOverlay = appState_.getCurrentOverlay();
-        ans.cfh = cfh;       
-        next = (forModules_) ? ans.stepStartModule() : ans.stepBiWarning(cfh);
+        StepState ans = new StepState(cfh, forModules_);
+        next = (forModules_) ? ans.stepStartModule() : ans.stepBiWarning();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
+        
         if (ans.getNextStep().equals("stepBiWarning")) {
-          next = ans.stepBiWarning(cfh);
+          next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepStart")) {
           next = ans.stepStart();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -242,7 +237,7 @@ public class AddLink extends AbstractControlFlow {
       ans.origX = ans.x;
       ans.origY = ans.y;
     }
-    ans.nextStep_ = (forModules_) ? "stepGrowOrFinishNetModuleLink" : "stepGrowOrFinishLink"; 
+    ans.setNextStep((forModules_) ? "stepGrowOrFinishNetModuleLink" : "stepGrowOrFinishLink"); 
     return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans));
   }
    
@@ -251,38 +246,29 @@ public class AddLink extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
-     
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
 
     private boolean myForModules_;
     public NetModuleLinkCandidate currentModuleLinkCandidate_;
     public LinkCandidate currentLinkCandidate_;
     private String currentOverlay;
-    private DataAccessContext rcxT_;
-    private DataAccessContext rcxR_;
-    @SuppressWarnings("unused")
-    private ServerControlFlowHarness cfh;
-     //--------------------
+    private StaticDataAccessContext rcxR_;
      
-    private String nextStep_;
     private int x;
     private int y;
     private int origX;
     private int origY;
-    private BTState appState_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Constructor
     */
        
-    public StepState(BTState appState, boolean forModules) {
+    public StepState(ServerControlFlowHarness cfh, boolean forModules) {
+      super(cfh);
       myForModules_ = forModules;
-      appState_ = appState;
+      rcxR_ = dacx_.getContextForRoot();
+      currentOverlay = rcxR_.getOSO().getCurrentOverlay();    
     }
      
     /***************************************************************************
@@ -369,10 +355,10 @@ public class AddLink extends AbstractControlFlow {
     ** Warn of build instructions
     */
       
-    private DialogAndInProcessCmd stepBiWarning(ServerControlFlowHarness cfh) {
+    private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -390,7 +376,7 @@ public class AddLink extends AbstractControlFlow {
     */
       
     private DialogAndInProcessCmd stepStartModule() {   
-      currentModuleLinkCandidate_ = beginDrawNetworkModuleLink(appState_, rcxT_, currentOverlay);
+      currentModuleLinkCandidate_ = beginDrawNetworkModuleLink(currentOverlay);
       if (currentModuleLinkCandidate_ == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }  
@@ -405,11 +391,11 @@ public class AddLink extends AbstractControlFlow {
       
     private DialogAndInProcessCmd stepStart() { 
  
-      currentLinkCandidate_ = addNewLinkStart(appState_, rcxT_, rcxR_);
+      currentLinkCandidate_ = addNewLinkStart();
       if (currentLinkCandidate_ == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
-      boolean gotRegions = (rcxT_.getGenome() instanceof GenomeInstance);
+      boolean gotRegions = dacx_.currentGenomeIsAnInstance();
       if (gotRegions) {
         Map<String, Set<String>> okstm = currentLinkCandidate_.okSrcTrgMap;
         if (okstm != null) {
@@ -421,13 +407,13 @@ public class AddLink extends AbstractControlFlow {
           Iterator<String> oktit = okTargs.iterator();
           while (oktit.hasNext()) {
             String nodeID = oktit.next();
-            okTargLinks.addAll(rcxT_.getGenome().getOutboundLinks(nodeID));
+            okTargLinks.addAll(dacx_.getCurrentGenome().getOutboundLinks(nodeID));
           }
           HashSet<String> allOk = new HashSet<String>(okTargs);
           allOk.addAll(okTargLinks);
-          appState_.getGenomePresentation().setTargets(allOk);
+          uics_.getGenomePresentation().setTargets(allOk);
         }
-        Genome rootParent = rcxT_.getGenomeAsInstance().getVfgParentRoot();
+        Genome rootParent = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
         if (rootParent != null) {  // drawing at the subset layer...
           HashSet<String> overlays = new HashSet<String>();
           Set<String> oversrcs;
@@ -435,7 +421,7 @@ public class AddLink extends AbstractControlFlow {
             oversrcs = okstm.keySet();
           } else {
             oversrcs = new HashSet<String>();
-            Iterator<Node> anit = rcxT_.getGenome().getAllNodeIterator();
+            Iterator<Node> anit = dacx_.getCurrentGenome().getAllNodeIterator();
             while (anit.hasNext()) {
               Node node = anit.next();
               oversrcs.add(node.getID());
@@ -446,7 +432,7 @@ public class AddLink extends AbstractControlFlow {
             String nodeID = anit.next();
             overlays.addAll(rootParent.getOutboundLinks(nodeID));
           }  
-          appState_.getGenomePresentation().setRootOverlays(overlays);
+          uics_.getGenomePresentation().setRootOverlays(overlays);
         }
       }
       nextStep_ = "stepSetToMode";
@@ -476,7 +462,7 @@ public class AddLink extends AbstractControlFlow {
     */  
 
     private DialogAndInProcessCmd stepGrowOrFinishLink() {
-      boolean gotRegions = !rcxT_.genomeIsRootGenome();
+      boolean gotRegions = !dacx_.currentGenomeIsRootDBGenome();
       // Catch state weirdness:
       if (currentLinkCandidate_.buildState == LinkCandidate.DONE) {
         throw new IllegalStateException();
@@ -502,10 +488,10 @@ public class AddLink extends AbstractControlFlow {
       //
  
       List<Intersection.AugmentedIntersection> augs = 
-        appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+        uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
-      if (gotRegions && (inter != null) && (rcxT_.getGenomeAsInstance().getGroup(inter.getObjectID()) != null)) {
+      if (gotRegions && (inter != null) && (dacx_.getCurrentGenomeAsInstance().getGroup(inter.getObjectID()) != null)) {
         inter = null;
       }    
 
@@ -519,13 +505,13 @@ public class AddLink extends AbstractControlFlow {
       boolean atSubsetLayer = false;
       Genome rootParent = null;
       if (gotRegions) {
-        rootParent = rcxT_.getGenomeAsInstance().getVfgParent();
+        rootParent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
         atSubsetLayer = (rootParent != null);
       }
       boolean linkFromRoot = false;
       if (inter == null) {
         if (currentLinkCandidate_.buildState == LinkCandidate.EMPTY) {
-          if ((gotRegions) && (rcxT_.getGenomeAsInstance().getVfgParent() != null)) {
+          if ((gotRegions) && (dacx_.getCurrentGenomeAsInstance().getVfgParent() != null)) {
             HashSet<String> okLinks = new HashSet<String>();
             Set<String> okTargs;
             Map<String, Set<String>> okstm = currentLinkCandidate_.okSrcTrgMap;
@@ -533,7 +519,7 @@ public class AddLink extends AbstractControlFlow {
               okTargs = okstm.keySet();
             } else {
               okTargs = new HashSet<String>();
-              Iterator<Node> sit = rcxT_.getGenome().getAllNodeIterator();
+              Iterator<Node> sit = dacx_.getCurrentGenome().getAllNodeIterator();
               while (sit.hasNext()) {
                 Node node = sit.next();
                 okTargs.add(node.getID());
@@ -548,8 +534,8 @@ public class AddLink extends AbstractControlFlow {
            //   if (!sourcePadIsClear(genome, id, pad.padNum, render.sharedPadNamespaces())) {
          //       return (REJECT_);
           //    }
-            List<Intersection> itemList = appState_.getGenomePresentation().selectLinkFromRootParent(x, y, rcxT_, okLinks);
-            inter = (new IntersectionChooser(true, rcxT_).intersectionRanker(itemList));
+            List<Intersection> itemList = uics_.getGenomePresentation().selectLinkFromRootParent(x, y, dacx_, okLinks);
+            inter = (new IntersectionChooser(true, dacx_).intersectionRanker(itemList));
             if (inter != null) {
               linkFromRoot = true;
             }
@@ -571,7 +557,7 @@ public class AddLink extends AbstractControlFlow {
             return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
           }
           String id = inter.getObjectID();
-          Linkage link = rcxT_.getGenome().getLinkage(id);
+          Linkage link = dacx_.getCurrentGenome().getLinkage(id);
           if ((link == null) && linkFromRoot) {
             link = rootParent.getLinkage(id);
           }
@@ -588,14 +574,15 @@ public class AddLink extends AbstractControlFlow {
             if (!(sub instanceof Intersection.PadVal)) {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
             }
-            NodeProperties nprop = rcxT_.getLayout().getNodeProperties(id);
+            NodeProperties nprop = dacx_.getCurrentLayout().getNodeProperties(id);
             INodeRenderer render = nprop.getRenderer();
+
             //
             // Issue #209: Working with gridded points (x,y) to choose pad is a mess when pads are off-grid (slashes, intercell). For the final
             // winner, we need to use the actual click point:
             //
-            Node theNode = rcxT_.getGenome().getNode(id);
-            List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), rcxT_);
+            Node theNode = dacx_.getCurrentGenome().getNode(id);
+            List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), dacx_);
             int numCand = pads.size();
             Intersection.PadVal winner = null;
             boolean flipIt = false;
@@ -610,11 +597,11 @@ public class AddLink extends AbstractControlFlow {
                   continue;
                 }
               }
-              if (!LinkSupport.sourcePadIsClear(appState_, rcxT_.getGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
+              if (!LinkSupport.sourcePadIsClear(uics_, dacx_, dacx_.getCurrentGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
                 continue;
               }
               if (atSubsetLayer) {
-                if (!LinkSupport.sourcePadIsClear(appState_, rootParent, id, pad.padNum, render.sharedPadNamespaces())) {
+                if (!LinkSupport.sourcePadIsClear(uics_, dacx_, rootParent, id, pad.padNum, render.sharedPadNamespaces())) {
                   continue;
                 }          
               }
@@ -626,8 +613,8 @@ public class AddLink extends AbstractControlFlow {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
             }
             // Want to hide the flip from the user: use the landing offset up until we flip the node orientation:
-            Vector2D loff = (flipIt) ? render.getLandingPadOffset(winner.padNum, rcxT_.getGenome().getNode(id), Linkage.NONE, rcxT_)
-                                     : render.getLaunchPadOffset(winner.padNum, rcxT_.getGenome().getNode(id), rcxT_);
+            Vector2D loff = (flipIt) ? render.getLandingPadOffset(winner.padNum, dacx_.getCurrentGenome().getNode(id), Linkage.NONE, dacx_)
+                                     : render.getLaunchPadOffset(winner.padNum, dacx_.getCurrentGenome().getNode(id), dacx_);
             Point2D cent = loff.add(nprop.getLocation());
             x = (int)cent.getX();
             y = (int)cent.getY();
@@ -642,9 +629,9 @@ public class AddLink extends AbstractControlFlow {
               if (okTargs == null) {
                 return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
               }
-              appState_.getGenomePresentation().setTargets(okTargs);
+              uics_.getGenomePresentation().setTargets(okTargs);
             }
-            appState_.getGenomePresentation().clearRootOverlays();
+            uics_.getGenomePresentation().clearRootOverlays();
           }        
           currentLinkCandidate_.source = inter;
           currentLinkCandidate_.buildState = LinkCandidate.ADDING;
@@ -653,7 +640,7 @@ public class AddLink extends AbstractControlFlow {
             y = (int)((Math.round(y / 10.0)) * 10.0);
           }
           currentLinkCandidate_.points.add(new Point(x, y));
-          appState_.getGenomePresentation().setFloater(currentLinkCandidate_.points);
+          uics_.getGenomePresentation().setFloater(currentLinkCandidate_.points);
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
         }
       }
@@ -675,13 +662,13 @@ public class AddLink extends AbstractControlFlow {
             return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
           }
           String id = inter.getObjectID();
-          INodeRenderer render = rcxT_.getLayout().getNodeProperties(id).getRenderer();
+          INodeRenderer render = dacx_.getCurrentLayout().getNodeProperties(id).getRenderer();
           //
           // Issue #209: Working with gridded points (x,y) to choose pad is a mess when pads are off-grid (slashes, intercell). For the final
           // winner, we need to use the actual click point:
           //
-          Node theNode = rcxT_.getGenome().getNode(id);
-          List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), rcxT_);
+          Node theNode = dacx_.getCurrentGenome().getNode(id);
+          List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), dacx_);
           // Fixing ISSUE #247: calcPadIntersects can return null!
           int numCand = (pads == null) ? 0 : pads.size();
           Intersection.PadVal winner = null;
@@ -697,7 +684,7 @@ public class AddLink extends AbstractControlFlow {
                 continue;
               }
             }
-            if (!LinkSupport.targPadIsClear(rcxT_.getGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
+            if (!LinkSupport.targPadIsClear(dacx_.getCurrentGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
               continue;
             }
             if (atSubsetLayer) {
@@ -732,7 +719,7 @@ public class AddLink extends AbstractControlFlow {
               reg = null;
             }
             if (currentLinkCandidate_.existingLinkID != null) {
-              DBGenome dbg = rcxT_.getDBGenome();
+              DBGenome dbg = dacx_.getDBGenome();
               Linkage dbLink = dbg.getLinkage(currentLinkCandidate_.existingLinkID);
               Gene dbGene = dbg.getGene(GenomeItemInstance.getBaseID(theGene.getID()));
               DBGeneRegion regR = dbGene.getRegionForPad(dbLink.getLandingPad()); // may be null
@@ -766,9 +753,14 @@ public class AddLink extends AbstractControlFlow {
           }        
           currentLinkCandidate_.buildState = LinkCandidate.DONE;
           currentLinkCandidate_.slashFlipTrg = flipIt;
-          addNewLinkFinish(appState_, rcxT_, currentLinkCandidate_);
-         
-          appState_.getGenomePresentation().setFloater(null);
+          addNewLinkFinish(dacx_, currentLinkCandidate_);
+
+          PlugInManager pluginManager = uics_.getPlugInMgr(); 
+          Iterator<ModelBuilderPlugIn> mbIterator = pluginManager.getBuilderIterator();
+          if (mbIterator.hasNext()) {
+            mbIterator.next().linkJustDrawn(dacx_, currentLinkCandidate_.builtID);
+          }        
+          uics_.getGenomePresentation().setFloater(null);
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this));
         }
       }
@@ -783,7 +775,7 @@ public class AddLink extends AbstractControlFlow {
     */  
 
     private DialogAndInProcessCmd stepGrowOrFinishNetModuleLink() {
-      String currentOverlay = appState_.getCurrentOverlay();
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
       // Catch state weirdness:
       if (currentModuleLinkCandidate_.buildState == NetModuleLinkCandidate.DONE) {
         throw new IllegalStateException();
@@ -815,11 +807,11 @@ public class AddLink extends AbstractControlFlow {
       //
 
       boolean gotAModule = true;
-      Intersection intersected = appState_.getGenomePresentation().intersectANetModuleElement(x, y, rcxT_,
+      Intersection intersected = uics_.getGenomePresentation().intersectANetModuleElement(x, y, dacx_,
                                                                                               GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
       if (intersected == null) {
         gotAModule = false;
-        intersected = appState_.getGenomePresentation().intersectNetModuleLinks(x, y, rcxT_);
+        intersected = uics_.getGenomePresentation().intersectNetModuleLinks(x, y, dacx_);
       }
           
       //
@@ -843,7 +835,7 @@ public class AddLink extends AbstractControlFlow {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
             }
             // Note that we are working with tree IDs for link intersection, not link IDs:
-            NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(currentOverlay);
+            NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay);
             NetModuleLinkageProperties currNmlp = nop.getNetModuleLinkagePropertiesFromTreeID(id);
             currentModuleLinkCandidate_.srcMod = currNmlp.getSourceTag();
             // we have a module intersection
@@ -863,7 +855,7 @@ public class AddLink extends AbstractControlFlow {
           x = UiUtil.forceToGridValueInt(x, UiUtil.GRID_SIZE);
           y = UiUtil.forceToGridValueInt(y, UiUtil.GRID_SIZE);
           currentModuleLinkCandidate_.points.add(new Point(x, y));
-          appState_.getGenomePresentation().setFloater(currentModuleLinkCandidate_.points);
+          uics_.getGenomePresentation().setFloater(currentModuleLinkCandidate_.points);
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
         }
       }
@@ -904,7 +896,7 @@ public class AddLink extends AbstractControlFlow {
             if (currentModuleLinkCandidate_.srcIsModule) {
               srcPad = currentModuleLinkCandidate_.points.get(0);
             } else {
-              NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(currentOverlay);
+              NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay);
               String treeID = currentModuleLinkCandidate_.source.getObjectID();
               NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);
               Point2D startPt = nmlp.getSourceStart(0.0);    
@@ -924,8 +916,8 @@ public class AddLink extends AbstractControlFlow {
           currentModuleLinkCandidate_.trgMod = intersected.getObjectID();
           currentModuleLinkCandidate_.target = intersected;
           currentModuleLinkCandidate_.buildState = AddLink.LinkCandidate.DONE;
-          appState_.getGenomePresentation().setFloater(null);
-          finishDrawNetworkModuleLink(appState_, currentModuleLinkCandidate_, rcxR_);          
+          uics_.getGenomePresentation().setFloater(null);
+          finishDrawNetworkModuleLink(currentModuleLinkCandidate_);          
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this));
         }
       }
@@ -937,17 +929,17 @@ public class AddLink extends AbstractControlFlow {
     ** Start adding a link
     */  
    
-    private LinkCandidate addNewLinkStart(BTState appState, DataAccessContext rcxT, DataAccessContext rcxR) {
+    private LinkCandidate addNewLinkStart() {
       String existingLinkID = null;
       Map<String, Set<String>> okSrcTrgMap = null;
       
       String newName = null;
       int newSign = Linkage.NONE;       
-      if (rcxT.getGenome() instanceof DBGenome) {
+      if (dacx_.currentGenomeIsRootDBGenome()) {
         //
         // Get the type and the name
         //
-        LinkCreationDialog lcd = new LinkCreationDialog(appState);
+        LinkCreationDialog lcd = new LinkCreationDialog(uics_, dacx_);
         lcd.setVisible(true);
         if (!lcd.haveResult()) {
           return (null);
@@ -956,7 +948,7 @@ public class AddLink extends AbstractControlFlow {
         newName = lcd.getName();
         existingLinkID = null;
       } else {
-        DrawLinkInstanceCreationDialog lcd = new DrawLinkInstanceCreationDialog(appState, rcxR.getGenome(), rcxT.getGenomeAsInstance());
+        DrawLinkInstanceCreationDialog lcd = new DrawLinkInstanceCreationDialog(uics_, dacx_, rcxR_.getCurrentGenome(), dacx_.getCurrentGenomeAsInstance());
         lcd.setVisible(true);
         if (!lcd.haveResult()) {
           return (null);
@@ -967,12 +959,12 @@ public class AddLink extends AbstractControlFlow {
           newName = lcd.getName();
         } else {        
           if (lcd.haveImmediateAdd()) {
-            LinkCandidate lc = new LinkCandidate(newName, newSign, rcxT.getLayout(), existingLinkID, okSrcTrgMap);
-            addNewLinkToInstanceFinish(appState, rcxT, rcxR, true, lc);
+            LinkCandidate lc = new LinkCandidate(newName, newSign, dacx_.getCurrentLayout(), existingLinkID, okSrcTrgMap);
+            addNewLinkToInstanceFinish(dacx_, true, lc);
             return (null);
           } else {
             okSrcTrgMap = lcd.getOkSrcTrgMap();
-            Linkage oldLink = rcxR.getGenome().getLinkage(existingLinkID);
+            Linkage oldLink = rcxR_.getCurrentGenome().getLinkage(existingLinkID);
             newSign = oldLink.getSign();
             newName = oldLink.getName();
           }     
@@ -983,7 +975,7 @@ public class AddLink extends AbstractControlFlow {
       // Bundle the info into a LinkCandidate and return the result
       //
   
-      LinkCandidate lc = new LinkCandidate(newName, newSign, rcxT.getLayout(), existingLinkID, okSrcTrgMap);
+      LinkCandidate lc = new LinkCandidate(newName, newSign, dacx_.getCurrentLayout(), existingLinkID, okSrcTrgMap);
       return (lc); 
     } 
      
@@ -992,35 +984,35 @@ public class AddLink extends AbstractControlFlow {
     ** Add a link
     */  
    
-    private boolean addNewLinkFinish(BTState appState, DataAccessContext rcx, LinkCandidate lc) {
-      if (rcx.getGenome() instanceof DBGenome) {
-        return (addNewLinktoRootFinish(appState, rcx, lc));
+    private boolean addNewLinkFinish(StaticDataAccessContext rcxI, LinkCandidate lc) {
+      if (rcxI.currentGenomeIsRootDBGenome()) {
+        return (addNewLinktoRootFinish(lc));
       } else {
-        return (addNewLinkToInstanceFinish(appState, rcx, rcxR_, false, lc));
+        return (addNewLinkToInstanceFinish(rcxI, false, lc));
       }
     }
      
     /***************************************************************************
     **
-    ** Add a link
+    ** Add a link to the root genome (NOTE: dacx_ here is the same as rcxR_)
     */  
    
-    private boolean addNewLinktoRootFinish(BTState appState, DataAccessContext rcxR, LinkCandidate lc) {
+    private boolean addNewLinktoRootFinish(LinkCandidate lc) {
       //
       // Add it to an existing tree:
       //
-      String linkID = ((DBGenome)rcxR.getGenome()).getNextKey();
+      String linkID = dacx_.getCurrentGenomeAsDBGenome().getNextKey();
       lc.builtID = linkID;
       String src = lc.source.getObjectID();
-      if (rcxR.getGenome().getLinkage(src) != null) {
-        return (addToLinkTree(appState, rcxR, linkID, lc));
+      if (dacx_.getCurrentGenome().getLinkage(src) != null) {
+        return (addToRootLinkTree(linkID, lc));
       }
   
       //
       // Undo/Redo support
       //
   
-      UndoSupport support = new UndoSupport(appState, "undo.addLink");
+      UndoSupport support = uFac_.provideUndoSupport("undo.addLink", dacx_);
       
       int srcPad = ((Intersection.PadVal)lc.source.getSubID()).padNum;
       String targ = lc.target.getObjectID();
@@ -1029,15 +1021,15 @@ public class AddLink extends AbstractControlFlow {
       // Suggest the user uses links with no arrow or foot for some nodes
       //
       
-      switchLinkSign(appState, rcxR.getGenome(), targ, lc);
+      switchLinkSign(dacx_, targ, lc);
      
       int trgPad = ((Intersection.PadVal)lc.target.getSubID()).padNum;    
-      DBLinkage newLinkage = new DBLinkage(appState, lc.label, linkID, src, targ, lc.sign, 
+      DBLinkage newLinkage = new DBLinkage(dacx_, lc.label, linkID, src, targ, lc.sign, 
                                            trgPad, srcPad);
       
-      GenomeChange gc = ((DBGenome)rcxR.getGenome()).addLinkWithExistingLabel(newLinkage);
+      GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().addLinkWithExistingLabel(newLinkage);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxR, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
       
@@ -1045,23 +1037,23 @@ public class AddLink extends AbstractControlFlow {
       // Create a new LinkProperties; add all the segments
       //
       
-      BusProperties lp = convertCandidateToBus(appState, rcxR, lc, linkID, src);   
+      BusProperties lp = convertCandidateToBus(dacx_, lc, linkID, src);   
       
       //
       // Propagate node properties to all interested getLayout()s
       //
         
-      PropagateSupport.propagateLinkProperties(appState, rcxR, lp, linkID, support);
+      PropagateSupport.propagateLinkProperties(dacx_, lp, linkID, support);
       
       
       if (lc.slashFlipSrc) {
-        flipASlashNode(appState, rcxR, src, support, null);
+        flipASlashNode(dacx_, src, support, null);
       }
       if (lc.slashFlipTrg) {
-        flipASlashNode(appState, rcxR, targ, support, null);
+        flipASlashNode(dacx_, targ, support, null);
       }
            
-      support.addEvent(new ModelChangeEvent(rcxR.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       support.finish();
       return (true); 
     }
@@ -1071,8 +1063,8 @@ public class AddLink extends AbstractControlFlow {
     ** Flip a slash node
     */  
    
-    private int flipASlashNode(BTState appState, DataAccessContext rcx, String nodeID, UndoSupport support, Integer otherOldOrient) {   
-      NodeProperties oldProps = rcx.getLayout().getNodeProperties(nodeID); 
+    private int flipASlashNode(StaticDataAccessContext rcx, String nodeID, UndoSupport support, Integer otherOldOrient) {   
+      NodeProperties oldProps = rcx.getCurrentLayout().getNodeProperties(nodeID); 
       int oldOrient = oldProps.getOrientation();
       if ((otherOldOrient != null) && (otherOldOrient.intValue() != oldOrient)) {
         return (oldOrient);
@@ -1080,9 +1072,9 @@ public class AddLink extends AbstractControlFlow {
       Layout.PropChange[] lpc = new Layout.PropChange[1];
       NodeProperties newProps = oldProps.clone();
       newProps.setOrientation(NodeProperties.reverseOrient(oldOrient));
-      lpc[0] = rcx.getLayout().replaceNodeProperties(oldProps, newProps);
+      lpc[0] = rcx.getCurrentLayout().replaceNodeProperties(oldProps, newProps);
       if (lpc != null) {
-        PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
         support.addEdit(pcc);
       }
       return (oldOrient);
@@ -1093,13 +1085,14 @@ public class AddLink extends AbstractControlFlow {
     ** Suggest the user uses links with no arrow or foot for some nodes
     */  
    
-    private void switchLinkSign(BTState appState, Genome genome, String targ, LinkCandidate lc) {
+    private void switchLinkSign(StaticDataAccessContext rcxi, String targ, LinkCandidate lc) {
+      Genome genome = rcxi.getCurrentGenome();
       Node trgNode = genome.getNode(targ);
       int trgType = trgNode.getNodeType();
       if ((trgType == Node.INTERCELL) || (trgType == Node.SLASH)) {
         if (lc.sign != Linkage.NONE) {
-          ResourceManager rMan = appState.getRMan();
-          int changeSignVal = JOptionPane.showConfirmDialog(appState.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          int changeSignVal = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                             rMan.getString("badSign.changeToNeutral"),
                                                             rMan.getString("badSign.changeToNeutralTitle"),
                                                             JOptionPane.YES_NO_OPTION);
@@ -1113,10 +1106,10 @@ public class AddLink extends AbstractControlFlow {
    
     /***************************************************************************
     **
-    ** Add a segment to an existing LinkProperties
+    ** Add a segment to an existing LinkProperties. (NOTE: dacx_ here is the same as rcxR_)
     */  
    
-    private boolean addToLinkTree(BTState appState, DataAccessContext rcx, String linkID, LinkCandidate lc) {
+    private boolean addToRootLinkTree(String linkID, LinkCandidate lc) {
       //
       // We have intersected a link segment as the source of a new link.
       // We find the source of the link and create a new DBLinkage for
@@ -1132,9 +1125,9 @@ public class AddLink extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState, "undo.addLink");   
+      UndoSupport support = uFac_.provideUndoSupport("undo.addLink", dacx_);   
       
-      Linkage existing = rcx.getGenome().getLinkage(src);
+      Linkage existing = dacx_.getCurrentGenome().getLinkage(src);
       int srcPad = existing.getLaunchPad();
       String srcNode = existing.getSource();
       String targ = lc.target.getObjectID();
@@ -1144,14 +1137,14 @@ public class AddLink extends AbstractControlFlow {
       // Suggest the user uses links with no arrow or foot for some nodes
       //
       
-      switchLinkSign(appState, rcx.getGenome(), targ, lc);
+      switchLinkSign(dacx_, targ, lc);
     
       // FIX ME?? Don't duplicate links?    
-      DBLinkage newLinkage = new DBLinkage(appState, lc.label, linkID, srcNode, targ, lc.sign, 
+      DBLinkage newLinkage = new DBLinkage(dacx_, lc.label, linkID, srcNode, targ, lc.sign, 
                                            trgPad, srcPad);
-      GenomeChange gc = ((DBGenome)rcx.getGenome()).addLinkWithExistingLabel(newLinkage);
+      GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().addLinkWithExistingLabel(newLinkage);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
   
@@ -1159,9 +1152,9 @@ public class AddLink extends AbstractControlFlow {
       // Create a new LinkProperties; add all the segments
       //
       
-      BusProperties nlp = convertCandidateToBusForMerge(appState, rcx, lc, linkID);
-      Layout.PropChange lpc = rcx.getLayout().mergeNewLinkToTreeAtSegment(rcx, src, nlp, segIDs[0]);
-      PropChangeCmd pcc = new PropChangeCmd(appState, rcx, new Layout.PropChange[] {lpc});
+      BusProperties nlp = convertCandidateToBusForMerge(dacx_, lc, linkID);
+      Layout.PropChange lpc = dacx_.getCurrentLayout().mergeNewLinkToTreeAtSegment(dacx_, src, nlp, segIDs[0]);
+      PropChangeCmd pcc = new PropChangeCmd(dacx_, new Layout.PropChange[] {lpc});
       support.addEdit(pcc);    
   
       //
@@ -1173,7 +1166,7 @@ public class AddLink extends AbstractControlFlow {
          
       //propagateLinkProperties(db, genome, nlp, linkID);
       
-      support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       support.finish();
       return (true); 
     }
@@ -1183,7 +1176,7 @@ public class AddLink extends AbstractControlFlow {
     ** Convert a link candidate to a BusProperties
     */  
    
-    private BusProperties convertCandidateToBus(BTState appState, DataAccessContext rcx, LinkCandidate lc, String linkID, String src) {
+    private BusProperties convertCandidateToBus(StaticDataAccessContext rcxI, LinkCandidate lc, String linkID, String src) {
       //
       // Create a new LinkProperties; add all the segments
       //    
@@ -1195,8 +1188,8 @@ public class AddLink extends AbstractControlFlow {
       // Get link to match color of node, or choose a new color
       //
       
-      String colorTag = chooseNodeColor(appState, rcx, src);
-      BusProperties lp = new BusProperties(rcx.getGenome(), linkID, (float)textLoc.getX(), (float)textLoc.getY(), colorTag);
+      String colorTag = chooseNodeColor(src);
+      BusProperties lp = new BusProperties(rcxI.getCurrentGenome(), linkID, (float)textLoc.getX(), (float)textLoc.getY(), colorTag);
       Iterator<LinkSegment> sit = segments.iterator();
       while (sit.hasNext()) {
         LinkSegment ls = sit.next();
@@ -1210,18 +1203,18 @@ public class AddLink extends AbstractControlFlow {
     ** Choose node color
     */  
   
-    private String chooseNodeColor(BTState appState, DataAccessContext rcx, String src) { 
-      String colorTag = findNodeColorForLink(rcx, src);
+    private String chooseNodeColor(String src) { 
+      String colorTag = findNodeColorForLink(src);
       if (colorTag == null) {
         return ("black");
       } else if (colorTag.equals("black")) {
-        if (rcx.getGenome() instanceof GenomeInstance) {
-          colorTag = findGenomeInstanceConsensusColor(rcx, src);
+        if (dacx_.currentGenomeIsAnInstance()) {
+          colorTag = findGenomeInstanceConsensusColor(src);
           if ((colorTag == null) || colorTag.equals("black")) {
-            colorTag = rcx.cRes.getNextColor();  
+            colorTag = dacx_.getColorResolver().getNextColor(dacx_.getGenomeSource(), dacx_.getLayoutSource());  
           }
         } else {
-          colorTag = rcx.cRes.getNextColor();
+          colorTag = dacx_.getColorResolver().getNextColor(dacx_.getGenomeSource(), dacx_.getLayoutSource());
         }
       }
       return (colorTag);
@@ -1233,9 +1226,9 @@ public class AddLink extends AbstractControlFlow {
     ** a node:
     */  
   
-    private String findGenomeInstanceConsensusColor(DataAccessContext rcx, String src) { 
+    private String findGenomeInstanceConsensusColor(String src) { 
       
-      GenomeInstance gi = rcx.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       GenomeInstance root = gi.getVfgParentRoot();
       if (root != null) {
         gi = root;
@@ -1249,7 +1242,7 @@ public class AddLink extends AbstractControlFlow {
         if (nodeID.equals(src)) {
           continue;
         }
-        String linkColor = findNodeColorForLink(rcx, nodeID);
+        String linkColor = findNodeColorForLink(nodeID);
         if ((linkColor == null) || linkColor.equals("black")) {
           continue;
         }
@@ -1278,11 +1271,11 @@ public class AddLink extends AbstractControlFlow {
     ** drive link color
     */  
   
-    private String findNodeColorForLink(DataAccessContext rcx, String src) { 
+    private String findNodeColorForLink(String src) { 
       String colorTag = null;
-      Node srcNode = rcx.getGenome().getNode(src);
+      Node srcNode = dacx_.getCurrentGenome().getNode(src);
       if (NodeProperties.setWithLinkColor(srcNode.getNodeType())) {
-        NodeProperties srcProp = rcx.getLayout().getNodeProperties(src);
+        NodeProperties srcProp = dacx_.getCurrentLayout().getNodeProperties(src);
         if (srcNode.getNodeType() == Node.INTERCELL) {
           colorTag = srcProp.getSecondColorName();
           if (colorTag == null) {
@@ -1303,7 +1296,7 @@ public class AddLink extends AbstractControlFlow {
     ** Convert a link candidate to a BusProperties for merging with existing
     */  
    
-    private BusProperties convertCandidateToBusForMerge(BTState appState, DataAccessContext rcx, LinkCandidate lc, String linkID) {  
+    private BusProperties convertCandidateToBusForMerge(StaticDataAccessContext rcx, LinkCandidate lc, String linkID) {  
       //
       // Create a new LinkProperties; add all the segments
       //
@@ -1339,7 +1332,7 @@ public class AddLink extends AbstractControlFlow {
           segCount++;
         }
       }
-      BusProperties nlp = new BusProperties(rcx.getGenome(), linkID, tx, ty, "black");
+      BusProperties nlp = new BusProperties(rcx.getCurrentGenome(), linkID, tx, ty, "black");
       Iterator<LinkSegment> sit = segments.iterator();
       while (sit.hasNext()) {
         LinkSegment ls = sit.next();
@@ -1356,11 +1349,11 @@ public class AddLink extends AbstractControlFlow {
     ** root too if needed.
     */  
     
-    private boolean addNewLinkToInstanceFinish(BTState appState, DataAccessContext rcxI, DataAccessContext rcxR, boolean immed, LinkCandidate lc) {
+    private boolean addNewLinkToInstanceFinish(StaticDataAccessContext rcxI, boolean immed, LinkCandidate lc) {
       
       ArrayList<GenomeInstance> ancestry = new ArrayList<GenomeInstance>();
-      ancestry.add(rcxI.getGenomeAsInstance());
-      GenomeInstance parent = rcxI.getGenomeAsInstance().getVfgParent();
+      ancestry.add(rcxI.getCurrentGenomeAsInstance());
+      GenomeInstance parent = rcxI.getCurrentGenomeAsInstance().getVfgParent();
       while (parent != null) {
         ancestry.add(parent);
         parent = parent.getVfgParent();
@@ -1376,7 +1369,7 @@ public class AddLink extends AbstractControlFlow {
       //
 
       if (lc.existingLinkID == null) {
-        switchLinkSign(appState, rcxI.getGenome(), lc.target.getObjectID(), lc);
+        switchLinkSign(rcxI, lc.target.getObjectID(), lc);
       }
       
       //
@@ -1389,7 +1382,7 @@ public class AddLink extends AbstractControlFlow {
       
       if (!immed) {
         if (lc.existingLinkID == null) {
-          rootOptions = newLinkInstanceHasParent(rcxR.getGenome(), lc, rcxI.getGenomeAsInstance());
+          rootOptions = newLinkInstanceHasParent(rcxR_.getCurrentGenome(), lc, rcxI.getCurrentGenomeAsInstance());
           instanceOptions = findInstanceMatches(lc, ancestry);
           iAndC = null;
         } else {
@@ -1423,7 +1416,7 @@ public class AddLink extends AbstractControlFlow {
         Set<String> instanceOptionSet = (instanceOptions == null) ? new HashSet<String>() : instanceOptions.keySet();
       
         DrawLinkInstanceExistingOptionsDialog eod = 
-          new DrawLinkInstanceExistingOptionsDialog(appState, rcxR.getGenome(), rcxI.getGenomeAsInstance(), rootOptionSet, instanceOptionSet);
+          new DrawLinkInstanceExistingOptionsDialog(uics_, rcxI, rcxR_.getCurrentGenome(), rcxI.getCurrentGenomeAsInstance(), rootOptionSet, instanceOptionSet);
         eod.setVisible(true);
         if (!eod.haveResult()) {
           return (false);
@@ -1457,13 +1450,8 @@ public class AddLink extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState, "undo.addLink");        
+      UndoSupport support = uFac_.provideUndoSupport("undo.addLink", rcxI);        
     
-      
-
-    
-         
-      
       // Now we work top-down from ceiling:
       Collections.reverse(ancestry);    
       //
@@ -1472,8 +1460,8 @@ public class AddLink extends AbstractControlFlow {
       //
       if (iAndC == null) {
         GenomeInstance gi = ancestry.get(0);
-        DataAccessContext irx = new DataAccessContext(rcxI, gi, rcxI.getLayout());
-        String linkInstanceToUse = addNewLinkToRootInstanceFinish(appState, irx, rcxR, lc, support).getID();
+        StaticDataAccessContext irx = new StaticDataAccessContext(rcxI, gi, rcxI.getCurrentLayout());
+        String linkInstanceToUse = addNewLinkToRootInstanceFinish(irx, lc, support).getID();
         iAndC = new InstanceAndCeiling(linkInstanceToUse, 0);
       }
        
@@ -1489,8 +1477,8 @@ public class AddLink extends AbstractControlFlow {
           // Bug BT-11-30-12:01 manifests here as well.  Do not add if already there!
           LinkageInstance checkpI = (LinkageInstance)gi.getLinkage(pInst.getID());
           if (checkpI == null) {
-            DataAccessContext irx = new DataAccessContext(rcxI, gi, rcxI.getLayout());
-            pInst = PropagateSupport.addNewLinkToSubsetInstance(appState, irx, pInst, support);
+            StaticDataAccessContext irx = new StaticDataAccessContext(rcxI, gi, rcxI.getCurrentLayout());
+            pInst = PropagateSupport.addNewLinkToSubsetInstance(irx, pInst, support);
           } else {
             pInst = checkpI;
           }
@@ -1554,10 +1542,10 @@ public class AddLink extends AbstractControlFlow {
     ** Add a link
     */  
    
-    private LinkageInstance addNewLinkToRootInstanceFinish(BTState appState, DataAccessContext rcxI, DataAccessContext rcxR, 
+    private LinkageInstance addNewLinkToRootInstanceFinish(StaticDataAccessContext rcxI,
                                                            LinkCandidate lc, UndoSupport support) {
        
-      if (rcxI.getGenomeAsInstance().getVfgParent() != null) {
+      if (rcxI.getCurrentGenomeAsInstance().getVfgParent() != null) {
         throw new IllegalArgumentException();
       }
       
@@ -1578,36 +1566,36 @@ public class AddLink extends AbstractControlFlow {
         PadCalculatorToo padCalc = new PadCalculatorToo();
         PadConstraints pc = padCalc.generatePadConstraints(rootSrc, rootTarg, oldPads, null, new HashMap<String, String>());
         String rootName = ((lc.label != null) && (!lc.label.trim().equals(""))) ? lc.label : null;
-        rootLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(appState, rcxR, rootName, rootSrc, rootTarg, lc.sign, null, 
+        rootLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(rcxR_, rootName, rootSrc, rootTarg, lc.sign, null, 
                                                                     support, true, null, pc, false, Linkage.LEVEL_NONE, null);
         lc.existingLinkID = rootLink.getID();
-        LayoutLinkSupport.autoAddCrudeLinkProperties(appState, rcxR, lc.existingLinkID, support, null);
+        LayoutLinkSupport.autoAddCrudeLinkProperties(rcxR_, lc.existingLinkID, support, null);
         newInRoot = true;
-        support.addEvent(new ModelChangeEvent(rcxR.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE)); 
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rcxR_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE)); 
       } else {
-        rootLink = (DBLinkage)rcxR.getGenome().getLinkage(lc.existingLinkID);
+        rootLink = (DBLinkage)rcxR_.getCurrentGenome().getLinkage(lc.existingLinkID);
       }
       
       //
       // Get the linkage instance built and added:
       //    
       boolean startFromNode =  lc.srcID.equals(lc.source.getObjectID());
-      Linkage chkLink = (!startFromNode) ? rcxI.getGenomeAsInstance().getLinkage(lc.source.getObjectID()) : null;
+      Linkage chkLink = (!startFromNode) ? rcxI.getCurrentGenomeAsInstance().getLinkage(lc.source.getObjectID()) : null;
          
       int srcPad = (startFromNode) ? ((Intersection.PadVal)lc.source.getSubID()).padNum : chkLink.getLaunchPad();
       int trgPad = ((Intersection.PadVal)lc.target.getSubID()).padNum;
       int srcInstance = GenomeItemInstance.getInstanceID(src);
       int trgInstance = GenomeItemInstance.getInstanceID(targ);
-      int instanceCount = rcxI.getGenomeAsInstance().getNextLinkInstanceNumber(lc.existingLinkID);   
-      LinkageInstance newLink = new LinkageInstance(appState, rootLink, instanceCount, srcInstance, trgInstance);
+      int instanceCount = rcxI.getCurrentGenomeAsInstance().getNextLinkInstanceNumber(lc.existingLinkID);   
+      LinkageInstance newLink = new LinkageInstance(rcxI, rootLink, instanceCount, srcInstance, trgInstance);
       lc.builtID = newLink.getID();
       newLink.setLaunchPad(srcPad);
       newLink.setLandingPad(trgPad);
       String newLinkID = newLink.getID();
    
-      GenomeChange gc = rcxI.getGenomeAsInstance().addLinkage(newLink);
+      GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addLinkage(newLink);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxI, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
         support.addEdit(gcc);
       }     
       
@@ -1618,9 +1606,9 @@ public class AddLink extends AbstractControlFlow {
       if (!startFromNode) {
         LinkSegmentID[] segIDs = lc.source.segmentIDsFromIntersect();
    
-        BusProperties nlp = convertCandidateToBusForMerge(appState, rcxI, lc, newLinkID);
-        Layout.PropChange lpc = rcxI.getLayout().mergeNewLinkToTreeAtSegment(rcxI, chkLink.getID(), nlp, segIDs[0]);
-        PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, new Layout.PropChange[] {lpc});
+        BusProperties nlp = convertCandidateToBusForMerge(rcxI, lc, newLinkID);
+        Layout.PropChange lpc = rcxI.getCurrentLayout().mergeNewLinkToTreeAtSegment(rcxI, chkLink.getID(), nlp, segIDs[0]);
+        PropChangeCmd pcc = new PropChangeCmd(rcxI, new Layout.PropChange[] {lpc});
         support.addEdit(pcc);
         //
         // Note we do not "Propagate"; but install into layout occurs above
@@ -1629,26 +1617,26 @@ public class AddLink extends AbstractControlFlow {
         // at the root, color does need to be kept consistent.
         //
       } else {
-        BusProperties bp = convertCandidateToBus(appState, rcxI, lc, newLinkID, src);
+        BusProperties bp = convertCandidateToBus(rcxI, lc, newLinkID, src);
         if (newInRoot) {
-          changeRootColor(bp, rcxR, newLinkID, support);
+          changeRootColor(bp, rcxR_, newLinkID, support);
         }
         if (lc.slashFlipSrc) {
-          int oldOrient = flipASlashNode(appState, rcxI, src, support, null);
+          int oldOrient = flipASlashNode(rcxI, src, support, null);
           String rootSrc = GenomeItemInstance.getBaseID(src);
-          flipASlashNode(appState, rcxR, rootSrc, support, Integer.valueOf(oldOrient));
+          flipASlashNode(rcxR_, rootSrc, support, Integer.valueOf(oldOrient));
           
         }
-        PropagateSupport.propagateLinkProperties(appState, rcxI, bp, newLinkID, support);   
+        PropagateSupport.propagateLinkProperties(rcxI, bp, newLinkID, support);   
       }
       
       if (lc.slashFlipTrg) {
-        int oldOrient = flipASlashNode(appState, rcxI, targ, support, null);
+        int oldOrient = flipASlashNode(rcxI, targ, support, null);
         String rootTrg = GenomeItemInstance.getBaseID(targ);
-        flipASlashNode(appState, rcxR, rootTrg, support, Integer.valueOf(oldOrient));        
+        flipASlashNode(rcxR_, rootTrg, support, Integer.valueOf(oldOrient));        
       }
 
-      support.addEvent(new ModelChangeEvent(rcxI.getGenomeAsInstance().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rcxI.getCurrentGenomeAsInstance().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
   
       return (newLink); 
     }
@@ -1659,22 +1647,22 @@ public class AddLink extends AbstractControlFlow {
    ** Change root node and link color to match new link
    */  
    
-   private void changeRootColor(BusProperties bp, DataAccessContext rcxR, String linkID, UndoSupport support) {
+   private void changeRootColor(BusProperties bp, StaticDataAccessContext rcxR, String linkID, UndoSupport support) {
   
       String rootLinkID = GenomeItemInstance.getBaseID(linkID);
-      BusProperties rootProps = rcxR.getLayout().getLinkProperties(rootLinkID);
+      BusProperties rootProps = rcxR.getCurrentLayout().getLinkProperties(rootLinkID);
       String colorKey = bp.getColorName();
       if (!colorKey.equals(rootProps.getColorName())) {
         BusProperties changedProps = rootProps.clone();
         changedProps.setColor(colorKey);
         Layout.PropChange[] lpc = new Layout.PropChange[1];
-        lpc[0] = rcxR.getLayout().replaceLinkProperties(rootProps, changedProps);        
+        lpc[0] = rcxR.getCurrentLayout().replaceLinkProperties(rootProps, changedProps);        
         if (lpc[0] != null) {
-          PropChangeCmd mov = new PropChangeCmd(appState_, rcxR, lpc);
+          PropChangeCmd mov = new PropChangeCmd(rcxR, lpc);
           support.addEdit(mov);    
-          LayoutChangeEvent ev = new LayoutChangeEvent(rcxR.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+          LayoutChangeEvent ev = new LayoutChangeEvent(rcxR.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
           support.addEvent(ev);
-          PropagateSupport.changeNodeColor(appState_, rcxR, changedProps, rootLinkID, support);
+          PropagateSupport.changeNodeColor(rcxR, changedProps, rootLinkID, support);
         }
       }
       return;
@@ -1838,25 +1826,25 @@ public class AddLink extends AbstractControlFlow {
     ** Start to add a new net module link
     */  
    
-    private NetModuleLinkCandidate beginDrawNetworkModuleLink(BTState appState, DataAccessContext rcx, String overlayKey) {
+    private NetModuleLinkCandidate beginDrawNetworkModuleLink(String overlayKey) {
             
-      Vector<ChoiceContent> signs = NetModuleLinkage.getLinkSigns(appState);
+      Vector<ChoiceContent> signs = NetModuleLinkage.getLinkSigns(dacx_);
       int numSigns = signs.size();
       Object[] forDisplay = new Object[numSigns];
       for (int i = 0; i < numSigns; i++) {
         forDisplay[i] = signs.get(i);
       }
-      ResourceManager rMan = appState.getRMan();       
-      Object result = JOptionPane.showInputDialog(appState.getTopFrame(), rMan.getString("drawModLink.chooseLinkSign"),
-                                                              rMan.getString("drawModLink.dialogTitle"),
-                                                              JOptionPane.QUESTION_MESSAGE, 
-                                                              null, forDisplay, forDisplay[NetModuleLinkage.DEFAULT_SIGN_INDEX]);
+      ResourceManager rMan = dacx_.getRMan();       
+      Object result = JOptionPane.showInputDialog(uics_.getTopFrame(), rMan.getString("drawModLink.chooseLinkSign"),
+                                                  rMan.getString("drawModLink.dialogTitle"),
+                                                  JOptionPane.QUESTION_MESSAGE, 
+                                                  null, forDisplay, forDisplay[NetModuleLinkage.DEFAULT_SIGN_INDEX]);
       if (result == null) {
         return (null);
       }
   
       int linkSign = ((ChoiceContent)result).val;
-      return (new NetModuleLinkCandidate(linkSign, overlayKey, rcx));
+      return (new NetModuleLinkCandidate(linkSign, overlayKey, dacx_));
     }
     
     /***************************************************************************
@@ -1864,47 +1852,47 @@ public class AddLink extends AbstractControlFlow {
     ** Finish adding extra regions to net module
     */  
    
-    private boolean finishDrawNetworkModuleLink(BTState appState, NetModuleLinkCandidate nmlc, DataAccessContext rcxR) {
+    private boolean finishDrawNetworkModuleLink(NetModuleLinkCandidate nmlc) {
   
-      String linkID = rcxR.getNextKey();
+      String linkID = rcxR_.getNextKey();
       
       //
       // Add it to an existing tree:
       //
    
       if (!nmlc.srcIsModule) {
-        return (addToNetModuleLinkTree(appState, linkID, nmlc));
+        return (addToNetModuleLinkTree(linkID, nmlc));
       }
     
       //NetworkOverlay nov = NetOverlayController.getOverlayOwner(genomeKey).getNetworkOverlay(nmlc.ovrKey);
       //NetModule srcMod = nov.getModule(nmlc.srcMod);
       // NetModule trgMod = nov.getModule(nmlc.trgMod);
    
-      UndoSupport support = new UndoSupport(appState, "undo.newNetworkModuleLink");
-      NetModuleLinkage nml = new NetModuleLinkage(appState, linkID, nmlc.srcMod, nmlc.trgMod, nmlc.sign);
-      NetworkOverlayChange noc = rcxR.getGenomeSource().getOverlayOwnerFromGenomeKey(nmlc.rcxC.getGenomeID()).addNetworkModuleLinkage(nmlc.ovrKey, nml); 
+      UndoSupport support = uFac_.provideUndoSupport("undo.newNetworkModuleLink", rcxR_);
+      NetModuleLinkage nml = new NetModuleLinkage(nmlc.rcxC, linkID, nmlc.srcMod, nmlc.trgMod, nmlc.sign);
+      NetworkOverlayChange noc = nmlc.rcxC.getGenomeSource().getOverlayOwnerFromGenomeKey(nmlc.rcxC.getCurrentGenomeID()).addNetworkModuleLinkage(nmlc.ovrKey, nml); 
       if (noc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxR, noc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(nmlc.rcxC, noc);
         support.addEdit(gcc);
       }
-      NetModuleLinkageProperties nmlp = convertModuleLinkCandidate(appState, nmlc, linkID, nmlc.srcMod, rcxR);
+      NetModuleLinkageProperties nmlp = convertModuleLinkCandidate(nmlc, linkID, rcxR_);
    
       // Match color to source module:
-      NetModuleProperties nmp = nmlc.rcxC.getLayout().getNetOverlayProperties(nmlc.ovrKey).getNetModuleProperties(nmlc.srcMod);
+      NetModuleProperties nmp = nmlc.rcxC.getCurrentLayout().getNetOverlayProperties(nmlc.ovrKey).getNetModuleProperties(nmlc.srcMod);
       nmlp.setColor(nmp.getColorTag());
       
       
-      Layout.PropChange pc = nmlc.rcxC.getLayout().setNetModuleLinkageProperties(nmlp.getID(), nmlp, nmlc.ovrKey, nmlc.rcxC);
+      Layout.PropChange pc = nmlc.rcxC.getCurrentLayout().setNetModuleLinkageProperties(nmlp.getID(), nmlp, nmlc.ovrKey, nmlc.rcxC);
       if (pc != null) {
-        support.addEdit(new PropChangeCmd(appState, nmlc.rcxC, pc));
-        Layout.PropChange pc2 = nmlc.rcxC.getLayout().tieNetModuleLinkToProperties(linkID, nmlp.getID(), nmlc.ovrKey);
+        support.addEdit(new PropChangeCmd(nmlc.rcxC, pc));
+        Layout.PropChange pc2 = nmlc.rcxC.getCurrentLayout().tieNetModuleLinkToProperties(linkID, nmlp.getID(), nmlc.ovrKey);
         if (pc2 != null) {
-          support.addEdit(new PropChangeCmd(appState, nmlc.rcxC, pc2));
+          support.addEdit(new PropChangeCmd(nmlc.rcxC, pc2));
         }
       }
   
-      support.addEvent(new ModelChangeEvent(nmlc.rcxC.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));     
-      support.addEvent(new LayoutChangeEvent(nmlc.rcxC.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), nmlc.rcxC.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));     
+      support.addEvent(new LayoutChangeEvent(nmlc.rcxC.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
       support.finish();
       return (true);
     }    
@@ -1914,8 +1902,7 @@ public class AddLink extends AbstractControlFlow {
     ** Convert a link candidate to a NetModuleLinkageProperties
     */  
    
-    private NetModuleLinkageProperties convertModuleLinkCandidate(BTState appState, NetModuleLinkCandidate lc, 
-                                                                  String linkID, String src, DataAccessContext rcxR) {
+    private NetModuleLinkageProperties convertModuleLinkCandidate(NetModuleLinkCandidate lc, String linkID, StaticDataAccessContext rcx) {
      
       // Build the segment list:
      
@@ -1930,8 +1917,8 @@ public class AddLink extends AbstractControlFlow {
       Vector2D toEndSide = trgEI.padNorm.scaled(-1.0);
       
       // We want trees to have globally unique IDs:
-      String newKey = rcxR.getNextKey();
-      NetModuleLinkageProperties nmlp = new NetModuleLinkageProperties(appState, newKey, lc.ovrKey, lc.srcMod, linkID, 
+      String newKey = rcx.getNextKey();
+      NetModuleLinkageProperties nmlp = new NetModuleLinkageProperties(newKey, lc.ovrKey, lc.srcMod, linkID, 
                                                                        lc.points.get(0), 
                                                                        lc.points.get(lc.points.size() - 1), 
                                                                        toStartSide, toEndSide);
@@ -2005,7 +1992,7 @@ public class AddLink extends AbstractControlFlow {
     ** Add a segment to an existing NetModuleLinkageProperties
     */  
    
-    private boolean addToNetModuleLinkTree(BTState appState, String linkID, NetModuleLinkCandidate nmlc) {
+    private boolean addToNetModuleLinkTree(String linkID, NetModuleLinkCandidate nmlc) {
       
       //
       // We have intersected a link segment as the source of a new link.
@@ -2014,18 +2001,18 @@ public class AddLink extends AbstractControlFlow {
       // a new segment on.
       //
   
-      NetOverlayOwner noo = nmlc.rcxC.getGenomeSource().getOverlayOwnerFromGenomeKey(nmlc.rcxC.getGenomeID());
+      NetOverlayOwner noo = nmlc.rcxC.getGenomeSource().getOverlayOwnerFromGenomeKey(nmlc.rcxC.getCurrentGenomeID());
       LinkSegmentID[] segIDs = nmlc.source.segmentIDsFromIntersect();
       
       //
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState, "undo.newNetworkModuleLink");   
-      NetModuleLinkage nml = new NetModuleLinkage(appState, linkID, nmlc.srcMod, nmlc.trgMod, nmlc.sign);
+      UndoSupport support = uFac_.provideUndoSupport("undo.newNetworkModuleLink", nmlc.rcxC);   
+      NetModuleLinkage nml = new NetModuleLinkage(nmlc.rcxC, linkID, nmlc.srcMod, nmlc.trgMod, nmlc.sign);
       NetworkOverlayChange noc = noo.addNetworkModuleLinkage(nmlc.ovrKey, nml); 
       if (noc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, nmlc.rcxC, noc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(nmlc.rcxC, noc);
         support.addEdit(gcc);
       }
     
@@ -2033,13 +2020,13 @@ public class AddLink extends AbstractControlFlow {
       // Create a new LinkProperties, glue it into the existing one:
       //
       
-      NetModuleLinkageProperties nmlp = convertNetModLinkCandidateToPropsForMerge(appState, nmlc, linkID);        
+      NetModuleLinkageProperties nmlp = convertNetModLinkCandidateToPropsForMerge(nmlc, linkID);        
       String treeID = nmlc.source.getObjectID();
-      Layout.PropChange pc = nmlc.rcxC.getLayout().mergeNewModuleLinkToTreeAtSegment(nmlp, treeID, linkID, nmlc.ovrKey, segIDs[0], nmlc.rcxC);   
+      Layout.PropChange pc = nmlc.rcxC.getCurrentLayout().mergeNewModuleLinkToTreeAtSegment(nmlp, treeID, linkID, nmlc.ovrKey, segIDs[0], nmlc.rcxC);   
       if (pc != null) {
-        support.addEdit(new PropChangeCmd(appState, nmlc.rcxC, pc));   
-        support.addEvent(new ModelChangeEvent(nmlc.rcxC.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
-        support.addEvent(new LayoutChangeEvent(nmlc.rcxC.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+        support.addEdit(new PropChangeCmd(nmlc.rcxC, pc));   
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), nmlc.rcxC.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new LayoutChangeEvent(nmlc.rcxC.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
         support.finish();
         return (true);
       }
@@ -2051,7 +2038,7 @@ public class AddLink extends AbstractControlFlow {
     ** Convert a link candidate to a NetModuleLinkProperties for merging with existing
     */  
    
-    private NetModuleLinkageProperties convertNetModLinkCandidateToPropsForMerge(BTState appState, NetModuleLinkCandidate nmlc, String linkID) {  
+    private NetModuleLinkageProperties convertNetModLinkCandidateToPropsForMerge(NetModuleLinkCandidate nmlc, String linkID) {  
       //
       // Create a new LinkProperties; add all the segments
       //
@@ -2089,7 +2076,7 @@ public class AddLink extends AbstractControlFlow {
    
       // This is a temporary holder, and does NOT get a real ID:
       NetModuleLinkageProperties nNmlp = 
-        new NetModuleLinkageProperties(appState, "fakeID", nmlc.ovrKey, nmlc.srcMod, linkID, startPt, endPt, toStartSide, toEndSide);
+        new NetModuleLinkageProperties("fakeID", nmlc.ovrKey, nmlc.srcMod, linkID, startPt, endPt, toStartSide, toEndSide);
       
       Iterator<LinkSegment> sit = segments.iterator();
       while (sit.hasNext()) {
@@ -2161,9 +2148,9 @@ public class AddLink extends AbstractControlFlow {
     public String trgMod;
     public String srcMod;
     public String ovrKey;
-    public DataAccessContext rcxC;
+    public StaticDataAccessContext rcxC;
     
-    public NetModuleLinkCandidate(int sign, String ovrKey, DataAccessContext rcxC) {
+    public NetModuleLinkCandidate(int sign, String ovrKey, StaticDataAccessContext rcxC) {
       buildState = EMPTY;
       this.rcxC = rcxC;
       this.sign = sign;

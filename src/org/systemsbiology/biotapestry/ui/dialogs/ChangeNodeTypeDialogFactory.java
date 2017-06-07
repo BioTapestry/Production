@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@ import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -138,7 +137,11 @@ public class ChangeNodeTypeDialogFactory extends DialogFactory {
       addLabeledWidget(label, typeCombo_, false, false);
       finishConstruction();
     }
-      
+     
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -177,6 +180,11 @@ public class ChangeNodeTypeDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }  
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}   
+    
     public boolean isForApply() {
       return (false);
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,11 +35,12 @@ import javax.swing.JTabbedPane;
 import org.systemsbiology.biotapestry.util.ColorDeletionListener;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.util.UndoFactory;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
-import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -62,10 +63,10 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
   //
   ////////////////////////////////////////////////////////////////////////////  
 
- // private String layoutKey_;
- // private String genomeKey_;
-  private BTState appState_; 
-  private DataAccessContext dacx_;
+  private UIComponentSource uics_; 
+  private StaticDataAccessContext dacx_;
+  private UndoFactory uFac_;
+  private HarnessBuilder hBld_;
   
   private MultiNodeTab geneTab_;
   private MultiNodeTab nodeTab_;
@@ -90,27 +91,23 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
   ** Constructor 
   */ 
   
-  public MultiSelectionPropertiesDialog(BTState appState, DataAccessContext dacx,
-                                        SUPanel sup, Set<String> genes, Set<String> nodes, Set<String> links) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("multiSelProps.title"), true);
-    appState_ = appState;
+  public MultiSelectionPropertiesDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, 
+                                        Set<String> genes, Set<String> nodes, Set<String> links, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("multiSelProps.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
+    hBld_ = hBld;
     colorListeners_ = new ArrayList<ColorDeletionListener>();
     
     
     URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/Warn24.gif");  
     warnIcon_ = new ImageIcon(ugif);
- //   layoutKey_ = layoutKey;
-  //  genomeKey_ = genomeKey;    
-    
-  //  Database db = appState_.getDB();
-  //  Genome genome = db.getGenome(genomeKey_);
-   // Layout layout = db.getLayout(layoutKey_);
- 
-    boolean haveDynInstance = (dacx.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx.getGenome() instanceof GenomeInstance) && !haveDynInstance;
+
+    boolean haveDynInstance = (dacx.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;
       
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(850, (haveDynInstance)? 400 : 500);  // Mac needs 850...
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -124,20 +121,20 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
 
     JTabbedPane tabPane = new JTabbedPane();
     if (!genes.isEmpty()) {
-      geneTab_ = new MultiNodeTab(appState_, dacx_, genes, true, colorListeners_);
-      geneCp_ = new ConsensusNodeProps(dacx.getGenome(), dacx.getLayout(), genes);
+      geneTab_ = new MultiNodeTab(uics_, dacx_, hBld_, genes, true, colorListeners_);
+      geneCp_ = new ConsensusNodeProps(dacx.getCurrentGenome(), dacx.getCurrentLayout(), genes);
       tabPane.addTab(rMan.getString("multiSelProps.geneProp"), geneTab_.buildNodeTab(haveStatInstance, haveDynInstance, geneCp_, warnIcon_));
     }
     
     if (!nodes.isEmpty()) {
-      nodeTab_ = new MultiNodeTab(appState_, dacx_, nodes, false, colorListeners_);
-      nodeCp_ = new ConsensusNodeProps(dacx.getGenome(), dacx.getLayout(), nodes);
+      nodeTab_ = new MultiNodeTab(uics_, dacx_, hBld_, nodes, false, colorListeners_);
+      nodeCp_ = new ConsensusNodeProps(dacx.getCurrentGenome(), dacx.getCurrentLayout(), nodes);
       tabPane.addTab(rMan.getString("multiSelProps.nodeProp"), nodeTab_.buildNodeTab(haveStatInstance, haveDynInstance, nodeCp_, warnIcon_));
     }
     
     if (!links.isEmpty()) {
-      linkTab_ = new MultiLinkTab(appState_, dacx_, links, colorListeners_);
-      linkCp_ = new ConsensusLinkProps(dacx.getGenome(), dacx.getLayout(), links);
+      linkTab_ = new MultiLinkTab(uics_, dacx_, hBld_, links, colorListeners_);
+      linkCp_ = new ConsensusLinkProps(dacx.getCurrentGenome(), dacx.getCurrentLayout(), links);
       tabPane.addTab(rMan.getString("multiSelProps.linkProp"), linkTab_.buildLinkTab(haveStatInstance, haveDynInstance, linkCp_, warnIcon_));
     }
     
@@ -149,9 +146,9 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
     // Build the button panel:
     //
 
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, rownum, 11, true, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties(geneCp_, nodeCp_, linkCp_);
   }
  
@@ -213,8 +210,8 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
   */
   
   private void displayProperties(ConsensusNodeProps geneCp, ConsensusNodeProps nodeCp, ConsensusLinkProps linkCp) {
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;
    
     
     if (geneTab_ != null) {
@@ -261,7 +258,7 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.multiSelProps");   
+    UndoSupport support = uFac_.provideUndoSupport("undo.multiSelProps", dacx_);   
     
     boolean doClose = false;
     boolean gotChange = false;

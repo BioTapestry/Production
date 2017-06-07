@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,5 +32,12 @@ public interface WorkspaceSource extends SimpleWorkspaceSource {
   */
 
   public DatabaseChange setWorkspace(Workspace workspace);
+  
+  /***************************************************************************
+  ** 
+  ** Used for legacy loads
+  */
+
+  public void setWorkspaceNeedsCenter();
 
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -48,15 +48,19 @@ import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.ToolTipManager;
-import javax.swing.undo.UndoManager;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.PopCommands;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.move.Mover;
 import org.systemsbiology.biotapestry.cmd.flow.move.RunningMove;
 import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.embedded.ExternalSelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.EventManager;
@@ -69,13 +73,14 @@ import org.systemsbiology.biotapestry.event.ModelChangeListener;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Note;
-import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMenu;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
 /***************************************************************************
@@ -94,7 +99,11 @@ public class SUPanel implements LayoutChangeListener,
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private TabSource tSrc_; 
+  private HarnessBuilder hBld_;
+  private DynamicDataAccessContext ddacx_;
   
   //
   // Null when headless:
@@ -138,14 +147,19 @@ public class SUPanel implements LayoutChangeListener,
   ** Constructor
   */
   
-  public SUPanel(BTState appState) {
-    myPanel_ = (appState.isHeadless()) ? null : new MyPaintPanel();
-    appState_ = appState.setSUPanel(this);
-    myGenomePre_ = new GenomePresentation(appState_, true, .38, true, appState_.getRenderingContextForZTS());
-    ZoomTargetSupport zts = new ZoomTargetSupport(appState_, myGenomePre_, myPanel_, appState_.getRenderingContextForZTS());
-    appState_.setZoomTarget(zts);
-    vexp_ = new ViewExporter(myGenomePre_, zts);
-    
+  public SUPanel(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc, HarnessBuilder hBld, DynamicDataAccessContext ddacx) {
+    uics_ = uics;
+    cSrc_ = cSrc;
+    tSrc_ = tSrc;
+    hBld_ = hBld;
+    ddacx_ = ddacx;
+    myPanel_ = (uics_.isHeadless()) ? null : new MyPaintPanel();
+    uics_.setSUPanel(this);
+    myGenomePre_ = new GenomePresentation(uics, true, .38, true, appState.getRenderingContextForZTS());
+    uics_.setGenomePresentation(myGenomePre_);
+    ZoomTargetSupport zts = new ZoomTargetSupport(myGenomePre_, myPanel_, appState.getRenderingContextForZTS());
+    uics_.setZoomTarget(zts);
+    vexp_ = new ViewExporter(myGenomePre_, zts);   
     
     // Saw freezeups with tooltips on Windows, but have not been
     // able to reproduce, so reenable for now. (BT-03-23-05:3)
@@ -157,10 +171,10 @@ public class SUPanel implements LayoutChangeListener,
       ToolTipManager.sharedInstance().registerComponent(myPanel_);
       ToolTipManager.sharedInstance().setDismissDelay(240000);
     }
-    DataAccessContext dacx = new DataAccessContext(appState_);
-    new PopCommands(appState_);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_).getContextForRoot();
+    cSrc_.setPopCmds(new PopCommands(uics_, cSrc_, ddacx, hBld_));
     // This gets built even when headless:
-    popCtrl_ = new PopControl(appState_, dacx); 
+    popCtrl_ = new PopControl(dacx, uics_, cSrc_, tSrc_, hBld_); 
     
     if (myPanel_ != null) {
       myPanel_.addMouseListener(new MouseHandler());
@@ -168,7 +182,7 @@ public class SUPanel implements LayoutChangeListener,
       myPanel_.addMouseMotionListener(motionHandle_);
     }
     
-    EventManager em = appState_.getEventMgr();
+    EventManager em = uics_.getEventMgr();
     em.addLayoutChangeListener(this);
     em.addGeneralChangeListener(this);  
     em.addModelChangeListener(this);
@@ -176,16 +190,16 @@ public class SUPanel implements LayoutChangeListener,
     if (myPanel_ != null) {
       myPanel_.setBackground(new Color(240, 240, 240));
     }
-    new TextBoxManager(appState_);
+    uics_.setTextBoxManager(new TextBoxManager(uics_, dacx));
 
     dragFloater_ = new ArrayList<Point>();
-    new CursorManager(appState_);
-    new PanelCommands(appState_);
+    uics_.setCursorManager(new CursorManager(uics_));
+    cSrc_.setPanelCmds(new PanelCommands(uics_, ddacx, hBld_));
     
   //  currentNetMods_ = new TaggedSet();
   //  revealed_ = new TaggedSet();
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     currSelMenu_ = new JMenu(rMan.getString("command.selectedItemMenu"));
     currSelMenu_.setMnemonic(rMan.getChar("command.selectedItemMenuMnem"));
   }
@@ -338,8 +352,7 @@ public class SUPanel implements LayoutChangeListener,
   ** Bump to next selection
   */
 
-  public void incrementToNextSelection() {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+  public void incrementToNextSelection(StaticDataAccessContext rcx) {
     myGenomePre_.bumpNextSelection(rcx);
     return;
   }
@@ -349,8 +362,7 @@ public class SUPanel implements LayoutChangeListener,
   ** Bump to previous selection
   */
 
-  public void decrementToPreviousSelection() {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+  public void decrementToPreviousSelection(StaticDataAccessContext rcx) {
     myGenomePre_.bumpPreviousSelection(rcx);
     return;
   }  
@@ -371,7 +383,7 @@ public class SUPanel implements LayoutChangeListener,
   
   public XPlatMenu getSelectedXPlatMenu(DataAccessContext dacx) {
     
-    if (hasASelection() && (dacx.getGenomeID() != null)) {
+    if (hasASelection() && (dacx.getCurrentGenomeID() != null)) {
       Map<String, Intersection> selmap = myGenomePre_.getSelections();
       if (selmap.size() == 1) {
         Intersection intersect = selmap.values().iterator().next();
@@ -390,7 +402,7 @@ public class SUPanel implements LayoutChangeListener,
   */
   
   public void stockSelectedMenu(DataAccessContext dacx) {
-    if (hasASelection() && (dacx.getGenomeID() != null)) {
+    if (hasASelection() && (dacx.getCurrentGenomeID() != null)) {
       Map<String, Intersection> selmap = myGenomePre_.getSelections();
       if (selmap.size() == 1) {
         Intersection intersect = selmap.values().iterator().next();
@@ -408,20 +420,11 @@ public class SUPanel implements LayoutChangeListener,
  
   /***************************************************************************
   **
-  ** Answer if links are not currently visible
-  */
-  
-  public boolean linksAreHidden(DataAccessContext rcx) {
-    return (myGenomePre_.linksAreHidden(rcx));
-  }
-    
-  /***************************************************************************
-  **
   ** Display error information
   */
   
   public void giveErrorFeedback() {
-    appState_.getCursorMgr().signalError();
+    uics_.getCursorMgr().signalError();
     Toolkit.getDefaultToolkit().beep();
     return;
   }
@@ -432,29 +435,9 @@ public class SUPanel implements LayoutChangeListener,
   */
   
   public ExternalSelectionChangeEvent getExternalSelectionEvent() {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+    StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
     return (myGenomePre_.selectionsForExternalEvents(rcx));
   }
-  
-  /***************************************************************************
-  **
-  ** Get the basic model bounds (may not be current keys!)
-  */
-  
-  public Rectangle getBasicBounds(DataAccessContext rcx, boolean doComplete, boolean doBuffer, int moduleHandling) {  
-    if (moduleHandling == ZoomTarget.VISIBLE_MODULES) {
-      throw new IllegalArgumentException();
-    }
-    
-    boolean doModules = false;
-    Map<String, Layout.OverlayKeySet> allKeys = null;
-    if (moduleHandling == ZoomTarget.ALL_MODULES) {
-      doModules = true;
-      allKeys = rcx.fgho.fullModuleKeysPerLayout();
-    }
-    
-    return (myGenomePre_.getRequiredSize(rcx, doComplete, doBuffer, doModules, doModules, null, null, allKeys));  
-  } 
   
   /***************************************************************************
   **
@@ -462,17 +445,17 @@ public class SUPanel implements LayoutChangeListener,
   ** hiding links), we only select nodes:
   */
   
-  public void selectAll(UndoManager undom, DataAccessContext rcx) {
+  public void selectAll(UIComponentSource uics, UndoFactory uFac, StaticDataAccessContext rcx) {
 
-    String currentOverlay = rcx.oso.getCurrentOverlay();
+    String currentOverlay = rcx.getOSO().getCurrentOverlay();
     if (currentOverlay != null) {
-      NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(currentOverlay);
+      NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(currentOverlay);
       if (nop.hideLinks()) {
-        myGenomePre_.selectAllNodes(rcx, undom);
+        myGenomePre_.selectAllNodes(uics, rcx, uFac);
         return;
       }
     }
-    myGenomePre_.selectAll(rcx, undom);
+    myGenomePre_.selectAll(uics, rcx, uFac);
     return;
   }
   
@@ -481,8 +464,8 @@ public class SUPanel implements LayoutChangeListener,
   ** Select nobody
   */
   
-  public void selectNone(UndoManager undom, DataAccessContext rcx) {
-    myGenomePre_.selectNone(rcx, undom);
+  public void selectNone(UIComponentSource uics, UndoFactory uFac, StaticDataAccessContext rcx) {
+    myGenomePre_.selectNone(uics, rcx, uFac);
     return;
   }  
 
@@ -491,8 +474,8 @@ public class SUPanel implements LayoutChangeListener,
   ** Drop nodes from selections
   */
   
-  public void dropNodeSelections(Integer type, UndoManager undom, DataAccessContext rcx) {
-    myGenomePre_.dropNodeSelections(rcx, type, undom);
+  public void dropNodeSelections(UIComponentSource uics, Integer type, UndoFactory uFac, StaticDataAccessContext rcx) {
+    myGenomePre_.dropNodeSelections(uics, rcx, type, uFac);
     return;
   }
   
@@ -501,9 +484,9 @@ public class SUPanel implements LayoutChangeListener,
   ** Drop links from selections
   */
   
-  public SelectionChangeCmd.Bundle dropLinkSelections(boolean recordBundle, UndoManager undom, DataAccessContext rcx) {
+  public SelectionChangeCmd.Bundle dropLinkSelections(UIComponentSource uics, boolean recordBundle, UndoFactory uFac, StaticDataAccessContext rcx) {
     SelectionChangeCmd.Bundle bundle = (recordBundle) ? new SelectionChangeCmd.Bundle() : null;
-    myGenomePre_.dropLinkSelections(rcx, bundle, undom);
+    myGenomePre_.dropLinkSelections(uics, rcx, bundle, uFac);
     return (bundle);
   }  
 
@@ -514,7 +497,7 @@ public class SUPanel implements LayoutChangeListener,
   
   public void toggleTargetBubbles() {
     showBubbles_ = !showBubbles_;
-    if (appState_.getPanelCmds().isInShowBubbleMode()) {
+    if (cSrc_.getPanelCmds().isInShowBubbleMode()) {
       pushedShowBubbles_ = showBubbles_;
     }
     return;
@@ -545,9 +528,8 @@ public class SUPanel implements LayoutChangeListener,
   ** Set the set of selected node IDs
   */
   
-  public Set<String> getSelectedNodes() {
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome(appState_.getGenome()); 
+  public Set<String> getSelectedNodes(DataAccessContext rcx) {
+    Genome genome = rcx.getCurrentGenome();
     Map<String, Intersection> selmap = myGenomePre_.getSelections();
  
     HashSet<String> retval = new HashSet<String>();   
@@ -593,11 +575,16 @@ public class SUPanel implements LayoutChangeListener,
       return (NO_SUCH_PAGE);
     }
     
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx, rmov_, 
+    StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
+    boolean showAsDiff = false;
+    if (rcx.currentGenomeIsADynamicInstance()) {  
+      showAsDiff = rcx.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID()).showAsSimDiff();
+    }   
+    IRenderer.Mode mode = (!showAsDiff) ? IRenderer.Mode.NORMAL : IRenderer.Mode.DELTA;
+    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics_, rcx, cSrc_, rmov_, 
                                                                   menuDrivenShowComponentModule_, 
                                                                   dragLayout_, multiMoveLayout_, 
-                                                                  null, null, appState_.getFontMgr());
+                                                                  null, null, rcx.getFontManager(), mode);
 
     return (vexp_.print(g, pf, pageIndex, sfd));
   }
@@ -607,16 +594,20 @@ public class SUPanel implements LayoutChangeListener,
   ** Support image export
   */  
   
-  public ViewExporter.BoundsMaps exportToFile(File saveFile, boolean calcMap, 
+  public ViewExporter.BoundsMaps exportToFile(UIComponentSource uics, DataAccessContext rcx, 
+                                              File saveFile, boolean calcMap, 
                                               String format, ImageExporter.ResolutionSettings res,
-                                              double zoom, Dimension size, OverlayStateOracle oso) throws IOException {
+                                              double zoom, Dimension size) throws IOException {
 
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-    rcx.oso = oso;
-    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx, rmov_, 
+    boolean showAsDiff = false;
+    if (rcx.currentGenomeIsADynamicInstance()) {  
+      showAsDiff = rcx.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID()).showAsSimDiff();
+    }  
+    IRenderer.Mode mode = (!showAsDiff) ? IRenderer.Mode.NORMAL : IRenderer.Mode.DELTA;
+    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics, rcx, cSrc_, rmov_, 
                                                                   menuDrivenShowComponentModule_, 
                                                                   dragLayout_, multiMoveLayout_, 
-                                                                  null, null, appState_.getFontMgr());
+                                                                  null, null, rcx.getFontManager(), mode);
     
     
     
@@ -628,15 +619,19 @@ public class SUPanel implements LayoutChangeListener,
   ** Support image export
   */  
   
-  public ViewExporter.BoundsMaps exportToStream(OutputStream stream, boolean calcMap, 
+  public ViewExporter.BoundsMaps exportToStream(UIComponentSource uics, DataAccessContext rcx,
+                                                OutputStream stream, boolean calcMap, 
                                                 String format, ImageExporter.ResolutionSettings res,
-                                                double zoom, Dimension size, OverlayStateOracle oso) throws IOException {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-    rcx.oso = oso;
-    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx, rmov_, 
+                                                double zoom, Dimension size) throws IOException {
+    boolean showAsDiff = false;
+    if (rcx.currentGenomeIsADynamicInstance()) {  
+      showAsDiff = rcx.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID()).showAsSimDiff();
+    }  
+    IRenderer.Mode mode = (!showAsDiff) ? IRenderer.Mode.NORMAL : IRenderer.Mode.DELTA;
+    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics, rcx, cSrc_, rmov_, 
                                                                   menuDrivenShowComponentModule_, 
                                                                   dragLayout_, multiMoveLayout_, 
-                                                                  null, null, appState_.getFontMgr());
+                                                                  null, null, rcx.getFontManager(), mode);
     return (vexp_.exportToStream(stream, calcMap, format, res, zoom, size, sfd));
   }   
 
@@ -645,15 +640,19 @@ public class SUPanel implements LayoutChangeListener,
   ** Support JSON export
   */  
   
-  public Map<String,Object> exportModelMap(boolean calcMap, double zoom, Dimension size, OverlayStateOracle oso) throws IOException {
+  public Map<String,Object> exportModelMap(UIComponentSource uics, StaticDataAccessContext rcx, boolean calcMap, 
+                                           double zoom, Dimension size) throws IOException {
     
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-    rcx.oso = oso;
-    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx, rmov_, 
+    boolean showAsDiff = false;
+    if (rcx.currentGenomeIsADynamicInstance()) {  
+      showAsDiff = rcx.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID()).showAsSimDiff();
+    }  
+    IRenderer.Mode mode = (!showAsDiff) ? IRenderer.Mode.NORMAL : IRenderer.Mode.DELTA;
+    ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics, rcx, cSrc_, rmov_, 
                                                                   menuDrivenShowComponentModule_, 
                                                                   dragLayout_, multiMoveLayout_, 
-                                                                  null, rcx.getGenomeSource().getTextFromGenomeKey(rcx.getGenomeID()), 
-                                                                  appState_.getFontMgr());
+                                                                  null, rcx.getGenomeSource().getTextFromGenomeKey(rcx.getCurrentGenomeID()), 
+                                                                  rcx.getFontManager(), mode);
     return (vexp_.exportMapGuts(calcMap, zoom, size, sfd));
   }    
   
@@ -673,7 +672,7 @@ public class SUPanel implements LayoutChangeListener,
   */   
 
   public void modelHasChanged(ModelChangeEvent event) {
-    appState_.getTextBoxMgr().checkForChanges(event);
+    uics_.getTextBoxMgr().checkForChanges(event);
     drawModel(false);
     return;
   }  
@@ -735,7 +734,7 @@ public class SUPanel implements LayoutChangeListener,
           requestFocusForModelInWindow();
         }
 
-        DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
         if (me.isPopupTrigger()) {
           Point pscreenLoc = me.getComponent().getLocationOnScreen();
           Point abs = new Point(me.getX() + pscreenLoc.x, me.getY() + pscreenLoc.y);
@@ -754,7 +753,7 @@ public class SUPanel implements LayoutChangeListener,
         //    return;
         //  }     
           Point pt = new Point();
-          appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt);      
+          rcx.getZoomTarget().transformClick(me.getX(), me.getY(), pt);      
           dragSelect_ = nothingHit(pt, rcx);
           /*
           System.out.println("me = " + me);
@@ -765,7 +764,7 @@ public class SUPanel implements LayoutChangeListener,
           */
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
@@ -775,7 +774,7 @@ public class SUPanel implements LayoutChangeListener,
       if (me.isPopupTrigger()) {
         Point pscreenLoc = me.getComponent().getLocationOnScreen();
         Point abs = new Point(me.getX() + pscreenLoc.x, me.getY() + pscreenLoc.y);
-        DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
         triggerPopup(me.getX(), me.getY(), abs, rcx);
       }
       return;
@@ -790,11 +789,11 @@ public class SUPanel implements LayoutChangeListener,
       try {
         motionHandle_.mouseMoved(me);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }        
       return;
     }       
-    
+
     @Override
     public void mouseReleased(MouseEvent me) {
       //
@@ -820,7 +819,7 @@ public class SUPanel implements LayoutChangeListener,
         lastAbs_ = null;
         dragLayout_ = null;
         multiMoveLayout_ = null;
-        DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
         if (me.isPopupTrigger()) {
           Point pscreenLoc = me.getComponent().getLocationOnScreen();
           Point abs = new Point(me.getX() + pscreenLoc.x, me.getY() + pscreenLoc.y);
@@ -853,13 +852,13 @@ public class SUPanel implements LayoutChangeListener,
         rmov_ = null;
         lastPress_ = null;  // DO THIS NO MATTER WHAT TOO
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
          
       return;
     }
 
-    private boolean nothingHit(Point pt, DataAccessContext rcx) {    
+    private boolean nothingHit(Point pt, StaticDataAccessContext rcx) {    
       List<Intersection.AugmentedIntersection> augs = myGenomePre_.intersectItem(pt.x, pt.y, rcx, true, false);
       Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcx)).selectionRanker(augs);
       Intersection intersect = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
@@ -868,8 +867,8 @@ public class SUPanel implements LayoutChangeListener,
         if (myGenomePre_.noMiscHits(rcx, pt)) {
           return (true);
         }
-      } else if (rcx.getGenome() instanceof GenomeInstance) {  // OK to hit group, but not group label...
-        GenomeInstance gi = rcx.getGenomeAsInstance();
+      } else if (rcx.getCurrentGenome() instanceof GenomeInstance) {  // OK to hit group, but not group label...
+        GenomeInstance gi = rcx.getCurrentGenomeAsInstance();
         if (gi.getGroup(intersect.getObjectID()) != null) {
           String groupID = Intersection.getLabelID(intersect);
           if (groupID == null) {
@@ -886,32 +885,32 @@ public class SUPanel implements LayoutChangeListener,
     // Route the click:
     //    
     
-    private void clickResult(int x, int y, boolean isShifted, boolean isCtrl, DataAccessContext rcx) {
+    private void clickResult(int x, int y, boolean isShifted, boolean isCtrl, StaticDataAccessContext rcx) {
       if (isCtrl) {
         myGenomePre_.setFloater(null);
         return;
       }
       Point pt = new Point();
-      appState_.getZoomTarget().transformClick(x, y, pt);
-      appState_.getPanelCmds().processMouseClick(pt, isShifted, rcx);    
+      rcx.getZoomTarget().transformClick(x, y, pt);
+      cSrc_.getPanelCmds().processMouseClick(pt, isShifted, rcx);    
       return;
     }
     
     private void dragResult(int sx, int sy, int ex, int ey, 
-                            boolean isShifted, boolean isCtrl, DataAccessContext rcx) {
+                            boolean isShifted, boolean isCtrl, StaticDataAccessContext rcx) {
       if (isCtrl) {  // Keep floater alive!
         return;
       }
       // Actually rubber band box pulldowns are NOT currently supported!
-      if (appState_.getPanelCmds().isModal() && appState_.getIsEditor()) {  // Keep floater alive!
-        if (appState_.getPanelCmds().dragNotAllowedForMode()) {
+      if (cSrc_.getPanelCmds().isModal() && uics_.getIsEditor()) {  // Keep floater alive!
+        if (cSrc_.getPanelCmds().dragNotAllowedForMode()) {
           Vector2D totalDrag = new Vector2D(ex - sx, ey - sy);
           if (totalDrag.length() < ACCEPT_DRAG_AS_CLICK_) {
             clickResult(sx, sy, isShifted, isCtrl, rcx);
             return;
           }
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(),
+          ResourceManager rMan = rcx.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                         rMan.getString("addLink.noDragMessage"), 
                                         rMan.getString("addLink.placementErrorTitle"),
                                         JOptionPane.ERROR_MESSAGE);
@@ -919,10 +918,10 @@ public class SUPanel implements LayoutChangeListener,
         return;
       }
       Point spt = new Point();
-      appState_.getZoomTarget().transformClick(sx, sy, spt);
+      rcx.getZoomTarget().transformClick(sx, sy, spt);
       Point ept = new Point();
-      appState_.getZoomTarget().transformClick(ex, ey, ept);
-      if (rcx.getGenome() != null) {
+      rcx.getZoomTarget().transformClick(ex, ey, ept);
+      if (rcx.getCurrentGenome() != null) {
         //
         // Once a drag is done, we either move something (if editing), select stuff in a box, or do nothing
         //
@@ -930,7 +929,7 @@ public class SUPanel implements LayoutChangeListener,
         Point2D end = new Point2D.Double(ept.x, ept.y);
         boolean didAMove = false;
         
-        if (appState_.getIsEditor()) {
+        if (uics_.getIsEditor()) {
           if (rmov_ == null) {
             rmov_ = Mover.generateRMov(myGenomePre_, rcx, start);
           }
@@ -939,18 +938,18 @@ public class SUPanel implements LayoutChangeListener,
               giveErrorFeedback();
               return;
             }
-            didAMove = appState_.getPanelCmds().doAMove(rmov_, end);
+            didAMove = cSrc_.getPanelCmds().doAMove(rmov_, end);
             rmov_ = null;
           }
         }
         if (!didAMove) {
           Rectangle rect = buildRect(start, end);
           if (rect != null) {
-            appState_.getPanelCmds().selectItems(rect, isShifted);
+            cSrc_.getPanelCmds().selectItems(rect, isShifted);
           }
         }
         myGenomePre_.setFloater(null);
-        appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+        uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
         drawModel(false);
       }
     }
@@ -982,15 +981,15 @@ public class SUPanel implements LayoutChangeListener,
       return (null);
     }
 
-    private void triggerPopup(int x, int y, Point screenAbs, DataAccessContext rcx) {
+    private void triggerPopup(int x, int y, Point screenAbs, StaticDataAccessContext rcx) {
       try {
-        if (appState_.getPanelCmds().isModal()) {
+        if (cSrc_.getPanelCmds().isModal()) {
           return;
         }
-        if (rcx.getGenome() != null) {
-          String currentOverlay = rcx.oso.getCurrentOverlay();
+        if (rcx.getCurrentGenome() != null) {
+          String currentOverlay = rcx.getOSO().getCurrentOverlay();
           Point pt = new Point();
-          appState_.getZoomTarget().transformClick(x, y, pt);
+          rcx.getZoomTarget().transformClick(x, y, pt);
           List<Intersection.AugmentedIntersection> itemList = myGenomePre_.intersectItem(pt.x, pt.y, rcx, true, (currentOverlay != null));
           Intersection.AugmentedIntersection aug = (new IntersectionChooser(false, rcx).selectionRanker(itemList));
           if ((aug == null) || (aug.intersect == null)) {
@@ -1020,7 +1019,7 @@ public class SUPanel implements LayoutChangeListener,
         }
         return;
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }
@@ -1034,7 +1033,8 @@ public class SUPanel implements LayoutChangeListener,
     @Override
     public void mouseDragged(MouseEvent me) {
       try {
-        appState_.getTextBoxMgr().clearCurrentMouseOver();
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
+        uics_.getTextBoxMgr().clearCurrentMouseOver();
         if ((lastView_ == null) || (lastAbs_ == null) || (lastPress_ == null)) {
           return;
         }
@@ -1076,13 +1076,13 @@ public class SUPanel implements LayoutChangeListener,
         }
         // Can't rubber band for any modal case except root instance pull down...
         // Actually rubber band box pulldowns are NOT currently supported!       
-        if (appState_.getPanelCmds().isModal()) {
+        if (cSrc_.getPanelCmds().isModal()) {
           return;
         }
         Point pt0 = new Point();
-        appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt0);        
+        rcx.getZoomTarget().transformClick(me.getX(), me.getY(), pt0);        
         Point pt2 = new Point();
-        appState_.getZoomTarget().transformClick(lastPress_.getX(), lastPress_.getY(), pt2);       
+        rcx.getZoomTarget().transformClick(lastPress_.getX(), lastPress_.getY(), pt2);       
         if (dragSelect_) {
           UiUtil.forcePtToGrid(pt0.x, pt0.y, pt0);
           UiUtil.forcePtToGrid(pt2.x, pt2.y, pt2); 
@@ -1094,10 +1094,9 @@ public class SUPanel implements LayoutChangeListener,
           Point pt3 = new Point(pt0.x, pt2.y);
           dragFloater_.add(pt3);
           myGenomePre_.setFloater(dragFloater_);        
-        } else if (appState_.getIsEditor()) { 
+        } else if (uics_.getIsEditor()) { 
           // How's this for inefficient???
-          DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-          dragLayout_ = new Layout(rcx.getLayout());
+          dragLayout_ = new Layout(rcx.getCurrentLayout());
           if (rmov_ == null) {
             //
             // ISSUE #215 RMOV generation now using the original lastPress_, not the gridded lastPress_;
@@ -1115,7 +1114,7 @@ public class SUPanel implements LayoutChangeListener,
               giveErrorFeedback();
               return;
             }
-            appState_.getPanelCmds().visualizeAMove(rmov_, pt0, dragLayout_);
+            cSrc_.getPanelCmds().visualizeAMove(rmov_, pt0, dragLayout_);
           }
           // #215 FIX: Do gridding now, not before, to make the floater on-grid.
           UiUtil.forcePtToGrid(pt0.x, pt0.y, pt0);
@@ -1123,34 +1122,34 @@ public class SUPanel implements LayoutChangeListener,
         myGenomePre_.setFloaterPosition(pt0);
         drawModel(false);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
     
     @Override
     public void mouseMoved(MouseEvent me) {
       try {
-        DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
         String mouseOverText = null;
-        if (!appState_.getIsEditor()) {
+        if (!uics_.getIsEditor()) {
           mouseOverText = getMouseOverText(me, rcx);
           if (mouseOverText != null) {
-            appState_.getTextBoxMgr().setCurrentMouseOver(mouseOverText);
+            uics_.getTextBoxMgr().setCurrentMouseOver(mouseOverText);
           } else {
-            appState_.getTextBoxMgr().clearCurrentMouseOver();
+            uics_.getTextBoxMgr().clearCurrentMouseOver();
           }
           return;
         }
-        PanelCommands.ModeHandler handler = appState_.getPanelCmds().getCurrentHandler(!appState_.getIsEditor());
+        PanelCommands.ModeHandler handler = cSrc_.getPanelCmds().getCurrentHandler(!uics_.getIsEditor());
         if (myGenomePre_.isFloaterActive()) {
           Point pt = new Point();
-          appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt);          
-          if (handler.floaterIsRect() && appState_.getIsEditor()) {
+          rcx.getZoomTarget().transformClick(me.getX(), me.getY(), pt);          
+          if (handler.floaterIsRect() && uics_.getIsEditor()) {
             int x = UiUtil.forceToGridValueInt(pt.x, UiUtil.GRID_SIZE);
             int y = UiUtil.forceToGridValueInt(pt.y, UiUtil.GRID_SIZE);  
             myGenomePre_.setFloater(handler.getFloater(x, y), handler.getFloaterColor());        
           } else {
-            if (handler.floaterIsLines() && appState_.getIsEditor()) {
+            if (handler.floaterIsLines() && uics_.getIsEditor()) {
               int x = UiUtil.forceToGridValueInt(pt.x, UiUtil.GRID_SIZE);
               int y = UiUtil.forceToGridValueInt(pt.y, UiUtil.GRID_SIZE);  
               List ptList = (List)handler.getFloater(x, y);                    
@@ -1164,35 +1163,35 @@ public class SUPanel implements LayoutChangeListener,
             myGenomePre_.setFloaterPosition(pt);
           }
           drawModel(false);
-        } else if (handler.isMoveHandler() && appState_.getIsEditor()) {
+        } else if (handler.isMoveHandler() && uics_.getIsEditor()) {
           Point pt = new Point();
-          appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt);
-          appState_.getPanelCmds().processMouseMotion(pt, rcx);
-        } else if (!appState_.getPanelCmds().isModal()) {
+          rcx.getZoomTarget().transformClick(me.getX(), me.getY(), pt);
+          cSrc_.getPanelCmds().processMouseMotion(pt, rcx);
+        } else if (!cSrc_.getPanelCmds().isModal()) {
           mouseOverText = getMouseOverText(me, rcx);
         }
         if (mouseOverText != null) {
-          appState_.getTextBoxMgr().setCurrentMouseOver(mouseOverText);
+          uics_.getTextBoxMgr().setCurrentMouseOver(mouseOverText);
         } else {
-          appState_.getTextBoxMgr().clearCurrentMouseOver();
+          uics_.getTextBoxMgr().clearCurrentMouseOver();
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }      
     
-    private String getMouseOverText(MouseEvent me, DataAccessContext rcx) {
-      if (rcx.getGenome() == null) {
+    private String getMouseOverText(MouseEvent me, StaticDataAccessContext rcx) {
+      if (rcx.getCurrentGenome() == null) {
         return (null);
       }
       Point pt = new Point();
-      appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt);
+      rcx.getZoomTarget().transformClick(me.getX(), me.getY(), pt);
       Point2D pt2d = new Point2D.Float(pt.x, pt.y);
       List<Intersection> itemList = myGenomePre_.intersectNotes(pt2d, rcx, true);
       Intersection intersect = (new IntersectionChooser(true, rcx).intersectionRanker(itemList));
       if (intersect != null) {
         String itemID = intersect.getObjectID();
-        Note note = rcx.getGenome().getNote(itemID);
+        Note note = rcx.getCurrentGenome().getNote(itemID);
         if (note != null) {
           return (note.getTextWithBreaksReplaced());
         }
@@ -1214,26 +1213,31 @@ public class SUPanel implements LayoutChangeListener,
     public void paintComponent(Graphics g) {
       try {
         super.paintComponent(g);
-        vexp_.drawingGuts(g, false, false, null, showBubbles_, true, getSFD());
-        appState_.getTextBoxMgr().refresh();
+        StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
+        vexp_.drawingGuts(g, false, false, null, showBubbles_, true, getSFD(uics_, rcx));
+        uics_.getTextBoxMgr().refresh();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayPaintException(ex);
+        uics_.getExceptionHandler().displayPaintException(ex);
       }
       return;
     }
     
     /***************************************************************************
     **
-    ** Get the preferred size
+    ** Get the state for draw
     */
 
-    private ViewExporter.StateForDraw getSFD() {
-      DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-      ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx, rmov_, 
+    private ViewExporter.StateForDraw getSFD(UIComponentSource uics, StaticDataAccessContext rcx) {
+      boolean showAsDiff = false;
+      if (rcx.currentGenomeIsADynamicInstance()) {  
+        showAsDiff = rcx.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)rcx.getCurrentGenome()).getProxyID()).showAsSimDiff();
+      }  
+      IRenderer.Mode mode = (!showAsDiff) ? IRenderer.Mode.NORMAL : IRenderer.Mode.DELTA;
+      ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics, rcx, cSrc_, rmov_, 
                                                                     menuDrivenShowComponentModule_, 
                                                                     dragLayout_, multiMoveLayout_, 
                                                                     myScrollPane_.getViewport().getViewRect(), null, 
-                                                                    appState_.getFontMgr());
+                                                                    rcx.getFontManager(), mode);
       return (sfd);
     }
     
@@ -1244,7 +1248,7 @@ public class SUPanel implements LayoutChangeListener,
     
     @Override
     public Dimension getPreferredSize() {
-      return (appState_.getZoomTarget().getPreferredSize());
+      return (uics_.getZoomTarget().getPreferredSize());
     }
     
     /***************************************************************************
@@ -1255,8 +1259,8 @@ public class SUPanel implements LayoutChangeListener,
     @Override
     public String getToolTipText(MouseEvent event) {
       Point tipPoint = event.getPoint();
-      appState_.getZoomTarget().transformPoint(tipPoint);
-      DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+      StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
+      rcx.getZoomTarget().transformPoint(tipPoint);   
       List<Intersection.AugmentedIntersection> augs = myGenomePre_.intersectItem(tipPoint.x, tipPoint.y, rcx, false, false);    
       Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcx)).selectionRanker(augs);
       if ((ai == null) || (ai.intersect == null)) {
@@ -1264,11 +1268,11 @@ public class SUPanel implements LayoutChangeListener,
       }
       String objID = ai.intersect.getObjectID();
       
-      Linkage link = rcx.getGenome().getLinkage(objID);  // This could be ANY link through a bus segment
+      Linkage link = rcx.getCurrentGenome().getLinkage(objID);  // This could be ANY link through a bus segment
       if (link == null) {
         return (null);
       }
-      return (vexp_.buildTooltip(objID, getSFD()));
+      return (vexp_.buildTooltip(objID, getSFD(uics_, rcx)));
     }  
   }  
 }

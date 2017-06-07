@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,6 @@ public class NavigationChange {
   public int oldHour;
   public int newHour;
   public String sliderID;
-  public CommonView commonView;
   public boolean userPathSelection;
   public boolean userPathSync;  
   public String oldUserPathKey;

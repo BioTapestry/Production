@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -16,7 +16,6 @@
 **    License along with this library; if not, write to the Free Software
 **    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 */
-
 
 package org.systemsbiology.biotapestry.ui.dialogs;
 
@@ -35,8 +34,9 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -58,7 +58,8 @@ public class InstructionMismatchChoicesDialog extends JDialog {
   private JRadioButton changeOtherInstruct_;
   private boolean haveResult_;
   private boolean doSplit_;
-  private BTState appState_;
+  private UIComponentSource uics_; 
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -73,13 +74,14 @@ public class InstructionMismatchChoicesDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public InstructionMismatchChoicesDialog(BTState appState, JFrame parent, BuildInstructionProcessor.MatchChecker checker) {     
-    super(parent, appState.getRMan().getString("instructionMismatch.title"), true);
-    appState_ = appState;
+  public InstructionMismatchChoicesDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, BuildInstructionProcessor.MatchChecker checker) {     
+    super(parent, dacx.getRMan().getString("instructionMismatch.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     haveResult_ = false;
     doSplit_ = false;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(550, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -133,7 +135,7 @@ public class InstructionMismatchChoicesDialog extends JDialog {
             InstructionMismatchChoicesDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -146,7 +148,7 @@ public class InstructionMismatchChoicesDialog extends JDialog {
             InstructionMismatchChoicesDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -238,8 +240,8 @@ public class InstructionMismatchChoicesDialog extends JDialog {
   */
   
   private String buildMustSplitMessage(ResourceManager rMan, BuildInstructionProcessor.MatchChecker checker) {
-    BuildInstructionProcessor.CoreInfo ci = (BuildInstructionProcessor.CoreInfo)checker.differentCores.get(0);
-    BuildInstructionProcessor.CoreInfo ci2 = (BuildInstructionProcessor.CoreInfo)checker.differentCores.get(1);
+    BuildInstructionProcessor.CoreInfo ci = checker.differentCores.get(0);
+    BuildInstructionProcessor.CoreInfo ci2 = checker.differentCores.get(1);
     int size = checker.differentCores.size();
     String coDisp = checker.original.displayStringUI(rMan);
     String cicDisp = ci.core.displayStringUI(rMan);
@@ -265,7 +267,7 @@ public class InstructionMismatchChoicesDialog extends JDialog {
   */
   
   private String buildMessage(ResourceManager rMan, BuildInstructionProcessor.MatchChecker checker) {
-    BuildInstructionProcessor.CoreInfo ci = (BuildInstructionProcessor.CoreInfo)checker.differentCores.get(0);
+    BuildInstructionProcessor.CoreInfo ci = checker.differentCores.get(0);
     String coDisp = checker.original.displayStringUI(rMan);
     String cicDisp = ci.core.displayStringUI(rMan);
     String desc = MessageFormat.format(rMan.getString("instructionMismatch.description"), 

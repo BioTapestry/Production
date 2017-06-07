@@ -21,10 +21,11 @@ package org.systemsbiology.biotapestry.ui;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Map;
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
@@ -106,6 +107,7 @@ public class PerLinkDrawStyle implements Cloneable {
   ** Clone
   */
 
+  @Override
   public PerLinkDrawStyle clone() {
     try {
       PerLinkDrawStyle retval = (PerLinkDrawStyle)super.clone();
@@ -182,6 +184,16 @@ public class PerLinkDrawStyle implements Cloneable {
     return;
   }
   
+  /***************************************************************************
+  **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    style_.mapColorTags(ctm);
+    return;
+  }  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CLASS METHODS
@@ -228,10 +240,10 @@ public class PerLinkDrawStyle implements Cloneable {
   ** Return possible extent values
   */
   
-  public static Vector<ChoiceContent> getExtentChoices(BTState appState) {
+  public static Vector<ChoiceContent> getExtentChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_EXTENTS_; i++) {
-      retval.add(extentForCombo(appState, i));    
+      retval.add(extentForCombo(dacx, i));    
     }
     return (retval);
   }
@@ -241,8 +253,8 @@ public class PerLinkDrawStyle implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent extentForCombo(BTState appState, int extent) {
-    return (new ChoiceContent(appState.getRMan().getString("perLinkDrawStyle." + mapExtent(extent)), extent));
+  public static ChoiceContent extentForCombo(DataAccessContext dacx, int extent) {
+    return (new ChoiceContent(dacx.getRMan().getString("perLinkDrawStyle." + mapExtent(extent)), extent));
   }  
 
   ////////////////////////////////////////////////////////////////////////////

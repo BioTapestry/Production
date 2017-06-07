@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,13 +22,14 @@ package org.systemsbiology.biotapestry.cmd.flow.gaggle;
 import java.util.HashSet;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.gaggle.SelectionSupport;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -44,7 +45,8 @@ public class GaggleSupport {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -57,8 +59,9 @@ public class GaggleSupport {
   ** Constructor 
   */ 
   
-  public GaggleSupport(BTState appState) {
-    appState_ = appState;
+  public GaggleSupport(UIComponentSource uics, UndoFactory uFac) {
+    uics_ = uics;
+    uFac_ = uFac;
   }
 
   /***************************************************************************
@@ -66,10 +69,10 @@ public class GaggleSupport {
   ** Select nodes transmitted from gaggle
   */
   
-  public void selectFromGaggle(SelectionSupport.SelectionsForSpecies sfs) {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
+  public void selectFromGaggle(SelectionSupport.SelectionsForSpecies sfs, StaticDataAccessContext dacx) {
+    // current genome and layout CANNOT be stale:
     HashSet<String> found = new HashSet<String>();
-    Genome genome = rcx.getGenome();
+    Genome genome = dacx.getCurrentGenome();
     Iterator<String> sit = sfs.selections.iterator();
     while (sit.hasNext()) {
       String nextSel = sit.next();
@@ -89,8 +92,8 @@ public class GaggleSupport {
       }
     }
     if (!found.isEmpty()) {
-      appState_.getGenomePresentation().appendToSelectNodes(found, rcx, appState_.getUndoManager());
-      appState_.getSUPanel().drawModel(false);
+      uics_.getGenomePresentation().appendToSelectNodes(uics_, found, dacx, uFac_);
+      uics_.getSUPanel().drawModel(false);
     }
     return;
   }      
@@ -100,12 +103,11 @@ public class GaggleSupport {
   ** Clear nodes per gaggle
   */
   
-  public void clearFromGaggle() {
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-    UndoSupport support = new UndoSupport(appState_, "undo.selection");
-    appState_.getGenomePresentation().clearSelections(rcx, support);
+  public void clearFromGaggle(StaticDataAccessContext dacx) {
+    UndoSupport support = uFac_.provideUndoSupport("undo.selection", dacx);
+    uics_.getGenomePresentation().clearSelections(uics_, dacx, support);
     support.finish();
-    appState_.getSUPanel().drawModel(false);
+    uics_.getSUPanel().drawModel(false);
     return;
   } 
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,7 +43,9 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.move.RunningMove;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -58,7 +60,6 @@ import org.systemsbiology.biotapestry.genome.XPlatDisplayText;
 import org.systemsbiology.biotapestry.ui.freerender.DrawTree;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.CacheGroup;
-import org.systemsbiology.biotapestry.ui.modelobjectcache.CommonCacheGroup;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ConcreteGraphicsCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.JSONGroupVisitor;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache;
@@ -120,19 +121,21 @@ public class ViewExporter {
       return (Printable.NO_SUCH_PAGE);
     }
     
-    if (sfd.rcx.oso == null) {
-      sfd.rcx.oso = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
+    if (sfd.rcx.getOSO() == null) {
+      StaticDataAccessContext sdac = new StaticDataAccessContext(sfd.rcx);
+      sdac.setOSO(new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null));
+      sfd.rcx = sdac;
     }
     
-    String currentOverlay = sfd.rcx.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = sfd.rcx.oso.getCurrentNetModules();
+    String currentOverlay = sfd.rcx.getOSO().getCurrentOverlay();
+    TaggedSet currentNetMods = sfd.rcx.getOSO().getCurrentNetModules();
     
     double px = pf.getImageableX();
     double py = pf.getImageableY();
     double pw = pf.getImageableWidth();
     double ph = pf.getImageableHeight();
     boolean doModules = (currentOverlay != null) && !currentNetMods.set.isEmpty();
-    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.fgho.fullModuleKeysPerLayout() : null;
+    Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.getFGHO().fullModuleKeysPerLayout() : null;
     Rectangle origRect = myGenomePre_.getRequiredSize(sfd.rcx, true, true, doModules, doModules,  
                                                       currentOverlay, currentNetMods, allKeys);    
    
@@ -210,16 +213,17 @@ public class ViewExporter {
     int width;
     int height;
     
-    if (sfd.rcx.oso == null) {
-      sfd.rcx.oso = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
+    if (sfd.rcx.getOSO() == null) {
+      StaticDataAccessContext sdac = new StaticDataAccessContext(sfd.rcx);
+      sdac.setOSO(new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null));
+      sfd.rcx = sdac;
     }
-    
-    
-    String currentOverlay = sfd.rcx.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = sfd.rcx.oso.getCurrentNetModules();
+  
+    String currentOverlay = sfd.rcx.getOSO().getCurrentOverlay();
+    TaggedSet currentNetMods = sfd.rcx.getOSO().getCurrentNetModules();
     if (size == null) {
       boolean doModules = (currentOverlay != null) && !currentNetMods.set.isEmpty();
-      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.fgho.fullModuleKeysPerLayout() : null;
+      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.getFGHO().fullModuleKeysPerLayout() : null;
       Rectangle rect = myGenomePre_.getRequiredSize(sfd.rcx, true, true, doModules, doModules,
                                                     currentOverlay, currentNetMods, allKeys);                  
       width = (int)(rect.width * zoom); 
@@ -279,16 +283,18 @@ public class ViewExporter {
     int width;
     int height;
     
-    if (sfd.rcx.oso == null) {
-      sfd.rcx.oso = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
+    if (sfd.rcx.getOSO() == null) {
+      StaticDataAccessContext sdac = new StaticDataAccessContext(sfd.rcx);
+      sdac.setOSO(new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null));
+      sfd.rcx = sdac;
     }
-    
-    String currentOverlay = sfd.rcx.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = sfd.rcx.oso.getCurrentNetModules();
+ 
+    String currentOverlay = sfd.rcx.getOSO().getCurrentOverlay();
+    TaggedSet currentNetMods = sfd.rcx.getOSO().getCurrentNetModules();
     Rectangle rect = null;
     if (size == null) {
       boolean doModules = (currentOverlay != null) && !currentNetMods.set.isEmpty();
-      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.fgho.fullModuleKeysPerLayout() : null;
+      Map<String, Layout.OverlayKeySet> allKeys = (doModules) ? sfd.rcx.getFGHO().fullModuleKeysPerLayout() : null;
       rect = myGenomePre_.getRequiredSize(sfd.rcx, true, false, doModules, doModules,
                                           currentOverlay, currentNetMods, allKeys);                  
       width = (int)(rect.width * zoom); 
@@ -336,7 +342,7 @@ public class ViewExporter {
     model_info.put("model_h",rect.height);
     model_info.put("model_x",rect.x);
     model_info.put("model_y",rect.y);
-    model_info.put("modelID", sfd.rcx.getGenomeID());
+    model_info.put("modelID", sfd.rcx.getCurrentGenomeID());
        
     HashMap<DrawLayer, ArrayList<String>> groups_per_layers = new HashMap<DrawLayer, ArrayList<String>>();
     Map<String, Object> id_to_meta = new HashMap<String, Object>();	    
@@ -364,7 +370,7 @@ public class ViewExporter {
     
     // Export workspace bounds
     HashMap<String, Object> workspace_info = new HashMap<String, Object>();
-    Rectangle workspaceRect = sfd.rcx.wSrc.getWorkspace().getWorkspace();
+    Rectangle workspaceRect = sfd.rcx.getWorkspaceSource().getWorkspace().getWorkspace();
 
     workspace_info.put("x", workspaceRect.getX());
     workspace_info.put("y", workspaceRect.getY());
@@ -421,7 +427,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
                                 boolean doRect, StateForDraw sfd) {
     
     BoundsMaps retval = null;
-    if (sfd.rcx.getGenome() != null) {
+    if (sfd.rcx.getCurrentGenome() != null) {
       Graphics2D g2 = (Graphics2D)g;   
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
@@ -436,11 +442,12 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       // The zoomer sticks the zoom scaling on. 
       //
       AffineTransform saveTrans = g2.getTransform();
-      AffineTransform useTrans = (ovrTra == null) ? null : ovrTra.buildTransform();     
+      AffineTransform useTrans = (ovrTra == null) ? null : ovrTra.buildTransform();   
+      System.out.println("Use trans = " + useTrans);
       zts_.installTransform(g2, useTrans);
             
       if (doRect) {
-        Workspace ws = sfd.rcx.wSrc.getWorkspace();
+        Workspace ws = sfd.rcx.getWorkspaceSource().getWorkspace();
         Point2D origin = ws.getOrigin();
         Rectangle2D rect = new Rectangle2D.Double(origin.getX(), origin.getY(),
                                                   ws.getWidth(), ws.getHeight());
@@ -456,13 +463,13 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       } else if (sfd.multiMoveLayout != null) {
         useLayout = sfd.multiMoveLayout;
       } else {
-        useLayout = sfd.rcx.getLayout();
+        useLayout = sfd.rcx.getCurrentLayout();
       }
 
       Rectangle viewRect = null;
       GenomePresentation.OpaqueOverlayInfo ooi = null;
       Graphics2D ig2 = null;
-      String currentOverlay = sfd.rcx.oso.getCurrentOverlay();
+      String currentOverlay = sfd.rcx.getOSO().getCurrentOverlay();
       if (currentOverlay != null) {
         NetOverlayProperties nop = useLayout.getNetOverlayProperties(currentOverlay);
         if (nop.getType() == NetOverlayProperties.OvrType.OPAQUE) {
@@ -478,7 +485,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
           }
           ig2 = bim_.createGraphics();
           ig2.setTransform(new AffineTransform());
-          Color drawCol = new Color(1.0f, 1.0f, 1.0f, (float)sfd.rcx.oso.getCurrentOverlaySettings().backgroundOverlayAlpha); 
+          Color drawCol = new Color(1.0f, 1.0f, 1.0f, (float)sfd.rcx.getOSO().getCurrentOverlaySettings().backgroundOverlayAlpha); 
           ig2.setBackground(drawCol);
           ig2.clearRect(0, 0, viewRect.width, viewRect.height);
           ig2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -530,8 +537,8 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       }
   
       Set<String> showModuleComponents = null;
-      if (sfd.rcx.oso.showingModuleComponents()) {
-        showModuleComponents = sfd.rcx.oso.getCurrentNetModules().set;
+      if (sfd.rcx.getOSO().showingModuleComponents()) {
+        showModuleComponents = sfd.rcx.getOSO().getCurrentNetModules().set;
       } else {
         if (sfd.showModuleComps) {
           PanelCommands.MotionHandler handler = sfd.moHandler;
@@ -556,13 +563,13 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       ConcreteGraphicsCache overlayCache = new ConcreteGraphicsCache();
       ConcreteGraphicsCache floaterCache = new ConcreteGraphicsCache();
       
-      DataAccessContext rcxP = new DataAccessContext(sfd.rcx);
+      StaticDataAccessContext rcxP = new StaticDataAccessContext(sfd.rcx);
       rcxP.setLayout(useLayout);
-      rcxP.lSrc = new LocalLayoutSource(useLayout, rcxP.getGenomeSource());
-      rcxP.pixDiam = zts_.currentPixelDiameter();
-      rcxP.showBubbles = showBubbles;
-      myGenomePre_.presentGenomeWithOverlay(cgc, overlayCache, floaterCache, g2, ooi, rcxP,
-          																	sfd.showRoot, showModuleComponents);
+      rcxP.setLayoutSource(new LocalLayoutSource(useLayout, rcxP.getGenomeSource()));
+      rcxP.setPixDiam(zts_.currentPixelDiameter());
+      rcxP.setShowBubbles(showBubbles);
+      myGenomePre_.presentGenomeWithOverlay(cgc, overlayCache, floaterCache, rcxP,
+          																	sfd.showRoot, showModuleComponents, sfd.mode);
       
       cgc.renderAllGroupsInDrawLayer(g2, DrawLayer.BACKGROUND_REGIONS);
       cgc.renderAllGroupsInDrawLayer(g2, DrawLayer.UNDERLAY);
@@ -602,7 +609,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       //      
      
       if ((getNoteBounds || getNodeBounds)) {
-        DataAccessContext rcxQ = new DataAccessContext(sfd.rcx);
+        StaticDataAccessContext rcxQ = new StaticDataAccessContext(sfd.rcx);
         rcxQ.setLayout(useLayout);
         retval = new BoundsMaps();
         if (getNoteBounds) {        
@@ -625,7 +632,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
   
   public String buildTooltip(String linkID, StateForDraw sfd) {
   
-    Genome genome = sfd.rcx.getGenome();
+    Genome genome = sfd.rcx.getCurrentGenome();
     Linkage link = genome.getLinkage(linkID);  // This could be ANY link through a bus segment
     if (link == null) {
       return (null);
@@ -633,7 +640,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
     Node srcNode = genome.getNode(link.getSource());
     String src = srcNode.getName();
     if ((src == null) || (src.trim().equals(""))) {
-      src = sfd.rcx.rMan.getString("tip.noname");
+      src = sfd.rcx.getRMan().getString("tip.noname");
     }
     if (genome instanceof GenomeInstance) {
       GenomeInstance gi = (GenomeInstance)genome;
@@ -643,7 +650,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
         src = src + " [" + grpName + "]";
       }  
     }
-    String format = sfd.rcx.rMan.getString("tip.source");
+    String format = sfd.rcx.getRMan().getString("tip.source");
     String desc = MessageFormat.format(format, new Object[] {src});
     return (desc);
   }
@@ -656,7 +663,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
   public Map<String, String> buildTooltips(StateForDraw sfd) {
   
     HashMap<String, String> retval = new HashMap<String, String>();
-    Genome genome = sfd.rcx.getGenome();
+    Genome genome = sfd.rcx.getCurrentGenome();
     Iterator<Linkage> lit = genome.getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
@@ -700,14 +707,12 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
     } else if (sfd.multiMoveLayout != null) {
       useLayout = sfd.multiMoveLayout;
     } else {
-      useLayout = sfd.rcx.getLayout();
+      useLayout = sfd.rcx.getCurrentLayout();
     }  	
- 
-    GenomePresentation.OpaqueOverlayInfo ooi = null;
     
     Set<String> showModuleComponents = null;
-    if (sfd.rcx.oso.showingModuleComponents()) {
-      showModuleComponents = sfd.rcx.oso.getCurrentNetModules().set;
+    if (sfd.rcx.getOSO().showingModuleComponents()) {
+      showModuleComponents = sfd.rcx.getOSO().getCurrentNetModules().set;
     } else {
       if (sfd.showModuleComps) {
         PanelCommands.MotionHandler handler = sfd.moHandler;
@@ -728,12 +733,12 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       }
     }
    
-    DataAccessContext rcxQ = new DataAccessContext(sfd.rcx);
+    StaticDataAccessContext rcxQ = new StaticDataAccessContext(sfd.rcx);
     rcxQ.setLayout(useLayout);
-    rcxQ.pixDiam = zts_.currentPixelDiameter();
-    rcxQ.showBubbles = showBubbles;
-    myGenomePre_.presentGenomeWithOverlay(moc, overlayCache, floaterCache, null, ooi, rcxQ, 
-                                          sfd.showRoot, showModuleComponents);
+    rcxQ.setPixDiam(zts_.currentPixelDiameter());
+    rcxQ.setShowBubbles(showBubbles);
+    myGenomePre_.presentGenomeWithOverlay(moc, overlayCache, floaterCache, rcxQ, 
+                                          sfd.showRoot, showModuleComponents, sfd.mode);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -750,6 +755,8 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
   public static class StateForDraw {
     
     DataAccessContext rcx;
+    UIComponentSource uics;
+    CmdSource cSrc;
     boolean showRoot;
     boolean showModuleComps;
     PanelCommands.MotionHandler moHandler;
@@ -760,16 +767,20 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
     String menuDrivenShowComponentModule;
     XPlatDisplayText displayText;
     FontManager fMgr;
+    IRenderer.Mode mode;
    
-    public StateForDraw(BTState appState, DataAccessContext rcx, RunningMove rmov,
+    public StateForDraw(UIComponentSource uics, DataAccessContext rcx, CmdSource cSrc, RunningMove rmov,
                         String menuDrivenShowComponentModule,  
                         Layout dragLayout, Layout multiMoveLayout, Rectangle imgView, 
-                        XPlatDisplayText displayText, FontManager fMgr) {
+                        XPlatDisplayText displayText, FontManager fMgr, IRenderer.Mode mode) {
  
       this.rcx = rcx;
-      showRoot = (appState != null) ? !appState.getPanelCmds().getCurrentHandler(!appState.getIsEditor()).isPullDownHandler() : false;    
-      showModuleComps  = (appState != null) ? appState.getPanelCmds().showModuleComponentsForMode() : false;
-      moHandler = (showModuleComps && (appState != null)) ? (PanelCommands.MotionHandler)appState.getPanelCmds().getCurrentHandler(false) : null; 
+      this.uics = uics;
+      this.cSrc = cSrc;
+      PanelCommands.ModeHandler mh = cSrc.getPanelCmds().getCurrentHandler(!uics.getIsEditor());
+      showRoot = (uics != null) ? !mh.isPullDownHandler() : false;    
+      showModuleComps  = (uics != null) ? cSrc.getPanelCmds().showModuleComponentsForMode() : false;
+      moHandler = (showModuleComps && (uics != null)) ? (PanelCommands.MotionHandler)cSrc.getPanelCmds().getCurrentHandler(false) : null; 
       this.rmov = rmov;
       this.dragLayout = dragLayout;
       this.multiMoveLayout = multiMoveLayout;
@@ -777,6 +788,7 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       this.displayText = displayText; 
       this.fMgr = fMgr;
       this.imgView = imgView;
+      this.mode = mode;
     }
   }
    

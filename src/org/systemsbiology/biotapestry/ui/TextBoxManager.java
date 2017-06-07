@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,8 @@ import java.awt.Graphics;
 
 import javax.swing.JTextPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.NetModule;
@@ -56,13 +57,14 @@ public class TextBoxManager {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
+  private UIComponentSource uics_;
   private boolean isHeadless_;
   private String[] currText_;
   private String[] currSourceKeys_;
   private String currMouseOver_;
   private LazyJTextPane textPane_;
   private String displayedText_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -70,9 +72,10 @@ public class TextBoxManager {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  public TextBoxManager(BTState appState) {
-    appState_ = appState.setTextBoxManager(this);
-    isHeadless_ = appState_.isHeadless();
+  public TextBoxManager(UIComponentSource uics, DataAccessContext dacx) {
+    uics_ = uics;
+    dacx_ = dacx;
+    isHeadless_ = uics_.isHeadless();
     if (!isHeadless_) {   
       textPane_ = new LazyJTextPane(this);
     }
@@ -175,7 +178,7 @@ public class TextBoxManager {
         if (currSourceKeys_[MODEL_MESSAGE] == null) {
           currText_[MODEL_MESSAGE] = null;
         } else {
-          Genome genome = appState_.getDB().getGenome(currSourceKeys_[MODEL_MESSAGE]);
+          Genome genome = dacx_.getGenomeSource().getGenome(currSourceKeys_[MODEL_MESSAGE]);
           currText_[MODEL_MESSAGE] = genome.getDescription();
         }
         break;
@@ -184,7 +187,7 @@ public class TextBoxManager {
             (currSourceKeys_[OVERLAY_MESSAGE] == null)) {
           currText_[OVERLAY_MESSAGE] = null;
         } else {
-          NetOverlayOwner owner = appState_.getDB().getOverlayOwnerFromGenomeKey(currSourceKeys_[MODEL_MESSAGE]);
+          NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(currSourceKeys_[MODEL_MESSAGE]);
           NetworkOverlay nol = owner.getNetworkOverlay(currSourceKeys_[OVERLAY_MESSAGE]);
           currText_[OVERLAY_MESSAGE] = nol.getDescription();
         }
@@ -195,7 +198,7 @@ public class TextBoxManager {
             (currSourceKeys_[NETMOD_MESSAGE] == null)) {
           currText_[NETMOD_MESSAGE] = null;
         } else {
-          NetOverlayOwner owner = appState_.getDB().getOverlayOwnerFromGenomeKey(currSourceKeys_[MODEL_MESSAGE]);
+          NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(currSourceKeys_[MODEL_MESSAGE]);
           NetworkOverlay nol = owner.getNetworkOverlay(currSourceKeys_[OVERLAY_MESSAGE]);
           NetModule nmod = nol.getModule(currSourceKeys_[NETMOD_MESSAGE]);
           currText_[NETMOD_MESSAGE] = nmod.getDescription();
@@ -207,7 +210,7 @@ public class TextBoxManager {
           currText_[SELECTED_ITEM_MESSAGE] = null;
         } else {
           currText_[SELECTED_ITEM_MESSAGE] = null;
-          Genome genome = appState_.getDB().getGenome(currSourceKeys_[MODEL_MESSAGE]);
+          Genome genome = dacx_.getGenomeSource().getGenome(currSourceKeys_[MODEL_MESSAGE]);
           Note note = genome.getNote(currSourceKeys_[SELECTED_ITEM_MESSAGE]);
           if (note != null) {
             currText_[SELECTED_ITEM_MESSAGE] = note.getTextWithBreaksReplaced();

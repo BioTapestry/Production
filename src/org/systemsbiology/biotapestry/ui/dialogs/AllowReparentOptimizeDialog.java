@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,10 +20,12 @@
 package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.Dimension;
+
 import javax.swing.ButtonGroup;
 import javax.swing.JRadioButton;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -56,8 +58,8 @@ public class AllowReparentOptimizeDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public AllowReparentOptimizeDialog(BTState appState) {
-    super(appState, "allowRepOpt.title", new Dimension(400, 200), 1);
+  public AllowReparentOptimizeDialog(UIComponentSource uics, DataAccessContext dacx) {
+    super(uics, dacx, "allowRepOpt.title", new Dimension(400, 200), 1);
     allowReparenting_ = false;
 
     ButtonGroup group = new ButtonGroup();

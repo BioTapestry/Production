@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@ import java.util.TreeSet;
 import java.util.Iterator;
 import java.util.Collections;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -56,9 +55,7 @@ public class DuplicateInstructionTracker {
   //
   // PRIVATE INSTANCE VARIABLES
   //
-  ////////////////////////////////////////////////////////////////////////////
-  
-  private BTState appState_;
+  //////////////////////////////////////////////////////////////////////////// 
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,8 +68,7 @@ public class DuplicateInstructionTracker {
   ** Constructor
   */
 
-  public DuplicateInstructionTracker(BTState appState) {
-    appState_ = appState;
+  public DuplicateInstructionTracker() {
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -113,7 +109,7 @@ public class DuplicateInstructionTracker {
         cd.emptyRequired = emptyCount.count;
       }
       cd.idCounts.put(bid, new Integer(0));
-      cd.emptyForModel = dacx.getGenomeID();
+      cd.emptyForModel = dacx.getCurrentGenomeID();
     }
 
     
@@ -207,7 +203,7 @@ public class DuplicateInstructionTracker {
       }
     }
     DatabaseChange dc = dacx.getInstructSrc().setBuildInstructions(newCmds);
-    support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+    support.addEdit(new DatabaseChangeCmd(dacx, dc));
 
     //
     // Use the modified core analysis data to modify the instruction sets
@@ -238,7 +234,7 @@ public class DuplicateInstructionTracker {
           }
         }
         dc = dacx.getInstructSrc().setInstanceInstructionSet(key, iisNew);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));    
+        support.addEdit(new DatabaseChangeCmd(dacx, dc));    
       }
     }    
     return (newCmds);

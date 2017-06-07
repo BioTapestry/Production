@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.TimeAxisHelper;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -78,7 +79,7 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
   
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
       return (new DesktopDialog(cfh, dniba.defaultName, dniba.timeBounded, 
-                                dniba.minTime, dniba.maxTime, dniba.suggested));
+                                dniba.minTime, dniba.maxTime, dniba.suggested, cfh.getUndoFactory()));
     } else if (platform.getPlatform() == DialogPlatform.Plat.WEB) {
       throw new IllegalStateException();
     }
@@ -143,6 +144,7 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
     private boolean suggested_;
     private TimeAxisHelper timeAxisHelper_;
     private DataAccessContext dacx_;
+    private UndoFactory uFac_;
     
     private static final long serialVersionUID = 1L;
     
@@ -158,8 +160,9 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
     */ 
     
     public DesktopDialog(ServerControlFlowHarness cfh, String defaultName, boolean timeBounded, 
-                         int minTime, int maxTime, boolean suggested) { 
+                         int minTime, int maxTime, boolean suggested, UndoFactory uFac) { 
       super(cfh, "gicreate.title", new Dimension(500, 200), 4, new GenomeInstanceCreationRequest(), false);
+      uFac_ = uFac;
       minTime_ = minTime;
       maxTime_ = maxTime;
       timeBounded_ = timeBounded;
@@ -205,7 +208,7 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
             maxField_.setEnabled(enabled);
             maxFieldLabel_.setEnabled(enabled);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -217,7 +220,7 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
       minFieldLabel_ = new JLabel("");
       maxFieldLabel_ = new JLabel(""); 
       
-      timeAxisHelper_ = new TimeAxisHelper(appState_, dacx_, this, minFieldLabel_, maxFieldLabel_);    
+      timeAxisHelper_ = new TimeAxisHelper(uics_, dacx_, this, minFieldLabel_, maxFieldLabel_, uFac_);    
       timeAxisHelper_.fixMinMaxLabels(false);
       
       minField_ = (timeBounded_) ? new JTextField(timeAxisHelper_.timeValToDisplay(minTime_)) : new JTextField();
@@ -290,6 +293,10 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
        nocrq.haveResult = true;
        return (true);
     }
+    
+    public boolean dialogIsModal() {
+      return (true);
+    }
   }
  
   /***************************************************************************
@@ -313,6 +320,10 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }  
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}   
     public boolean isForApply() {
       return (false);
     }

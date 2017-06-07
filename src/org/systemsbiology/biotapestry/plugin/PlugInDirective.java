@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -97,7 +97,7 @@ public class PlugInDirective extends AbstractPlugInDirective {
   ** Map types
   */
 
-  public String mapToTypeTag(int val) {   
+  public String mapToTypeTag(DirType val) {   
     switch (val) {
       case INTERNAL_DATA_DISPLAY:
         return (INTERNAL_DATA_DISPLAY_TAG); 
@@ -113,11 +113,11 @@ public class PlugInDirective extends AbstractPlugInDirective {
   ** Map types to values
   */
 
-  public  int mapFromTypeTag(String tag) {
+  public DirType mapFromTypeTag(String tag) {
     if (tag.equalsIgnoreCase(INTERNAL_DATA_DISPLAY_TAG)) {
-      return (INTERNAL_DATA_DISPLAY); 
+      return (DirType.INTERNAL_DATA_DISPLAY); 
     } else if (tag.equalsIgnoreCase(EXTERNAL_DATA_DISPLAY_TAG)) {
-      return (EXTERNAL_DATA_DISPLAY);       
+      return (DirType.EXTERNAL_DATA_DISPLAY);       
     } else {
       throw new IllegalArgumentException();
     }
@@ -135,8 +135,8 @@ public class PlugInDirective extends AbstractPlugInDirective {
   **
   */
   
-  public static Set keywordsOfInterest() {
-    HashSet retval = new HashSet();
+  public static Set<String> keywordsOfInterest() {
+    HashSet<String> retval = new HashSet<String>();
     retval.add(PLUGIN_TAG_);
     return (retval);
   }

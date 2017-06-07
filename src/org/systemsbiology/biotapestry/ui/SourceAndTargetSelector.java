@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngine;
 
@@ -60,7 +60,7 @@ public class SourceAndTargetSelector {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext rcx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -73,7 +73,7 @@ public class SourceAndTargetSelector {
   ** Constructor 
   */ 
   
-  public SourceAndTargetSelector(DataAccessContext rcx) {
+  public SourceAndTargetSelector(StaticDataAccessContext rcx) {
     rcx_ = rcx;
   }
 
@@ -90,7 +90,7 @@ public class SourceAndTargetSelector {
   */
   
   public SearchResult doCriteriaSelection(String nodeID, Searches selectType, 
-                                          boolean includeItem, boolean includeLinks, GraphSearcher.CriteriaJudge judge) {
+                                          boolean includeLinks, GraphSearcher.CriteriaJudge judge) {
     SearchResult retval = new SearchResult(includeLinks);
     HashSet<String> startNodes = new HashSet<String>();
     startNodes.add(nodeID);
@@ -125,7 +125,7 @@ public class SourceAndTargetSelector {
         retval.found.addAll(nodeIDs);
         break;
       case TARGET_SELECT:
-        Iterator<Linkage> lit = rcx_.getGenome().getLinkageIterator();
+        Iterator<Linkage> lit = rcx_.getCurrentGenome().getLinkageIterator();
         // Using a map of link intersections PER SOURCE fixes BT-02-04-08:1
         HashMap<String, Intersection> linkInters = new HashMap<String, Intersection>();
         while (lit.hasNext()) {
@@ -148,7 +148,7 @@ public class SourceAndTargetSelector {
         }
         break;
       case SOURCE_SELECT:
-        Iterator<Linkage> slit = rcx_.getGenome().getLinkageIterator();
+        Iterator<Linkage> slit = rcx_.getCurrentGenome().getLinkageIterator();
         while (slit.hasNext()) {
           Linkage link = slit.next();
           String targ = link.getTarget();
@@ -163,7 +163,7 @@ public class SourceAndTargetSelector {
           }
         }
         if (includeLinks) {
-          retval.linkIntersections = rcx_.getLayout().getIntersectionsForLinks(rcx_, linksFromSources, false);
+          retval.linkIntersections = rcx_.getCurrentLayout().getIntersectionsForLinks(rcx_, linksFromSources, false);
         }
         break;
       default:
@@ -184,7 +184,7 @@ public class SourceAndTargetSelector {
     SearchResult retval = new SearchResult(false);
     HashSet<String> linksFromSources = new HashSet<String>();
 
-    Iterator<Linkage> slit = rcx_.getGenome().getLinkageIterator();
+    Iterator<Linkage> slit = rcx_.getCurrentGenome().getLinkageIterator();
     while (slit.hasNext()) {
       Linkage link = slit.next();
       String linkID = link.getID();
@@ -195,7 +195,7 @@ public class SourceAndTargetSelector {
       }
     }
 
-    retval.linkIntersections = rcx_.getLayout().getIntersectionsForLinks(rcx_, linksFromSources, false); 
+    retval.linkIntersections = rcx_.getCurrentLayout().getIntersectionsForLinks(rcx_, linksFromSources, false); 
     return (retval);
   }
   
@@ -214,7 +214,7 @@ public class SourceAndTargetSelector {
   */
     
   private Set<String> findCriteriaSelections(Set<String> startNodes, boolean invert, GraphSearcher.CriteriaJudge judge) {   
-    GraphSearcher gs = new GraphSearcher(new SpecialtyLayoutEngine.NodePlaceSupport(rcx_.getGenome()), invert);    
+    GraphSearcher gs = new GraphSearcher(new SpecialtyLayoutEngine.NodePlaceSupport(rcx_.getCurrentGenome()), invert);    
     List<GraphSearcher.QueueEntry> results  = gs.breadthSearchUntilStopped(startNodes, judge);
     HashSet<String> retval = new HashSet<String>();
     Iterator<GraphSearcher.QueueEntry> rit = results.iterator();

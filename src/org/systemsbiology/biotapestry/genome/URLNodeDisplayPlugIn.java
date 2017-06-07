@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.plugin.InternalNodeDataDisplayPlugIn;
 
 /****************************************************************************
@@ -52,7 +53,7 @@ public class URLNodeDisplayPlugIn extends URLDisplayPlugIn implements InternalNo
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////  
-    
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PROTECTED METHODS
@@ -64,12 +65,15 @@ public class URLNodeDisplayPlugIn extends URLDisplayPlugIn implements InternalNo
   ** Answer if we are per-instance:
   */
   
-  protected boolean isUrlListPerInstance(String genomeID, String itemId) {
+  protected boolean isUrlListPerInstance(String dbID, String genomeID, String itemId) {
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();  
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
 
@@ -91,16 +95,19 @@ public class URLNodeDisplayPlugIn extends URLDisplayPlugIn implements InternalNo
   ** Get URL list
   */
   
-  protected List<String> getUrlListFromArgs(String genomeID, String geneId) {
+  protected List<String> getUrlListFromArgs(String dbID, String genomeID, String geneId) {
   
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();  
+    
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
-    Database db = appState_.getDB();
    
     //
     // If we have our own URLS, we display them.  If not, we display the root
@@ -109,7 +116,7 @@ public class URLNodeDisplayPlugIn extends URLDisplayPlugIn implements InternalNo
     
     Node node = genome.getNode(geneId);
     if ((node.getURLCount() == 0) && haveInstance) {
-      Genome useGenome = db.getGenome();
+      Genome useGenome = dacx.getDBGenome();
       String useID = GenomeItemInstance.getBaseID(geneId);
       node = useGenome.getNode(useID);
     }

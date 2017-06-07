@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -129,17 +129,17 @@ public class GridGrower {
     
     ArrayList<GeneralizedGridElement> retval = new ArrayList<GeneralizedGridElement>();
     for (int i = 0; i < geSize; i++) {
-      GeneralizedGridElement gge = (GeneralizedGridElement)gridElements.get(i);
+      GeneralizedGridElement gge = gridElements.get(i);
       if (gge instanceof CenteredGridElement) {    
         CenteredGridElement cge = (CenteredGridElement)gge;
-        Rectangle2D currTargi = (Rectangle2D)workingMap.get(cge.minGridElement.id);
+        Rectangle2D currTargi = workingMap.get(cge.minGridElement.id);
         GridElement gei = buildNewElement(cge.minGridElement, currTargi, mode);
-        Rectangle2D currTarga = (Rectangle2D)workingMap.get(cge.maxGridElement.id);
+        Rectangle2D currTarga = workingMap.get(cge.maxGridElement.id);
         GridElement gea = buildNewElement(cge.maxGridElement, currTarga, mode);
         retval.add(new CenteredGridElement(gei, gea));
       } else { 
         GridElement ge = (GridElement)gge;
-        Rectangle2D currTarg = (Rectangle2D)workingMap.get(ge.id);
+        Rectangle2D currTarg = workingMap.get(ge.id);
         retval.add(buildNewElement(ge, currTarg, mode)); 
       }
     }    
@@ -190,7 +190,7 @@ public class GridGrower {
     //
     
     Object targID = growElement.id;
-    Rectangle2D workingTarget = (Rectangle2D)workingElements.get(targID);
+    Rectangle2D workingTarget = workingElements.get(targID);
     double remaining = remainingXGrowth(growElement, workingTarget);
     if (remaining == 0.0) {
       return;

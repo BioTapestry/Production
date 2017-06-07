@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ import java.text.MessageFormat;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureProps;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
@@ -67,7 +67,7 @@ class QpcrTablePublisher {
   private boolean bigScreen_;
   private Map<String, String> spanColors_;
   private String scaleKey_;
-  private BTState appState_;
+  private TabPinnedDynamicDataAccessContext ddacx_;
        
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,13 +80,13 @@ class QpcrTablePublisher {
   ** For exports
   */
 
-  QpcrTablePublisher(BTState appState, Map<String, String> colors) {
-    appState_ = appState;
+  QpcrTablePublisher(TabPinnedDynamicDataAccessContext ddacx, Map<String, String> colors) {
+    ddacx_ = ddacx;
     out_ = null;
     noCss_ = false;
     bigScreen_ = false;
     spanColors_ = colors;
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dOpt = ddacx_.getDisplayOptsSource().getDisplayOptions();
     scaleKey_ = dOpt.getPerturbDataDisplayScaleKey();
   }
    
@@ -95,13 +95,14 @@ class QpcrTablePublisher {
   ** For experimental data display
   */
 
-  QpcrTablePublisher(BTState appState, boolean bigScreen, Map<String, String> colors) { 
-    appState_ = appState;
+  @SuppressWarnings("unused")
+  QpcrTablePublisher(TabPinnedDynamicDataAccessContext ddacx, boolean bigScreen, Map<String, String> colors) { 
+    ddacx_ = ddacx;
     out_ = null;
     noCss_ = true;
     bigScreen_ = false;
     spanColors_ = colors;
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dOpt = ddacx_.getDisplayOptsSource().getDisplayOptions();
     scaleKey_ = dOpt.getPerturbDataDisplayScaleKey();
   }
    
@@ -158,7 +159,7 @@ class QpcrTablePublisher {
     out_.write("/*]]>*/\n");
     ind.down().indent();    
     out_.write("</style>\n");    
-    qpcr.writeHTML(out_, ind, this);
+    qpcr.writeHTML(out_, ind, this, ddacx_);
     ind.down().indent();
     out_.write("</body>\n");
     ind.down().indent();
@@ -268,9 +269,9 @@ class QpcrTablePublisher {
   */
 
   void colorsAndScaling() { 
-    PerturbationData pd = appState_.getDB().getPertData();
+    PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
     MeasureDictionary md = pd.getMeasureDictionary();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = ddacx_.getRMan();
     String colorNote = rMan.getString("qpcrData.colorKeyFmt"); 
     
     
@@ -331,7 +332,7 @@ class QpcrTablePublisher {
   **
   */
   
-  void writePerturbationHeader(Indenter ind, NullTimeSpan span) {  
+  void writePerturbationHeader(Indenter ind, NullTimeSpan span) {   
     ind.indent();
     out_.println("<p></p>");
     ind.indent();    
@@ -348,11 +349,11 @@ class QpcrTablePublisher {
     ind.indent();  
     out_.println("<td>");
     ind.up().indent();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = ddacx_.getRMan();
     String tabNote = rMan.getString("qpcrData.nullTableNote");    
     
     MinMax tc = new MinMax(span.getMin(), span.getMax());
-    String tdisp = TimeSpan.spanToString(appState_, tc);
+    String tdisp = TimeSpan.spanToString(ddacx_, tc);
     
     if (!span.isASpan()) {
       StringBuffer spanBuf = new StringBuffer();

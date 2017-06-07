@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,8 +32,7 @@ import java.util.Vector;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -88,7 +87,8 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   private int pad_;
   private int lpad_;
   protected Double activityLevel_;  // will be null unless activity is variable
-  protected int activity_; 
+  protected int activity_;
+  protected Double simulationLevel_; // will be null unless simulation level is installed
   
   private String description_;
   private ArrayList<String> urls_;
@@ -112,6 +112,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     this.lpad_ = other.lpad_;
     this.activityLevel_ = other.activityLevel_;
     this.activity_ = other.activity_;
+    this.simulationLevel_ = other.simulationLevel_;
     this.description_ = other.description_;
     this.urls_ = new ArrayList<String>(other.urls_);   
   }
@@ -129,6 +130,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     this.lpad_ = other.lpad_;
     this.activityLevel_ = other.activityLevel_;
     this.activity_ = other.activity_;
+    this.simulationLevel_ = other.simulationLevel_;
     this.description_ = other.description_;
     this.urls_ = new ArrayList<String>(other.urls_);
   } 
@@ -157,9 +159,9 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   ** For UI-based creation
   */
 
-  public LinkageInstance(BTState appState, DBLinkage backing, int instance, 
+  public LinkageInstance(DataAccessContext dacx, DBLinkage backing, int instance, 
                          int srcInstance, int trgInstance) {                           
-    super(appState, backing, instance);
+    super(dacx, backing, instance);
     this.src_ = getCombinedID(backing.getSource(), Integer.toString(srcInstance));
     this.targ_ = getCombinedID(backing.getTarget(), Integer.toString(trgInstance));
     this.pad_ = backing.getLandingPad();
@@ -167,6 +169,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     // Link instances created at VfA level start off active:
     this.activityLevel_ = null;
     this.activity_ = ACTIVE;
+    this.simulationLevel_ = null;
     this.description_ = null;
     this.urls_ = new ArrayList<String>();
   }
@@ -176,12 +179,12 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   ** Name and id
   */
 
-  public LinkageInstance(BTState appState, DBGenomeItem backing, String instance, 
+  public LinkageInstance(DataAccessContext dacx, DBGenomeItem backing, String instance, 
                          String src, String targ, String pad, 
                          String lpad, String activityLevel, 
                          String activityType) throws IOException {
       
-    super(appState, backing, instance);
+    super(dacx, backing, instance);
     src_ = src.trim();
     targ_ = targ.trim();
     
@@ -225,6 +228,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
       activityLevel_ = null;
     }
     
+    simulationLevel_ = null;
     description_ = null;
     urls_ = new ArrayList<String>();
   }
@@ -237,9 +241,31 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   
   /***************************************************************************
   **
+  ** Answers the simulation activity level. May be null.
+  ** 
+  */
+  
+  public Double getSimulationLevel() {
+    return (simulationLevel_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Set the simulation activity level. May be null.
+  ** 
+  */
+  
+  public void setSimulationLevel(Double level) {
+    simulationLevel_ = level;
+    return;
+  }
+  
+  /***************************************************************************
+  **
   ** Clone
   */
 
+  @Override
   public LinkageInstance clone() {
     LinkageInstance retval = (LinkageInstance)super.clone();
     retval.urls_ = new ArrayList<String>(this.urls_);
@@ -253,8 +279,8 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   */
   
   public DBGenomeItem getBacking() {
-    GenomeSource gSrc = (altSrc_ == null) ? appState_.getDB() : altSrc_;
-    return ((DBGenomeItem)gSrc.getGenome().getLinkage(myItemID_)); 
+    GenomeSource gSrc = (altSrc_ == null) ? dacx_.getGenomeSource() : altSrc_;
+    return ((DBGenomeItem)gSrc.getRootDBGenome().getLinkage(myItemID_)); 
   }
   
   /***************************************************************************
@@ -426,7 +452,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
 
     ActivityTracking retval = new ActivityTracking();
     
-    Database db = appState_.getDB();
+    GenomeSource gs = dacx_.getGenomeSource();
     retval.parentActivity = null;
     retval.parentActivityLevel = Double.NEGATIVE_INFINITY;
     retval.childActivities = null;
@@ -449,7 +475,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     // Child bounds.  We cannot be any inconsistent with any of our children.
     //
    
-    Iterator<GenomeInstance> git = db.getInstanceIterator();
+    Iterator<GenomeInstance> git = gs.getInstanceIterator();
     while (git.hasNext()) {
       GenomeInstance giKid = git.next();
       if (giKid == gi) {
@@ -561,7 +587,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   public String getDisplayString(Genome genome, boolean typePreface) {
     Node srcNode = genome.getNode(src_);
     Node trgNode = genome.getNode(targ_);
-    String format = DBLinkage.mapSignToDisplay(appState_, getSign());
+    String format = DBLinkage.mapSignToDisplay(dacx_, getSign());
     String linkMsg = MessageFormat.format(format, new Object[] {srcNode.getDisplayString(genome, typePreface), 
                                                                 trgNode.getDisplayString(genome, typePreface)});
     return (linkMsg);
@@ -575,7 +601,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   public String getDisplayStringGroupOnly(GenomeInstance gi) {
     NodeInstance srcNode = (NodeInstance)gi.getNode(src_);
     NodeInstance trgNode = (NodeInstance)gi.getNode(targ_);
-    String format = DBLinkage.mapSignToDisplay(appState_, getSign());
+    String format = DBLinkage.mapSignToDisplay(dacx_, getSign());
     String linkMsg = MessageFormat.format(format, new Object[] {srcNode.getDisplayStringGroupOnly(gi), 
                                                                 trgNode.getDisplayStringGroupOnly(gi)});
     return (linkMsg);
@@ -725,7 +751,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   **
   */
   
-  public static LinkageInstance buildFromXML(BTState appState, DBGenome rootGenome, Genome genome,
+  public static LinkageInstance buildFromXML(DataAccessContext dacx, DBGenome rootGenome,
                                              Attributes attrs) throws IOException {
     String ref = null;
     String instance = null;
@@ -779,7 +805,7 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
     }
     
     DBLinkage backing = (DBLinkage)rootGenome.getLinkage(ref);
-    return (new LinkageInstance(appState, backing, instance, src, targ, pad, lpad, activityLevelStr, activity));
+    return (new LinkageInstance(dacx, backing, instance, src, targ, pad, lpad, activityLevelStr, activity));
   }  
 
   /***************************************************************************
@@ -819,10 +845,10 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   ** Return possible activity choices values
   */
   
-  public static Vector<ChoiceContent> getActivityChoices(BTState appState) {
+  public static Vector<ChoiceContent> getActivityChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_ACTIVITY_LEVELS_; i++) {
-      retval.add(activityTypeForCombo(appState, i));
+      retval.add(activityTypeForCombo(dacx, i));
     }
     return (retval);
   }
@@ -832,8 +858,8 @@ public class LinkageInstance extends GenomeItemInstance implements Linkage {
   ** Get a combo box element
   */
   
-  public static ChoiceContent activityTypeForCombo(BTState appState, int activityType) {
-    return (new ChoiceContent(appState.getRMan().getString("lprop." + mapActivityTypes(activityType)), activityType));
+  public static ChoiceContent activityTypeForCombo(DataAccessContext dacx, int activityType) {
+    return (new ChoiceContent(dacx.getRMan().getString("lprop." + mapActivityTypes(activityType)), activityType));
   }
   
   /***************************************************************************

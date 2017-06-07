@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,11 +38,12 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -66,6 +67,7 @@ import org.systemsbiology.biotapestry.util.ColorSelectionWidget;
 import org.systemsbiology.biotapestry.util.LineBreaker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -86,8 +88,10 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
   private JLabel localNameLabel_;
   private JCheckBox localBox_;  
   private NodeProperties props_;
-  private BTState appState_; 
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private HarnessBuilder hBld_;
+  private UndoFactory uFac_;
   private JCheckBox doLinksBox_;
   private JCheckBox hideNameBox_;
   private ColorSelectionWidget colorWidget1_;
@@ -108,13 +112,16 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
   ** Constructor 
   */ 
   
-  public NodePropertiesDialog(BTState appState, DataAccessContext dacx, NodeProperties props) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("nprop.title"), true);
-    appState_ = appState;
+  public NodePropertiesDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, UndoFactory uFac, NodeProperties props) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("nprop.title"), true);
+
     dacx_ = dacx;
+    uics_ = uics;
+    hBld_ = hBld;
+    uFac_ = uFac;
     props_ = props;
      
-    Genome genome = dacx_.getGenome();
+    Genome genome = dacx_.getCurrentGenome();
     boolean forRoot = (genome instanceof DBGenome);
     boolean topTwoLevels = forRoot;
     if (genome instanceof GenomeInstance) {
@@ -123,9 +130,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     }
     String ref = props_.getReference();
     Node node = genome.getNode(ref);
-    nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx_, ref);
+    nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx_, ref);
            
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(750, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -149,9 +156,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tabPane, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -224,9 +231,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     
-    if (dacx_.getGenome() instanceof DynamicGenomeInstance) {
+    if (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance) {
       throw new IllegalArgumentException();
     }    
     
@@ -238,7 +245,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     UiUtil.gbcSet(gbc, 1, rownum++, 10, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     retval.add(nameField_, gbc);
      
-    if (dacx_.getGenome() instanceof GenomeInstance) {
+    if (dacx_.getCurrentGenome() instanceof GenomeInstance) {
       localBox_ = new JCheckBox(rMan.getString("nprop.uselocal"));
       UiUtil.gbcSet(gbc, 0, rownum++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
       retval.add(localBox_, gbc);
@@ -249,7 +256,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
             localNameLabel_.setEnabled(localBox_.isSelected());
             nps_.displayLocalForBreaks(localBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -305,9 +312,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String ref = props_.getReference();    
-    Node node = dacx_.getGenome().getNode(ref);
+    Node node = dacx_.getCurrentGenome().getNode(ref);
            
     //
     // Build the color panel.  Intercells use two colors:
@@ -318,14 +325,14 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     boolean doSecond = (node.getNodeType() == Node.INTERCELL);  // FIX ME: Make more abstract
     boolean firstHasButton = !doSecond;
 
-    colorWidget1_ = new ColorSelectionWidget(appState_, dacx_, null, true, "nprop.color", firstHasButton, false);
+    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "nprop.color", firstHasButton, false);
     UiUtil.gbcSet(gbc, 0, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     retval.add(colorWidget1_, gbc);     
     
     if (doSecond) {
       ArrayList<ColorDeletionListener> colorDeletionListeners = new ArrayList<ColorDeletionListener>();
       colorDeletionListeners.add(colorWidget1_);
-      colorWidget2_ = new ColorSelectionWidget(appState_, dacx_, colorDeletionListeners, true, "nprop.color2", true, false);
+      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorDeletionListeners, true, "nprop.color2", true, false);
       UiUtil.gbcSet(gbc, 0, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
       retval.add(colorWidget2_, gbc);         
     } 
@@ -385,7 +392,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     //
     // Line breaks:
     //
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
     if (!haveDynInstance) {
       JPanel lineBr = nps_.getLineBreakUI();
       UiUtil.gbcSet(gbc, 0, rowNum++, 3, 3, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
@@ -403,14 +410,14 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
   
   private void displayProperties() {
     String ref = props_.getReference();
-    Node node = dacx_.getGenome().getNode(ref);
+    Node node = dacx_.getCurrentGenome().getNode(ref);
     
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;
     boolean haveRoot = !haveStatInstance && !haveDynInstance;
     boolean topTwoLevels = haveRoot;
     if (haveStatInstance) {
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       topTwoLevels = gi.isRootInstance();
     }
     
@@ -489,26 +496,26 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
   private boolean applyProperties() {
     String ref = props_.getReference();
 
-    Node node = dacx_.getGenome().getNode(ref);
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;   
+    Node node = dacx_.getCurrentGenome().getNode(ref);
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;   
     boolean haveRoot = !haveStatInstance && !haveDynInstance;
     boolean topTwoLevels = haveRoot;
     if (haveStatInstance) {
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       topTwoLevels = gi.isRootInstance();
     }
       
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     boolean globalNameChange = false;
      
-    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.fgho.getGlobalNetModuleLinkPadNeeds();
+    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
   
     //
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.nprop");     
+    UndoSupport support = uFac_.provideUndoSupport("undo.nprop", dacx_);     
     
     if (!haveDynInstance) {
  
@@ -532,15 +539,15 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
                       ((oldLocal != null) && !useLocal) ||
                        (useLocal && !newLocal.equals(oldLocal));
         if (localShift) {
-          if (dacx_.fgho.matchesExistingGeneName(newLocal)) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          if (dacx_.getFGHO().matchesExistingGeneName(newLocal)) {
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                           rMan.getString("nodeProp.dupName"), 
                                           rMan.getString("nodeProp.dupNameTitle"),
                                           JOptionPane.ERROR_MESSAGE);         
             return (false);
           }
           if (dacx_.getInstructSrc().haveBuildInstructions()) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                          rMan.getString("instructWarning.changeMessage"), 
                                          rMan.getString("instructWarning.changeTitle"),
                                          JOptionPane.WARNING_MESSAGE);
@@ -551,15 +558,15 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
       String newName = nameField_.getText().trim();
       String oldName = (!haveRoot) ? ((NodeInstance)node).getRootName() : node.getName();
       if (!newName.equals(oldName)) {
-        if (dacx_.fgho.matchesExistingGeneName(newName)) { 
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        if (dacx_.getFGHO().matchesExistingGeneName(newName)) { 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("nodeProp.dupName"), 
                                         rMan.getString("nodeProp.dupNameTitle"),
                                         JOptionPane.ERROR_MESSAGE);         
           return (false);
         }
         if (dacx_.getInstructSrc().haveBuildInstructions()) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                        rMan.getString("instructWarning.changeMessage"), 
                                        rMan.getString("instructWarning.changeTitle"),
                                        JOptionPane.WARNING_MESSAGE);
@@ -570,15 +577,15 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
         //
     
         if (dacx_.getExpDataSrc().hasDataAttachedByDefault(ref)) {    
-          NameChangeChoicesDialog nccd = new NameChangeChoicesDialog(appState_, dacx_, ref, oldName, newName, support);  
+          NameChangeChoicesDialog nccd = new NameChangeChoicesDialog(uics_, dacx_, ref, oldName, newName, support);  
           nccd.setVisible(true);
           if (nccd.userCancelled()) {
             return (false);
           }
         }
-        GenomeChange gc = dacx_.getGenome().changeNodeName(ref, newName);
+        GenomeChange gc = dacx_.getCurrentGenome().changeNodeName(ref, newName);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
           support.addEdit(gcc);
           globalNameChange = true;
           rootChange = true;
@@ -607,9 +614,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
                                              : extraPadsObj.intValue();
         int pads = node.getPadCount();
         if (pads != newPads) {
-          GenomeChange gc = dacx_.getGenome().changeNodeSize(ref, newPads);
+          GenomeChange gc = dacx_.getCurrentGenome().changeNodeSize(ref, newPads);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
             support.addEdit(gcc);
             rootChange = true;
           }
@@ -617,8 +624,8 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
       }
       
       if (rootChange) {
-        String id = (!haveRoot) ? dacx_.getDBGenome().getID() : dacx_.getGenome().getID();
-        ModelChangeEvent mcev = new ModelChangeEvent(id, ModelChangeEvent.UNSPECIFIED_CHANGE);
+        String id = (!haveRoot) ? dacx_.getDBGenome().getID() : dacx_.getCurrentGenome().getID();
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), id, ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }
     
@@ -640,7 +647,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
         }
 
         if ((oldActivity != newNiAs.activityState) || levelChanged) {
-          GenomeItemInstance.ActivityTracking tracking = ni.calcActivityBounds(dacx_.getGenomeAsInstance());
+          GenomeItemInstance.ActivityTracking tracking = ni.calcActivityBounds(dacx_.getCurrentGenomeAsInstance());
           if (!nps_.checkActivityBounds(tracking, newNiAs)) {
             return (false);
           }
@@ -653,9 +660,9 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
           if (newNiAs.activityState == NodeInstance.VARIABLE) {
             copyNode.setActivityLevel(newNiAs.activityLevel.doubleValue());
           }          
-          GenomeChange gc = dacx_.getGenome().replaceNode(copyNode);
+          GenomeChange gc = dacx_.getCurrentGenome().replaceNode(copyNode);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
             support.addEdit(gcc);
             instanceChange = true;
           }
@@ -664,7 +671,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     
       if (rootChange || instanceChange) {
         // Actually, all subinstances are affected by a root change, not just me!  FIX ME??
-        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }
     }
@@ -721,13 +728,13 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     }
     
     Layout.PropChange[] lpc = new Layout.PropChange[1];    
-    lpc[0] = dacx_.getLayout().replaceNodeProperties(props_, changedProps); 
+    lpc[0] = dacx_.getCurrentLayout().replaceNodeProperties(props_, changedProps); 
         
     if (lpc[0] != null) {
-      PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+      PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
       support.addEdit(mov);
       props_ = changedProps;
-      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(ev);
       
       if (doLinksBox_.isSelected()) {
@@ -737,11 +744,11 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     
     if (globalNameChange) {
       LineBreaker.LineBreakChangeSteps steps = nps_.getNameChangeTracking();
-      ModificationCommands.changeNodeNameBreaks(appState_, dacx_, ref, dacx_.getGenome(), steps, nameField_.getText(), support);
+      ModificationCommands.changeNodeNameBreaks(dacx_, ref, steps, nameField_.getText(), support);
     }    
     
     if (globalPadNeeds != null) {
-      ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, dacx_, globalPadNeeds, false, support);
+      ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds, false, support);
     }
 
     support.finish();        
@@ -753,7 +760,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
   ** Apply our UI values to the linkage properties
   */
   
-  private void applyColorToLinks(UndoSupport support,Node node, String colName) {
+  private void applyColorToLinks(UndoSupport support, Node node, String colName) {
                 
     //
     // Find any link properties for an outbound link:
@@ -761,11 +768,11 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
 
     BusProperties props = null;
     String srcID = node.getID();
-    Iterator<Linkage> lit = dacx_.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = dacx_.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       if (link.getSource().equals(srcID)) {
-        props = dacx_.getLayout().getLinkProperties(link.getID());
+        props = dacx_.getCurrentLayout().getLinkProperties(link.getID());
         break;
       }
     }
@@ -782,10 +789,10 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     changedProps.setColor(colName);
    
     Layout.PropChange[] lpc = new Layout.PropChange[1];    
-    lpc[0] = dacx_.getLayout().replaceLinkProperties(props, changedProps); 
+    lpc[0] = dacx_.getCurrentLayout().replaceLinkProperties(props, changedProps); 
         
     if (lpc[0] != null) {
-      PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+      PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
       support.addEdit(mov);    
     } 
 

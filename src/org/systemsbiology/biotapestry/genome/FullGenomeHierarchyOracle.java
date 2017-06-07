@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,19 +32,20 @@ import java.util.Vector;
 
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.GenomeInstance.GroupTuple;
+import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.NameValuePairList;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
-import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -60,10 +61,8 @@ public class FullGenomeHierarchyOracle {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
-  private GenomeSource mySource_;
-  private LayoutSource lSrc_;
-  
+  private DataAccessContext dacx_;
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTOR
@@ -75,19 +74,8 @@ public class FullGenomeHierarchyOracle {
   ** Constructor
   */
 
-  public FullGenomeHierarchyOracle(BTState appState) {
-    appState_ = appState; 
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Constructor
-  */
-
-  public FullGenomeHierarchyOracle(GenomeSource mySource, LayoutSource lSrc) {
-    appState_ = null;
-    mySource_ = mySource;
-    lSrc_ = lSrc;
+  public FullGenomeHierarchyOracle(DataAccessContext dacx) {
+    dacx_ = dacx; 
   }
  
   ////////////////////////////////////////////////////////////////////////////
@@ -102,7 +90,7 @@ public class FullGenomeHierarchyOracle {
   */
 
   private GenomeSource getGenomeSource() {
-    return ((mySource_ == null) ? appState_.getDB() : mySource_);
+    return (dacx_.getGenomeSource());
   }
   
   /***************************************************************************
@@ -111,7 +99,7 @@ public class FullGenomeHierarchyOracle {
   */
 
   private LayoutSource getLayoutSource() {
-    return ((lSrc_ == null) ? appState_.getDB() : lSrc_);
+    return (dacx_.getLayoutSource());
   }
   
   /***************************************************************************
@@ -131,8 +119,8 @@ public class FullGenomeHierarchyOracle {
     while (akit.hasNext()) {
       String layoutID = akit.next();
       Layout lo = lSrc.getLayout(layoutID);
-      DataAccessContext rcx = new DataAccessContext(appState_, getGenomeSource().getGenome(lo.getTarget()), lo);
-      rcx.fgho = this;
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, getGenomeSource().getGenome(lo.getTarget()), lo);
+      rcx.setFGHO(this);
       Layout.PadNeedsForLayout padsForLo = lo.findAllNetModuleLinkPadRequirements(rcx, allKeys);
       retval.put(layoutID, padsForLo);
     } 
@@ -149,8 +137,8 @@ public class FullGenomeHierarchyOracle {
     Map<String, Layout.OverlayKeySet> allKeys = fullModuleKeysPerLayout();
     LayoutSource lSrc = getLayoutSource();
     Layout lo = lSrc.getLayoutForGenomeKey(genomeKey);
-    DataAccessContext rcx = new DataAccessContext(appState_, getGenomeSource().getGenome(genomeKey), lo);
-    rcx.fgho = this;
+    StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, getGenomeSource().getGenome(genomeKey), lo);
+    rcx.setFGHO(this);
     return (lo.findAllNetModuleLinkPadRequirements(rcx, allKeys));
   }
  
@@ -172,8 +160,8 @@ public class FullGenomeHierarchyOracle {
     while (akit.hasNext()) {
       String layoutID = akit.next();
       Layout lo = lSrc.getLayout(layoutID);
-      DataAccessContext rcx = new DataAccessContext(appState_, getGenomeSource().getGenome(lo.getTarget()), lo);
-      rcx.fgho = this;
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, getGenomeSource().getGenome(lo.getTarget()), lo);
+      rcx.setFGHO(this);
       Map<NetModule.FullModuleKey, Map<String, Rectangle>> geomForLo = lo.stashMemberOnlyGeometry(rcx, allKeys);
       retval.put(layoutID, geomForLo);
     } 
@@ -191,7 +179,7 @@ public class FullGenomeHierarchyOracle {
     ArrayList<String> nodeList = new ArrayList<String>();
     GenomeSource gSrc = getGenomeSource();
  
-    String rootModel = gSrc.getGenome().getID();
+    String rootModel = gSrc.getRootDBGenome().getID();
     nodeList.add(rootModel);
     
     Iterator<GenomeInstance> iit = gSrc.getInstanceIterator();  
@@ -288,7 +276,7 @@ public class FullGenomeHierarchyOracle {
 
   public Set<String> findRootOnlyLinks() {    
   
-    DBGenome genome = (DBGenome)getGenomeSource().getGenome();
+    DBGenome genome = (DBGenome)getGenomeSource().getRootDBGenome();
     HashSet<String> usageSet = new HashSet<String>();
     
     Iterator<Linkage> lit = genome.getLinkageIterator();
@@ -319,7 +307,7 @@ public class FullGenomeHierarchyOracle {
 
   public Set<String> findRootOnlyNodes() {    
   
-    DBGenome genome = (DBGenome)getGenomeSource().getGenome();
+    DBGenome genome = (DBGenome)getGenomeSource().getRootDBGenome();
     HashSet<String> usageSet = new HashSet<String>();
     
     Iterator<Node> nit = genome.getAllNodeIterator();
@@ -553,7 +541,7 @@ public class FullGenomeHierarchyOracle {
   public boolean overlayExists() {
     GenomeSource gSrc = getGenomeSource();
     
-    Genome genome = gSrc.getGenome();
+    Genome genome = gSrc.getRootDBGenome();
     if (genome.getNetworkOverlayCount() > 0) {
       return (true);
     }
@@ -579,6 +567,39 @@ public class FullGenomeHierarchyOracle {
 
   /***************************************************************************
   **
+  ** Answers if a model image exists
+  **
+  */
+  
+  public boolean modelImageExists() {
+    GenomeSource gSrc = getGenomeSource();
+    
+    Genome genome = gSrc.getRootDBGenome();
+
+    if (genome.getGenomeImage() != null) {
+      return (true);
+    }
+    
+    Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
+    while (git.hasNext()) {
+      GenomeInstance gi = git.next();
+      if (gi.getGenomeImage() != null) {
+        return (true);
+      }
+    }
+    
+    Iterator<DynamicInstanceProxy> dpit = gSrc.getDynamicProxyIterator();
+    while (dpit.hasNext()) {
+      DynamicInstanceProxy dip = dpit.next();
+      if (dip.hasGenomeImage()) {
+        return (true);
+      }
+    }  
+    return (false);
+  }
+ 
+  /***************************************************************************
+  **
   ** Gets all the possible overlay owners
   **
   */
@@ -587,7 +608,7 @@ public class FullGenomeHierarchyOracle {
     GenomeSource gSrc = getGenomeSource();
     ArrayList<NetOverlayOwner> allOwners = new ArrayList<NetOverlayOwner>();
     
-    Genome genome = gSrc.getGenome();
+    Genome genome = gSrc.getRootDBGenome();
     allOwners.add(genome);
     
     Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
@@ -667,7 +688,7 @@ public class FullGenomeHierarchyOracle {
   
   public PadCalculatorToo.PadResult getNodePadRequirements(String backingID) {
     GenomeSource gSrc = getGenomeSource();
-    Genome genome = gSrc.getGenome();
+    Genome genome = gSrc.getRootDBGenome();
     Node baseNode = genome.getNode(backingID);
     LayoutSource lSrc = getLayoutSource();
     Layout baseLayout = lSrc.getLayoutForGenomeKey(genome.getID());
@@ -695,6 +716,53 @@ public class FullGenomeHierarchyOracle {
   } 
   
   /***************************************************************************
+  **
+  ** Get cross-links
+  **
+  */
+  
+  public Map<String, Set<TemporalInputRangeData.CrossRegionTuple>> getAllCrossLinks(TemporalInputRangeData tird) {
+    GenomeSource gSrc = getGenomeSource();
+         
+    HashMap<String, Set<TemporalInputRangeData.CrossRegionTuple>> retval = new HashMap<String, Set<TemporalInputRangeData.CrossRegionTuple>>();
+    Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
+    while (git.hasNext()) {
+      GenomeInstance gi = git.next();
+      if (gi.isRootInstance()) {
+        Map<String, GenomeInstance.GroupTuple> art = gi.getAllRegionTuples();
+        for (String artk : art.keySet()) {
+          GenomeInstance.GroupTuple gtup = art.get(artk);
+          String baseLinkID = GenomeItemInstance.getBaseID(artk);
+          String srcKey = gtup.getSourceGroup();
+          String trgKey = gtup.getTargetGroup();
+          if (trgKey.equals(srcKey)) {
+            continue;
+          }
+          Group srcGrp = gi.getGroup(srcKey);
+          String srcTrueName = srcGrp.getInheritedTrueName(gi);
+          Group trgGrp = gi.getGroup(trgKey);
+          String trgTrueName = trgGrp.getInheritedTrueName(gi);
+          List<GroupUsage> srcGrpKeys = tird.getTemporalRangeGroupKeysWithDefault(Group.getBaseID(srcKey), srcTrueName);
+          List<GroupUsage> trgGrpKeys = tird.getTemporalRangeGroupKeysWithDefault(Group.getBaseID(trgKey), trgTrueName);
+          for (GroupUsage sGroupUse : srcGrpKeys) {
+            for (GroupUsage tGroupUse : trgGrpKeys) {
+              TemporalInputRangeData.CrossRegionTuple crt = new TemporalInputRangeData.CrossRegionTuple(sGroupUse.mappedGroup, tGroupUse.mappedGroup);
+              Set<TemporalInputRangeData.CrossRegionTuple> forLink = retval.get(baseLinkID);
+              if (forLink == null) {
+                forLink = new HashSet<TemporalInputRangeData.CrossRegionTuple>();
+                retval.put(baseLinkID, forLink);
+              }
+              forLink.add(crt);
+            }
+          }
+        }
+      }
+    }
+    return (retval);
+  }
+  
+
+  /***************************************************************************
   ** 
   ** Gene Names must be globally unique, including locally defined Names.  Answer if
   ** we have a match.  This version allows us to skip a node for the check.
@@ -707,7 +775,7 @@ public class FullGenomeHierarchyOracle {
     // matches with local overrides.
     //
     String baseExceptionID = (exceptionID == null) ? null : GenomeItemInstance.getBaseID(exceptionID);
-    Iterator<Gene> rit = getGenomeSource().getGenome().getGeneIterator();
+    Iterator<Gene> rit = getGenomeSource().getRootDBGenome().getGeneIterator();
     while (rit.hasNext()) {
       Gene gene = rit.next();
       if (baseExceptionID != null) {
@@ -786,7 +854,7 @@ public class FullGenomeHierarchyOracle {
     // Crank all the genomes. Look for matches with root node Names, and look for
     // matches with local overrides.
     //
-    Iterator<Node> rit = getGenomeSource().getGenome().getNodeIterator();
+    Iterator<Node> rit = getGenomeSource().getRootDBGenome().getNodeIterator();
     while (rit.hasNext()) {
       Node node = rit.next();
       if ((exceptionID != null) && node.getID().equals(baseExceptionID)) {
@@ -908,7 +976,7 @@ public class FullGenomeHierarchyOracle {
     Map<String, Map<String, DBGeneRegion.LinkAnalysis>> retval = new HashMap<String, Map<String, DBGeneRegion.LinkAnalysis>>();
 
     GenomeSource gSrc = getGenomeSource(); 
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     Map<String, DBGeneRegion.LinkAnalysis> canonical = canonicalGeneRegions(genome, baseGeneID);
     retval.put(genome.getID(), canonical);
       
@@ -1089,7 +1157,7 @@ public class FullGenomeHierarchyOracle {
       Iterator<String> lisit = liSet.iterator();
       while (lisit.hasNext()) {
         String linkInstID = lisit.next();
-        GroupTuple groupTup = gi.getRegionTuple(linkInstID);
+        GenomeInstance.GroupTuple groupTup = gi.getRegionTuple(linkInstID);
         usageList.add(new LinkUsage(linkID, giID, linkInstID, groupTup));                      
       }
     }
@@ -1165,7 +1233,7 @@ public class FullGenomeHierarchyOracle {
     Map<String, Integer> geneLens = new HashMap<String, Integer>();
 
     GenomeSource gSrc = getGenomeSource(); 
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
 
     minMaxForGenome(geneExtents, genome, geneLens, padsForModGenes);    
     Iterator<GenomeInstance> iit = gSrc.getInstanceIterator();
@@ -1242,9 +1310,9 @@ public class FullGenomeHierarchyOracle {
     public String baseID;
     public String linkInstID;
     public String modelID;
-    public GroupTuple groupTup;
+    public GenomeInstance.GroupTuple groupTup;
     
-    public LinkUsage(String baseID, String modelID, String linkInstID, GroupTuple groupTup) {
+    public LinkUsage(String baseID, String modelID, String linkInstID, GenomeInstance.GroupTuple groupTup) {
       this.baseID = baseID;
       this.linkInstID = linkInstID;
       this.modelID = modelID;

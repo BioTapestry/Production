@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,19 +26,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.cmd.flow.view.Zoom;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -63,7 +63,7 @@ import org.systemsbiology.biotapestry.util.UndoSupport;
 ** Handle expand and compress layout
 */
 
-public class SquashExpandGenome extends AbstractControlFlow implements BackgroundWorkerOwner {
+public class SquashExpandGenome extends AbstractControlFlow {
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -84,8 +84,7 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
   ** Constructor 
   */ 
   
-  public SquashExpandGenome(BTState appState, boolean doCompress, boolean isForGroups) {
-    super(appState);
+  public SquashExpandGenome(boolean doCompress, boolean isForGroups) {
     doCompress_ = doCompress;
     if (isForGroups) {
       name = (doCompress) ? "groupPopup.CompressGroup" : "groupPopup.ExpandGroup";
@@ -121,39 +120,16 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {  
-    Group group = rcx.getGenomeAsInstance().getGroup(inter.getObjectID());
-    if (rcx.getGenomeAsInstance().getVfgParent() == null) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    Group group = rcx.getCurrentGenomeAsInstance().getGroup(inter.getObjectID());
+    if (rcx.getCurrentGenomeAsInstance().getVfgParent() == null) { 
       int memCount = group.getMemberCount();
       return (memCount != 0); 
     } else { 
       return (false); 
     }       
   }
-  
-  /***************************************************************************
-  **
-  ** We can do a background thread in the desktop version
-  ** 
-  */
-
-  public boolean handleRemoteException(Exception remoteEx) {
-    return (false);
-  }        
- 
-  public void cleanUpPreEnable(Object result) {
-    appState_.getZoomCommandSupport().zoomToModel();
-    return;
-  }
- 
-  public void cleanUpPostRepaint(Object result) {
-    (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
-    return;
-  } 
-  
-  public void handleCancellation() {
-    return;
-  }  
 
   /***************************************************************************
   **
@@ -162,8 +138,8 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new CompressExpandState(appState_, doCompress_, this, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new CompressExpandState(doCompress_, dacx));  
   }
   
   /***************************************************************************
@@ -177,14 +153,11 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        CompressExpandState ans = new CompressExpandState(appState_, doCompress_, this, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        CompressExpandState ans = new CompressExpandState(doCompress_, cfh);     
         next = ans.stepGetCompressExpandDialog();
       } else {
         CompressExpandState ans = (CompressExpandState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGetCompressExpandDialog")) {
           next = ans.stepGetCompressExpandDialog();      
         } else if (ans.getNextStep().equals("stepExtractPercentAndExecute")) {
@@ -200,21 +173,141 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
     }
   }
   
+
+  
   /***************************************************************************
+  **
+  ** Running State
+  */
+        
+  public static class CompressExpandState extends AbstractStepState 
+                                          implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
+     
+    private boolean myDoCompress_;
+    private String groupID;
+      
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public CompressExpandState(boolean doCompress, StaticDataAccessContext dacx) {
+      super(dacx);
+      myDoCompress_ = doCompress;
+      nextStep_ = "stepGetCompressExpandDialog";
+    }
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public CompressExpandState(boolean doCompress, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myDoCompress_ = doCompress;
+      nextStep_ = "stepGetCompressExpandDialog";
+    }
+      
+    /***************************************************************************
+    **
+    ** for preload
+    */ 
+      
+    public void setIntersection(Intersection intersect) {
+      this.groupID = intersect.getObjectID();
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** Get the dialog launched
+    */ 
+      
+    private DialogAndInProcessCmd stepGetCompressExpandDialog() { 
+      boolean showOverlayOpts = (dacx_.currentGenomeIsAnInstance()) && (dacx_.getCurrentGenome().getNetworkModuleCount() > 0);
+      CompressExpandDialogFactory.BuildArgs ba = new CompressExpandDialogFactory.BuildArgs(myDoCompress_, showOverlayOpts, dacx_);
+      CompressExpandDialogFactory cedf = new CompressExpandDialogFactory(cfh_);
+      ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
+      DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);
+      nextStep_ = "stepExtractPercentAndExecute";
+      return (retval);
+    } 
+    
+    /***************************************************************************
+    **
+    ** Extract and install model data
+    */ 
+       
+    private DialogAndInProcessCmd stepExtractPercentAndExecute(DialogAndInProcessCmd cmd) {
+      
+      CompressExpandDialogFactory.PercentsRequest crq = (CompressExpandDialogFactory.PercentsRequest)cmd.cfhui;   
+      if (!crq.haveResults()) {
+        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
+        return (retval);
+      }  
+
+      boolean showOverlayOpts = (dacx_.currentGenomeIsAnInstance()) && (dacx_.getCurrentGenome().getNetworkModuleCount() > 0);
+          
+      LayoutOptions options = new LayoutOptions(dacx_.getLayoutOptMgr().getLayoutOptions());
+      options.overlayCpexOption = (showOverlayOpts) ? crq.overlayOption : NetOverlayProperties.NO_CPEX_LAYOUT_OPTION;
+
+      UndoSupport support = uFac_.provideUndoSupport((myDoCompress_) ? "undo.squashRoot" : "undo.expandRoot", dacx_);
+      CompressExpandRunner runner = 
+        new CompressExpandRunner(this, dacx_, groupID, crq.retvalH, crq.retvalV, options, support, myDoCompress_); 
+      BackgroundWorkerClient bwc;   
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      } else { // headless; on this thread
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, support);
+      }
+      runner.setClient(bwc);
+      bwc.launchWorker();     
+      // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+                                                                                   : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
+      return (daipc);
+    }
+   
+    /***************************************************************************
+    **
+    ** We can do a background thread in the desktop version
+    ** 
+    */
+  
+    public boolean handleRemoteException(Exception remoteEx) {
+      return (false);
+    }        
+   
+    public void cleanUpPreEnable(Object result) {
+      uics_.getZoomCommandSupport().zoomToModel();
+      return;
+    }
+   
+    public void cleanUpPostRepaint(Object result) {
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      return;
+    } 
+    
+    public void handleCancellation() {
+      return;
+    }
+    
+      /***************************************************************************
   **
   ** Squeeze useless space out of a network
   */  
   
-   LinkRouter.RoutingResult squashGenome(BTState appState, DataAccessContext rcx, Set<String> groups,
-                                                Point2D wsCenter, double fracH, double fracV, UndoSupport support, 
-                                                LayoutOptions options, BTProgressMonitor monitor, 
-                                                double startFrac, double endFrac) throws AsynchExitRequestException {
+   LinkRouter.RoutingResult squashGenome(StaticDataAccessContext rcx, Set<String> groups, double fracH, double fracV, UndoSupport support, 
+                                         LayoutOptions options, BTProgressMonitor monitor, 
+                                         double startFrac, double endFrac) throws AsynchExitRequestException {
 
      double fullFrac = endFrac - startFrac;
      double frac1 = fullFrac * 0.10;
      double eFrac1 = startFrac + frac1;
      double frac2 = fullFrac * 0.90;
 
+     Point2D wsCenter = rcx.getZoomTarget().getRawCenterPoint();
+     
      //
      // In the case of root genome, the compression step also hits the modules and
      // links, and in _theory_ should not need any fixup.  But all bets are off
@@ -222,31 +315,31 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
      // modules along for the ride (except for group-attached mods, but even then
      // links are not handled).  So do a fixup step!
      
-     Layout.PadNeedsForLayout padNeeds = rcx.fgho.getLocalNetModuleLinkPadNeeds(rcx.getGenomeID());
+     Layout.PadNeedsForLayout padNeeds = rcx.getFGHO().getLocalNetModuleLinkPadNeeds(rcx.getCurrentGenomeID());
   
      //
      // Compress:
      //
      
-     DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(rcx.getLayoutID());
+     DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(rcx.getCurrentLayoutID());
      
      try {
        
-       Map<String, Layout.OverlayKeySet> allKeys = rcx.fgho.fullModuleKeysPerLayout(); 
-       Layout.OverlayKeySet loModKeys = allKeys.get(rcx.getLayoutID());   
-       Point2D center = rcx.getLayout().getLayoutCenterAllOverlays(rcx, loModKeys);
+       Map<String, Layout.OverlayKeySet> allKeys = rcx.getFGHO().fullModuleKeysPerLayout(); 
+       Layout.OverlayKeySet loModKeys = allKeys.get(rcx.getCurrentLayoutID());   
+       Point2D center = rcx.getCurrentLayout().getLayoutCenterAllOverlays(rcx, loModKeys);
        if (center == null) {
          center = wsCenter;
        }
-       Layout.SupplementalDataCoords sdc = rcx.getLayout().getSupplementalCoordsAllOverlays(rcx, loModKeys);
+       Layout.SupplementalDataCoords sdc = rcx.getCurrentLayout().getSupplementalCoordsAllOverlays(rcx, loModKeys);
        Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = 
-         rcx.getLayout().getModuleShapeParams(rcx, loModKeys,center); 
+         rcx.getCurrentLayout().getModuleShapeParams(rcx, loModKeys,center); 
        
        //
        // Useless corners just pointlessly reduce compression.  Get rid of them:
        //
 
-       rcx.getLayout().dropUselessCorners(rcx, null, startFrac, eFrac1, monitor);
+       rcx.getCurrentLayout().dropUselessCorners(rcx, null, startFrac, eFrac1, monitor);
 
        //
        // Get a copy of the Layout, render to a grid, get candidate columns:
@@ -254,15 +347,15 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
 
        Map<String, SpecialSegmentTracker> specials = null;
        boolean orphanedPadsOnly;
-       if (rcx.getGenome() instanceof DBGenome) {
+       if (rcx.currentGenomeIsRootDBGenome()) {
          TreeSet<Integer> useEmptyRows = new TreeSet<Integer>();
          TreeSet<Integer> useEmptyCols = new TreeSet<Integer>();            
-         rcx.getLayout().chooseCompressionRows(rcx, fracV, fracH, null, false, loModKeys, useEmptyRows, useEmptyCols, monitor);
-         rcx.getLayout().compress(rcx, useEmptyRows, useEmptyCols, null, null, null, null, monitor, eFrac1, endFrac);
+         rcx.getCurrentLayout().chooseCompressionRows(rcx, fracV, fracH, null, false, loModKeys, useEmptyRows, useEmptyCols, monitor);
+         rcx.getCurrentLayout().compress(rcx, useEmptyRows, useEmptyCols, null, null, null, null, monitor, eFrac1, endFrac);
          orphanedPadsOnly = true;
        } else {
-         specials = rcx.getLayout().rememberSpecialLinks();
-         LayoutRubberStamper lrs = new LayoutRubberStamper(appState);
+         specials = rcx.getCurrentLayout().rememberSpecialLinks();
+         LayoutRubberStamper lrs = new LayoutRubberStamper();
          LayoutRubberStamper.ERILData eril = 
            new LayoutRubberStamper.ERILData(rcx, groups, padNeeds, 
                                             loModKeys, moduleShapeRecovery, options, monitor, eFrac1, endFrac);
@@ -272,33 +365,37 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
        }
        
        if (center != null) {
-         rcx.getLayout().recenterLayout(center, rcx, true, true, true, null, null, null, loModKeys, (orphanedPadsOnly) ? null : padNeeds);
+         rcx.getCurrentLayout().recenterLayout(center, rcx, true, true, true, null, null, null, loModKeys, (orphanedPadsOnly) ? null : padNeeds);
        }
 
-       rcx.getLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
+       rcx.getCurrentLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
 
        //
        // Get special link segments back up to snuff:
        //
 
        if (specials != null) {
-         rcx.getLayout().restoreSpecialLinks(specials);
+         rcx.getCurrentLayout().restoreSpecialLinks(specials);
        }
        
-       dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-       support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+       dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+       support.addEdit(new DatabaseChangeCmd(rcx, dc));
        
        //
        // Fix net module link pads:
        //
        
        // DBGenome ops modify pads in a consistent fashion, so only do for orphans
-       ModificationCommands.repairNetModuleLinkPadsLocally(appState, padNeeds, rcx, orphanedPadsOnly, support); // Do after; does its own support calls...
-       LayoutChangeEvent lcev = new LayoutChangeEvent(rcx.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+       ModificationCommands.repairNetModuleLinkPadsLocally(padNeeds, rcx, orphanedPadsOnly, support); // Do after; does its own support calls...
+       
+       UiUtil.fixMePrintout("FIX ME? This call happens in the expand genome case, but not here. Added as a comment for now. An oversight??");
+       // rcx.getZoomTarget().fixCenterPoint(true, support, false);
+       
+       LayoutChangeEvent lcev = new LayoutChangeEvent(rcx.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
        support.addEvent(lcev);
        return (new LinkRouter.RoutingResult());
      } catch (AsynchExitRequestException ex) {
-       rcx.lSrc.rollbackLayoutUndoTransaction(dc);
+       rcx.getLayoutSource().rollbackLayoutUndoTransaction(dc);
        throw ex;
      }
    }
@@ -308,16 +405,19 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
    ** Expand the genome
    */  
   
-   LinkRouter.RoutingResult expandGenome(BTState appState, DataAccessContext rcx, Set<String> groups,
-                                         Point2D wsCenter, double fracH, double fracV, UndoSupport support, 
+   LinkRouter.RoutingResult expandGenome(StaticDataAccessContext rcx, Set<String> groups, double fracH, double fracV, UndoSupport support, 
                                          LayoutOptions options, BTProgressMonitor monitor, 
                                          double startFrac, double endFrac) throws AsynchExitRequestException {
      
-        
+      
+     
+     
      double fullFrac = endFrac - startFrac;
      double frac1 = fullFrac * 0.10;
      double eFrac1 = startFrac + frac1;
      double frac2 = fullFrac * 0.90;
+     
+     Point2D wsCenter = rcx.getZoomTarget().getRawCenterPoint();
      
      //
      // In the case of root genome, the expansion step also hits the modules and
@@ -326,26 +426,26 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
      // modules along for the ride (except for group-attached mods, but even then
      // links are not handled).  So do a fixup step!
      
-     Layout.PadNeedsForLayout padNeeds = rcx.fgho.getLocalNetModuleLinkPadNeeds(rcx.getGenomeID());
+     Layout.PadNeedsForLayout padNeeds = rcx.getFGHO().getLocalNetModuleLinkPadNeeds(rcx.getCurrentGenomeID());
      
-     DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(rcx.getLayoutID());
+     DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(rcx.getCurrentLayoutID());
      
      try {
-       Map<String, Layout.OverlayKeySet> allKeys = rcx.fgho.fullModuleKeysPerLayout();
-       Layout.OverlayKeySet loModKeys = allKeys.get(rcx.getLayoutID());   
-       Point2D center = rcx.getLayout().getLayoutCenterAllOverlays(rcx, loModKeys);
+       Map<String, Layout.OverlayKeySet> allKeys = rcx.getFGHO().fullModuleKeysPerLayout();
+       Layout.OverlayKeySet loModKeys = allKeys.get(rcx.getCurrentLayoutID());   
+       Point2D center = rcx.getCurrentLayout().getLayoutCenterAllOverlays(rcx, loModKeys);
        if (center == null) {
          center = wsCenter;
        }
-       Layout.SupplementalDataCoords sdc = rcx.getLayout().getSupplementalCoordsAllOverlays(rcx, loModKeys);
+       Layout.SupplementalDataCoords sdc = rcx.getCurrentLayout().getSupplementalCoordsAllOverlays(rcx, loModKeys);
        Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = 
-         rcx.getLayout().getModuleShapeParams(rcx, loModKeys, center);   
+         rcx.getCurrentLayout().getModuleShapeParams(rcx, loModKeys, center);   
        
        //
        // Useless corners just pointlessly reduce expansion.  Get rid of them:
        //
 
-       rcx.getLayout().dropUselessCorners(rcx, null, startFrac, eFrac1, monitor);        
+       rcx.getCurrentLayout().dropUselessCorners(rcx, null, startFrac, eFrac1, monitor);        
 
        //
        // Get a copy of the Layout, render to a grid, get candidate columns:
@@ -353,15 +453,15 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
 
        Map<String, SpecialSegmentTracker> specials = null;
        boolean orphanedPadsOnly;
-       if (rcx.getGenome() instanceof DBGenome) {
+       if (rcx.currentGenomeIsRootDBGenome()) {
          TreeSet<Integer> useExpandRows = new TreeSet<Integer>();
          TreeSet<Integer> useExpandCols = new TreeSet<Integer>();
-         rcx.getLayout().chooseExpansionRows(rcx, fracV, fracH, null, loModKeys, useExpandRows, useExpandCols, false, monitor);
-         rcx.getLayout().expand(rcx, useExpandRows, useExpandCols, 1, false, null, null, null, monitor, eFrac1, endFrac);
+         rcx.getCurrentLayout().chooseExpansionRows(rcx, fracV, fracH, null, loModKeys, useExpandRows, useExpandCols, false, monitor);
+         rcx.getCurrentLayout().expand(rcx, useExpandRows, useExpandCols, 1, false, null, null, null, monitor, eFrac1, endFrac);
          orphanedPadsOnly = true;
        } else {
-         specials = rcx.getLayout().rememberSpecialLinks();
-         LayoutRubberStamper lrs = new LayoutRubberStamper(appState);
+         specials = rcx.getCurrentLayout().rememberSpecialLinks();
+         LayoutRubberStamper lrs = new LayoutRubberStamper();
          LayoutRubberStamper.ERILData eril = 
            new LayoutRubberStamper.ERILData(rcx, groups, null, null,
                                             padNeeds, loModKeys, moduleShapeRecovery, options, monitor, eFrac1, endFrac);
@@ -382,134 +482,55 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
        }
        
        if (center != null) {
-         rcx.getLayout().recenterLayout(center, rcx, true, true, true, null, null, null, loModKeys, (orphanedPadsOnly) ? null : padNeeds);
+         rcx.getCurrentLayout().recenterLayout(center, rcx, true, true, true, null, null, null, loModKeys, (orphanedPadsOnly) ? null : padNeeds);
        }
 
-       rcx.getLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
+       rcx.getCurrentLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
 
        //
        // Get special link segments back up to snuff:
        //
 
        if (specials != null) {
-         rcx.getLayout().restoreSpecialLinks(specials);
+         rcx.getCurrentLayout().restoreSpecialLinks(specials);
        }
        
        //
        // Fix net module link pads:
        //
          
-       dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-       support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+       dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+       support.addEdit(new DatabaseChangeCmd(rcx, dc));
        // Need to do this AFTER layout trans, since it does its own support changes 
-       ModificationCommands.repairNetModuleLinkPadsLocally(appState, padNeeds, rcx, orphanedPadsOnly, support); 
+       ModificationCommands.repairNetModuleLinkPadsLocally(padNeeds, rcx, orphanedPadsOnly, support); 
       
-       appState.getZoomTarget().fixCenterPoint(true, support, false);
-       LayoutChangeEvent lcev = new LayoutChangeEvent(rcx.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+       rcx.getZoomTarget().fixCenterPoint(true, support, false);
+       LayoutChangeEvent lcev = new LayoutChangeEvent(rcx.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
        support.addEvent(lcev);
        return (new LinkRouter.RoutingResult());
      } catch (AsynchExitRequestException ex) {
-       rcx.lSrc.rollbackLayoutUndoTransaction(dc);
+       rcx.getLayoutSource().rollbackLayoutUndoTransaction(dc);
        throw ex;
      }
    }
-  
-  /***************************************************************************
-  **
-  ** Running State
-  */
-        
-  public static class CompressExpandState implements DialogAndInProcessCmd.PopupCmdState {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
-    private boolean myDoCompress_;
-    private String groupID;
-    private DataAccessContext rcxT_;
-    private SquashExpandGenome bwo_;
-      
-    /***************************************************************************
-    **
-    ** Construct
-    */ 
     
-    public CompressExpandState(BTState appState, boolean doCompress, SquashExpandGenome bwo, DataAccessContext dacx) {
-      appState_ = appState;
-      myDoCompress_ = doCompress;
-      bwo_ = bwo;
-      rcxT_ = dacx;
-      nextStep_ = "stepGetCompressExpandDialog";
-    }
     
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-      
-    /***************************************************************************
-    **
-    ** for preload
-    */ 
-      
-    public void setIntersection(Intersection intersect) {
-      this.groupID = intersect.getObjectID();
-      return;
-    }
     
-    /***************************************************************************
-    **
-    ** Get the dialog launched
-    */ 
-      
-    private DialogAndInProcessCmd stepGetCompressExpandDialog() { 
-      boolean showOverlayOpts = (rcxT_.getGenome() instanceof GenomeInstance) && (rcxT_.getGenome().getNetworkModuleCount() > 0);
-      CompressExpandDialogFactory.BuildArgs ba = new CompressExpandDialogFactory.BuildArgs(myDoCompress_, showOverlayOpts);
-      CompressExpandDialogFactory cedf = new CompressExpandDialogFactory(cfh);
-      ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
-      DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);
-      nextStep_ = "stepExtractPercentAndExecute";
-      return (retval);
-    } 
     
-    /***************************************************************************
-    **
-    ** Extract and install model data
-    */ 
-       
-    private DialogAndInProcessCmd stepExtractPercentAndExecute(DialogAndInProcessCmd cmd) {
-      
-      CompressExpandDialogFactory.PercentsRequest crq = (CompressExpandDialogFactory.PercentsRequest)cmd.cfhui;   
-      if (!crq.haveResults()) {
-        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
-        return (retval);
-      }  
-
-      boolean showOverlayOpts = (rcxT_.getGenome() instanceof GenomeInstance) && (rcxT_.getGenome().getNetworkModuleCount() > 0);
-          
-      LayoutOptions options = new LayoutOptions(appState_.getLayoutOptMgr().getLayoutOptions());
-      options.overlayCpexOption = (showOverlayOpts) ? crq.overlayOption : NetOverlayProperties.NO_CPEX_LAYOUT_OPTION;
-
-      UndoSupport support = new UndoSupport(appState_, (myDoCompress_) ? "undo.squashRoot" : "undo.expandRoot");
-      CompressExpandRunner runner = 
-        new CompressExpandRunner(bwo_, appState_, rcxT_, groupID, crq.retvalH, crq.retvalV, options, support, myDoCompress_); 
-      BackgroundWorkerClient bwc;   
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, bwo_, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
-      } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, bwo_, runner, support);
-      }
-      runner.setClient(bwc);
-      bwc.launchWorker();     
-      // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
-                                                                                       : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
-      return (daipc);
-    } 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
   }
   
   /***************************************************************************
@@ -524,11 +545,10 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
      private UndoSupport support_;
      private boolean doCompress_;
      private LayoutOptions options_;
-     private BTState myAppState_;
-     private SquashExpandGenome seg_;
-     private DataAccessContext rcx_;
+     private SquashExpandGenome.CompressExpandState seg_;
+     private StaticDataAccessContext rcx_;
      
-     public CompressExpandRunner(SquashExpandGenome seg, BTState appState, DataAccessContext rcx, String groupID, 
+     public CompressExpandRunner(SquashExpandGenome.CompressExpandState seg, StaticDataAccessContext rcx, String groupID, 
                                  double fracH, double fracV, LayoutOptions options,
                                  UndoSupport support, boolean doCompress) {
        super(new LinkRouter.RoutingResult());
@@ -540,7 +560,6 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
        groupID_ = groupID;
        doCompress_ = doCompress;
        options_ = options;
-       myAppState_ = appState;
      }
      
      public Object runCore() throws AsynchExitRequestException {
@@ -551,23 +570,21 @@ public class SquashExpandGenome extends AbstractControlFlow implements Backgroun
        }
        LinkRouter.RoutingResult myResult;
        if (doCompress_) {         
-         myResult = seg_.squashGenome(myAppState_, rcx_, groupIDSet,
-                                      myAppState_.getZoomTarget().getRawCenterPoint(), fracH_, fracV_, support_, options_, this, 0.0, 1.0);
+         myResult = seg_.squashGenome(rcx_, groupIDSet, fracH_, fracV_, support_, options_, this, 0.0, 1.0);
        } else {
-         myResult = seg_.expandGenome(myAppState_, rcx_, groupIDSet,
-                                      myAppState_.getZoomTarget().getRawCenterPoint(), fracH_, fracV_, support_, options_, this, 0.0, 1.0);
+         myResult = seg_.expandGenome(rcx_, groupIDSet, fracH_, fracV_, support_, options_, this, 0.0, 1.0);
        }
        return (myResult);
      }
 
      public Object postRunCore() {
        if (!doCompress_) {
-         if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-           Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-           (new WorkspaceSupport(myAppState_, rcx_)).setWorkspaceToModelBounds(support_, allBounds);
+         if (rcx_.modelIsOutsideWorkspaceBounds()) {
+           Rectangle allBounds = rcx_.getZoomTarget().getAllModelBounds();
+           (new WorkspaceSupport(rcx_)).setWorkspaceToModelBounds(support_, allBounds);
          }     
        }
-       support_.addEvent(new LayoutChangeEvent(rcx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+       support_.addEvent(new LayoutChangeEvent(rcx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
        return (null);
      }  
    }

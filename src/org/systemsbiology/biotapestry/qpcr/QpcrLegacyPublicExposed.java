@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,9 +22,7 @@ package org.systemsbiology.biotapestry.qpcr;
 import java.io.PrintWriter;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.parser.ParserClient;
-import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 
 /****************************************************************************
@@ -46,7 +44,7 @@ public class QpcrLegacyPublicExposed {
   
   private QPCRData legacyQPCR_;
   private QPCRData qpcrForDisplay_;
-  private BTState appState_;
+  private TabPinnedDynamicDataAccessContext tpdacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -62,18 +60,15 @@ public class QpcrLegacyPublicExposed {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public QpcrLegacyPublicExposed(BTState appState) {
-    appState_ = appState;  
+  public QpcrLegacyPublicExposed(TabPinnedDynamicDataAccessContext tpdacx) {
+    tpdacx_ = tpdacx;  
   }
   
-  QpcrLegacyPublicExposed(QPCRData data) {
+  QpcrLegacyPublicExposed(QPCRData data, TabPinnedDynamicDataAccessContext tpdacx) {
+    tpdacx_ = tpdacx;  
     legacyQPCR_ = data;
   }
     
-  public ParserClient getParserClient(boolean mapsAreIllegal, boolean serialNumberIsIllegal) {
-    return (new QpcrXmlFormatFactory(appState_, mapsAreIllegal, serialNumberIsIllegal));    
-  }
-   
   public boolean columnDefinitionsUsed() {
     return (qpcrForDisplay_.columnDefinitionsUsed());
   }
@@ -83,9 +78,9 @@ public class QpcrLegacyPublicExposed {
     return;
   }
   
-  public void createQPCRFromPerts(PerturbationData pd) {
-    QpcrDisplayGenerator qdg = new QpcrDisplayGenerator(appState_);
-    qpcrForDisplay_ = qdg.createQPCRFromPerts(pd);
+  public void createQPCRFromPerts() {
+    QpcrDisplayGenerator qdg = new QpcrDisplayGenerator(tpdacx_);
+    qpcrForDisplay_ = qdg.createQPCRFromPerts();
     return;
   }
   
@@ -98,17 +93,18 @@ public class QpcrLegacyPublicExposed {
     return;
   }
   
-  public String getHTML(String geneId, String sourceID, boolean noCss, boolean bigScreen) {
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+  @SuppressWarnings("unused")
+  public String getHTML(String geneId, String sourceID, boolean noCss, boolean bigScreen, TabPinnedDynamicDataAccessContext dacx) {
+    DisplayOptions dOpt = dacx.getDisplayOptsSource().getDisplayOptions();
     Map<String, String> colors = dOpt.getMeasurementDisplayColors();
-    QpcrTablePublisher qtp = new QpcrTablePublisher(appState_, bigScreen, colors);
-    return (qpcrForDisplay_.getHTML(geneId, sourceID, qtp));
+    QpcrTablePublisher qtp = new QpcrTablePublisher(dacx, bigScreen, colors);
+    return (qpcrForDisplay_.getHTML(geneId, sourceID, qtp, dacx));
   }
   
-  public boolean publish(PrintWriter out) {
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+  public boolean publish(PrintWriter out, TabPinnedDynamicDataAccessContext dacx) {
+    DisplayOptions dOpt = dacx.getDisplayOptsSource().getDisplayOptions();
     Map<String, String> colors = dOpt.getMeasurementDisplayColors();
-    QpcrTablePublisher qtp = new QpcrTablePublisher(appState_, colors);
+    QpcrTablePublisher qtp = new QpcrTablePublisher(dacx, colors);
     return (qtp.publish(out, qpcrForDisplay_));
   }    
 }

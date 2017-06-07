@@ -7,7 +7,6 @@ import java.awt.event.ActionListener;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Vector;
@@ -19,13 +18,14 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -60,7 +60,6 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
   
 	public ChooseLinkToViewDialogFactory(ServerControlFlowHarness cfh) {
 		super(cfh);
-	
 	}
 
 	////////////////////////////////////////////////////////////////////////////
@@ -78,7 +77,7 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 	   
 	    BuildArgs dniba = (BuildArgs)ba;
 	    
-	    Vector<ObjChoiceContent> choices = buildLinkChoices(dniba.genomeID, dniba.linkIds, dniba.isRoot,cfh.getBTState());
+	    Vector<ObjChoiceContent> choices = buildLinkChoices(dniba.genomeID, dniba.linkIds, dniba.isRoot,cfh.getDataAccessContext());
 	    
 	    switch(platform.getPlatform()) {
 	    	case DESKTOP:
@@ -90,14 +89,13 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 	    }
 	  }
 	
-	  protected Vector<ObjChoiceContent> buildLinkChoices(String genomeID, Set<String> linkIDs, boolean forRoot, BTState appState) {
+	  protected Vector<ObjChoiceContent> buildLinkChoices(String genomeID, Set<String> linkIDs, boolean forRoot, DataAccessContext dacx) {
 		    Vector<ObjChoiceContent> retval = new Vector<ObjChoiceContent>();
 		    Set<String> seen = new HashSet<String>();
-		    Database db = appState.getDB();
-		    Genome genome = (forRoot) ? db.getGenome() : db.getGenome(genomeID);
+		    Genome genome = (forRoot) ? dacx.getDBGenome() : dacx.getGenomeSource().getGenome(genomeID);
 		    Iterator<String> lit = linkIDs.iterator();
 		    while (lit.hasNext()) {
-		      String linkID = (String)lit.next();
+		      String linkID = lit.next();
 		      linkID = (forRoot) ? GenomeItemInstance.getBaseID(linkID) : linkID;
 		      if (!seen.contains(linkID)) {
 		        Linkage link = genome.getLinkage(linkID);
@@ -121,7 +119,6 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 		private String linkResult_;
 		private boolean haveResult_;
 		protected ResourceManager rMan_;
-		protected BTState appState_;
 		private ServerControlFlowHarness cfh_;
 		private LinkRequest linkReq_;
 		private Vector<ObjChoiceContent> choices_;
@@ -132,9 +129,8 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 		
 		public SerializableDialog(ServerControlFlowHarness cfh,String genomeID, boolean forRoot, Vector<ObjChoiceContent> choices, String linkObjID) {
 			this.cfh_ = cfh;
-			this.appState_ = cfh.getBTState();
 			this.choices_ = choices;
-			this.rMan_ = cfh.getBTState().getRMan();
+			this.rMan_ = cfh.getDataAccessContext().getRMan();
 			this.primElemFac_ = new XPlatPrimitiveElementFactory(this.rMan_);
 			this.linkObjID_ = linkObjID;
 		}
@@ -162,7 +158,7 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 				linkChoices.put(choice.val,choice.name);
 			}
 			XPlatUIPrimitiveElement linkList = this.primElemFac_.makeTxtComboBox(
-				"linkList", choices_.get(0).val, null, true, this.rMan_.getString("linkToView.choose"), linkChoices
+				"linkList", choices_.get(0).val, null, this.rMan_.getString("linkToView.choose"), linkChoices
 			);
 			linkList.setParameter("bundleAs", "linkID");
 			linkList.setParameter("style", "width: 450px;");
@@ -199,8 +195,13 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 			return null;
 		}		
 		
-		public boolean isModal() {
-			return true;
+		public boolean dialogIsModal() {
+      return (true);
+    }
+
+		public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+
+			return null;
 		}
 
 	}
@@ -229,13 +230,14 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 	  private static final long serialVersionUID = 1L;
 	  protected JPanel cp_;
 	  protected ResourceManager rMan_;
-	  protected BTState appState_;
 	  protected DialogSupport ds_;
 	  protected GridBagConstraints gbc_;
 	  protected int rowNum_;
 	  protected int columns_;
 	  private ClientControlFlowHarness cfh_;
 	  private LinkRequest linkReq_;
+	  private UIComponentSource uics_;
+	  private DataAccessContext dacx_;
 	  
 	  ////////////////////////////////////////////////////////////////////////////
 	  //
@@ -248,10 +250,12 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 	  ** Constructor 
 	  */ 
 	  
-	  public DesktopDialog(ServerControlFlowHarness cfh,String genomeID, boolean forRoot, Vector choices) {   
+	  public DesktopDialog(ServerControlFlowHarness cfh, String genomeID, boolean forRoot, Vector choices) {   
 		  
-		    super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("linkToView.title"), true);
+		    super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("linkToView.title"), true);
 		    setSize(700, 200);
+		    uics_ = cfh.getUI();
+		    dacx_ = cfh.getDataAccessContext();
 		    cp_ = (JPanel)getContentPane();
 		    cp_.setBorder(new EmptyBorder(20, 20, 20, 20));
 		    cp_.setLayout(new GridBagLayout());
@@ -259,9 +263,7 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 		    rowNum_ = 0;
 		    columns_ = 3;
 		    cfh_ = cfh.getClientHarness();
-		    appState_ = cfh.getBTState();
-		    rMan_ = appState_.getRMan();   
-		  
+		    rMan_ = dacx_.getRMan();   
 	   
 	    //
 	    // Build the link choices:
@@ -286,9 +288,9 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 				DesktopDialog.this.setVisible(false);
 				DesktopDialog.this.dispose();
 	        } catch (Exception ex) {
-	          appState_.getExceptionHandler().displayException(ex);
+	          uics_.getExceptionHandler().displayException(ex);
 	        } catch (OutOfMemoryError oom) {
-	          appState_.getExceptionHandler().displayOutOfMemory(oom);
+	          uics_.getExceptionHandler().displayOutOfMemory(oom);
 	        }
 	      }
 	    });     
@@ -300,9 +302,9 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 				DesktopDialog.this.setVisible(false);
 				DesktopDialog.this.dispose();
 	        } catch (Exception ex) {
-	          appState_.getExceptionHandler().displayException(ex);
+	          uics_.getExceptionHandler().displayException(ex);
 	        } catch (OutOfMemoryError oom) {
-	          appState_.getExceptionHandler().displayOutOfMemory(oom);
+	          uics_.getExceptionHandler().displayOutOfMemory(oom);
 	        }
 	      }
 	    });    
@@ -316,11 +318,11 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 	    UiUtil.gbcSet(gbc_, 0, 2, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
 	    cp_.add(buttonPanel, gbc_);
 	    
-	    setLocationRelativeTo(appState_.getTopFrame());
+	    setLocationRelativeTo(uics_.getTopFrame());
 	    
 	  }
 
-	  public boolean isModal() {
+	  public boolean dialogIsModal() {
 		  return true;
 	  }
 
@@ -423,6 +425,11 @@ public class ChooseLinkToViewDialogFactory extends DialogFactory {
 				return (haveResult);
 			}
 
+			public void setHasResults() {
+				this.haveResult = true;
+				return;
+			}   
+			
 			public boolean isForApply() {
 				return (false);
 			}

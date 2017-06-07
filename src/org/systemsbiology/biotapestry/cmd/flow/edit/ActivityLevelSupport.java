@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-201 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,8 @@ import java.util.Iterator;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.LinkageInstance;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
@@ -176,31 +177,31 @@ public class ActivityLevelSupport {
   ** Show error dialog for activity level errors:
   */
   
-  public static void showForNode(Results res, BTState appState) {   
-    ResourceManager rMan = appState.getRMan();
+  public static void showForNode(Results res, UIComponentSource uics, DataAccessContext dacx) {   
+    ResourceManager rMan = dacx.getRMan();
     switch (res) {
       case VALID_ACTIVITY:
         throw new IllegalArgumentException();
       case BAD_ACTIVITY_VALUE_VIA_PARENT:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("nodeProp.badActivityValViaParent"), 
                                       rMan.getString("nodeProp.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         break;
       case BAD_ACTIVITY_LEVEL_VIA_PARENT:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("nodeProp.badActivityLevelViaParent"), 
                                       rMan.getString("nodeProp.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         break;
       case BAD_ACTIVITY_VALUE_VIA_CHILD:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("nodeProp.badActivityValViaChild"), 
                                       rMan.getString("nodeProp.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);  
         break;
       case BAD_ACTIVITY_LEVEL_VIA_CHILD:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("nodeProp.badActivityLevelViaChild"), 
                                       rMan.getString("nodeProp.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE); 
@@ -216,31 +217,31 @@ public class ActivityLevelSupport {
   ** Show error dialog for activity level errors:
   */
   
-  public static void showForLink(Results res, BTState appState) {   
-    ResourceManager rMan = appState.getRMan();
+  public static void showForLink(Results res, UIComponentSource uics, DataAccessContext dacx) {   
+    ResourceManager rMan = dacx.getRMan();
     switch (res) {
       case VALID_ACTIVITY:
         throw new IllegalArgumentException();
       case BAD_ACTIVITY_VALUE_VIA_PARENT:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("lprop.badActivityValViaParent"), 
                                       rMan.getString("lprop.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         break;
       case BAD_ACTIVITY_LEVEL_VIA_PARENT:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("lprop.badActivityLevelViaParent"), 
                                       rMan.getString("lprop.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         break;
       case BAD_ACTIVITY_VALUE_VIA_CHILD:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("lprop.badActivityValViaChild"), 
                                       rMan.getString("lprop.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE);  
         break;
       case BAD_ACTIVITY_LEVEL_VIA_CHILD:
-        JOptionPane.showMessageDialog(appState.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                       rMan.getString("lprop.badActivityLevelViaChild"), 
                                       rMan.getString("lprop.badActivityTitle"),
                                       JOptionPane.ERROR_MESSAGE); 
@@ -257,8 +258,8 @@ public class ActivityLevelSupport {
   ** Get SUF for activity level errors:
   */
   
-  public static SimpleUserFeedback sufForNode(Results res, BTState appState) {   
-    ResourceManager rMan = appState.getRMan();
+  public static SimpleUserFeedback sufForNode(Results res, DataAccessContext dacx) {   
+    ResourceManager rMan = dacx.getRMan();
     SimpleUserFeedback suf = null;
     switch (res) {
       case VALID_ACTIVITY:
@@ -286,8 +287,8 @@ public class ActivityLevelSupport {
   ** Get SUF for activity level errors:
   */
   
-  public static SimpleUserFeedback sufForLink(Results res, BTState appState) {  
-    ResourceManager rMan = appState.getRMan();
+  public static SimpleUserFeedback sufForLink(Results res, UIComponentSource uics) {  
+    ResourceManager rMan = uics.getRMan();
     SimpleUserFeedback suf = null;
     switch (res) {
       case VALID_ACTIVITY:

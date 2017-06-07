@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -228,6 +228,10 @@ public class DrawGroupCreationDialogFactory extends DialogFactory {
       setActiveFields(true);
     }
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // INNER CLASSES
@@ -240,7 +244,7 @@ public class DrawGroupCreationDialogFactory extends DialogFactory {
           boolean isDrawNew = drawNew_.isSelected();
           setActiveFields(isDrawNew);   
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }
@@ -328,6 +332,10 @@ public class DrawGroupCreationDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }     
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean isForApply() {
       return (false);
     }

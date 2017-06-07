@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -49,5 +49,42 @@ public interface MinimalDispOptMgr {
   */
   
   public void turnOnSpecialLinkBranches(UndoSupport support, DataAccessContext dacx, boolean doFinish);
- 
+
+  /***************************************************************************
+  **
+  ** Handle changes due to perturbation data changes
+  */
+  
+  public void modifyForPertDataChange(UndoSupport support, DataAccessContext dacx);
+  
+  
+  /***************************************************************************
+  ** 
+  ** Set the display options for IO.  Further custom setting might be applied
+  ** after this.
+  */
+
+  public void setDisplayOptionsForIO(DisplayOptions opts);
+
+  /***************************************************************************
+  ** 
+  ** Set the display options
+  */
+
+  public DisplayOptionsChange setDisplayOptions(DisplayOptions opts);
+  
+   /***************************************************************************
+  **
+  ** Undo a change
+  */
+  
+  public void changeUndo(DisplayOptionsChange undo);
+    
+  /***************************************************************************
+  **
+  ** Redo a change
+  */
+  
+  public void changeRedo(DisplayOptionsChange redo);
+  
 }

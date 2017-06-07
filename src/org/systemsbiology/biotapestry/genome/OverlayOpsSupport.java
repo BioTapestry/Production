@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,8 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
-
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.NameValuePair;
@@ -43,7 +42,7 @@ import org.systemsbiology.biotapestry.util.TaggedSet;
 
 public class OverlayOpsSupport implements Cloneable {   
    
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   protected Map<String, NetworkOverlay> netOverlays_;
   protected int ownerMode_;
   private String ownerID_;  
@@ -59,9 +58,9 @@ public class OverlayOpsSupport implements Cloneable {
   ** Constructor
   */
 
-  public OverlayOpsSupport(BTState appState, int overlayOwnerMode, String ownerID) {
+  public OverlayOpsSupport(DataAccessContext dacx, int overlayOwnerMode, String ownerID) {
     ownerMode_ = overlayOwnerMode;
-    appState_ = appState;
+    dacx_ = dacx;
     netOverlays_ = new HashMap<String, NetworkOverlay>();
     ownerID_ = ownerID;
   }  
@@ -73,7 +72,7 @@ public class OverlayOpsSupport implements Cloneable {
   */
 
   public OverlayOpsSupport(OverlayOpsSupport other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
  
     this.netOverlays_ = new HashMap<String, NetworkOverlay>();
     Iterator<String> nmit = other.netOverlays_.keySet().iterator();
@@ -138,7 +137,7 @@ public class OverlayOpsSupport implements Cloneable {
   
   public OverlayOpsSupport getStrippedOverlayCopy() {
     
-    OverlayOpsSupport retval = new OverlayOpsSupport(this.appState_, this.ownerMode_, this.ownerID_);
+    OverlayOpsSupport retval = new OverlayOpsSupport(this.dacx_, this.ownerMode_, this.ownerID_);
     Iterator<String> noit = this.netOverlays_.keySet().iterator();   
     while (noit.hasNext()) {
       String noID = noit.next();      
@@ -214,7 +213,7 @@ public class OverlayOpsSupport implements Cloneable {
       throw new IOException();
     }
     try {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(module.getID());
+      dacx_.getDBGenome().addKey(module.getID());
     } catch (IllegalStateException isex) {
       throw new IOException();
     }
@@ -249,7 +248,7 @@ public class OverlayOpsSupport implements Cloneable {
       throw new IOException();
     }
     try {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(linkage.getID());
+      dacx_.getDBGenome().addKey(linkage.getID());
     } catch (IllegalStateException isex) {
       throw new IOException();
     }
@@ -289,7 +288,7 @@ public class OverlayOpsSupport implements Cloneable {
       throw new IOException();
     }
     try {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(id);
+      dacx_.getDBGenome().addKey(id);
     } catch (IllegalStateException iaex) {
       throw new IOException();
     }
@@ -524,10 +523,10 @@ public class OverlayOpsSupport implements Cloneable {
     if ((redo.nmvOrig != null) && (redo.nmvNew != null)) {
       throw new IllegalArgumentException();
     } else if ((redo.nmvOrig == null) && (redo.nmvNew != null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(redo.nmvNew.getID());
+      dacx_.getDBGenome().addKey(redo.nmvNew.getID());
       netOverlays_.put(redo.nmvNew.getID(), redo.nmvNew.clone());
     } else if ((redo.nmvOrig != null) && (redo.nmvNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(redo.nmvOrig.getID());
+      dacx_.getDBGenome().removeKey(redo.nmvOrig.getID());
       netOverlays_.remove(redo.nmvOrig.getID());
     } else {
    //   if (redo.nameChange) {
@@ -550,10 +549,10 @@ public class OverlayOpsSupport implements Cloneable {
     if ((undo.nmvOrig != null) && (undo.nmvNew != null)) {
       throw new IllegalArgumentException();
     } else if ((undo.nmvOrig == null) && (undo.nmvNew != null)) {     
-      ((DBGenome)appState_.getDB().getGenome()).removeKey(undo.nmvNew.getID());
+      dacx_.getDBGenome().removeKey(undo.nmvNew.getID());
       netOverlays_.remove(undo.nmvNew.getID());
     } else if ((undo.nmvOrig != null) && (undo.nmvNew == null)) {
-      ((DBGenome)appState_.getDB().getGenome()).addKey(undo.nmvOrig.getID());
+      dacx_.getDBGenome().addKey(undo.nmvOrig.getID());
       netOverlays_.put(undo.nmvOrig.getID(), undo.nmvOrig.clone());
     } else { 
     //  if (undo.nameChange) {
@@ -587,7 +586,7 @@ public class OverlayOpsSupport implements Cloneable {
     if (netOv == null) {
       throw new IllegalArgumentException();
     }
-    ((DBGenome)appState_.getDB().getGenome()).removeKey(moduleKey);
+    dacx_.getDBGenome().removeKey(moduleKey);
     NetworkOverlayChange[] noc = netOv.removeNetModule(moduleKey, getID(), ownerMode_);
     return (noc);    
   }
@@ -603,7 +602,7 @@ public class OverlayOpsSupport implements Cloneable {
     if (netOv == null) {
       throw new IllegalArgumentException();
     }
-    ((DBGenome)appState_.getDB().getGenome()).removeKey(linkKey);
+    dacx_.getDBGenome().removeKey(linkKey);
     NetworkOverlayChange noc = netOv.removeNetModuleLinkage(linkKey, getID(), ownerMode_);
     return (noc);
   }
@@ -619,7 +618,7 @@ public class OverlayOpsSupport implements Cloneable {
     retval.nmvOrig = netOverlays_.get(key).clone();
     netOverlays_.remove(key);
     retval.nmvNew = null;
-    ((DBGenome)appState_.getDB().getGenome()).removeKey(key);
+    dacx_.getDBGenome().removeKey(key);
     retval.ownerKey = getID();
     retval.ownerMode = ownerMode_;
     return (retval);

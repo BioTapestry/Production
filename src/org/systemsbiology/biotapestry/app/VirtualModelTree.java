@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,15 +26,12 @@ import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
-import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JMenu;
 import javax.swing.JPopupMenu;
@@ -48,7 +45,6 @@ import javax.swing.event.TreeExpansionListener;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreeNode;
@@ -57,9 +53,9 @@ import javax.swing.tree.TreeSelectionModel;
 
 import org.systemsbiology.biotapestry.cmd.MenuSource;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.TreeSupport;
 import org.systemsbiology.biotapestry.cmd.undo.ExpansionChangeCmd;
@@ -68,22 +64,19 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.NetModule;
-import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
-import org.systemsbiology.biotapestry.genome.NetworkOverlay;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
 import org.systemsbiology.biotapestry.nav.XPlatModelTree;
-import org.systemsbiology.biotapestry.nav.XPlatOverlayDef;
 import org.systemsbiology.biotapestry.ui.FontManager;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.menu.DesktopMenuFactory;
-import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMenu;
+import org.systemsbiology.biotapestry.util.ExceptionHandler;
 import org.systemsbiology.biotapestry.util.MenuItemTarget;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -105,19 +98,28 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   private ModelMenu mainMenuContents_;
   private JTree myTree_;
   
-  private Genome popupTarget_;
+  private Genome popupModel_;
+  private Genome popupModelAncestor_;
   private TreeNode popupNode_;
   private String selectionTargetID_;
-  private TreeNode selectionNode_;   
+  private TreeNode selectionNode_;
 
   private boolean doingUndo_;
+  private StaticDataAccessContext doingUndoDacx_;
   private boolean doSelectionIgnore_;
   private boolean doNotFlow_;
   private JMenu currModMenu_;
   private TreePath lastPath_;
-  private BTState appState_;
+  
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private HarnessBuilder hBld_;
+  
   private TreePath virtualSelection_;
   private DefaultTreeModel virtualModel_;
+  private DynamicDataAccessContext ddacx_;
+  private TabSource tSrc_;
+  private UndoFactory uFac_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -130,8 +132,15 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Constructor 
   */ 
   
-  public VirtualModelTree(BTState appState, JTree myTree, DefaultTreeModel model) {
-    appState_ = appState.setVmTree(this);
+  public VirtualModelTree(JTree myTree, DefaultTreeModel model, CmdSource cSrc, UIComponentSource uics, 
+                          DynamicDataAccessContext ddacx, HarnessBuilder hBld, TabSource tSrc, UndoFactory uFac) {
+   
+    cSrc_ = cSrc;
+    uics_ = uics;
+    ddacx_ = ddacx;
+    hBld_ = hBld;
+    tSrc_ = tSrc;
+    uFac_ = uFac;
   
     myTree_ = myTree;
     virtualModel_ = model;
@@ -142,9 +151,8 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       myTree_.addTreeExpansionListener(this);
       ToolTipManager.sharedInstance().registerComponent(myTree_);
       myTree_.addMouseListener(new MouseHandler());
-      // Current fields not relevant, but need data source information:
-      DataAccessContext dacx = new DataAccessContext(appState_);
-      myTree_.setCellRenderer(new PopupCellRenderer(appState_, dacx));
+
+      myTree_.setCellRenderer(new PopupCellRenderer(uics_, ddacx_));
     }
     
     doSelectionIgnore_ = false;
@@ -152,7 +160,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     selectionNode_ = null;
     doNotFlow_ = false;
     
-    boolean readOnly = !appState_.getIsEditor();
+    boolean readOnly = !uics_.getIsEditor();
     if (!readOnly) {   
       popMenuContents_ = new ModelMenu();
       if (myTree_ != null) {
@@ -169,7 +177,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       return;
     } 
     
-    if (appState_.doBig()) {
+    if (uics_.doBig()) {
       PopupCellRenderer renderer = (PopupCellRenderer)myTree_.getCellRenderer();
       Font drFont = myTree_.getFont();
       String fontName = (drFont == null) ? "arial" : drFont.getName();
@@ -177,7 +185,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       renderer.setFont(new Font(fontName, fontType, 20));
     }
 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = ddacx_.getRMan();
     currModMenu_ = new JMenu(rMan.getString("command.currentModelMenu"));
     currModMenu_.setMnemonic(rMan.getChar("command.currentModelMenuMnem"));
   }
@@ -211,14 +219,18 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       // Previous handler installed on JTree
       //
       TreePath tp = (myTree_ != null) ? myTree_.getSelectionPath() : virtualSelection_;
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+      // THIS IS OLD STATE: NOTHING HAS BEEN CHANGED YET!
+      StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_);
       PathResolution res = resolvePath(tp, dacx);
       if (res == null) {
         selectionTargetID_ = null;
-        selectionNode_ = null;      
-      } else {
+        selectionNode_ = null;
+      } else if (res.pathTarget != null) {
         selectionTargetID_ = res.pathTarget.getID();
-        selectionNode_ = res.pathNode;      
+        selectionNode_ = res.pathNode;
+      } else {
+        selectionTargetID_ = null;
+        selectionNode_ = res.pathNode;
       }
       
       if (doNotFlow_) {
@@ -226,20 +238,27 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
         // This means we are in the middle of another control flow execution, and we have no business launching another control 
         // flow.  So just use the guts of the switching operation from the SetCurrentModel.StepState flow state:
         //
-        SetCurrentModel.StepState agis = new SetCurrentModel.StepState(appState_, SetCurrentModel.SettingAction.VIA_MODEL_TREE, dacx);
-        agis.setPreloadForTreeClick(tp, lastPath_, doSelectionIgnore_, doingUndo_);
+        
+        DataAccessContext useDacx = (doingUndo_) ? doingUndoDacx_ : ddacx_;
+        SetCurrentModel.StepState agis = (SetCurrentModel.StepState)hBld_.getNewCmdState(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_TREE, useDacx);
+        agis.setPreloadForTreeClick(tp, lastPath_, doSelectionIgnore_, doingUndo_, uics_, tSrc_, uFac_);
         agis.stepToProcessTree();
-      } else {          
-        DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-        ControlFlow cf = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_TREE, null);        
-        SetCurrentModel.StepState agis = (SetCurrentModel.StepState)cf.getEmptyStateForPreload(dacx);
-        agis.setPreloadForTreeClick(tp, lastPath_, doSelectionIgnore_, doingUndo_);
-        dcf.initFlow(cf, dacx);
-        dcf.runFlow(agis);
+      } else {   
+        HarnessBuilder.PreHarness preH = hBld_.buildHarness(FlowMeister.OtherFlowKey.MODEL_SELECTION_FROM_TREE);
+        SetCurrentModel.StepState agis = (SetCurrentModel.StepState)preH.getCmdState();
+        agis.setPreloadForTreeClick(tp, lastPath_, doSelectionIgnore_, doingUndo_, uics_, tSrc_, uFac_);
+        agis.setAppState(ddacx_.getMetabase().getAppState(), ddacx_); // UGH! FIXME
+        hBld_.runHarness(preH);
       }
       lastPath_ = tp;
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      ExceptionHandler exh = uics_.getExceptionHandler();
+      if (exh != null) {
+        exh.displayException(ex);
+      } else {
+        Thread.dumpStack();
+        System.err.println(ex);
+      }
     }
     return;
   }
@@ -285,7 +304,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
    public void setupTree() {
      if (myTree_ != null) {
        myTree_.setRootVisible(false);
-       myTree_.setFont(appState_.getFontMgr().getFixedFont(FontManager.TREE));
+       myTree_.setFont(ddacx_.getFontManager().getFixedFont(FontManager.TREE));
        myTree_.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
      }
      return;
@@ -305,9 +324,10 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Set the selection path
   */
    
-  public void setTreeSelectionPathForUndo(TreePath tp) {
+  public void setTreeSelectionPathForUndo(TreePath tp, StaticDataAccessContext dacx) {
     doNotFlow_ = true;
     doingUndo_ = true;
+    doingUndoDacx_ = dacx;
     if (myTree_ != null) {
       myTree_.setSelectionPath(tp);
     } else {
@@ -385,13 +405,22 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   /***************************************************************************
   **
-  ** Get popup target
+  ** Get popup model. May be null if group node
   */
   
-  public Genome getPopupTarget() {
-    return (popupTarget_);
+  public Genome getPopupModel() {
+    return (popupModel_);
   }
   
+  /***************************************************************************
+  **
+  ** Get popup model ancestor. Only null if nothing is selected.
+  */
+  
+  public Genome getPopupModelAncestor() {
+    return (popupModelAncestor_);
+  }
+
   /***************************************************************************
   **
   ** Get popup node
@@ -447,18 +476,18 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   public void stockCurrentModelMenu() {
     
-    boolean readOnly = !appState_.getIsEditor();
+    boolean readOnly = !uics_.getIsEditor();
     
-    if ((selectionTargetID_ == null) || (selectionNode_ == null) || readOnly) {
+    if ((selectionNode_ == null) || readOnly) {
       currModMenu_.removeAll();
       currModMenu_.setEnabled(false);
     } else { 
-      DataAccessContext dacx = new DataAccessContext(appState_, selectionTargetID_);
-      popupTarget_ = dacx.getGenome();
+      StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_, selectionTargetID_);
+      popupModel_ = dacx.getCurrentGenome();
       popupNode_ = selectionNode_;      
       currModMenu_.removeAll();
       mainMenuContents_.fillMenu(new MenuItemTarget(currModMenu_));      
-      mainMenuContents_.manageActionEnables(popupTarget_, popupNode_, dacx);
+      mainMenuContents_.manageActionEnables(popupNode_, dacx);
       currModMenu_.setEnabled(true);
     }
     return;
@@ -481,8 +510,8 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Answers if model notification is for currently displayed model.
   */
   
-  public boolean isCurrentlyDisplayed(ModelChangeEvent mcev) {
-    String currID = appState_.getGenome();
+  public boolean isCurrentlyDisplayed(ModelChangeEvent mcev, DataAccessContext dacx) {
+    String currID = dacx.getCurrentGenomeID();
     if (currID == null) {
       return (false);
     }
@@ -587,11 +616,11 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     // are going to use it to restore our tree after we are done.
     //
 
-    ExpansionChange ec = (new TreeSupport(appState_)).buildExpansionChange(true, dacx);
-    support.addEdit(new ExpansionChangeCmd(appState_, dacx, ec));
+    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx);
+    support.addEdit(new ExpansionChangeCmd(dacx, ec));
     if (recordPathControllerState) {
-      UserTreePathController utpc = appState_.getPathController();
-      support.addEdit(new UserTreePathControllerChangeCmd(appState_, dacx, utpc.recordStateForUndo(true)));
+      UserTreePathController utpc = uics_.getPathController();
+      support.addEdit(new UserTreePathControllerChangeCmd(dacx, utpc.recordStateForUndo(true)));
     }
     
     return (ec);
@@ -604,15 +633,15 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   public void doRedoExpansionChange(UndoSupport support, DataAccessContext dacx, NavTreeChange ntc, boolean recordPathControllerState) {      
 
-    ExpansionChange ec = (new TreeSupport(appState_)).buildExpansionChange(false, dacx);
+    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx);
     NavTree nt = dacx.getGenomeSource().getModelHierarchy();
     ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
     ec.selected = nt.mapAPath(ec.selected, ntc, false);
     if (recordPathControllerState) {
-      UserTreePathController utpc = appState_.getPathController();
-      support.addEdit(new UserTreePathControllerChangeCmd(appState_, dacx, utpc.recordStateForUndo(false)));
+      UserTreePathController utpc = uics_.getPathController();
+      support.addEdit(new UserTreePathControllerChangeCmd(dacx, utpc.recordStateForUndo(false)));
     }
-    support.addEdit(new ExpansionChangeCmd(appState_, dacx, ec));      
+    support.addEdit(new ExpansionChangeCmd(dacx, ec));      
 
     return;     
   }  
@@ -622,8 +651,8 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Get Action wrapped around a newly-created flow.  No additional arguments, so these actions can be cached by FlowMeister key.
   */ 
   
-  public static ModelTreeAction getAction(BTState appState, FlowMeister.TreeFlow key) {
-    return (new ModelTreeAction(appState, false, appState.getFloM().getControlFlow(key, null)));  
+  public static ModelTreeAction getAction(ResourceManager rMan, UIComponentSource uics, CmdSource cSrc, HarnessBuilder hBld, FlowMeister.TreeFlow key) {
+    return (new ModelTreeAction(rMan, uics, cSrc, hBld, false, cSrc.getFloM().getControlFlow(key, null)));  
   }
   
   /***************************************************************************
@@ -631,10 +660,27 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Get Action wrapped around an existing flow. 
   */ 
   
-  public static ModelTreeAction getAction(BTState appState, ControlFlow flow) {
-    return (new ModelTreeAction(appState, false, flow));  
+  public static ModelTreeAction getAction(ResourceManager rMan, UIComponentSource uics, CmdSource cSrc, HarnessBuilder hBld, ControlFlow flow) {
+    return (new ModelTreeAction(rMan, uics, cSrc, hBld, false, flow));  
   }
-     
+  
+  /***************************************************************************
+  **
+  ** Answer if group node has image, map image
+  */  
+   
+  public boolean currNodeHasGroupImage(boolean forMap) {
+    NavTree nt = ddacx_.getGenomeSource().getModelHierarchy();
+    TreePath tp = getTreeSelectionPath();  
+    String groupNodeID = nt.getGroupNodeID(tp);
+    if (groupNodeID == null) {
+      return (false);
+    }
+    TreeNode tn = nt.nodeForNodeID(groupNodeID);
+    String imKey = nt.getImageKey(tn, forMap);
+    return (imKey != null);
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE METHODS
@@ -646,25 +692,49 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   ** Resolve the path into a target and a node
   */    
   
-  private PathResolution resolvePath(TreePath tp, DataAccessContext dacx) {
+  private PathResolution resolvePath(TreePath tp, StaticDataAccessContext dacx) {
     NavTree nt = dacx.getGenomeSource().getModelHierarchy();
     String genomeID = nt.getGenomeID(tp);
     String proxyID = nt.getDynamicProxyID(tp);
+    String groupName = nt.getGroupName(tp);
+    String genomeAncestorID = nt.getGenomeModelAncestorID(tp);
     Genome pathTarget = null;
+    Genome pathModelAncestor = null;
     TreeNode pathNode = null;
+    boolean groupNode = false;
     if (genomeID != null) {
       pathTarget = dacx.getGenomeSource().getGenome(genomeID);
       pathNode = (TreeNode)tp.getLastPathComponent();
+      pathModelAncestor = pathTarget;
     } else if (proxyID != null) {
       DynamicInstanceProxy dip = dacx.getGenomeSource().getDynamicProxy(proxyID);  
-      genomeID = appState_.getVTSlider().getCurrentSliderKey(dip);
+      genomeID = uics_.getVTSlider().getCurrentSliderKey(dip);
       pathTarget = dacx.getGenomeSource().getGenome(genomeID);
       pathNode = (TreeNode)tp.getLastPathComponent();
+      pathModelAncestor = pathTarget;
+    } else if (groupName != null) {
+      pathNode = (TreeNode)tp.getLastPathComponent();
+      pathModelAncestor = dacx.getGenomeSource().getGenome(genomeAncestorID);
+      groupNode = true;
     }
-    if (pathTarget != null) {
-      return (new PathResolution(pathTarget, pathNode));
+
+    if (pathNode != null) {
+      return (new PathResolution(pathTarget, pathModelAncestor, pathNode, groupNode));
     }
     return (null);
+  }
+
+  /***************************************************************************
+  **
+  ** refresh tree
+  */
+  
+  public void refreshTree() { 
+    if (myTree_ != null) {
+      myTree_.revalidate();
+      myTree_.repaint();
+    }
+    return;
   }
 
   /***************************************************************************
@@ -675,7 +745,8 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   public void updateNavTreeNames(ModelChangeEvent mcev, DataAccessContext dacx) { 
     String id = mcev.isProxyKey() ? mcev.getProxyKey() : mcev.getGenomeKey();
     NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
-    navTree.nodeNameRefresh(id);
+    UiUtil.fixMePrintout("Nav tree names changed here to match model name change!");
+    navTree.nodeNameRefresh(id, dacx);
     if (myTree_ != null) {
       myTree_.revalidate();
       myTree_.repaint();
@@ -708,11 +779,15 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   private static class PathResolution {
     Genome pathTarget;
+    Genome pathAncestorModel;
     TreeNode pathNode;
+    boolean groupNode;
     
-    PathResolution(Genome pathTarget, TreeNode pathNode) {
+    PathResolution(Genome pathTarget, Genome pathAncestorModel, TreeNode pathNode, boolean groupNode) {
       this.pathTarget = pathTarget;
-      this.pathNode = pathNode;   
+      this.pathAncestorModel = pathAncestorModel;
+      this.pathNode = pathNode;
+      this.groupNode = groupNode;
     }
   }  
    
@@ -749,22 +824,24 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     
     private void triggerPopup(int x, int y) {
       try {
-        boolean readOnly = !appState_.getIsEditor();
+        boolean readOnly = !uics_.getIsEditor();
         if (!readOnly) {
           TreePath tp = myTree_.getPathForLocation(x, y);
-          DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
+          StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_);
           PathResolution res = resolvePath(tp, dacx);
           if (res == null) {
             return ;
           }
-          popupTarget_ = res.pathTarget;
+          popupModel_ = res.pathTarget;
+          popupModelAncestor_ = res.pathAncestorModel;
           popupNode_ = res.pathNode;
-          DataAccessContext dacx2 = new DataAccessContext(dacx, popupTarget_);
-          popMenuContents_.manageActionEnables(popupTarget_, popupNode_, dacx2);
+          
+          StaticDataAccessContext dacx2 = new StaticDataAccessContext(dacx, popupModel_);
+          popMenuContents_.manageActionEnables(popupNode_, dacx2);
           leafPopup_.show(myTree_, x, y);
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }     
     }
   }
@@ -792,10 +869,11 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   */
   
   public static class ModelTreeAction extends AbstractAction {     
-    private static final long serialVersionUID = 1L;
-     
+    private static final long serialVersionUID = 1L;     
     // Used so we can build cross-platform menus and toolbars:
-    private BTState myAppState_;
+    private CmdSource cSrc_;
+    private UIComponentSource uics_;
+    private HarnessBuilder hBld_;
     private String name_;
     private String desc_;      
     private String icon_;     
@@ -803,15 +881,16 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     private Character accel_; 
     protected ControlFlow myControlFlow;
 
-    public ModelTreeAction(BTState appState, boolean doIcon, ControlFlow theFlow) {
-      myAppState_ = appState;
+    public ModelTreeAction(ResourceManager rMan, UIComponentSource uics, CmdSource cSrc, HarnessBuilder hBld, boolean doIcon, ControlFlow theFlow) {
+      cSrc_ = cSrc;
+      hBld_ = hBld;
+      uics_ = uics;
       myControlFlow = theFlow;
-      installName(doIcon, myControlFlow.getName(), myControlFlow.getDesc(), 
+      installName(rMan, doIcon, myControlFlow.getName(), myControlFlow.getDesc(), 
                   myControlFlow.getIcon(), myControlFlow.getMnem(), myControlFlow.getAccel());
     }
     
-    private void installName(boolean doIcon, String name, String sDesc, String icon, String mnem, String accel) {
-      ResourceManager rMan = myAppState_.getRMan();
+    private void installName(ResourceManager rMan, boolean doIcon, String name, String sDesc, String icon, String mnem, String accel) {
       name_ = rMan.getString(name);
       putValue(Action.NAME, name_);
       if (doIcon) {
@@ -851,23 +930,21 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     }
     
     public void actionPerformed(ActionEvent e) {
-      try {
-        DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(myAppState_, new DesktopDialogPlatform(myAppState_.getTopFrame()));
-        DataAccessContext dacx = new DataAccessContext(myAppState_, myAppState_.getGenome());
-        DialogAndInProcessCmd.ModelTreeCmdState agis = (DialogAndInProcessCmd.ModelTreeCmdState)myControlFlow.getEmptyStateForPreload(dacx);
-        VirtualModelTree vmTree = myAppState_.getTree();
-        agis.setPreload(vmTree.getPopupTarget(), vmTree.getPopupNode());
-        dcf.initFlow(myControlFlow, dacx);
-        dcf.runFlow(agis);
+      try {       
+        HarnessBuilder.PreHarness preH = hBld_.buildHarness(myControlFlow);
+        VirtualModelTree vmTree = uics_.getTree();
+        DialogAndInProcessCmd.ModelTreeCmdState agis = (DialogAndInProcessCmd.ModelTreeCmdState)preH.getCmdState();
+        agis.setPreload(vmTree.getPopupModel(), vmTree.getPopupModelAncestor(), vmTree.getPopupNode());
+        hBld_.runHarness(preH);
       } catch (Exception ex) {
-        myAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
   
-    public boolean manageActionEnables(Genome modelTarget, TreeNode modelNode, DataAccessContext dacx) {
+    public boolean manageActionEnables(TreeNode modelNode, StaticDataAccessContext dacx) {
       XPlatModelNode.NodeKey key = dacx.getGenomeSource().getModelHierarchy().treeNodeToXPlatKey((DefaultMutableTreeNode)modelNode, dacx);
-      return (myControlFlow.isTreeEnabled(key, dacx));
+      return (myControlFlow.isTreeEnabled(key, dacx, uics_));
     }  
   }
 
@@ -888,11 +965,11 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     */
 
     ModelMenu() {
-      if (!appState_.getIsEditor()) {
+      if (!uics_.getIsEditor()) {
         throw new IllegalStateException();
       }
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-      MenuSource mSrc = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
+      StaticDataAccessContext dacx = new StaticDataAccessContext(ddacx_);
+      MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
       xpm_ = mSrc.defineEditorTreePopup(dacx);
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
       flows_ = mSrc.fillFlowMap(xpm_, bifo);
@@ -903,13 +980,13 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     ** Handle enabling the actions
     */
 
-    void manageActionEnables(Genome modelTarget, TreeNode modelNode, DataAccessContext dacx) {
-      boolean readOnly = !appState_.getIsEditor();
+    void manageActionEnables(TreeNode modelNode, StaticDataAccessContext dacx) {
+      boolean readOnly = !uics_.getIsEditor();
       if (!readOnly) {
         Iterator<AbstractAction> cavit = actionBifo_.allActions.iterator();
         while (cavit.hasNext()) {
           ModelTreeAction mta = (ModelTreeAction)cavit.next();
-          mta.setEnabled(mta.manageActionEnables(modelTarget, modelNode, dacx));
+          mta.setEnabled(mta.manageActionEnables(modelNode, dacx));
         }
       }
       return;
@@ -922,7 +999,6 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
 
     Map<XPlatModelNode.NodeKey, Map<FlowMeister.FlowKey, Boolean>> getTreeFlowsEnabled(DataAccessContext dacx) {     
       XPlatModelTree tree = dacx.getGenomeSource().getModelHierarchy().getXPlatTree(dacx);
-      boolean readOnly = !appState_.getIsEditor(); 
       
       Map<XPlatModelNode.NodeKey, Map<FlowMeister.FlowKey, Boolean>> retval = 
         new HashMap<XPlatModelNode.NodeKey, Map<FlowMeister.FlowKey, Boolean>>();
@@ -940,7 +1016,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     private void getEnabledForNode(XPlatModelNode xpNode, DataAccessContext dacx, 
                                    Map<XPlatModelNode.NodeKey, Map<FlowMeister.FlowKey, Boolean>> fillMeIn) { 
       
-      boolean readOnly = !appState_.getIsEditor();
+      boolean readOnly = !uics_.getIsEditor();
       if (readOnly) {
         throw new IllegalStateException();
       }
@@ -951,7 +1027,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       while (akit.hasNext()) {
         FlowMeister.FlowKey fk = akit.next();
         ControlFlow cf = flows_.get(fk);
-        boolean enabled = cf.isTreeEnabled(nKey, dacx);
+        boolean enabled = cf.isTreeEnabled(nKey, dacx, uics_);
         retval.put(fk, Boolean.valueOf(enabled));        
       }
       
@@ -976,20 +1052,18 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
       }
       return;
     } 
-    
 
-      
     /***************************************************************************
     **
     ** Fill in the given menu
     */
 
     void fillMenu(MenuItemTarget menuTarg) {
-      boolean readOnly = !appState_.getIsEditor();
+      boolean readOnly = !uics_.getIsEditor();
       if (!readOnly) {
-        DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
+        DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, ddacx_.getRMan(), uics_, hBld_);
         actionBifo_ = new MenuSource.BuildInfo();
-        dmf.buildMenuGeneral(xpm_, new DesktopMenuFactory.ActionSource(appState_, flows_), actionBifo_, menuTarg);
+        dmf.buildMenuGeneral(xpm_, new DesktopMenuFactory.ActionSource(cSrc_, flows_), actionBifo_, menuTarg);
       }
       return;
     }

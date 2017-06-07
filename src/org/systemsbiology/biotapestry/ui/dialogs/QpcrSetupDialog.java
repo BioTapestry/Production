@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ import javax.swing.JLabel;
 
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.IntegerEditor;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
@@ -50,6 +50,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.utils.TimeAxisHelper;
 import org.systemsbiology.biotapestry.util.EnumCell;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -67,11 +68,11 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   private EditableTable est_;
   private EditableTable mcet_;
   private boolean namedStages_;
-  private ArrayList origCols_;
-  private ArrayList resultCols_;
-  private ArrayList colorList_;
+  private ArrayList<MinMax> origCols_;
+  private ArrayList<MinMax> resultCols_;
+  private ArrayList<EnumCell> colorList_;
   
-  private TreeMap origColorMap_;
+  private TreeMap<String, MeasureColorTableModel.TableRow> origColorMap_;
   private TimeAxisDefinition tad_;
   private JComboBox scaleOptions_;
   private JCheckBox investMode_;
@@ -79,9 +80,11 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   private boolean resultInvestMode_;
   private MinMax resultDefaultSpan_;
   private String resultCurrentScale_;
-  private Map resultCurrColors_;
+  private Map<String, String> resultCurrColors_;
   private TimeAxisHelper tah_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -97,29 +100,30 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** qpcr structure.
   */ 
   
-  public static QpcrSetupDialog qpcrSetupDialogWrapper(BTState appState,
+  public static QpcrSetupDialog qpcrSetupDialogWrapper(UIComponentSource uics,
                                                        DataAccessContext dacx,
-                                                       List currColumns, Map currColors, 
+                                                       List<MinMax> currColumns, 
+                                                       Map<String, String> currColors, 
                                                        String currentScale, boolean currentInvestMode,
-                                                       MinMax currentNullDefaultSpan) {
+                                                       MinMax currentNullDefaultSpan, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState, dacx);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
       tasd.setVisible(true);
     }
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }
     
-    QpcrSetupDialog qsd = new QpcrSetupDialog(appState, dacx, currColumns, currColors, currentScale, 
-                                              currentInvestMode, currentNullDefaultSpan);
+    QpcrSetupDialog qsd = new QpcrSetupDialog(uics, dacx, currColumns, currColors, currentScale, 
+                                              currentInvestMode, currentNullDefaultSpan, uFac);
     return (qsd);
   }    
   
@@ -134,18 +138,19 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  private QpcrSetupDialog(BTState appState, DataAccessContext dacx, List currColumns, Map currColors, 
-                          String currentScale, boolean currentInvestMode, 
-                          MinMax currentNullDefaultSpan) {
-    super(appState, "qsedit.title", new Dimension(900, 500), 10);
+  private QpcrSetupDialog(UIComponentSource uics, DataAccessContext dacx, List<MinMax> currColumns, Map<String, String> currColors, 
+                          String currentScale, boolean currentInvestMode, MinMax currentNullDefaultSpan, UndoFactory uFac) {
+    super(uics, dacx, "qsedit.title", new Dimension(900, 500), 10);
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
     namedStages_ = tad_.haveNamedStages(); 
        
     JLabel t1Lab = new JLabel(rMan_.getString("qsedit.setDisplayColumns"), JLabel.LEFT);
     addWidgetFullRow(t1Lab, true);
     
-    est_ = new EditableTable(appState_, new ColumnTableModel(appState_, tad_, namedStages_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new ColumnTableModel(uics_, dacx_, tad_, namedStages_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -169,7 +174,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       currentNullDefaultSpan = tad.getDefaultTimeSpan();
     }
     
-    tah_ = new TimeAxisHelper(appState, dacx_, this, currentNullDefaultSpan.min, currentNullDefaultSpan.max);
+    tah_ = new TimeAxisHelper(uics_, dacx_, this, currentNullDefaultSpan.min, currentNullDefaultSpan.max, uFac_);
     JPanel helper = tah_.buildHelperPanel();
     JLabel dLab = new JLabel(rMan_.getString("qsedit.defaultSpan"));
     addLabeledWidget(dLab, helper, true, false);
@@ -182,12 +187,12 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     addWidgetFullRow(t2Lab, true);
     
     colorList_ = buildColors();    
-    mcet_ = new EditableTable(appState_, new MeasureColorTableModel(appState_), appState_.getTopFrame());
+    mcet_ = new EditableTable(uics_, dacx_, new MeasureColorTableModel(uics_, dacx_), uics_.getTopFrame());
     etp = new EditableTable.TableParams();
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.tableIsUnselectable = true;
-    etp.perColumnEnums = new HashMap();
-    etp.perColumnEnums.put(new Integer(MeasureColorTableModel.COLOR), new EditableTable.EnumCellInfo(false, colorList_));
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(MeasureColorTableModel.COLOR), new EditableTable.EnumCellInfo(false, colorList_, EnumCell.class));
     tablePan = mcet_.buildEditableTable(etp);
     addTable(tablePan, 4);
        
@@ -207,7 +212,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  public List getColumnResults() {
+  public List<MinMax> getColumnResults() {
     return (resultCols_);
   }
   
@@ -247,7 +252,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  public Map getColorResults() {
+  public Map<String, String> getColorResults() {
     return (resultCurrColors_);
   }
  
@@ -269,10 +274,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     private final static int NUM_COL_  = 2;  
     private static final long serialVersionUID = 1L;
    
-    ColumnTableModel(BTState appState, TimeAxisDefinition tad, boolean namedStages) {
-      super(appState, NUM_COL_);
+    ColumnTableModel(UIComponentSource uics, DataAccessContext dacx, TimeAxisDefinition tad, boolean namedStages) {
+      super(uics, dacx, NUM_COL_);
       String displayUnits = tad.unitDisplayString();
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String minHeading = MessageFormat.format(rMan.getString("qsedit.minTimeUnitFormat"), new Object[] {displayUnits});
       String maxHeading = MessageFormat.format(rMan.getString("qsedit.maxTimeUnitFormat"), new Object[] {displayUnits});
  
@@ -298,9 +303,9 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
 
     public void extractValues(List prsList) {
       super.extractValues(prsList);
-      Iterator cit = prsList.iterator();
+      Iterator<MinMax> cit = prsList.iterator();
       while (cit.hasNext()) {
-        MinMax next = (MinMax)cit.next();
+        MinMax next = cit.next();
         if (colClasses_[0].equals(String.class)) {
           TimeAxisDefinition.NamedStage stageName = tad_.getNamedStageForIndex(next.min);
           columns_[MIN_TIME_].add(stageName.name);
@@ -316,9 +321,9 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
 
     boolean applyValues() {
     
-      ResourceManager rMan = appState_.getRMan();
-      if (appState_.getDB().getPertData().columnDefinitionsLocked()) { 
-        resultCols_ = new ArrayList(origCols_); 
+      ResourceManager rMan = dacx_.getRMan();
+      if (dacx_.getExpDataSrc().getPertData().columnDefinitionsLocked()) { 
+        resultCols_ = new ArrayList<MinMax>(origCols_); 
         return (true);
       }
       
@@ -331,7 +336,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       // Make sure the integers are OK, non-overlapping, etc:
       //
       
-      resultCols_ = new ArrayList();
+      resultCols_ = new ArrayList<MinMax>();
       int size = vals.size();
       int lastMax = -1;
       for (int i = 0; i < size; i++) {     
@@ -345,7 +350,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
           maxTimeVal = tad_.getIndexForNamedStage(maxStageName);
           if ((minTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME) ||
               (maxTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME)) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("qsedit.badStageName"),
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("qsedit.badStageName"),
                                           rMan.getString("qsedit.badStageNameTitle"),
                                           JOptionPane.ERROR_MESSAGE);
             resultCols_ = null;
@@ -356,7 +361,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
           ProtoInteger max = (ProtoInteger)val[1];   
           if (((min == null) || (!min.valid)) ||
               ((max == null) || (!max.valid))) {
-            IntegerEditor.triggerWarning(appState_, appState_.getTopFrame());
+            IntegerEditor.triggerWarning(uics_.getHandlerAndManagerSource(), uics_.getTopFrame());
             resultCols_ = null;
             return (false);
           }
@@ -365,7 +370,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
         }
 
         if ((minTimeVal <= lastMax) || (minTimeVal > maxTimeVal)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("qsedit.badBounds"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("qsedit.badBounds"),
                                                  rMan.getString("qsedit.badBoundsTitle"),
                                                  JOptionPane.ERROR_MESSAGE);
           resultCols_ = null;
@@ -415,8 +420,8 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       }
     }
   
-    MeasureColorTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    MeasureColorTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"qpcrSetup.measureType",
                                 "qpcrSetup.color"};
       colClasses_ = new Class[] {String.class,
@@ -427,7 +432,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     }
    
     public List getValuesFromTable() {
-      ArrayList retval = new ArrayList();
+      ArrayList<TableRow> retval = new ArrayList<TableRow>();
       for (int i = 0; i < rowCount_; i++) {
         TableRow ent = new TableRow(i);
         retval.add(ent);
@@ -437,9 +442,9 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     
     public void extractValues(List prsList) {
       super.extractValues(prsList);
-      Iterator rit = prsList.iterator();
+      Iterator<TableRow> rit = prsList.iterator();
       while (rit.hasNext()) { 
-        TableRow ent = (TableRow)rit.next();
+        TableRow ent = rit.next();
         ent.toCols();
       }
       return;
@@ -458,13 +463,13 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private void displayProperties(List currColumns, Map currColors, String currentScale, 
+  private void displayProperties(List<MinMax> currColumns, Map<String, String> currColors, String currentScale, 
                                  boolean currentInvestMode, MinMax currentNullDefaultSpan) {
     
     PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     MeasureDictionary md = pd.getMeasureDictionary();
     
-    Vector scaleTypes = md.getScaleOptions();
+    Vector<TrueObjChoiceContent> scaleTypes = md.getScaleOptions();
     UiUtil.replaceComboItems(scaleOptions_, scaleTypes);   
     
     TrueObjChoiceContent toccScale = md.getScaleChoice(currentScale);
@@ -480,10 +485,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     // Default span had to be loaded in constructor!
  
 
-    origCols_ = new ArrayList();
-    Iterator colIt = currColumns.iterator();
+    origCols_ = new ArrayList<MinMax>();
+    Iterator<MinMax> colIt = currColumns.iterator();
     while (colIt.hasNext()) {
-      MinMax nextCol = (MinMax)colIt.next();
+      MinMax nextCol = colIt.next();
       origCols_.add(nextCol.clone());   
     }
     est_.getModel().extractValues(origCols_);
@@ -498,15 +503,15 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     }
       
     MeasureColorTableModel mctm = (MeasureColorTableModel)mcet_.getModel(); 
-    origColorMap_ = new TreeMap();
-    Iterator dcit = currColors.keySet().iterator();
+    origColorMap_ = new TreeMap<String, MeasureColorTableModel.TableRow>();
+    Iterator<String> dcit = currColors.keySet().iterator();
     while (dcit.hasNext()) {
       MeasureColorTableModel.TableRow tr = mctm.new TableRow();
-      tr.measureKey = (String)dcit.next();
-      String colString = (String)currColors.get(tr.measureKey);
+      tr.measureKey = dcit.next();
+      String colString = currColors.get(tr.measureKey);
       int clsize = colorList_.size();
       for (int i = 0; i < clsize; i++) {
-        EnumCell cCell = (EnumCell)colorList_.get(i);
+        EnumCell cCell = colorList_.get(i);
         if (cCell.internal.equals(colString)) {
           tr.color = new EnumCell(cCell);
           break;
@@ -516,7 +521,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       origColorMap_.put(tr.measure, tr);
     }
     
-    mcet_.getModel().extractValues(new ArrayList(origColorMap_.values()));
+    mcet_.getModel().extractValues(new ArrayList<MeasureColorTableModel.TableRow>(origColorMap_.values()));
     return;
   }
 
@@ -539,7 +544,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     resultCurrentScale_ = (String)tocc.val;
   
     resultInvestMode_ = investMode_.isSelected();
-    resultCurrColors_ = new HashMap();
+    resultCurrColors_ = new HashMap<String, String>();
     List vals = ((MeasureColorTableModel)mcet_.getModel()).getValuesFromTable();
     int num = vals.size();
     for (int i = 0; i < num; i++) {

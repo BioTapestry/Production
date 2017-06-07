@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.helpers.XMLReaderFactory;
 import org.xml.sax.helpers.DefaultHandler;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
@@ -69,8 +69,8 @@ public class SUParser extends DefaultHandler {
   private HashMap<String, ParserClient> clients_;
   private ParserClient currClient_;
   private String lastElement_;
-  private BTState appState_;
-  
+  private DataAccessContext dacx_;
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -82,8 +82,8 @@ public class SUParser extends DefaultHandler {
   ** Parse the given file using the given factories:
   */
 
-  public SUParser(BTState appState, List<ParserClient> citList) {
-    this(appState);
+  public SUParser(DataAccessContext dacx, List<ParserClient> citList) {
+    this(dacx);
     //
     // Crank thru the clients and stash them in a HashMap
     //
@@ -311,8 +311,8 @@ public class SUParser extends DefaultHandler {
   ** Null Constructor.
   */
 
-  private SUParser(BTState appState) {
-    appState_ = appState;
+  private SUParser(DataAccessContext dacx) {
+    dacx_ = dacx;
     try {
       //SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
       //saxParserFactory.setNamespaceAware(true);
@@ -404,7 +404,7 @@ public class SUParser extends DefaultHandler {
   */
   
   private String formatSAXExceptionMessage(SAXException e) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String exMsg = e.getMessage();
     Integer lineNo = null;
     Integer colNo = null;
@@ -453,7 +453,7 @@ public class SUParser extends DefaultHandler {
   */
   
   private String buildIOExceptionMsg(IOException e) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String msg = (e == null) ? null : e.getMessage();
     String retmsg;
     if (e instanceof NewerVersionIOException) {

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,6 +33,7 @@ import java.awt.event.WindowEvent;
 import javax.swing.ImageIcon;
 
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FilePreparer;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.ExceptionHandler;
@@ -54,6 +55,8 @@ public class EditorWindow extends JFrame {
 
   private static final long serialVersionUID = 1L;
   private BTState appState_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -66,18 +69,24 @@ public class EditorWindow extends JFrame {
   ** Constructor 
   */ 
   
-  public EditorWindow(BTState appState)  {     
-    super(appState.getRMan().getString("window.editorTitle"));
-    appState_ = appState.setTopFrame(this, (JComponent)this.getContentPane());
+  public EditorWindow(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc)  {     
+    super(uics.getRMan().getString("window.editorTitle"));
+    appState_ = appState;
+    uics_ = uics;
+    cSrc_ = cSrc;
+    uics_.setTopFrame(this, (JComponent)this.getContentPane());
     Dimension dim = UiUtil.centerBigFrame(this, 1600, 1200, 1.0, 0);
-    appState_.setIsEditor(true);
-    CommonView cview = new CommonView(appState);
+    uics_.setIsEditor(true);
+    CommonView cview = new CommonView(appState_, uics_, cSrc, tSrc);
+    uics_.setCommonView(cview);
     cview.buildTheView();
-    appState_.getContentPane().setSize(dim);
+    uics_.getContentPane().setSize(dim);
     setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
-    appState_.setExceptionHandler(new ExceptionHandler(appState_, appState_.getRMan(), this));
+    
+    uics_.setExceptionHandler(new ExceptionHandler(uics_, uics_.getRMan(), this));
     
     addWindowListener(new WindowAdapter() {
+      @Override
       public void windowClosing(WindowEvent e) {
         shutdownEditor(true);
       }
@@ -88,7 +97,7 @@ public class EditorWindow extends JFrame {
     setResizable(true);
     setVisible(true); // This has to be before load remote genome...    
     
-    LoadSaveSupport lssup = appState_.getLSSupport();
+    LoadSaveSupport lssup = uics_.getLSSupport();
     URL gurl = null;
     URL saltUrl = null;    
     try {   
@@ -99,9 +108,8 @@ public class EditorWindow extends JFrame {
       System.err.println("malformed URL argument");
       return;
     }
-    
     if (gurl != null) {
-      while (true) {
+      while (true) { // Make a new one for if we have mess-ups:
         FilePreparer.FileInputResultClosure firc = lssup.loadRemoteGenome(gurl, saltUrl, false);
         if (!firc.wasSuccessful()) {
           firc.displayFileInputError();
@@ -111,11 +119,11 @@ public class EditorWindow extends JFrame {
         }
       }
     } else {
-      DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
+      DataAccessContext dacx = new StaticDataAccessContext(appState_);
       lssup.newModelTweaks(dacx);    
     }    
 
-    appState_.getTree().requestTreeFocus(); // Keeps the "save" button from having focus
+    uics_.getTree().requestTreeFocus(); // Keeps the "save" button from having focus
   }
   
   /***************************************************************************
@@ -124,8 +132,8 @@ public class EditorWindow extends JFrame {
   */  
   
   public void shutdownEditor(boolean doGaggle) {
-    if (appState_.getCommonView().havePerturbationEditsInProgress()) {
-      ResourceManager rMan = appState_.getRMan();
+    if (uics_.getCommonView().havePerturbationEditsInProgress()) {
+      ResourceManager rMan = uics_.getRMan();
       int ok = JOptionPane.showConfirmDialog(EditorWindow.this, 
                                 rMan.getString("closeApp.warningMessagePertEdits"), 
                                 rMan.getString("closeApp.warningMessagePertEditsTitle"),
@@ -134,8 +142,8 @@ public class EditorWindow extends JFrame {
         return;
       }
     }
-    if (appState_.hasAnUndoChange()) {
-       ResourceManager rMan = appState_.getRMan();
+    if (cSrc_.hasAnUndoChange()) {
+       ResourceManager rMan = uics_.getRMan();
        int ok = JOptionPane.showConfirmDialog(EditorWindow.this, 
                                 rMan.getString("closeApp.warningMessage"), 
                                 rMan.getString("closeApp.warningMessageTitle"),
@@ -145,7 +153,7 @@ public class EditorWindow extends JFrame {
        }
     }
     if (doGaggle) {
-      GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+      GooseAppInterface goose = uics_.getGooseMgr().getGoose();
       if ((goose != null) && goose.isActivated()) {
         goose.closeDown();
       }        

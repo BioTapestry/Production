@@ -161,6 +161,13 @@ public class XPlatUIDialog {
 	public Map<String,XPlatUICollectionElement> getDialogElementCollections() {
 		return Collections.unmodifiableMap(dialogElementCollections_);
 	}
+
+	public XPlatUICollectionElement getDialogElementCollection(String key) {
+		if(this.dialogElementCollections_ == null) {
+			return null;
+		}
+		return this.dialogElementCollections_.get(key);
+	}
 	
 	public Point getOpenOffset() {
 		return openOffset_;
@@ -176,6 +183,13 @@ public class XPlatUIDialog {
 	
 	public Map<String,Object> getParameters() {
 		return Collections.unmodifiableMap(this.parameters_);
+	}
+
+	public Object getParameter(String key) {
+		if(this.parameters_ == null) {
+			return null;
+		}
+		return this.parameters_.get(key);
 	}
 	
 	public SimpleUserFeedback.JOP getDialogType() {

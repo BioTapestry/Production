@@ -42,8 +42,8 @@ public class Splitter {
   ** Break into strings
   */
   
-  public static ArrayList<String> stringBreak(String entry, String regex, 
-                                              int offset, boolean doTrim) {
+  public static List<String> stringBreak(String entry, String regex, 
+                                         int offset, boolean doTrim) {
     //
     // We break the list
     //

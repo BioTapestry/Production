@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,11 +19,11 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.LinkPropertiesDialog;
 
@@ -51,8 +51,7 @@ public class EditNetModuleLink extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditNetModuleLink(BTState appState) {
-    super(appState);   
+  public EditNetModuleLink() { 
     name = "modulelinkPopup.Props";
     desc = "modulelinkPopup.Props";
     mnem =  "modulelinkPopup.PropsMnem";
@@ -71,8 +70,8 @@ public class EditNetModuleLink extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }     
       
   /***************************************************************************
@@ -86,10 +85,11 @@ public class EditNetModuleLink extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -108,15 +108,18 @@ public class EditNetModuleLink extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
+      
     private String interID_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
@@ -124,12 +127,11 @@ public class EditNetModuleLink extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
-    
+
     /***************************************************************************
     **
     ** for preload
@@ -146,8 +148,8 @@ public class EditNetModuleLink extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepDoIt() {  
-      String overlayKey = dacx_.oso.getCurrentOverlay();
-      LinkPropertiesDialog lpd = new LinkPropertiesDialog(appState_, dacx_, interID_, true, overlayKey);
+      String overlayKey = dacx_.getOSO().getCurrentOverlay();
+      LinkPropertiesDialog lpd = new LinkPropertiesDialog(uics_, dacx_, hBld_, interID_, true, overlayKey, uFac_);
       lpd.setVisible(true);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }

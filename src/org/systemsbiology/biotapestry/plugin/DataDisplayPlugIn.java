@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2005 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ package org.systemsbiology.biotapestry.plugin;
 ** Interface for plugins that display experimental data
 */
 
-public interface DataDisplayPlugIn {
+public interface DataDisplayPlugIn extends BioTapestryPlugIn {
   
   ////////////////////////////////////////////////////////////////////////////
   //

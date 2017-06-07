@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,8 +21,10 @@ package org.systemsbiology.biotapestry.cmd.flow.modelTree;
 
 import javax.swing.tree.TreeNode;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -34,6 +36,7 @@ import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -107,8 +110,7 @@ public class SettingOps extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SettingOps(BTState appState, SettingAction action) {
-    super(appState);
+  public SettingOps(SettingAction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -124,11 +126,11 @@ public class SettingOps extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx, UIComponentSource uics) {
     if (key == null) {
       return (false);
     }  
-    boolean readOnly = !appState_.getIsEditor();
+    boolean readOnly = !uics.getIsEditor();
     switch (action_) {
       case OVERLAY_FIRST:      
         if (readOnly) {
@@ -137,8 +139,8 @@ public class SettingOps extends AbstractControlFlow {
         boolean enableScoff = false;
         if (key != null) {
           NavTree nt = dacx.getGenomeSource().getModelHierarchy();
-          TreeNode node = nt.resolveNode(key, dacx);
-          if (node == null) {
+          TreeNode node = nt.resolveNode(key);
+          if ((node == null) || (nt.getGroupNodeID(node) != null)) {
             return (enableScoff);
           }
           NetOverlayOwner noo = key.getOverlayOwner(dacx);
@@ -182,9 +184,10 @@ public class SettingOps extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -205,8 +208,8 @@ public class SettingOps extends AbstractControlFlow {
   */ 
       
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx);
     return (retval);
   }
   
@@ -215,16 +218,21 @@ public class SettingOps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.ModelTreeCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.ModelTreeCmdState {
 
-    private String nextStep_;
     private SettingAction myAction_;
-    private BTState appState_;
-    private Genome popupTarget_;
-    private DataAccessContext dacx_;
+    private Genome popupModel_;
+    private TreeNode popupNode_;
      
-    public String getNextStep() {
-      return (nextStep_);
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(SettingAction action, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -232,20 +240,20 @@ public class SettingOps extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, SettingAction action, DataAccessContext dacx) {
+    public StepState(SettingAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
     **
     ** for preload
     */ 
-        
-    public void setPreload(Genome popupTarget, TreeNode popupNode) {
-      popupTarget_ = popupTarget;
+   
+    public void setPreload(Genome popupModel, Genome popupModelAncestor, TreeNode popupNode) {
+      popupModel_ = popupModel; // May be null if popup is a group node
+      popupNode_ = popupNode;
       return;
     }
      
@@ -257,20 +265,21 @@ public class SettingOps extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToProcess() {          
       switch (myAction_) {
         case OVERLAY_FIRST:      
-          NetOverlayController noc = appState_.getNetOverlayController();
+          NetOverlayController noc = uics_.getNetOverlayController();
           noc.setCurrentAsFirst(dacx_);
           break;   
         case STARTUP_VIEW:         
-          UndoSupport support = new UndoSupport(appState_, "undo.makeStartupView");
-          DatabaseChange dc = dacx_.getGenomeSource().setStartupView(new StartupView(popupTarget_.getID(), null, null, null));
-          DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+          UndoSupport support = uFac_.provideUndoSupport("undo.makeStartupView", dacx_);
+          UiUtil.fixMePrintout("WAIT! What about a group node as startup???");
+          DatabaseChange dc = dacx_.getGenomeSource().setStartupView(new StartupView(popupModel_.getID(), null, null, null,null));
+          DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
           support.addEdit(dcc);
           support.finish();
           break;           
         default:
           throw new IllegalStateException();
       }     
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }

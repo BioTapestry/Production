@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
@@ -96,10 +96,10 @@ public class PertMeasureScaleAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertMeasureScaleAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 6);
+  public PertMeasureScaleAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
+    super(uics, dacx, parent, pet, myKey, 6);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
 
     //
     // Edit Panel
@@ -182,23 +182,23 @@ public class PertMeasureScaleAddOrEditPanel extends AnimatedSplitEditPanel {
                                        "pmsaep.unchanged", comps.unchangedField,  
                                         currRow, 6, false);
     
-    comps.foldCheck.addActionListener(new ToFoldCheckListener(comps, appState_));    
-    comps.foldCombo.addActionListener(new ToFoldComboListener(comps, appState_));
+    comps.foldCheck.addActionListener(new ToFoldCheckListener(comps, uics_.getHandlerAndManagerSource()));    
+    comps.foldCombo.addActionListener(new ToFoldComboListener(comps, uics_.getHandlerAndManagerSource()));
     currRow = ds_.installLabelJCompTriple(panel, 
                                           null, comps.foldCheck, 
                                           comps.foldLabel, comps.foldCombo, 
                                           comps.foldFieldLabel, comps.foldField, 
                                           currRow, 6);
      
-    comps.illegalCheck.addActionListener(new IllegalCheckListener(comps, appState_));
-    comps.minCombo.addActionListener(new IllegalComboListener(comps, true, appState_));
+    comps.illegalCheck.addActionListener(new IllegalCheckListener(comps, uics_.getHandlerAndManagerSource()));
+    comps.minCombo.addActionListener(new IllegalComboListener(comps, true, uics_.getHandlerAndManagerSource()));
     currRow = ds_.installLabelJCompTriple(panel, 
                                           null, comps.illegalCheck, 
                                           comps.minLabel, comps.minCombo, 
                                           comps.minValLabel, comps.minField, 
                                           currRow, 6);   
  
-    comps.maxCombo.addActionListener(new IllegalComboListener(comps, false, appState_));
+    comps.maxCombo.addActionListener(new IllegalComboListener(comps, false, uics_.getHandlerAndManagerSource()));
     currRow = ds_.installLabelJCompTriple(panel, 
                                           null, new JLabel(""), 
                                           comps.maxLabel, comps.maxCombo, 
@@ -354,18 +354,18 @@ public class PertMeasureScaleAddOrEditPanel extends AnimatedSplitEditPanel {
       UiUtil.replaceComboItems((JComboBox)mergeComps_.maxField, new Vector(maxOptions_));
       UiUtil.replaceComboItems((JComboBox)mergeComps_.unchangedField, new Vector(uchOptions_));
       
-      Vector convertTypes = MeasureScale.Conversion.getConvertChoices(appState_);
+      Vector convertTypes = MeasureScale.Conversion.getConvertChoices(dacx_);
       UiUtil.replaceComboItems(mergeComps_.foldCombo, convertTypes);    
-      Vector illegalNeg = MeasureScale.getIllegalChoices(appState_, true);
+      Vector illegalNeg = MeasureScale.getIllegalChoices(dacx_, true);
       UiUtil.replaceComboItems(mergeComps_.minCombo, illegalNeg);    
-      Vector illegalPos = MeasureScale.getIllegalChoices(appState_, false);
+      Vector illegalPos = MeasureScale.getIllegalChoices(dacx_, false);
       UiUtil.replaceComboItems(mergeComps_.maxCombo, illegalPos);         
     } else {
-      Vector convertTypes = MeasureScale.Conversion.getConvertChoices(appState_);
+      Vector convertTypes = MeasureScale.Conversion.getConvertChoices(dacx_);
       UiUtil.replaceComboItems(editComps_.foldCombo, convertTypes);    
-      Vector illegalNeg = MeasureScale.getIllegalChoices(appState_, true);
+      Vector illegalNeg = MeasureScale.getIllegalChoices(dacx_, true);
       UiUtil.replaceComboItems(editComps_.minCombo, illegalNeg);    
-      Vector illegalPos = MeasureScale.getIllegalChoices(appState_, false);
+      Vector illegalPos = MeasureScale.getIllegalChoices(dacx_, false);
       UiUtil.replaceComboItems(editComps_.maxCombo, illegalPos);         
     }
     return;
@@ -519,7 +519,7 @@ public class PertMeasureScaleAddOrEditPanel extends AnimatedSplitEditPanel {
     comps.foldCheck.setSelected(msc != null);
    
     if (msc != null) {
-      comps.foldCombo.setSelectedItem(MeasureScale.Conversion.convertTypeForCombo(appState_, msc.type)); 
+      comps.foldCombo.setSelectedItem(MeasureScale.Conversion.convertTypeForCombo(dacx_, msc.type)); 
       comps.setText(comps.foldField, (msc.factor != null) ? msc.factor.toString() : "");
     } else {
       comps.foldCombo.setSelectedIndex(0);
@@ -531,10 +531,10 @@ public class PertMeasureScaleAddOrEditPanel extends AnimatedSplitEditPanel {
  
     if (bdmm != null) {
       int negType = MeasureScale.rangeToType(bdmm, true);
-      comps.minCombo.setSelectedItem(MeasureScale.convertTypeForCombo(appState_, negType, true));
+      comps.minCombo.setSelectedItem(MeasureScale.convertTypeForCombo(dacx_, negType, true));
       comps.setText(comps.minField, (negType != MeasureScale.INFINITY) ? Double.toString(bdmm.min) : "");
       int posType = MeasureScale.rangeToType(bdmm, false);
-      comps.maxCombo.setSelectedItem(MeasureScale.convertTypeForCombo(appState_, posType, false)); 
+      comps.maxCombo.setSelectedItem(MeasureScale.convertTypeForCombo(dacx_, posType, false)); 
       comps.setText(comps.maxField, (posType != MeasureScale.INFINITY) ? Double.toString(bdmm.max) : "");
     } else {
       comps.minCombo.setSelectedIndex(0);

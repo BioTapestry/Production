@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,10 @@
 package org.systemsbiology.biotapestry.ui;
 
 import java.awt.geom.AffineTransform;
+import java.awt.geom.NoninvertibleTransformException;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.awt.Point;
 import java.awt.Rectangle;
 import java.awt.Dimension;
 import java.awt.RenderingHints;
@@ -30,7 +33,8 @@ import java.awt.Color;
 import java.awt.image.BufferedImage;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+
 
 /***************************************************************************
 ** 
@@ -44,13 +48,12 @@ public class ModelImagePanel {
   // PRIVATE MEMBERS
   //
   //////////////////////////////////////////////////////////////////////////// 
-  
-
-  
+ 
   private ModelImagePanelPanel mipp_;
   private ModelImagePresentation myImagePre_;
   private AffineTransform transform_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,11 +72,11 @@ public class ModelImagePanel {
   ** Constructor
   */
   
-  public ModelImagePanel(BTState appState) {
-    appState_ = appState;
+  public ModelImagePanel(UIComponentSource uics) {
+    uics_ = uics;
     myImagePre_ = new ModelImagePresentation();
     transform_ = new AffineTransform();
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       mipp_ = new ModelImagePanelPanel();
       mipp_.setBackground(Color.white);
     }   
@@ -101,12 +104,35 @@ public class ModelImagePanel {
   
   public void setImage(BufferedImage bi) {
     myImagePre_.setImage(bi);
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       mipp_.repaint();
     }
     return;
   }
-   
+  
+  /***************************************************************************
+  **
+  ** Drawing routine
+  */
+  
+  public Point screenToWorld(Point pt) {
+    Point retval = new Point();
+    try {
+      mipp_.buildTransform(transform_);
+      Point2D clickPoint = new Point2D.Double(pt.x, pt.y);      
+      try {
+        transform_.inverseTransform(clickPoint, clickPoint);
+      } catch (NoninvertibleTransformException nitex) {
+        throw new IllegalStateException();
+      }
+      retval.x = (int)(Math.round(clickPoint.getX()));
+      retval.y = (int)(Math.round(clickPoint.getY()));
+    } catch (Exception ex) {
+      uics_.getExceptionHandler().displayPaintException(ex);
+    }
+    return (retval);
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // INNER CLASSES
@@ -122,36 +148,46 @@ public class ModelImagePanel {
     ** Drawing routine
     */
     
+    @Override
     public void paintComponent(Graphics g) {
       try {
-        transform_.setToIdentity();
-        Rectangle rect = myImagePre_.getRequiredSize();
-        Rectangle2D finalRect = new Rectangle2D.Double(rect.x, rect.y, rect.width, rect.height);
-        Dimension currentSize = this.getSize();
-  
-        double wZoom = (double)currentSize.width / finalRect.getWidth();
-        double hZoom = (double)currentSize.height / finalRect.getHeight();    
-        double zoom = ((wZoom > hZoom) ? hZoom : wZoom) / 1.5;  // give room to grow
-        transform_.translate((double)currentSize.width / 2.0, (double)currentSize.height / 2.0);
-        transform_.scale(zoom, zoom);
-        double centerX = finalRect.getX() + (finalRect.getWidth() / 2.0);
-        double centerY = finalRect.getY() + (finalRect.getHeight() / 2.0); 
-        transform_.translate(-centerX, -centerY);
-  
+        buildTransform(transform_);
         super.paintComponent(g);
         drawingGuts(g, transform_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayPaintException(ex);
+        uics_.getExceptionHandler().displayPaintException(ex);
       }
       return;
     }    
-  
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PRIVATE METHODS
     //
     ////////////////////////////////////////////////////////////////////////////
-      
+    
+    /***************************************************************************
+    **
+    ** build the transform
+    */
+    
+    private void buildTransform(AffineTransform useTrans) {
+      useTrans.setToIdentity();
+      Rectangle rect = myImagePre_.getRequiredSize();
+      Rectangle2D finalRect = new Rectangle2D.Double(rect.x, rect.y, rect.width, rect.height);
+      Dimension currentSize = this.getSize();
+
+      double wZoom = currentSize.width / finalRect.getWidth();
+      double hZoom = currentSize.height / finalRect.getHeight();    
+      double zoom = ((wZoom > hZoom) ? hZoom : wZoom) / 1.5;  // give room to grow
+      useTrans.translate(currentSize.width / 2.0, currentSize.height / 2.0);
+      useTrans.scale(zoom, zoom);
+      double centerX = finalRect.getX() + (finalRect.getWidth() / 2.0);
+      double centerY = finalRect.getY() + (finalRect.getHeight() / 2.0); 
+      useTrans.translate(-centerX, -centerY);
+      return;
+    }    
+    
     /***************************************************************************
     **
     ** Drawing guts

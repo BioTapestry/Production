@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,8 +22,13 @@ package org.systemsbiology.biotapestry.cmd.flow.export;
 
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 
 /****************************************************************************
@@ -75,8 +80,10 @@ public class ExportPerturb extends AbstractSimpleExport {
   ** 
   */
   
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
-    PerturbationData pd = appState_.getDB().getPertData();
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();
     return ((pd != null) && pd.haveData());
   }
   
@@ -88,7 +95,8 @@ public class ExportPerturb extends AbstractSimpleExport {
    
   @Override 
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.DoubleExtensionFilter(appState_, ".htm", ".html", "filterName.htm"));
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    es.filts.add(new FileExtensionFilters.DoubleExtensionFilter(dacx.getRMan(), ".htm", ".html", "filterName.htm"));
     es.suffs.add("htm");
     es.suffs.add("html");     
     es.direct = "QPCRWriterDirectory";
@@ -103,9 +111,11 @@ public class ExportPerturb extends AbstractSimpleExport {
   */
   
   @Override 
-  protected boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "pertPublish.IOError";
     es.fileErrTitle = "pertPublish.IOErrorTitle";
-    return (appState_.getDB().getPertData().publish(es.out));  
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(appState_, tSrc.getCurrentTab());
+    PerturbationData pd = tpdacx.getExpDataSrc().getPertData();  
+    return (pd.publish(es.out, tpdacx));  
   }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
@@ -100,10 +100,10 @@ public class PertMeasureAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertMeasureAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 4);
+  public PertMeasureAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
+    super(uics, dacx, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
 
     //
     // Edit panel
@@ -122,7 +122,7 @@ public class PertMeasureAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertMiscSetupManagePanel.MANAGER_KEY,
                                 PertMiscSetupManagePanel.MEAS_SCALE_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -155,7 +155,7 @@ public class PertMeasureAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertMiscSetupManagePanel.MANAGER_KEY,
                                 PertMiscSetupManagePanel.MEAS_SCALE_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    

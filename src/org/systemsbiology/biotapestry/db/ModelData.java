@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2006 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,7 @@ import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 ** This holds general model data
 */
 
-public class ModelData {
+public class ModelData implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -46,7 +46,7 @@ public class ModelData {
 
   private String date_;
   private String attribution_;
-  private ArrayList key_;  
+  private ArrayList<String> key_;  
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,6 +67,22 @@ public class ModelData {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Clone
+  */
+
+  public ModelData clone() {
+    try {
+      ModelData retval = (ModelData)super.clone();
+      // Shallow copy is OK
+      retval.key_ = new ArrayList<String>(this.key_);
+      return (retval);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  }
 
   /***************************************************************************
   **
@@ -143,12 +159,12 @@ public class ModelData {
   ** Set the model key
   */
   
-  public void setKey(List entries) {
+  public void setKey(List<String> entries) {
     if (entries == null) {
       key_ = null;
       return;
     }
-    key_ = new ArrayList(entries);
+    key_ = new ArrayList<String>(entries);
     return;
   }
 
@@ -159,7 +175,7 @@ public class ModelData {
   
   public void startKey(String key) {
     if (key_ == null) {
-      key_ = new ArrayList();
+      key_ = new ArrayList<String>();
     }
     key = CharacterEntityMapper.unmapEntities(key, false);
     key_.add(key);    
@@ -173,7 +189,7 @@ public class ModelData {
   
   public void appendKey(String fragment) {
     int num = key_.size() - 1;
-    String currLast = (String)key_.get(num);
+    String currLast = key_.get(num);
     currLast = currLast.concat(fragment);
     currLast = CharacterEntityMapper.unmapEntities(currLast, false);
     key_.set(num, currLast);
@@ -195,7 +211,7 @@ public class ModelData {
   */
   
   public String getKey(int i) {
-    return ((String)key_.get(i));
+    return (key_.get(i));
   }  
   
   /***************************************************************************
@@ -228,7 +244,7 @@ public class ModelData {
       for (int i = 0; i < numKey; i++) {
         ind.indent();
         out.print("<modelKeyEntry>");
-        out.print(CharacterEntityMapper.mapEntities((String)key_.get(i), false));
+        out.print(CharacterEntityMapper.mapEntities(key_.get(i), false));
         out.println("</modelKeyEntry>");
       }
       ind.down().indent();
@@ -294,6 +310,7 @@ public class ModelData {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("ModelData: date = " + date_ + " attribution = " + attribution_);
   }
@@ -303,7 +320,8 @@ public class ModelData {
   ** Handle the attributes for the keyword
   **
   */
-  
+
+  @SuppressWarnings("unused")
   public static ModelData buildFromXML(String elemName, 
                                        Attributes attrs) throws IOException {
     if (!elemName.equals("modelData")) {

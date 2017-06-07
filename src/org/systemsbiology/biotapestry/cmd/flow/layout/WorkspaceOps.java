@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,12 +22,12 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 import java.awt.Dimension;
 import java.awt.Rectangle;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
 import org.systemsbiology.biotapestry.ui.dialogs.ResizeWorkspaceDialog;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -103,8 +103,7 @@ public class WorkspaceOps extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public WorkspaceOps(BTState appState, SpaceAction action) {
-    super(appState);
+  public WorkspaceOps(SpaceAction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -125,6 +124,7 @@ public class WorkspaceOps extends AbstractControlFlow {
   ** 
   */
    
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     switch (action_) {
       case RESIZE:
@@ -147,7 +147,7 @@ public class WorkspaceOps extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        StepState ans = new StepState(action_, cfh);
         next = ans.stepDoIt();    
       } else {
         throw new IllegalStateException();
@@ -164,15 +164,19 @@ public class WorkspaceOps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
     
-    private String nextStep_;    
-    private BTState appState_;
     private SpaceAction myAction_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(SpaceAction action, StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
+      myAction_ = action;
     }
     
     /***************************************************************************
@@ -180,13 +184,12 @@ public class WorkspaceOps extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, SpaceAction action, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(SpaceAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
       myAction_ = action;
-      dacx_ = dacx;
     }
- 
+    
     /***************************************************************************
     **
     ** Do the step
@@ -195,27 +198,28 @@ public class WorkspaceOps extends AbstractControlFlow {
     private DialogAndInProcessCmd stepDoIt() {  
       switch (myAction_) {
         case RESIZE:
-          ResizeWorkspaceDialog rwd = new ResizeWorkspaceDialog(appState_, Workspace.PADDING);
+          ResizeWorkspaceDialog rwd = new ResizeWorkspaceDialog(uics_, dacx_, Workspace.PADDING);
           rwd.setVisible(true);
           if (!rwd.haveResult()) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
           }
-          UndoSupport support = new UndoSupport(appState_, "undo.resizeWorkspace");
-          (new WorkspaceSupport(appState_, dacx_)).setWorkspace(rwd.getResults(), support);
-          appState_.getZoomCommandSupport().zoomToFullWorksheet();
-          appState_.getSUPanel().drawModel(false);
+          UndoSupport support = uFac_.provideUndoSupport("undo.resizeWorkspace", dacx_);
+          (new WorkspaceSupport(dacx_)).setWorkspace(rwd.getResults(), support);
+          uics_.getZoomCommandSupport().zoomToFullWorksheet();
+          uics_.getSUPanel().drawModel(false);
           break;
         case SHIFT_ALL:
-          Rectangle allBounds = appState_.getZoomTarget().getAllModelBounds();
+          Rectangle allBounds = dacx_.getZoomTarget().getAllModelBounds();
           int modelCenterX = allBounds.x + (allBounds.width / 2);
           int modelCenterY = allBounds.y + (allBounds.height / 2);
-          Dimension currDims = appState_.getCanvasSize();
+          Workspace wsp = dacx_.getWorkspaceSource().getWorkspace();
+          Dimension currDims = wsp.getCanvasSize();
           int wsCornerX = modelCenterX - (currDims.width / 2);
           int wsCornerY = modelCenterY - (currDims.height / 2);        
-          support = new UndoSupport(appState_, "undo.shiftAllToWorkspace");
-          (new WorkspaceSupport(appState_, dacx_)).setWorkspace(new Rectangle(wsCornerX, wsCornerY, currDims.width, currDims.height), support);
-          appState_.getZoomCommandSupport().zoomToFullWorksheet();
-          appState_.getSUPanel().drawModel(false);
+          support = uFac_.provideUndoSupport("undo.shiftAllToWorkspace", dacx_);
+          (new WorkspaceSupport(dacx_)).setWorkspace(new Rectangle(wsCornerX, wsCornerY, currDims.width, currDims.height), support);
+          uics_.getZoomCommandSupport().zoomToFullWorksheet();
+          uics_.getSUPanel().drawModel(false);
           break;
         default:
           throw new IllegalStateException();

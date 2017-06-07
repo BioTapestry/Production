@@ -143,9 +143,9 @@ public class SifSupport {
   **
   */
   
-  private String sifNodeName(Node node, Map<String, String> outputs, Genome useGenome) {
+  public String sifNodeName(Node node, Map<String, String> outputs, Genome useGenome) {
     String groupPrefix = (useGenome == gi_) ? sifRegionPrefix((NodeInstance)node, gi_) : "";
-    String activeSuffix = (useGenome == gi_) ? sifActivitySuffix((NodeInstance)node, gi_) : "";      
+    String activeSuffix = (useGenome == gi_) ? sifActivitySuffix((NodeInstance)node) : "";      
     
     if (node.getNodeType() == Node.GENE) {
       String retval = padForUnique(node, groupPrefix + node.getName() + activeSuffix, outputs);
@@ -209,7 +209,7 @@ public class SifSupport {
   **
   */
 
-  private String sifActivitySuffix(NodeInstance node, GenomeInstance gi) {  
+  private String sifActivitySuffix(NodeInstance node) {  
     int activity = node.getActivity();
     if (activity == NodeInstance.ACTIVE) {
       return ("");

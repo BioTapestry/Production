@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,14 +27,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
@@ -64,8 +64,7 @@ public class DrawGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DrawGroup(BTState appState) {
-    super(appState);
+  public DrawGroup() {
     name =  "command.DrawGroupInInstance";
     desc = "command.DrawGroupInInstance";
     icon = "DrawRegions24.gif";
@@ -100,11 +99,11 @@ public class DrawGroup extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        AddGroupState ans = new AddGroupState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        AddGroupState ans = new AddGroupState(cfh);      
         next = ans.stepBiWarning();
       } else {
         AddGroupState ans = (AddGroupState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
           next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -143,7 +142,7 @@ public class DrawGroup extends AbstractControlFlow {
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = "stepDrawGroupInInstanceFinish"; 
+    ans.setNextStep("stepDrawGroupInInstanceFinish"); 
     return (retval);
   }
 
@@ -152,30 +151,17 @@ public class DrawGroup extends AbstractControlFlow {
   ** Running State.
   */
         
-  public static class AddGroupState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class AddGroupState extends AbstractStepState implements DialogAndInProcessCmd.MouseClickCmdState {
      
     private GroupCreationSupport newHandler;    
     private Group newGroup;
-    private DataAccessContext rcxTrg_;
     
     private String groupName;
     private String groupKey;
 
-    private ServerControlFlowHarness cfh;
     private int x;
-    private int y;  
-    private String nextStep_;    
-    private BTState appState_;
+    private int y;    
      
-    /***************************************************************************
-    **
-    ** step thru
-    */
-    
-    public String getNextStep() {
-      return (nextStep_);
-    } 
-    
     /***************************************************************************
     **
     ** mouse masking
@@ -223,8 +209,8 @@ public class DrawGroup extends AbstractControlFlow {
     
     public void setFloaterPropsInLayout(Layout flay) {
       int order = flay.getTopGroupOrder() + 1;
-      int groupCount = rcxTrg_.getGenomeAsInstance().groupCount();
-      GroupProperties gprop = new GroupProperties(groupCount + 1, newGroup.getID(), new Point2D.Double(0.0, 0.0), order, appState_.getDB());
+      int groupCount = dacx_.getCurrentGenomeAsInstance().groupCount();
+      GroupProperties gprop = new GroupProperties(groupCount + 1, newGroup.getID(), new Point2D.Double(0.0, 0.0), order, dacx_.getColorResolver());
       flay.setGroupProperties(Group.getBaseID(newGroup.getID()), gprop);
       return;
     }
@@ -242,9 +228,8 @@ public class DrawGroup extends AbstractControlFlow {
     ** Construct
     */
       
-    public AddGroupState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxTrg_ = dacx;
+    public AddGroupState(ServerControlFlowHarness cfh) {
+      super(cfh);
     }
   
     /***************************************************************************
@@ -254,12 +239,12 @@ public class DrawGroup extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd doneval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
-      if (rcxTrg_.getDBGenome().getID().equals(rcxTrg_.getGenomeAsInstance().getID())) {  // Only works if not root genome
+      if (dacx_.currentGenomeIsRootDBGenome()) {  // Only works if not root genome
         return (doneval);
       }
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -267,10 +252,10 @@ public class DrawGroup extends AbstractControlFlow {
        } else {
         daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
       }
-      newHandler = new GroupCreationSupport(appState_, rcxTrg_, true);    
+      newHandler = new GroupCreationSupport(uics_, dacx_, true, uFac_);    
       groupName = null;
       groupKey = null;
-      nextStep_ = (rcxTrg_.getGenomeAsInstance().getVfgParent() == null) ? "stepOneForRootInstance" : "stepOneForSubsetInstance";
+      nextStep_ = (dacx_.getCurrentGenomeAsInstance().getVfgParent() == null) ? "stepOneForRootInstance" : "stepOneForSubsetInstance";
       return (daipc);     
     }
      
@@ -283,12 +268,12 @@ public class DrawGroup extends AbstractControlFlow {
       
       String messageKey = "createGroup.AssignMsg";
       String titleKey = "createGroup.AssignTitle";
-      String defaultName = rcxTrg_.getGenomeAsInstance().getUniqueGroupName();
-      Set<String> used = rcxTrg_.getGenomeAsInstance().usedGroupNames();
+      String defaultName = dacx_.getCurrentGenomeAsInstance().getUniqueGroupName();
+      Set<String> used = dacx_.getCurrentGenomeAsInstance().usedGroupNames();
       
       SimpleRestrictedNameDialogFactory.RestrictedNameBuildArgs ba = 
         new SimpleRestrictedNameDialogFactory.RestrictedNameBuildArgs(titleKey, messageKey, defaultName, used, true);
-      SimpleRestrictedNameDialogFactory dgcdf = new SimpleRestrictedNameDialogFactory(cfh);
+      SimpleRestrictedNameDialogFactory dgcdf = new SimpleRestrictedNameDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepRootInstanceDataExtract";
@@ -322,10 +307,10 @@ public class DrawGroup extends AbstractControlFlow {
        // If the user chooses to draw a pre-existing group in a submodel,
        // that will result in an instant add that does not require any
        // drawing mode. So we can exit immediately!
-       GenomeInstance rootInstance = rcxTrg_.getGenomeAsInstance().getVfgParentRoot();
+       GenomeInstance rootInstance = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
        DrawGroupCreationDialogFactory.DrawGroupBuildArgs ba = 
-         new DrawGroupCreationDialogFactory.DrawGroupBuildArgs(rcxTrg_.getGenomeAsInstance(), rootInstance.getUniqueGroupName());
-       DrawGroupCreationDialogFactory dgcdf = new DrawGroupCreationDialogFactory(cfh);
+         new DrawGroupCreationDialogFactory.DrawGroupBuildArgs(dacx_.getCurrentGenomeAsInstance(), rootInstance.getUniqueGroupName());
+       DrawGroupCreationDialogFactory dgcdf = new DrawGroupCreationDialogFactory(cfh_);
        ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
        nextStep_ = "stepSubsetInstanceDataExtract";
@@ -344,7 +329,7 @@ public class DrawGroup extends AbstractControlFlow {
          return (retval);
        }         
        groupKey = crq.idResult;
-       GenomeInstance rootInstance = rcxTrg_.getGenomeAsInstance().getVfgParentRoot();
+       GenomeInstance rootInstance = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
        groupName = (groupKey == null) ? crq.nameResult : rootInstance.getGroup(groupKey).getName();
        nextStep_ = "stepDrawGroupInInstanceStep2";
        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
@@ -370,11 +355,11 @@ public class DrawGroup extends AbstractControlFlow {
     private DialogAndInProcessCmd stepDrawGroupInInstanceStep2() {     
     
       if (groupKey == null) {
-        groupKey = rcxTrg_.getNextKey();
+        groupKey = dacx_.getNextKey();
       } else {
         // We are working with a pre-existing group.  So we don't need to draw;
         // it can be included immediately.
-        newGroup = new Group(rcxTrg_.rMan, groupKey, groupName);
+        newGroup = new Group(dacx_.getRMan(), groupKey, groupName);
         nextStep_ = "stepDrawGroupInInstanceFinish";
         x = 0;
         y = 0;
@@ -384,7 +369,7 @@ public class DrawGroup extends AbstractControlFlow {
     
       // Fake group lives in the top instance for the time being.  Used for floater.
       // Info will be extracted out to correctly leveled group when we are done.
-      newGroup = new Group(rcxTrg_.rMan, groupKey, groupName);
+      newGroup = new Group(dacx_.getRMan(), groupKey, groupName);
       nextStep_ = "stepSetToMode";
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
       return (retval);
@@ -399,13 +384,13 @@ public class DrawGroup extends AbstractControlFlow {
       //
       // Undo/Redo support
       //   
-      UndoSupport support = new UndoSupport(appState_, "undo.groupDraw");  
-      Point2D groupCenter = new Point2D.Double((double)x, (double)y);
+      UndoSupport support = uFac_.provideUndoSupport("undo.groupDraw", dacx_);  
+      Point2D groupCenter = new Point2D.Double(x, y);
           
-      if (rcxTrg_.getGenomeAsInstance().getVfgParent() != null) {
+      if (dacx_.getCurrentGenomeAsInstance().getVfgParent() != null) {
         finishSubsetInstanceGroupDraw(support, groupCenter);
       } else {
-        newHandler.handleCreationPartThreeCore(support, newGroup, newGroup.getID(), groupCenter, rcxTrg_.getGenomeAsInstance(), null);
+        newHandler.handleCreationPartThreeCore(support, newGroup, newGroup.getID(), groupCenter, dacx_.getCurrentGenomeAsInstance(), null);
       }
       support.finish();
       //
@@ -429,8 +414,8 @@ public class DrawGroup extends AbstractControlFlow {
       //
       
       ArrayList<GenomeInstance> ancestry = new ArrayList<GenomeInstance>();
-      ancestry.add(rcxTrg_.getGenomeAsInstance());
-      GenomeInstance parent = rcxTrg_.getGenomeAsInstance().getVfgParent();
+      ancestry.add(dacx_.getCurrentGenomeAsInstance());
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       while (parent != null) {
         ancestry.add(parent);
         parent = parent.getVfgParent();
@@ -447,14 +432,14 @@ public class DrawGroup extends AbstractControlFlow {
         Group mySubsetGroup = gi.getGroup(inherit);
         if (mySubsetGroup == null) {
           if (i == 0) {
-            Group rootGroup = new Group(rcxTrg_.rMan, baseID, newGroup.getName());
+            Group rootGroup = new Group(dacx_.getRMan(), baseID, newGroup.getName());
             newHandler.handleCreationPartThreeCore(support, rootGroup, rootGroup.getID(), groupCenter, gi, null);
           } else {
             // work with parent group!
             genCount = pgi.getGeneration();        
             inherit = Group.buildInheritedID(baseID, genCount);
             Group subsetGroup = pgi.getGroup(inherit);
-            DataAccessContext rcxI = new DataAccessContext(rcxTrg_, gi);
+            StaticDataAccessContext rcxI = new StaticDataAccessContext(dacx_, gi);
             newHandler.addNewGroupToSubsetInstance(rcxI, subsetGroup, support);
           }
         }

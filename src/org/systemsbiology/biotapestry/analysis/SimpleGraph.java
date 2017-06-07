@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@ import org.systemsbiology.biotapestry.util.DataUtil;
 ** the Genome network and Linkage and Node dependencies.
 */
 
-public class SimpleGraph implements Cloneable {
+public class SimpleGraph<T extends Link> implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -59,9 +59,9 @@ public class SimpleGraph implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
   
   private HashSet<String> allNodes_;
-  private HashSet<SignedLink> allEdges_;
+  private HashSet<T> allEdges_;
   private ArrayList<String> nodeOrder_;
-  private ArrayList<SignedLink> edgeOrder_;
+  private ArrayList<T> edgeOrder_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -73,24 +73,25 @@ public class SimpleGraph implements Cloneable {
   **
   ** Constructor
   */
-
-  public SimpleGraph(SimpleAllPathsResult allPaths) {
+  
+  @SuppressWarnings("unchecked")
+  public SimpleGraph(SimpleAllPathsResult<T> allPaths) {
     
     allNodes_ = new HashSet<String>();
-    allEdges_ = new HashSet<SignedLink>();
+    allEdges_ = new HashSet<T>();
     edgeOrder_ = null;
     nodeOrder_ = null;    
   
     Iterator<String> ni = allPaths.getNodes();
-    Iterator<SignedLink> li = allPaths.getLinks();
+    Iterator<T> li = allPaths.getLinks();
   
     while (ni.hasNext()) {
       allNodes_.add(ni.next());
     }
     
     while (li.hasNext()) {
-      SignedLink link = li.next();      
-      allEdges_.add(link.clone());
+      T link = li.next();      
+      allEdges_.add((T)link.clone());
     }
   }
  
@@ -99,23 +100,24 @@ public class SimpleGraph implements Cloneable {
   ** Constructor
   */
 
-  public SimpleGraph(Set<String> nodes, Set<SignedLink> links) {
+  @SuppressWarnings("unchecked")
+  public SimpleGraph(Set<String> nodes, Set<T> links) {
 
     allNodes_ = new HashSet<String>();
-    allEdges_ = new HashSet<SignedLink>();
+    allEdges_ = new HashSet<T>();
     edgeOrder_ = null;
     nodeOrder_ = null;    
 
     Iterator<String> ni = nodes.iterator();
-    Iterator<SignedLink> li = links.iterator();
+    Iterator<T> li = links.iterator();
   
     while (ni.hasNext()) {
       allNodes_.add(ni.next());
     }
     
     while (li.hasNext()) {
-      SignedLink link = li.next();
-      allEdges_.add(link.clone());
+      T link = li.next();
+      allEdges_.add((T)link.clone());
     }
   }  
   
@@ -125,23 +127,24 @@ public class SimpleGraph implements Cloneable {
   ** retains original sibling order.  If link appears multiple
   ** times, the order is based on first appearance.
   */
-
-  public SimpleGraph(List<String> nodes, List<SignedLink> links) {
+  
+  @SuppressWarnings("unchecked")
+  public SimpleGraph(List<String> nodes, List<T> links) {
 
     allNodes_ = new HashSet<String>();
-    allEdges_ = new HashSet<SignedLink>();
-    edgeOrder_ = new ArrayList<SignedLink>();
+    allEdges_ = new HashSet<T>();
+    edgeOrder_ = new ArrayList<T>();
     nodeOrder_ = new ArrayList<String>();
   
     nodeOrder_.addAll(nodes);
     allNodes_.addAll(nodes);    
 
-    Iterator<SignedLink> li = links.iterator();
+    Iterator<T> li = links.iterator();
     while (li.hasNext()) {
-      SignedLink link = li.next();
+      T link = li.next();
       if (!allEdges_.contains(link)) {
-        allEdges_.add(link.clone());
-        edgeOrder_.add(link.clone());
+        allEdges_.add((T)link.clone());
+        edgeOrder_.add((T)link.clone());
       }      
     }
   }  
@@ -152,45 +155,47 @@ public class SimpleGraph implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public SimpleGraph clone() {
+  @Override
+  @SuppressWarnings("unchecked")
+  public SimpleGraph<T> clone() {
     try {
-      SimpleGraph newVal = (SimpleGraph)super.clone();
+      SimpleGraph<T> newVal = (SimpleGraph<T>)super.clone();
       
       newVal.allNodes_ = new HashSet<String>(this.allNodes_);
       newVal.nodeOrder_ = (this.nodeOrder_ == null) ? null : new ArrayList<String>(this.nodeOrder_);
-      newVal.allEdges_ = new HashSet<SignedLink>();
-      Iterator<SignedLink> aeit = this.allEdges_.iterator();
+      newVal.allEdges_ = new HashSet<T>();
+      Iterator<T> aeit = this.allEdges_.iterator();
       while (aeit.hasNext()) {
-        SignedLink nextLink = aeit.next();
-        newVal.allEdges_.add(nextLink.clone());
+        T nextLink = aeit.next();
+        newVal.allEdges_.add((T)nextLink.clone());
       }
       
       newVal.edgeOrder_ = null;
       if (this.edgeOrder_ != null) {
-        newVal.edgeOrder_ = new ArrayList<SignedLink>();
-        Iterator<SignedLink> eoit = this.edgeOrder_.iterator();
+        newVal.edgeOrder_ = new ArrayList<T>();
+        Iterator<T> eoit = this.edgeOrder_.iterator();
         while (eoit.hasNext()) {
-          SignedLink nextLink = eoit.next();
-          newVal.edgeOrder_.add(nextLink.clone());
+          T nextLink = eoit.next();
+          newVal.edgeOrder_.add((T)nextLink.clone());
         }
       }
       return (newVal);            
     } catch (CloneNotSupportedException ex) {
       throw new IllegalStateException();     
     }
-  }  
-   
+  }    
+  
   /***************************************************************************
   ** 
   ** Calculate the intersection of this graph and the given graph
   */
 
-  public SimpleGraph intersection(SimpleGraph other) {
+  public SimpleGraph<T> intersection(SimpleGraph<T> other) {
     HashSet<String> nodeInter = new HashSet<String>();  
     DataUtil.intersection(this.allNodes_, other.allNodes_, nodeInter);
-    HashSet<SignedLink> edgeInter = new HashSet<SignedLink>();  
+    HashSet<T> edgeInter = new HashSet<T>();  
     DataUtil.intersection(this.allEdges_, other.allEdges_, edgeInter);
-    return (new SimpleGraph(nodeInter, edgeInter));
+    return (new SimpleGraph<T>(nodeInter, edgeInter));
   }
   
  /***************************************************************************
@@ -198,12 +203,12 @@ public class SimpleGraph implements Cloneable {
   ** Calculate the intersection of this graph and the given graph
   */
 
-  public SimpleGraph union(SimpleGraph other) {
+  public SimpleGraph<T> union(SimpleGraph<T> other) {
     HashSet<String> nodeInter = new HashSet<String>();  
     DataUtil.union(this.allNodes_, other.allNodes_, nodeInter);
-    HashSet<SignedLink> edgeInter = new HashSet<SignedLink>();  
+    HashSet<T> edgeInter = new HashSet<T>();  
     DataUtil.union(this.allEdges_, other.allEdges_, edgeInter);
-    return (new SimpleGraph(nodeInter, edgeInter));
+    return (new SimpleGraph<T>(nodeInter, edgeInter));
   }
   
   /***************************************************************************
@@ -215,15 +220,14 @@ public class SimpleGraph implements Cloneable {
     return (allNodes_.size());
   }
   
-  
   /***************************************************************************
   ** 
   ** Get the out degree of a node
   */
 
   public int outDegree(String nodeName) {
-    Map<String, Set<SignedLink>> outEdges = calcOutboundEdges(allEdges_);
-    Set<SignedLink> edgesOut = outEdges.get(nodeName);
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(allEdges_);
+    Set<T> edgesOut = outEdges.get(nodeName);
     if (edgesOut == null) {
       return (0);
     } else {
@@ -237,8 +241,8 @@ public class SimpleGraph implements Cloneable {
   */
 
   public int inDegree(String nodeName) {
-    Map<String, Set<SignedLink>> inEdges = calcInboundEdges(allEdges_);
-    Set<SignedLink> edgesIn = inEdges.get(nodeName);
+    Map<String, Set<T>> inEdges = calcInboundEdges(allEdges_);
+    Set<T> edgesIn = inEdges.get(nodeName);
     if (edgesIn == null) {
       return (0);
     } else {
@@ -262,7 +266,8 @@ public class SimpleGraph implements Cloneable {
   ** 
   ** Topo sort
   */
-
+  
+  @SuppressWarnings("unchecked")
   public Map<String, Integer> topoSort(boolean compress) {
     
     if (edgeOrder_ != null) {
@@ -279,14 +284,13 @@ public class SimpleGraph implements Cloneable {
     //
     // Deep copy:
     //
-    Set<SignedLink> currentEdges = new HashSet<SignedLink>();
-    Iterator<SignedLink> li = allEdges_.iterator();
+    Set<T> currentEdges = new HashSet<T>();
+    Iterator<T> li = allEdges_.iterator();
     while (li.hasNext()) {
-      SignedLink link = li.next();
-      currentEdges.add(link.clone());
+      T link = li.next();
+      currentEdges.add((T)link.clone());
     }    
-    
-    Map<String, Set<SignedLink>> outEdges = calcOutboundEdges(currentEdges);
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(currentEdges);
     Set<String> rootNodes = buildRootList(currentNodes, currentEdges);
     
     int level = 0;
@@ -318,9 +322,9 @@ public class SimpleGraph implements Cloneable {
     //
     // Do until roots are exhausted
     //
-    HashSet visited = new HashSet();
-    Map outEdges = calcOutboundEdges(allEdges_); 
-    HashMap currSearchDepth = new HashMap();
+    HashSet<String> visited = new HashSet<String>();
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(allEdges_); 
+    HashMap<String, Integer> currSearchDepth = new HashMap<String, Integer>();
 
     TreeSet<String> needToVisit = new TreeSet<String>(allNodes_);
     while (!needToVisit.isEmpty()) {    
@@ -339,6 +343,7 @@ public class SimpleGraph implements Cloneable {
   ** lists in lexicographic order.
   */
 
+  @SuppressWarnings("unchecked")  
   public Map<String, Integer> repeatableDagTopoSort() {
     
     //
@@ -347,27 +352,27 @@ public class SimpleGraph implements Cloneable {
     //
     
     HashMap<String, Integer> retval = new HashMap<String, Integer>();
-    Set currentNodes = new HashSet(allNodes_);
+    Set<String> currentNodes = new HashSet<String>(allNodes_);
     
     //
     // Deep copy:
     //
-    Set currentEdges = new HashSet();
-    Iterator li = allEdges_.iterator();
+    Set<T> currentEdges = new HashSet<T>();
+    Iterator<T> li = allEdges_.iterator();
     while (li.hasNext()) {
-      Link link = (Link)li.next();
-      currentEdges.add(new Link(link));
+      T link = li.next();
+      currentEdges.add((T)link.clone());
     }    
     
-    Map outEdges = calcOutboundEdgesWithLex(currentEdges);
-    SortedSet rootNodes = buildRootListWithLex(currentNodes, currentEdges);
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdgesWithLex(currentEdges);
+    SortedSet<String> rootNodes = buildRootListWithLex(currentNodes, currentEdges);
     
     int level = 0;
     while (!rootNodes.isEmpty()) {
       Integer ilevel = new Integer(level++);
-      Iterator rit = rootNodes.iterator();
+      Iterator<String> rit = rootNodes.iterator();
       while (rit.hasNext()) {
-        String nodeID = (String)rit.next();
+        String nodeID = rit.next();
         retval.put(nodeID, ilevel);
         outEdges.remove(nodeID);
         currentNodes.remove(nodeID);
@@ -383,28 +388,28 @@ public class SimpleGraph implements Cloneable {
   ** Depth-First Search
   */
 
-  public List depthSearch() {
+  public List<QueueEntry> depthSearch() {
     //
     // Do until roots are exhausted
     //
-    HashSet visited = new HashSet();
+    HashSet<String> visited = new HashSet<String>();
     
-    Set rootNodes = buildRootList(allNodes_, allEdges_);
-    Map outEdges = calcOutboundEdges(allEdges_); 
+    Set<String> rootNodes = buildRootList(allNodes_, allEdges_);
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(allEdges_); 
 
-    List retval = new ArrayList();
+    List<QueueEntry> retval = new ArrayList<QueueEntry>();
     if (edgeOrder_ != null) {
-      HashSet seenRoots = new HashSet();
-      Iterator nit = nodeOrder_.iterator();
+      HashSet<String> seenRoots = new HashSet<String>();
+      Iterator<String> nit = nodeOrder_.iterator();
       while (nit.hasNext()) {
-        String currNode = (String)nit.next();
+        String currNode = nit.next();
         if (!rootNodes.contains(currNode)) {
           continue;
         }
         boolean gottaLink = false;
-        Iterator eit = edgeOrder_.iterator();
+        Iterator<T> eit = edgeOrder_.iterator();
         while (eit.hasNext()) {
-          Link link = (Link)eit.next();
+          T link = eit.next();
           String src = link.getSrc();
           if (!currNode.equals(src)) {
             continue;
@@ -422,9 +427,9 @@ public class SimpleGraph implements Cloneable {
         }
       }
     } else {
-      Iterator rit = rootNodes.iterator();
+      Iterator<String> rit = rootNodes.iterator();
       while (rit.hasNext()) {
-        searchGutsDepth((String)rit.next(), visited, outEdges, 0, null, retval);
+        searchGutsDepth(rit.next(), visited, outEdges, 0, null, retval);
       }
     }
     return (retval);
@@ -435,7 +440,7 @@ public class SimpleGraph implements Cloneable {
   ** Breadth-First Search
   */
 
-  public List breadthSearch() {
+  public List<QueueEntry> breadthSearch() {
     
     if (edgeOrder_ != null) {
       throw new IllegalStateException();
@@ -444,16 +449,16 @@ public class SimpleGraph implements Cloneable {
     //
     // Do until roots are exhausted
     //
-    HashSet visited = new HashSet();
-    ArrayList queue = new ArrayList();
-    List retval = new ArrayList();
+    HashSet<String> visited = new HashSet<String>();
+    ArrayList<QueueEntry> queue = new ArrayList<QueueEntry>();
+    List<QueueEntry> retval = new ArrayList<QueueEntry>();
     
-    Set rootNodes = buildRootList(allNodes_, allEdges_);
-    Map outEdges = calcOutboundEdges(allEdges_);    
+    Set<String> rootNodes = buildRootList(allNodes_, allEdges_);
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(allEdges_);    
     
-    Iterator rit = rootNodes.iterator();
+    Iterator<String> rit = rootNodes.iterator();
     while (rit.hasNext()) {
-      queue.add(new QueueEntry(0, (String)rit.next()));
+      queue.add(new QueueEntry(0, rit.next()));
     }
     searchGutsBreadth(visited, queue, outEdges, retval);
     return (retval);
@@ -533,12 +538,12 @@ public class SimpleGraph implements Cloneable {
   ** the genome code!
   */
   
-  public SimpleAllPathsResult getAllPaths(String sourceID, String targetID, int maxDepth) {  
+  public SimpleAllPathsResult<T> getAllPaths(String sourceID, String targetID, int maxDepth) {  
             
-    Map edges = calcOutboundEdges(allEdges_);
+    Map<String, SortedSet<T>> edges = calcOutboundEdges(allEdges_);
   
-    SimpleAllPathsResult retval = new SimpleAllPathsResult(sourceID, targetID);
-    SimplePathTracker tracker;
+    SimpleAllPathsResult<T> retval = new SimpleAllPathsResult<T>(sourceID, targetID);
+    SimplePathTracker<T> tracker;
     
     //
     // Handle the case of a simple (single hop only!  FIX ME!) autoregulatory feedback loop:
@@ -551,12 +556,12 @@ public class SimpleGraph implements Cloneable {
     }
     retval.setTracker(tracker);
     // Impose ordering on the results
-    SimpleGraph gs = new SimpleGraph(retval);
-    List ordering = gs.breadthSearch();
-    Iterator oit = ordering.iterator();
+    SimpleGraph<T> gs = new SimpleGraph<T>(retval);
+    List<QueueEntry> ordering = gs.breadthSearch();
+    Iterator<QueueEntry> oit = ordering.iterator();
     int depth = 0;
     while (oit.hasNext()) {
-      SimpleGraph.QueueEntry qe = (SimpleGraph.QueueEntry)oit.next();
+      QueueEntry qe = oit.next();
       retval.setDepth(qe.name, depth++);
     }
     retval.setDepth(targetID, depth);
@@ -568,26 +573,26 @@ public class SimpleGraph implements Cloneable {
   ** Generate a tracker for the simple autoregulation case
   */
 
-  private SimplePathTracker simpleAutoregulation(String source, String target, int maxDepth, Map edges) {
+  private SimplePathTracker<T> simpleAutoregulation(String source, String target, int maxDepth, Map<String, SortedSet<T>> edges) {
     if (!source.equals(target)) {
       throw new IllegalArgumentException();
     }
     
-    SimplePathTracker retval = new SimplePathTracker();
+    SimplePathTracker<T> retval = new SimplePathTracker<T>();
     if (maxDepth < 1) {
       return (retval);
     }
 
-    HashSet outEdges = (HashSet)edges.get(source);
+    Set<T> outEdges = edges.get(source);
     if (outEdges == null) {
       return (retval);
     }
     
-    Iterator eit = outEdges.iterator();
+    Iterator<T> eit = outEdges.iterator();
     while (eit.hasNext()) {
-      SignedLink link = (SignedLink)eit.next();
+      T link = eit.next();
       if (link.getTrg().equals(source)) {
-        SimplePath currPath = new SimplePath();
+        SimplePath<T> currPath = new SimplePath<T>();
         currPath.addSimpleLoopLink(link);
         retval.addNewPath(currPath);
       }
@@ -600,11 +605,10 @@ public class SimpleGraph implements Cloneable {
   ** Depth-First Search
   */
 
-  private SimplePathTracker depthSearch(String source, String target, int maxDepth, Map edges) {
-    HashSet visited = new HashSet();
-    SimplePath currPath = new SimplePath();
-    SimplePathTracker retval = new SimplePathTracker();
-    searchGutsDepth(source, target, visited, 0, maxDepth, currPath, retval, edges);
+  private SimplePathTracker<T> depthSearch(String source, String target, int maxDepth, Map<String, SortedSet<T>> edges) {
+    SimplePath<T> currPath = new SimplePath<T>();
+    SimplePathTracker<T> retval = new SimplePathTracker<T>();
+    searchGutsDepth(source, target, 0, maxDepth, currPath, retval, edges);
     return (retval);
   }  
   
@@ -613,9 +617,9 @@ public class SimpleGraph implements Cloneable {
   ** Depth-First Search guts
   */
 
-  private void searchGutsDepth(String vertexID, String targetID, HashSet visited, 
-                               int depth, int maxDepth, SimplePath currPath, 
-                               SimplePathTracker tracker, Map edges) {
+  private void searchGutsDepth(String vertexID, String targetID,
+                               int depth, int maxDepth, SimplePath<T> currPath, 
+                               SimplePathTracker<T> tracker, Map<String, SortedSet<T>> edges) {
                                  
     //
     // Do a depth first search from the source node, maintaining a path
@@ -630,21 +634,21 @@ public class SimpleGraph implements Cloneable {
       return;
     }
     if (vertexID.equals(targetID)) {
-      tracker.addNewPath((SimplePath)currPath.clone());
+      tracker.addNewPath(currPath.clone());
       return;
     }
-    HashSet outEdges = (HashSet)edges.get(vertexID);
+    Set<T> outEdges = edges.get(vertexID);
     if (outEdges == null) {
       return;
     }
-    Iterator eit = outEdges.iterator();
+    Iterator<T> eit = outEdges.iterator();
     while (eit.hasNext()) {
-      SignedLink link = (SignedLink)eit.next();
+      T link = eit.next();
       boolean ok = currPath.addLink(link);
       if (!ok) {
         continue;  // loop detected; do not recurse
       }    
-      searchGutsDepth(link.getTrg(), targetID, visited, depth, 
+      searchGutsDepth(link.getTrg(), targetID, depth, 
                       maxDepth, currPath, tracker, edges);
       currPath.pop();
     }
@@ -672,6 +676,7 @@ public class SimpleGraph implements Cloneable {
       this.name = name;
     }
     
+    @Override
     public String toString() {
       return (name + " depth = " + depth);
     }
@@ -690,14 +695,14 @@ public class SimpleGraph implements Cloneable {
   ** Build a root list
   */
 
-  private Set<String> buildRootList(Set<String> nodes, Set<SignedLink> edges) {
+  private Set<String> buildRootList(Set<String> nodes, Set<T> edges) {
   
     HashSet<String> retval = new HashSet<String>();
     retval.addAll(nodes);
     
-    Iterator<SignedLink> ei = edges.iterator();
+    Iterator<T> ei = edges.iterator();
     while (ei.hasNext()) {
-      SignedLink link = ei.next();
+      T link = ei.next();
       String trg = link.getTrg();
       retval.remove(trg);
     }
@@ -709,14 +714,14 @@ public class SimpleGraph implements Cloneable {
   ** Build a root list with lexicographic sorting
   */
 
-  private SortedSet buildRootListWithLex(Set nodes, Set edges) {
+  private SortedSet<String> buildRootListWithLex(Set<String> nodes, Set<T> edges) {
   
-    TreeSet retval = new TreeSet();
+    TreeSet<String> retval = new TreeSet<String>();
     retval.addAll(nodes);
     
-    Iterator ei = edges.iterator();
+    Iterator<T> ei = edges.iterator();
     while (ei.hasNext()) {
-      Link link = (Link)ei.next();
+      T link = ei.next();
       String trg = link.getTrg();
       retval.remove(trg);
     }
@@ -728,17 +733,17 @@ public class SimpleGraph implements Cloneable {
   ** Build map from node to outbound edges
   */
 
-  private Map<String, Set<SignedLink>> calcOutboundEdges(Set<SignedLink> edges) {
+  private Map<String, SortedSet<T>> calcOutboundEdges(Set<T> edges) {
     
-    HashMap<String, Set<SignedLink>> retval = new HashMap<String, Set<SignedLink>>();
-    Iterator<SignedLink> li = edges.iterator();
+    HashMap<String, SortedSet<T>> retval = new HashMap<String, SortedSet<T>>();
+    Iterator<T> li = edges.iterator();
 
     while (li.hasNext()) {
-      SignedLink link = li.next();
+      T link = li.next();
       String src = link.getSrc();      
-      Set<SignedLink> forSrc = retval.get(src);
+      SortedSet<T> forSrc = retval.get(src);
       if (forSrc == null) {
-        forSrc = new HashSet<SignedLink>();
+        forSrc = new TreeSet<T>();
         retval.put(src, forSrc);
       }
       forSrc.add(link);  
@@ -752,18 +757,17 @@ public class SimpleGraph implements Cloneable {
   ** Build map from node to inbound edges
   */
 
-  private Map<String, Set<SignedLink>> calcInboundEdges(Set<SignedLink> edges) {
+  private Map<String, Set<T>> calcInboundEdges(Set<T> edges) {
     
-    HashMap<String, Set<SignedLink>> retval = new HashMap<String, Set<SignedLink>>();
-    Iterator<SignedLink> li = edges.iterator();
+    HashMap<String, Set<T>> retval = new HashMap<String, Set<T>>();
+    Iterator<T> li = edges.iterator();
 
     while (li.hasNext()) {
-      SignedLink link = li.next();
-      String trg = link.getTrg();
-      String src = link.getSrc();      
-      Set<SignedLink> forTrg = retval.get(trg);
+      T link = li.next();
+      String trg = link.getTrg();     
+      Set<T> forTrg = retval.get(trg);
       if (forTrg == null) {
-        forTrg = new HashSet<SignedLink>();
+        forTrg = new HashSet<T>();
         retval.put(trg, forTrg);
       }
       forTrg.add(link);  
@@ -776,17 +780,17 @@ public class SimpleGraph implements Cloneable {
   ** Build map from node to outbound edges
   */
 
-  private Map calcOutboundEdgesWithLex(Set edges) {
+  private Map<String, SortedSet<T>> calcOutboundEdgesWithLex(Set<T> edges) {
     
-    HashMap retval = new HashMap();
-    Iterator li = edges.iterator();
+    HashMap<String, SortedSet<T>> retval = new HashMap<String, SortedSet<T>>();
+    Iterator<T> li = edges.iterator();
 
     while (li.hasNext()) {
-      Link link = (Link)li.next();
+      T link = li.next();
       String src = link.getSrc();      
-      TreeSet forSrc = (TreeSet)retval.get(src);
+      SortedSet<T> forSrc = retval.get(src);
       if (forSrc == null) {
-        forSrc = new TreeSet();
+        forSrc = new TreeSet<T>();
         retval.put(src, forSrc);
       }
       forSrc.add(link);  
@@ -800,18 +804,19 @@ public class SimpleGraph implements Cloneable {
   ** see any inversion happening here. It is just flattening the set!:
   */
 
-  private Set<SignedLink> invertOutboundEdges(Map<String, Set<SignedLink>> outEdges) {
+  @SuppressWarnings("unchecked")
+  private Set<T> invertOutboundEdges(Map<String, SortedSet<T>> outEdges) {
     
-    HashSet<SignedLink> retval = new HashSet<SignedLink>();
+    HashSet<T> retval = new HashSet<T>();
     Iterator<String> ki = outEdges.keySet().iterator();
 
     while (ki.hasNext()) {
       String src = ki.next();
-      Set<SignedLink> links = outEdges.get(src);
-      Iterator<SignedLink> sit = links.iterator();
+      SortedSet<T> links = outEdges.get(src);
+      Iterator<T> sit = links.iterator();
       while (sit.hasNext()) {   
-        SignedLink link = sit.next();
-        retval.add(link.clone());
+        T link = sit.next();
+        retval.add((T)link.clone());
       }
     }
  
@@ -823,23 +828,23 @@ public class SimpleGraph implements Cloneable {
   ** Depth-First Search guts
   */
 
-  private void searchGutsDepth(String vertexID, HashSet visited, Map edgesFromSrc,
-                                  int depth, List edgeOrder, List results) {
+  private void searchGutsDepth(String vertexID, HashSet<String> visited, Map<String, SortedSet<T>> edgesFromSrc,
+                                  int depth, List<T> edgeOrder, List<QueueEntry> results) {
 
     if (visited.contains(vertexID)) {
       return;
     }
     visited.add(vertexID);
     results.add(new QueueEntry(depth, vertexID));
-    HashSet outEdges = (HashSet)edgesFromSrc.get(vertexID);
+    Set<T> outEdges = edgesFromSrc.get(vertexID);
     if (outEdges == null) {
       return;
     }
     
     if (edgeOrder != null) {
-      Iterator eit = edgeOrder.iterator();
+      Iterator<T> eit = edgeOrder.iterator();
       while (eit.hasNext()) {
-        Link link = (Link)eit.next();
+        T link = eit.next();
         if (!vertexID.equals(link.getSrc())) {
           continue;
         }
@@ -849,9 +854,9 @@ public class SimpleGraph implements Cloneable {
         }
       }
     } else {
-      Iterator eit = outEdges.iterator();
+      Iterator<T> eit = outEdges.iterator();
       while (eit.hasNext()) {
-        Link link = (Link)eit.next();
+        T link = eit.next();
         String targ = link.getTrg();
         if (!visited.contains(targ)) {
           searchGutsDepth(targ, visited, edgesFromSrc, depth + 1, edgeOrder, results);
@@ -867,19 +872,19 @@ public class SimpleGraph implements Cloneable {
   ** Guts of (depth-first search) cycle finder:
   */
 
-  private boolean cycleFinderGuts(String vertexID, HashSet<String> visited, Map<String, Set<SignedLink>> edgesFromSrc, 
+  private boolean cycleFinderGuts(String vertexID, HashSet<String> visited, Map<String, SortedSet<T>> edgesFromSrc, 
                                   int depth, Map<String, Integer> currSearchDepth) {
 
     visited.add(vertexID);
-    Set<SignedLink> outEdges = edgesFromSrc.get(vertexID);
+    Set<T> outEdges = edgesFromSrc.get(vertexID);
     if (outEdges == null) {
       return (false);
     }
     currSearchDepth.put(vertexID, new Integer(depth));
 
-    Iterator<SignedLink> eit = outEdges.iterator();
+    Iterator<T> eit = outEdges.iterator();
     while (eit.hasNext()) {
-      SignedLink link = eit.next();
+      T link = eit.next();
       String targ = link.getTrg();
       Integer prevDepth = currSearchDepth.get(targ);
       if ((prevDepth != null) && (prevDepth.intValue() < depth)) {
@@ -902,7 +907,7 @@ public class SimpleGraph implements Cloneable {
   ** Breadth-First Search guts
   */
 
-  private void searchGutsBreadth(HashSet<String> visited, ArrayList<QueueEntry> queue, Map<String, Set<SignedLink>> edgesFromSrc, List<QueueEntry> results) {
+  private void searchGutsBreadth(HashSet<String> visited, ArrayList<QueueEntry> queue, Map<String, SortedSet<T>> edgesFromSrc, List<QueueEntry> results) {
 
     while (queue.size() > 0) {
       QueueEntry curr = queue.remove(0);
@@ -912,11 +917,11 @@ public class SimpleGraph implements Cloneable {
       visited.add(curr.name);
       results.add(curr);
 
-      Set<SignedLink> outEdges = edgesFromSrc.get(curr.name);
+      Set<T> outEdges = edgesFromSrc.get(curr.name);
       if (outEdges == null) {
         continue;
       }
-      Iterator<SignedLink> oit = outEdges.iterator();
+      Iterator<T> oit = outEdges.iterator();
       while (oit.hasNext()) { 
         queue.add(new QueueEntry(curr.depth + 1, oit.next().getTrg()));
       }
@@ -930,7 +935,7 @@ public class SimpleGraph implements Cloneable {
   ** breaking the partial ordering.
   */
 
-  private void contractTopoSort(Map topoSort) {
+  private void contractTopoSort(Map<String, Integer> topoSort) {
     
     //
     // Make a list of nodes for each level.  Starting at the highest level,
@@ -941,30 +946,30 @@ public class SimpleGraph implements Cloneable {
     // Iterate this process until no more changes can occur.
     //
     
-    HashMap nodesAtLevel = new HashMap();
+    HashMap<Integer, List<String>> nodesAtLevel = new HashMap<Integer, List<String>>();
     int maxLevel = invertTopoSort(topoSort, nodesAtLevel);    
     
     if (maxLevel == -1) {  // nothing to do
       return;
     }
     
-    Map outEdges = calcOutboundEdges(allEdges_);    
+    Map<String, SortedSet<T>> outEdges = calcOutboundEdges(allEdges_);    
     
     while (true) {
       boolean changed = false;
       for (int i = maxLevel; i >= 0; i--) {
-        List nodeList = (List)nodesAtLevel.get(new Integer(i));
-        List listCopy = new ArrayList(nodeList);
+        List<String> nodeList = nodesAtLevel.get(Integer.valueOf(i));
+        List<String> listCopy = new ArrayList<String>(nodeList);
         int numNodes = nodeList.size();
         for (int j = 0; j < numNodes; j++) {
-          String currNode = (String)listCopy.get(j);
-          Set targsForNode = (Set)outEdges.get(currNode);
+          String currNode = listCopy.get(j);
+          SortedSet<T> targsForNode = outEdges.get(currNode);
           int min = getMinLevel(targsForNode, topoSort, i, maxLevel);
           if (min > i + 1) {
-            List higherNodeList = (List)nodesAtLevel.get(new Integer(min - 1));
+            List<String> higherNodeList = nodesAtLevel.get(Integer.valueOf(min - 1));
             higherNodeList.add(currNode);
             nodeList.remove(currNode);
-            topoSort.put(currNode, new Integer(min - 1));
+            topoSort.put(currNode, Integer.valueOf(min - 1));
             changed = true;
           }
         }
@@ -980,15 +985,15 @@ public class SimpleGraph implements Cloneable {
   ** Get the minimum level of all the target nodes
   */
 
-  private int getMinLevel(Set targs, Map topoSort, int currLevel, int maxLevel) {
+  private int getMinLevel(Set<T> targs, Map<String, Integer> topoSort, int currLevel, int maxLevel) {
     if (targs == null) {
       return (currLevel);
     }
     int min = maxLevel;    
-    Iterator trgit = targs.iterator();
+    Iterator<T> trgit = targs.iterator();
     while (trgit.hasNext()) {
-      Link link = (Link)trgit.next();
-      Integer level = (Integer)topoSort.get(link.getTrg());
+      T link = trgit.next();
+      Integer level = topoSort.get(link.getTrg());
       int currLev = level.intValue();
       if (min > currLev) {
         min = currLev;

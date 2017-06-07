@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,9 +30,8 @@ import java.util.List;
 import java.util.TreeSet;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
@@ -56,7 +55,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   
   private PerturbationData.RegionRestrict rrResult_;
   private PerturbationData pd_;
-  private ArrayList regionList_;
+  private ArrayList<EnumCell> regionList_;
   private String parentCurrKey_;
 
   private JTextField legacyNullRegion_;
@@ -79,12 +78,12 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertRegRestrictAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame myParent, PerturbationData pd,
+  public PertRegRestrictAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame myParent, PerturbationData pd,
                                        PendingEditTracker pet, String myKey, 
                                        int legacyModes) {
-    super(appState, dacx, myParent, pet, myKey, 2);
+    super(uics, dacx, myParent, pet, myKey, 2);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, myParent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics, dacx, myParent, pd, rMan_, gbc_, pet_);
       
     JLabel descLabel = new JLabel(rMan_.getString("prraep.description"));
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
@@ -94,8 +93,8 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
     // Build the region table
     //
 
-    regionList_ = new ArrayList();
-    estRr_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "prraep.region", regionList_), parent_);
+    regionList_ = new ArrayList<EnumCell>();
+    estRr_ = new EditableTable(uics, dacx, new EditableTable.OneEnumTableModel(uics, dacx, "prraep.region", regionList_), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.tableIsUnselectable = false;
@@ -103,7 +102,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
     etp.singleSelectOnly = true;
     etp.buttonsOnSide = false;
     etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, regionList_));  
+    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, regionList_, EnumCell.class));  
     JPanel regTablePan = estRr_.buildEditableTable(etp);
     UiUtil.gbcSet(gbc_, 0, rowNum_, 2, 2, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);       
     add(regTablePan, gbc_);
@@ -188,8 +187,8 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   
   protected void updateOptions() {
     regionList_ = buildRegionEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, regionList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, regionList_, EnumCell.class));      
     estRr_.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)estRr_.getModel()).setCurrentEnums(regionList_);
     return;
@@ -303,16 +302,15 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  private ArrayList buildRegionEnum() { 
-    ArrayList retval = new ArrayList();
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData();
-    TreeSet toSort = new TreeSet(String.CASE_INSENSITIVE_ORDER);
+  private ArrayList<EnumCell> buildRegionEnum() { 
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    TreeSet<String> toSort = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
     toSort.addAll(tcd.getRegions());
-    Iterator tsit = toSort.iterator();
+    Iterator<String> tsit = toSort.iterator();
     int count = 0;
     while (tsit.hasNext()) {
-      String regName = (String)tsit.next();          
+      String regName = tsit.next();          
       retval.add(new EnumCell(regName, regName, count, count));
       count++;
     }
@@ -329,7 +327,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
     if ((currRegRestrict_ == null) || currRegRestrict_.isLegacyNullStyle()) {
       return (retval);
     }       
-    Iterator rit = currRegRestrict_.getRegions();
+    Iterator<String> rit = currRegRestrict_.getRegions();
     return (buildRegionDisplayListCore(rit, false));  
   }
 
@@ -338,8 +336,8 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Get the region display list
   */
   
-  private List buildRegionDisplayListCore(Iterator rit, boolean forHotUpdate) {
-    ArrayList retval = new ArrayList();
+  private List<EditableTable.OneEnumTableModel.TableRow> buildRegionDisplayListCore(Iterator rit, boolean forHotUpdate) {
+    ArrayList<EditableTable.OneEnumTableModel.TableRow> retval = new ArrayList<EditableTable.OneEnumTableModel.TableRow>();
     EditableTable.OneEnumTableModel rpt = (EditableTable.OneEnumTableModel)estRr_.getModel();  
     int count = 0;
     int useIndex = -1;
@@ -354,7 +352,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
       EditableTable.OneEnumTableModel.TableRow tr = rpt.new TableRow();
       tr.origOrder = new Integer(count++);
       for (int i = 0; i < numReg; i++) {
-        EnumCell ecp = (EnumCell)regionList_.get(i);
+        EnumCell ecp = regionList_.get(i);
         if (regionID.equals(ecp.internal)) {
           useIndex = i;
           break;
@@ -367,7 +365,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
           throw new IllegalStateException();
         }
       }
-      tr.enumChoice = new EnumCell((EnumCell)regionList_.get(useIndex));
+      tr.enumChoice = new EnumCell(regionList_.get(useIndex));
       retval.add(tr);
     }
     return (retval);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,8 @@ import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
@@ -57,10 +58,11 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
   ////////////////////////////////////////////////////////////////////////////  
 
   private ReadOnlyTable rot_;
-  private Map newbies_;
-  private Map closest_;
+  private Map<String, Set<String>> newbies_;
+  private Map<String, Map<String, String>> closest_;
   private boolean keepGoing_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -75,13 +77,14 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
   ** Constructor 
   */ 
   
-  public NewbieReportingDialog(BTState appState, JFrame parent, Map newbies, Map newbieClosest) {
-    super(parent, appState.getRMan().getString("newbieReport.dialogTitle"), true);
-    appState_ = appState;
+  public NewbieReportingDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, Map<String, Set<String>> newbies, Map<String, Map<String, String>> newbieClosest) {
+    super(parent, dacx.getRMan().getString("newbieReport.dialogTitle"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     newbies_ = newbies;
     closest_ = newbieClosest;
     keepGoing_ = false;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(1000, 650);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -92,7 +95,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(appState_, new NewbieReportModel(appState_), null);   
+    rot_ = new ReadOnlyTable(uics_, dacx_, new NewbieReportModel(uics_, dacx_), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
     tp.tableIsUnselectable = true;
@@ -111,7 +114,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     rowNum += 8;
     cp.add(tabPan, gbc);
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true); 
     setLocationRelativeTo(parent);
     displayProperties(); 
@@ -192,8 +195,8 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
       }
     }
 
-    NewbieReportModel(BTState appState) {
-      super(appState, NUM_COL_);
+    NewbieReportModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"newbieReport.class",
                                 "newbieReport.name",
                                 "newbieReport.alternative"};
@@ -247,19 +250,19 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
 
   private List<NewbieReportModel.TableRow> initTableRows() {
     ArrayList<NewbieReportModel.TableRow> retval = new ArrayList<NewbieReportModel.TableRow>();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     NewbieReportModel ctm = (NewbieReportModel)rot_.getModel();
-    Iterator nbit = newbies_.keySet().iterator();
+    Iterator<String> nbit = newbies_.keySet().iterator();
     while (nbit.hasNext()) {
-      String newbieClass = (String)nbit.next();
-      Set newbiesForClass = (Set)newbies_.get(newbieClass);
-      Map closestForClass = (Map)closest_.get(newbieClass);
+      String newbieClass = nbit.next();
+      Set<String> newbiesForClass = newbies_.get(newbieClass);
+      Map<String, String> closestForClass = closest_.get(newbieClass);
       Iterator<String> nfcit = newbiesForClass.iterator();
       while (nfcit.hasNext()) {
         String newbie = nfcit.next();
         String suggest = null;
         if (closestForClass != null) {
-          suggest = (String)closestForClass.get(newbie);
+          suggest = closestForClass.get(newbie);
         }
         NewbieReportModel.TableRow tr = ctm.new TableRow();
         tr.newbieClass = rMan.getString("newbieClass." + newbieClass);

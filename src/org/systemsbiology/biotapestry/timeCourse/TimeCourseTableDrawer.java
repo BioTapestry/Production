@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,8 +39,9 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeModel;
 import javax.swing.tree.TreeNode;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.ColorGenerator;
+import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
@@ -73,13 +74,9 @@ public class TimeCourseTableDrawer {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private float[] inactiveHSV_;
-  private float[] activeHSV_;
-  private float[] activeRegionHSV_;
-  private float[] colHSB_;
   private TimeCourseGene client_;
   private PerturbedTimeCourseGene pertClient_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   private static final String BIG_VERT_COLOR_  = "#F8F8F8";  
   private static final String NO_REGION_COLOR_ = "#DDDDDD";
@@ -98,8 +95,8 @@ public class TimeCourseTableDrawer {
   ** Constructor
   */
 
-  public TimeCourseTableDrawer(BTState appState, TimeCourseGene client) {
-    this(appState, client, null);
+  public TimeCourseTableDrawer(DataAccessContext dacx,  TimeCourseGene client) {
+    this(dacx, client, null);
   }  
     
   /***************************************************************************
@@ -107,17 +104,11 @@ public class TimeCourseTableDrawer {
   ** Constructor
   */
 
-  public TimeCourseTableDrawer(BTState appState, TimeCourseGene client, PerturbedTimeCourseGene pertClient) {
-    appState_ = appState;
+  public TimeCourseTableDrawer(DataAccessContext dacx, TimeCourseGene client, PerturbedTimeCourseGene pertClient) {
+    dacx_ = dacx;
     client_ = client;
     pertClient_ = pertClient;
-    inactiveHSV_ = new float[3];
-    Color.RGBtoHSB(0xFF, 0xFF, 0xFF, inactiveHSV_); 
-    activeHSV_ = new float[3];
-    Color.RGBtoHSB(0x66, 0xEE, 0x66, activeHSV_);
-    activeRegionHSV_ = new float[3];
-    Color.RGBtoHSB(0x66, 0x66, 0xEE, activeRegionHSV_);
-    colHSB_ = new float[3];
+
   }  
     
   ////////////////////////////////////////////////////////////////////////////
@@ -137,9 +128,9 @@ public class TimeCourseTableDrawer {
     public void getInterestingTimes(Set<Integer> set);
     public String getName();
     public String getTimeCourseNote();
-    public int getExpressionLevelForSource(String region, int time, int exprSource, TimeCourseGene.VariableLevel varLev);
+    public int getExpressionLevelForSource(String region, int time, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev);
     public int getConfidence(String region, int time);
-    public int getExprSource(String region, int time);
+    public ExpressionEntry.Source getExprSource(String region, int time);
   }
  
   ////////////////////////////////////////////////////////////////////////////
@@ -169,7 +160,7 @@ public class TimeCourseTableDrawer {
     client_.getInterestingTimes(rawtimes);
     times.addAll(rawtimes);
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String format = rMan.getString("timeCourseDrawer.perTablePertTitleFormat");
     out.print("<center><h2>"); 
     out.print(MessageFormat.format(format, new Object[] {client_.getName(), pertClient_.getName()})); 
@@ -193,7 +184,7 @@ public class TimeCourseTableDrawer {
         Integer timeObj = tmit.next();
         TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
         int level = pertClient_.getExpressionLevelForSource(reg.region, timeObj.intValue(), 
-                                                            ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+                                                            ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
         if ((level == ExpressionEntry.NO_DATA) || (level == ExpressionEntry.NO_REGION)) {
           continue;
         }
@@ -257,7 +248,7 @@ public class TimeCourseTableDrawer {
       out.println("<tr>");
       pertVert(out, BLACK_COLOR_);
       out.print("<td width=\"70\" align=\"center\" valign=\"center\" colspan=\"3\"><b>");
-      String timeStr = TimeAxisDefinition.getTimeDisplay(appState_, timeObj, true, false);      
+      String timeStr = TimeAxisDefinition.getTimeDisplay(dacx_, timeObj, true, false);      
       out.print(timeStr);
       out.println("</b></td>");
       pertVert(out, BLACK_COLOR_);
@@ -330,7 +321,7 @@ public class TimeCourseTableDrawer {
     List<RegionData> regions;
     TreeSet<Integer> times;
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String format = rMan.getString("timeCourseDrawer.perTableTitleFormat");
     out.print("<center><h2>"); 
     out.print(MessageFormat.format(format, new Object[] {client_.getName()})); 
@@ -368,7 +359,7 @@ public class TimeCourseTableDrawer {
       while (tmit.hasNext()) {
         Integer timeObj = tmit.next();
         out.print("<td width=\"70\" align=\"center\" valign=\"center\"><b>");
-        String timeStr = TimeAxisDefinition.getTimeDisplay(appState_, timeObj, true, false);      
+        String timeStr = TimeAxisDefinition.getTimeDisplay(dacx_, timeObj, true, false);      
         out.print(timeStr);
         out.println("</b></td>");
       }
@@ -415,17 +406,17 @@ public class TimeCourseTableDrawer {
   ** Do key building stuff
   */
   
-  public static String buildKey(BTState appState, int needKey, boolean showTree, boolean showWTPert) {
+  public static String buildKey(DataAccessContext dacx, int needKey, boolean showTree, boolean showWTPert) {
     StringWriter sw = new StringWriter();
     PrintWriter out = new PrintWriter(sw);
     if ((needKey & TimeCourseTableDrawer.BASIC_TABLE_KEY) != 0x00) {
       if (showTree) {
         out.print("<p><center>");
-        out.print(appState.getRMan().getString("timeCourseTable.cellEdgeNote"));
+        out.print(dacx.getRMan().getString("timeCourseTable.cellEdgeNote"));
         out.println("</center></p><p></p>");
       }
       if (showWTPert) {
-        TimeCourseTableDrawer.buildWTPertNote(appState, out);
+        TimeCourseTableDrawer.buildWTPertNote(dacx, out);
       }
       buildKey(out);
     }
@@ -458,12 +449,12 @@ public class TimeCourseTableDrawer {
       while (tmit.hasNext()) {
         Integer hourObj = tmit.next();
         int hour = hourObj.intValue();
-        int level = client.getExpressionLevelForSource(reg.region, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+        int level = client.getExpressionLevelForSource(reg.region, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
         if ((level == ExpressionEntry.NO_REGION) || (level == ExpressionEntry.NO_DATA)) {
           continue;
         }
-        int source = client.getExprSource(reg.region, hour);
-        if (source != ExpressionEntry.NO_SOURCE_SPECIFIED) {
+        ExpressionEntry.Source source = client.getExprSource(reg.region, hour);
+        if (source != ExpressionEntry.Source.NO_SOURCE_SPECIFIED) {
           retval |= ADD_SOURCE;
         }       
         int confidence = client.getConfidence(reg.region, hour);
@@ -511,7 +502,7 @@ public class TimeCourseTableDrawer {
     while (tmit.hasNext()) {
       Integer timeObj = tmit.next();
       out.println("<td width=\"70\" align=\"center\" valign=\"center\"><b>");
-      String timeStr = TimeAxisDefinition.getTimeDisplay(appState_, timeObj, true, false);      
+      String timeStr = TimeAxisDefinition.getTimeDisplay(dacx_, timeObj, true, false);      
       out.print(timeStr);
       out.println("</b></td>");
       vert(out, null);
@@ -520,7 +511,7 @@ public class TimeCourseTableDrawer {
     
     // data
     int numRegions = regions.size();
-    TreeInTable trit = new TreeInTable(appState_, hierTree, times, numRegions);
+    TreeInTable trit = new TreeInTable(dacx_, hierTree, times, numRegions);
    
     for (int i = 0; i < numRegions; i++) {
       RegionData reg = regions.get(i);
@@ -533,13 +524,13 @@ public class TimeCourseTableDrawer {
       out.println("</b></td>");
       int currTime = 0;
       Map<Integer, String> colCols = trit.getColumnColors(i);
-      String col = colCols.get(new Integer(-1));  // may be null
+      String col = colCols.get(Integer.valueOf(-1));  // may be null
       vert(out, col);
       tmit = times.iterator();
       while (tmit.hasNext()) {
         Integer hour = tmit.next();
         buildCell(out, reg.region, hour.intValue(), client_);
-        col = colCols.get(new Integer(currTime++));  // may be null
+        col = colCols.get(Integer.valueOf(currTime++));  // may be null
         vert(out, col);
       }
       out.println("</tr>");
@@ -720,7 +711,7 @@ public class TimeCourseTableDrawer {
   
   private void buildCell(PrintWriter out, String reg, int hour, Client confClient) {
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
-    int level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+    int level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
     if ((level == ExpressionEntry.NO_DATA) || (level == ExpressionEntry.VARIABLE)) {
       out.print("<td width=\"70\" align=\"center\" valign=\"center\" ");
     } else {
@@ -761,7 +752,7 @@ public class TimeCourseTableDrawer {
         buildConfidenceAndSource(out, reg, hour, null, confClient);
         break;
       case ExpressionEntry.VARIABLE:
-        String col = variableBlockColor(varLev.level, false);
+        String col = (new ColorGenerator()).variableBlockColor(varLev.level, false);
         out.print("bgcolor=\"#");
         out.print(col.substring(2));
         out.println("\">");
@@ -786,9 +777,9 @@ public class TimeCourseTableDrawer {
     int level;
     boolean controlFromPert = pertClient_.usingDistinctControlExpr();
     if (controlFromPert) {
-      level = pertClient_.getControlExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+      level = pertClient_.getControlExpressionLevelForSource(reg, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
     } else {
-      level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+      level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
     }
     if ((level == ExpressionEntry.NO_DATA) || (level == ExpressionEntry.VARIABLE)) {
       out.print("<td width=\"35\" height=\"40\" align=\"center\" valign=\"center\" ");
@@ -800,7 +791,7 @@ public class TimeCourseTableDrawer {
     
     pertVert(out, (level == ExpressionEntry.NO_REGION) ? NO_REGION_COLOR_ : BLACK_COLOR_);
     TimeCourseGene.VariableLevel pertVarLev = new TimeCourseGene.VariableLevel();
-    int pertLevel = pertClient_.getExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, pertVarLev);
+    int pertLevel = pertClient_.getExpressionLevelForSource(reg, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, pertVarLev);
     if ((pertLevel == ExpressionEntry.NO_DATA) || (pertLevel == ExpressionEntry.VARIABLE)) {
       out.print("<td width=\"35\" height=\"40\" align=\"center\" valign=\"center\" ");
     } else {
@@ -812,22 +803,6 @@ public class TimeCourseTableDrawer {
     return;
   }
 
- /***************************************************************************
-  **
-  ** Build a table cell for expression data
-  **
-  */
-  
-  private String variableBlockColor(double level, boolean forRegion) {  
-    // Hue stays the same:
-    float[] whichActive = (forRegion) ? activeRegionHSV_ : activeHSV_;
-    colHSB_[0] = whichActive[0];
-    colHSB_[1] = inactiveHSV_[1] + ((float)level * (whichActive[1] - inactiveHSV_[1])); 
-    colHSB_[2] = inactiveHSV_[2] + ((float)level * (whichActive[2] - inactiveHSV_[2]));         
-    int varCol = Color.HSBtoRGB(colHSB_[0], colHSB_[1], colHSB_[2]);
-    return (Integer.toHexString(varCol));
-  }
- 
   /***************************************************************************
   **
   ** Build a table cell for expression data
@@ -837,7 +812,7 @@ public class TimeCourseTableDrawer {
   @SuppressWarnings("unused")
   private void buildCellWithQPCR(PrintWriter out, String reg, Set<PerturbationData.SourceInfo> sources, int hour) {
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
-    int level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+    int level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
     out.println("<td WIDTH=\"70\" "); 
     switch (level) {
       case ExpressionEntry.NO_REGION:
@@ -862,7 +837,7 @@ public class TimeCourseTableDrawer {
         buildQPCRList(out, sources);
         break;
       case ExpressionEntry.VARIABLE:
-        String col = variableBlockColor(varLev.level, true);
+        String col = (new ColorGenerator()).variableBlockColor(varLev.level, true);
         out.print("bgcolor=\"#");
         out.print(col.substring(2));
         out.println("\">");
@@ -889,7 +864,7 @@ public class TimeCourseTableDrawer {
     }
     out.println(varLev.level);
     int confidence = csClient.getConfidence(reg, hour);
-    int source = csClient.getExprSource(reg, hour);
+    ExpressionEntry.Source source = csClient.getExprSource(reg, hour);
     String cStr = confTag(confidence);
     String sStr = sourceTag(source);
     if (sStr == null) {
@@ -926,7 +901,7 @@ public class TimeCourseTableDrawer {
 
   private void buildFixedConfidenceAndSource(PrintWriter out, String reg, int hour, Client csClient) {
     int confidence = csClient.getConfidence(reg, hour);
-    int source = csClient.getExprSource(reg, hour);
+    ExpressionEntry.Source source = csClient.getExprSource(reg, hour);
     String cStr = confTag(confidence);
     String sStr = sourceTag(source);
     if (sStr == null) {
@@ -961,15 +936,15 @@ public class TimeCourseTableDrawer {
   **
   */
 
-  private String sourceTag(int source) {
+  private String sourceTag(ExpressionEntry.Source source) {
      switch (source) {
-      case ExpressionEntry.NO_SOURCE_SPECIFIED:
+      case NO_SOURCE_SPECIFIED:
         return (null);
-      case ExpressionEntry.MATERNAL_SOURCE:
+      case MATERNAL_SOURCE:
         return ("M");    
-      case ExpressionEntry.ZYGOTIC_SOURCE:
+      case ZYGOTIC_SOURCE:
         return ("Z");    
-      case ExpressionEntry.MATERNAL_AND_ZYGOTIC:
+      case MATERNAL_AND_ZYGOTIC:
         return ("M+Z");
       default:
         throw new IllegalArgumentException();
@@ -1120,9 +1095,9 @@ public class TimeCourseTableDrawer {
   **
   */
   
-  public static void buildWTPertNote(BTState appState, PrintWriter out) {  
+  public static void buildWTPertNote(DataAccessContext dacx, PrintWriter out) {  
     out.print("<p><center>");
-    out.print(appState.getRMan().getString("timeCourseTable.wildVersusPertNote"));
+    out.print(dacx.getRMan().getString("timeCourseTable.wildVersusPertNote"));
     out.println("</center></p>");      
     out.println("<p></p>"); 
     return;
@@ -1187,7 +1162,7 @@ public class TimeCourseTableDrawer {
     while (tmit.hasNext()) {
       Integer hour = tmit.next();
       int hr = hour.intValue();
-      int level = client_.getExpressionLevelForSource(region, hr, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
+      int level = client_.getExpressionLevelForSource(region, hr, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev);
       if (level != ExpressionEntry.NO_REGION) {
         if (hr < retval.minHour) {
           retval.minHour = hr;
@@ -1360,12 +1335,12 @@ public class TimeCourseTableDrawer {
     private ArrayList<RowData> list_;
     private int maxCols_;
     private int colCount_;
-    private BTState appState_;
+    private DataAccessContext myDacx_;
     
-    TreeInTable(BTState appState, DefaultTreeModel hierTree, SortedSet<Integer> times, int numRows) {
-      appState_ = appState;
+    TreeInTable(DataAccessContext dacx, DefaultTreeModel hierTree, SortedSet<Integer> times, int numRows) {
+      myDacx_ = dacx;
       colCount_ = 0;
-      maxCols_ = appState_.getDB().getNumColors();
+      maxCols_ = myDacx_.getColorResolver().getNumColors();
       list_ = new ArrayList<RowData>();
       for (int i = 0; i < numRows; i++) {
         list_.add(new RowData());
@@ -1388,7 +1363,7 @@ public class TimeCourseTableDrawer {
           RowData rd = list_.get(i);
           Integer tm1 = Integer.valueOf(time.intValue() - 1);
           rd.vertColors.put(tm1, block.color);
-          Integer checkRow = new Integer(i);
+          Integer checkRow = Integer.valueOf(i);
           if (tb.rows.contains(checkRow)) {
             rd.rcs = new RowColorSpec(time.intValue(), block.color);
           }
@@ -1408,11 +1383,11 @@ public class TimeCourseTableDrawer {
     }
     
     Color getNextColor() {    
-      Database db = appState_.getDB();
+      ColorResolver mb = myDacx_.getColorResolver();
       String colTag = null;
       // Don't use green!
       while (colTag == null) {
-        colTag = db.getGeneColor(colCount_++);
+        colTag = mb.getGeneColor(colCount_++);
         if (colTag.equals("EX-green")) {
           colTag = null;
         }
@@ -1420,7 +1395,7 @@ public class TimeCourseTableDrawer {
           colCount_ = 0;
         }
       }
-      return (db.getColor(colTag));
+      return (mb.getColor(colTag));
     }
     
     void stockTheList(DefaultTreeModel hierTree, DefaultMutableTreeNode currNode, List<Integer> timeList, int startRow) { 
@@ -1453,7 +1428,7 @@ public class TimeCourseTableDrawer {
           bra = new TreeBranch(minTimeIndexObj);
           kidBranches.put(minTimeIndexObj, bra);
         }
-        bra.rows.add(new Integer(kidStart));
+        bra.rows.add(Integer.valueOf(kidStart));
         if (decCount != 0) {
           stockTheList(hierTree, kidNode, timeList, kidStart);
           kidStart += decCount;
@@ -1502,12 +1477,12 @@ public class TimeCourseTableDrawer {
   */
   
   private static class TreeBranch {
-    //Integer time;
+    @SuppressWarnings("unused")
+    Integer time;
     TreeSet<Integer> rows;
-    
-    @SuppressWarnings("unused")    
+     
     TreeBranch(Integer time) {
-      //this.time = time;
+      this.time = time;
       this.rows = new TreeSet<Integer>();
     } 
   }

@@ -24,6 +24,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.PrintWriter;
 import java.io.IOException;
+import java.util.Map;
 
 import org.xml.sax.Attributes;
 
@@ -236,6 +237,18 @@ public class LinkSegment implements Cloneable {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    if (drawStyle_ != null) {
+      drawStyle_.mapColorTags(ctm);
+    }
+    return;
+  }  
 
   /***************************************************************************
   **

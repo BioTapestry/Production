@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -44,14 +44,13 @@ import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBInternalLogic;
 import org.systemsbiology.biotapestry.genome.DBNode;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.SbmlSupport;
@@ -60,6 +59,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.ProtoDouble;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -80,8 +80,10 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   private HashMap<Integer, ComboBoxEntry> comboChoices_;
   private JPanel customPlot_;
   private EditableTable est_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
+  
   private DBNode node_;
   
   private static final long serialVersionUID = 1L;
@@ -97,15 +99,16 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   ** Constructor 
   */ 
   
-  public SimulationPropertiesDialog(BTState appState, DataAccessContext dacx, String nodeID) {     
-    super(appState.getTopFrame(), "", true);
-    appState_ = appState;
+  public SimulationPropertiesDialog(UIComponentSource uics, DataAccessContext dacx, String nodeID, UndoFactory uFac) {     
+    super(uics.getTopFrame(), "", true);
+    uics_ = uics;
+    uFac_ = uFac;
     dacx_ = dacx;
-    if (!dacx.genomeIsRootGenome()) {
+    if (!dacx.currentGenomeIsRootDBGenome()) {
       throw new IllegalArgumentException();
     }
-    node_ = (DBNode)dacx_.getGenomeAsDBGenome().getNode(nodeID);     
-    ResourceManager rMan = appState_.getRMan();
+    node_ = (DBNode)dacx_.getCurrentGenomeAsDBGenome().getNode(nodeID);     
+    ResourceManager rMan = dacx_.getRMan();
     String format = rMan.getString("simProp.title");
     String desc = MessageFormat.format(format, new Object[] {node_.getName()});    
     setTitle(desc);    
@@ -129,9 +132,9 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     UiUtil.gbcSet(gbc, 0, 0, 1, 6, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(jtp, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 6, 1, true, false);   
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
    
@@ -220,8 +223,8 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
       }
     }
   
-    ParameterTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    ParameterTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"simProp.param",
                                 "simProp.value",
                                 "simProp.required"};
@@ -287,7 +290,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   */
   
   private void displayProperties() {
-    Node node = dacx_.getGenome().getNode(nodeID_);
+    Node node = dacx_.getCurrentGenome().getNode(nodeID_);
     if (!(node instanceof DBNode)) {
       return;
     }
@@ -309,12 +312,12 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   */
   
   private boolean applyProperties() {
-    Node node = dacx_.getGenome().getNode(nodeID_);
+    Node node = dacx_.getCurrentGenome().getNode(nodeID_);
     if (!(node instanceof DBNode)) {
       return (true);
     }
     
-    UndoSupport support = new UndoSupport(appState_, "undo.spd");    
+    UndoSupport support = uFac_.provideUndoSupport("undo.spd", dacx_);    
     GenomeChange change = dacx_.getDBGenome().startNodeUndoTransaction(nodeID_);
        
     DBInternalLogic dbil = ((DBNode)node).getInternalLogic();
@@ -326,7 +329,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     applyParameters(vals);
     
     change = dacx_.getDBGenome().finishNodeUndoTransaction(nodeID_, change);
-    support.addEdit(new GenomeChangeCmd(appState_, dacx_, change));
+    support.addEdit(new GenomeChangeCmd(dacx_, change));
     
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();
@@ -341,7 +344,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   
   private JPanel buildLogicPanel() {
     JPanel logicPanel = new JPanel();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     comboChoices_ = new HashMap<Integer, ComboBoxEntry>();
     
     logicPanel.setLayout(new GridBagLayout());
@@ -368,7 +371,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
           customPlot_.setBackground(col);
           customPlot_.repaint();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         // FIX ME!! Does not change parameter list to reflect new function type
       }
@@ -404,7 +407,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     paramPanel.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
     
-    est_ = new EditableTable(appState_, new ParameterTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new ParameterTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.singleSelectOnly = true;
@@ -457,7 +460,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
       String key = kit.next();
       ParameterTableModel.TableRow tr = ptm.new TableRow();    
       tr.param = key;
-      tr.origVal = new Double(logic.getSimulationParam(appState_, key, node_.getNodeType()));
+      tr.origVal = new Double(logic.getSimulationParam(dacx_, key, node_.getNodeType()));
       tr.value = new ProtoDouble(tr.origVal.doubleValue());
       tr.required = Boolean.toString(baseNeeded.contains(key));
       retval.add(tr);

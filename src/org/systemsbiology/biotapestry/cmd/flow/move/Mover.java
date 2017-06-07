@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,11 +29,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -144,8 +146,7 @@ public class Mover extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Mover(BTState appState, Action action) {
-    super(appState);
+  public Mover(Action action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -159,8 +160,7 @@ public class Mover extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Mover(BTState appState, Action action, MoveNetModuleRegionArgs args) {
-    super(appState);
+  public Mover(Action action, MoveNetModuleRegionArgs args) {
     name =  args.getName();
     desc =  args.getName();
     mnem =  args.getMnem();
@@ -179,7 +179,7 @@ public class Mover extends AbstractControlFlow {
   ** Helper for getting running move
   */ 
       
-  public static RunningMove generateRMov(GenomePresentation gPre, DataAccessContext rcx, Point2D start) { 
+  public static RunningMove generateRMov(GenomePresentation gPre, StaticDataAccessContext rcx, Point2D start) { 
     List<RunningMove> newMoves = (new RunningMoveGenerator(gPre)).getRunningMove(start, rcx);
     return ((new IntersectionChooser(false, rcx)).runningMoveRanker(newMoves));
   }
@@ -197,8 +197,8 @@ public class Mover extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, regArgs_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, regArgs_, dacx);
     return (retval);
   }
  
@@ -209,9 +209,10 @@ public class Mover extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (action_ == Action.GROUP) {
-      return (rcx.getGenomeAsInstance().getVfgParent() == null);
+      return (rcx.getCurrentGenomeAsInstance().getVfgParent() == null);
     } else if (action_ == Action.MODULES) {
       return (regArgs_.getIsEnabled());
     }
@@ -231,12 +232,13 @@ public class Mover extends AbstractControlFlow {
       StepState ans;
       if (last == null) {
         if (action_.isANudge()) {
-          ans = new StepState(appState_, action_, regArgs_, cfh.getDataAccessContext());
+          ans = new StepState(action_, regArgs_, cfh);
         } else {
           throw new IllegalStateException();
         }
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }  
       if (ans.getNextStep().equals("stepSetToMode")) {
         next = ans.stepSetToMode();      
@@ -273,11 +275,11 @@ public class Mover extends AbstractControlFlow {
     ans.y = theClick.y; //UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
     if (action_ == Action.MODULES) {
-      ans.nextStep_ = "stepPlaceModule" ;
+      ans.setNextStep("stepPlaceModule");
     } else if (action_ == Action.MOVE_MODEL_ELEMS) { // Not using click handling just yet...
       throw new IllegalStateException(); 
     } else {
-      ans.nextStep_ = "stepPlaceGroup"; 
+      ans.setNextStep("stepPlaceGroup"); 
     }
     return (retval);
   }
@@ -287,13 +289,10 @@ public class Mover extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.AbsolutePopupPointCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.AbsolutePopupPointCmdState, DialogAndInProcessCmd.MouseClickCmdState {
     
     private Intersection intersect_;
-    private DataAccessContext rcxT_;
-    private Action myAction_;
-    private String nextStep_;    
-    private BTState appState_;
+    private Action myAction_; 
     private int x;
     private int y;
     private RunningMove[] multiMov_;
@@ -305,9 +304,23 @@ public class Mover extends AbstractControlFlow {
     private Point2D end_;
     private Point2D start_;
     private PanelCommands pc_; // BOGUS HACK!
-         
-    public String getNextStep() {
-      return (nextStep_);
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState( Action myAction, MoveNetModuleRegionArgs regArgs, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = myAction;
+      myRegArgs_ = regArgs;
+      if (myAction_.isANudge()) {
+        nextStep_ = "nudgeSelected" ;
+      } else if (myAction_ == Action.MOVE_MODEL_ELEMS) {
+        nextStep_ = "stepMoveElems";
+      } else {
+        nextStep_ = "stepSetToMode"; 
+      }
     }
     
     /***************************************************************************
@@ -315,11 +328,10 @@ public class Mover extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, Action myAction, MoveNetModuleRegionArgs regArgs, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState( Action myAction, MoveNetModuleRegionArgs regArgs, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = myAction;
       myRegArgs_ = regArgs;
-      rcxT_ = dacx;
       if (myAction_.isANudge()) {
         nextStep_ = "nudgeSelected" ;
       } else if (myAction_ == Action.MOVE_MODEL_ELEMS) {
@@ -462,13 +474,13 @@ public class Mover extends AbstractControlFlow {
     */ 
         
     public void setPreload(Point2D start, Point2D end, double pixDiam) {
-      rcxT_.pixDiam = pixDiam;
+      dacx_.setPixDiam(pixDiam);
       end_ = new Point2D.Double();
       UiUtil.forceToGrid((int)end.getX(), (int)end.getY(), end_, UiUtil.GRID_SIZE);
       start_ = new Point2D.Double();
       UiUtil.forceToGrid((int)start.getX(), (int)start.getY(), start_, UiUtil.GRID_SIZE);
-      List<RunningMove> newMoves = (new RunningMoveGenerator(appState_.getGenomePresentation())).getRunningMove(start_, rcxT_);
-      rmov_ = (new IntersectionChooser(false, rcxT_)).runningMoveRanker(newMoves);
+      List<RunningMove> newMoves = (new RunningMoveGenerator(uics_.getGenomePresentation())).getRunningMove(start_, dacx_);
+      rmov_ = (new IntersectionChooser(false, dacx_)).runningMoveRanker(newMoves);
     }       
 
     /***************************************************************************
@@ -477,7 +489,7 @@ public class Mover extends AbstractControlFlow {
     */
     
     private DialogAndInProcessCmd nudgeSelected() {
-      if (!appState_.getCommonView().canAccept()) {
+      if (!uics_.getCommonView().canAccept()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
       double dx = 0.0;
@@ -504,17 +516,17 @@ public class Mover extends AbstractControlFlow {
           throw new IllegalArgumentException();
       }
   
-      Layout.PadNeedsForLayout padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
-      Layout.PropChange[] pca = nudgeSelectedItems(appState_.getGenomePresentation(), dx, dy, rcxT_, padFixups);
+      Layout.PadNeedsForLayout padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);
+      Layout.PropChange[] pca = nudgeSelectedItems(uics_.getGenomePresentation(), dx, dy, dacx_, padFixups);
       if (pca != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.nudgeSelected");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, pca);
+        UndoSupport support = uFac_.provideUndoSupport("undo.nudgeSelected", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, pca);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE)); 
-        Map<String, Boolean> orpho = rcxT_.getLayout().orphansOnlyForAll(false);
-        Layout.PropChange[] padLpc = rcxT_.getLayout().repairAllNetModuleLinkPadRequirements(rcxT_, padFixups, orpho);
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE)); 
+        Map<String, Boolean> orpho = dacx_.getCurrentLayout().orphansOnlyForAll(false);
+        Layout.PropChange[] padLpc = dacx_.getCurrentLayout().repairAllNetModuleLinkPadRequirements(dacx_, padFixups, orpho);
         if ((padLpc != null) && (padLpc.length != 0)) {
-          PropChangeCmd padC = new PropChangeCmd(appState_, rcxT_, padLpc);
+          PropChangeCmd padC = new PropChangeCmd(dacx_, padLpc);
           support.addEdit(padC);
         }      
         support.finish();
@@ -528,7 +540,7 @@ public class Mover extends AbstractControlFlow {
     */
       
     private static Layout.PropChange moveCore(Point2D start, double dx, double dy, Intersection selection,
-                                              DataAccessContext rcxO, Layout.PadNeedsForLayout padNeeds) {
+                                              StaticDataAccessContext rcxO, Layout.PadNeedsForLayout padNeeds) {
          
       //
       // Get the selection and move it.  Use the parent genome if we are a VFN, 
@@ -536,13 +548,13 @@ public class Mover extends AbstractControlFlow {
       //
  
       // FIX ME?? Same problem as group selection below??
-      NoteProperties ntp = rcxO.getLayout().getNoteProperties(selection.getObjectID());
+      NoteProperties ntp = rcxO.getCurrentLayout().getNoteProperties(selection.getObjectID());
       if (ntp != null) {
-        return (rcxO.getLayout().moveNote(selection.getObjectID(), rcxO.getGenome(), dx, dy));
+        return (rcxO.getCurrentLayout().moveNote(selection.getObjectID(), dx, dy));
       }
-      Genome useGenome = rcxO.getGenome();
+      Genome useGenome = rcxO.getCurrentGenome();
       
-      if (useGenome instanceof GenomeInstance) {
+      if (rcxO.currentGenomeIsAnInstance()) {
         if (((GenomeInstance)useGenome).getGroup(selection.getObjectID()) != null) {
           GenomeInstance parentRoot = ((GenomeInstance)useGenome).getVfgParentRoot();
           if (parentRoot != null) {
@@ -551,28 +563,28 @@ public class Mover extends AbstractControlFlow {
           String groupID = Intersection.getLabelID(selection);
           if (groupID != null) {
             groupID = Group.getBaseID(groupID);
-            GroupProperties grp = rcxO.getLayout().getGroupProperties(groupID);
+            GroupProperties grp = rcxO.getCurrentLayout().getGroupProperties(groupID);
             if (grp != null) {
-              return (rcxO.getLayout().moveGroup(groupID, dx, dy));
+              return (rcxO.getCurrentLayout().moveGroup(groupID, dx, dy));
             }
           }
         }
       }
 
       Node node = useGenome.getNode(selection.getObjectID());
-      DataAccessContext rcxU = new DataAccessContext(rcxO, useGenome, rcxO.getLayout());
+      StaticDataAccessContext rcxU = new StaticDataAccessContext(rcxO, useGenome, rcxO.getCurrentLayout());
       if (node != null) {      
-        return (rcxU.getLayout().moveNode(selection.getObjectID(), dx, dy, padNeeds, rcxU));
+        return (rcxU.getCurrentLayout().moveNode(selection.getObjectID(), dx, dy, padNeeds, rcxU));
       }
       Linkage link = useGenome.getLinkage(selection.getObjectID());
       if (link != null) {        
-        LinkProperties lp = rcxU.getLayout().getLinkProperties(link.getID());       
+        LinkProperties lp = rcxU.getCurrentLayout().getLinkProperties(link.getID());       
         LinkSegmentID[] segID = selection.segmentIDsFromIntersect();
         if (segID == null) {
           selection = Intersection.fullIntersection(link, rcxU, true);
           segID = selection.segmentIDsFromIntersect();
         }  
-        return (rcxU.getLayout().moveBusLink(segID, dx, dy, start, (BusProperties)lp));
+        return (rcxU.getCurrentLayout().moveBusLink(segID, dx, dy, start, (BusProperties)lp));
       }
       
       return (null);
@@ -584,7 +596,7 @@ public class Mover extends AbstractControlFlow {
    */
      
     public static Layout.PropChange[] nudgeSelectedItems(GenomePresentation gPre, double dx, double dy,
-                                                         DataAccessContext rcx, Layout.PadNeedsForLayout padNeeds) {
+                                                         StaticDataAccessContext rcx, Layout.PadNeedsForLayout padNeeds) {
   
       //
       // Crank through each item and do the move
@@ -610,7 +622,7 @@ public class Mover extends AbstractControlFlow {
     ** Move the selected item
     */
     
-    public static Layout.PropChange[] moveItem(RunningMove mov, Point2D end, DataAccessContext rcxO, Layout.PadNeedsForLayout padNeeds) {
+    public static Layout.PropChange[] moveItem(RunningMove mov, Point2D end, StaticDataAccessContext rcxO, Layout.PadNeedsForLayout padNeeds) {
       //
       // Current group move semantics.  If we are already selected, then move all selected items
       // as a group.  If not, we just move the current item.  This might change to having the
@@ -627,13 +639,13 @@ public class Mover extends AbstractControlFlow {
 
       switch (mov.type) {
         case LINK_LABEL:
-          BusProperties lp = rcxO.getLayout().getLinkProperties(mov.linkID);
+          BusProperties lp = rcxO.getCurrentLayout().getLinkProperties(mov.linkID);
           Layout.PropChange[] pc = new Layout.PropChange[1];
-          pc[0] = rcxO.getLayout().moveLinkLabel(lp, dx, dy);
+          pc[0] = rcxO.getCurrentLayout().moveLinkLabel(lp, dx, dy);
           return (pc);
         case MODEL_DATA:
           Layout.PropChange[] lpc = new Layout.PropChange[1];
-          lpc[0] = rcxO.getLayout().moveDataLocation(mov.modelKey, rcxO.getGenome(), dx, dy);
+          lpc[0] = rcxO.getCurrentLayout().moveDataLocation(mov.modelKey, dx, dy);
           return (lpc);
         case INTERSECTIONS:
           int size = mov.toMove.length;
@@ -643,11 +655,11 @@ public class Mover extends AbstractControlFlow {
           }                                  
           return (redos);
         case NET_MODULE_NAME:
-          Layout.PropChange[] pcn = rcxO.getLayout().moveNetModuleName(mov.modIntersect, mov.ovrId, dx, dy);
+          Layout.PropChange[] pcn = rcxO.getCurrentLayout().moveNetModuleName(mov.modIntersect, mov.ovrId, dx, dy);
           return (pcn);
         case NET_MODULE_LINK:
           Layout.PropChange[] pc2 = new Layout.PropChange[1];
-          pc2[0] = rcxO.getLayout().moveNetModuleLinks(mov.modIntersect, mov.ovrId, dx, dy, rcxO);
+          pc2[0] = rcxO.getCurrentLayout().moveNetModuleLinks(mov.modIntersect, mov.ovrId, dx, dy, rcxO);
           return (pc2);              
         case NET_MODULE_EDGE:
           NetModuleFree.IntersectionExtraInfo ei = (NetModuleFree.IntersectionExtraInfo)mov.modIntersect.getSubID();
@@ -656,7 +668,7 @@ public class Mover extends AbstractControlFlow {
           }
           // Yes we fall thru!
         case NET_MODULE_WHOLE:
-          return (rcxO.getLayout().moveNetModule(rcxO.getGenomeID(), mov.modIntersect, mov.ovrId, dx, dy, padNeeds, rcxO));
+          return (rcxO.getCurrentLayout().moveNetModule(rcxO.getCurrentGenomeID(), mov.modIntersect, mov.ovrId, dx, dy, padNeeds, rcxO));
         default:
           throw new IllegalArgumentException();
       }
@@ -667,7 +679,7 @@ public class Mover extends AbstractControlFlow {
     ** Handle mouse motion
     */     
     
-    public void handleMouseMotion(Point pt, DataAccessContext rcxO) {
+    public void handleMouseMotion(Point pt, StaticDataAccessContext rcxO) {
 
       if (multiMov_ != null) {
         // Make the first cursor pos after we start the start point
@@ -680,12 +692,12 @@ public class Mover extends AbstractControlFlow {
         RunningMove.PadFixup needFixups = RunningMoveGenerator.needPadFixupsForMoves(multiMov_);
         Layout.PadNeedsForLayout padFixups = null;
         if (needFixups != RunningMove.PadFixup.NO_PAD_FIXUP) {
-          padFixups = rcxO.getLayout().findAllNetModuleLinkPadRequirementsForOverlay(rcxO);
+          padFixups = rcxO.getCurrentLayout().findAllNetModuleLinkPadRequirementsForOverlay(rcxO);
         }
-        Layout multiMoveLayout = new Layout(rcxO.getLayout());
-        DataAccessContext rcxM = new DataAccessContext(rcxO);
+        Layout multiMoveLayout = new Layout(rcxO.getCurrentLayout());
+        StaticDataAccessContext rcxM = new StaticDataAccessContext(rcxO);
         rcxM.setLayout(multiMoveLayout);
-        appState_.getSUPanel().setMultiMoveLayout(multiMoveLayout); 
+        uics_.getSUPanel().setMultiMoveLayout(multiMoveLayout); 
         for (int i = 0; i < multiMov_.length; i++) {
           moveItem(multiMov_[i], pt, rcxM, padFixups);
         }
@@ -694,7 +706,7 @@ public class Mover extends AbstractControlFlow {
           multiMoveLayout.repairAllNetModuleLinkPadRequirements(rcxM, padFixups, orpho);
         }
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return;
     }
     
@@ -721,7 +733,7 @@ public class Mover extends AbstractControlFlow {
           multiMovStartPt_ = end;
         }
         for (int i = 0; i < multiMov_.length; i++) {
-          Layout.PropChange[] lpc = moveItem(multiMov_[i], end, rcxT_, padFixups);
+          Layout.PropChange[] lpc = moveItem(multiMov_[i], end, dacx_, padFixups);
           if (lpc != null) {
             allChanges.add(lpc);
             numPC += lpc.length;
@@ -765,20 +777,20 @@ public class Mover extends AbstractControlFlow {
         // silent fail...only do this if we are allowed to...
       }
       Point pt = new Point();
-      appState_.getZoomTarget().transformClick(popupPoint_.getX(), popupPoint_.getY(), pt);
-      GenomePresentation gPre = appState_.getGenomePresentation();
+      dacx_.getZoomTarget().transformClick(popupPoint_.getX(), popupPoint_.getY(), pt);
+      GenomePresentation gPre = uics_.getGenomePresentation();
       if (myAction_ == Action.MODULES) {
-        String currentOverlay = appState_.getCurrentOverlay();
+        String currentOverlay = dacx_.getOSO().getCurrentOverlay();
         NetModuleFree.IntersectionExtraInfo ei = (NetModuleFree.IntersectionExtraInfo)intersect_.getSubID();
         if (ei != null) {
           ei.endPt = null;
           ei.startPt = null;
         }
-        multiMov_ = new RunningMoveGenerator(gPre).getRunningMovesForNetModule(intersect_, pt, rcxT_, 
+        multiMov_ = new RunningMoveGenerator(gPre).getRunningMovesForNetModule(intersect_, pt, dacx_, 
                                                                                currentOverlay, myRegArgs_.getMoveGuts(), 
                                                                                myRegArgs_.getMoveMode());
       } else if (myAction_ == Action.GROUP) {  
-        multiMov_ =  new RunningMoveGenerator(gPre).getRunningMovesForGroup(pt, rcxT_, intersect_.getObjectID());
+        multiMov_ =  new RunningMoveGenerator(gPre).getRunningMovesForGroup(pt, dacx_, intersect_.getObjectID());
       }
       multiMovStartPt_ = (didWarp) ? (Point)pt.clone() : null; 
       
@@ -807,24 +819,24 @@ public class Mover extends AbstractControlFlow {
       Layout.PadNeedsForLayout padFixups = null;  
       RunningMove.PadFixup needFixups = RunningMoveGenerator.needPadFixupsForMove(rmov_);
       if (needFixups == RunningMove.PadFixup.PAD_FIXUP_FULL_LAYOUT) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);
       } else if (needFixups == RunningMove.PadFixup.PAD_FIXUP_THIS_OVERLAY) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirementsForOverlay(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirementsForOverlay(dacx_);
       }
-      lpc = Mover.StepState.moveItem(rmov_, end_, rcxT_, padFixups);
+      lpc = Mover.StepState.moveItem(rmov_, end_, dacx_, padFixups);
       if (lpc != null) {
         retval = true;
         for (int i = 0; i < lpc.length; i++) {
           if (lpc[i] != null) {
-            UndoSupport support = new UndoSupport(appState_, "undo.moveItem");
-            PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+            UndoSupport support = uFac_.provideUndoSupport("undo.moveItem", dacx_);
+            PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
             support.addEdit(mov);
-            support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+            support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
             if (padFixups != null) {
-              Map<String, Boolean> orpho = rcxT_.getLayout().orphansOnlyForAll(false);
-              Layout.PropChange[] padLpc = rcxT_.getLayout().repairAllNetModuleLinkPadRequirements(rcxT_, padFixups, orpho);
+              Map<String, Boolean> orpho = dacx_.getCurrentLayout().orphansOnlyForAll(false);
+              Layout.PropChange[] padLpc = dacx_.getCurrentLayout().repairAllNetModuleLinkPadRequirements(dacx_, padFixups, orpho);
               if ((padLpc != null) && (padLpc.length != 0)) {
-                PropChangeCmd padC = new PropChangeCmd(appState_, rcxT_, padLpc);
+                PropChangeCmd padC = new PropChangeCmd(dacx_, padLpc);
                 support.addEdit(padC);
               }
             }
@@ -849,26 +861,26 @@ public class Mover extends AbstractControlFlow {
      
     private DialogAndInProcessCmd stepPlaceGroup() {    
   
-      if (!(rcxT_.getGenome() instanceof GenomeInstance)) {
+      if (!dacx_.currentGenomeIsAnInstance()) {
         throw new IllegalArgumentException();
       }          
       RunningMove.PadFixup needFixups = RunningMoveGenerator.needPadFixupsForMoves(multiMov_);
       Layout.PadNeedsForLayout padFixups = null;
       if (needFixups == RunningMove.PadFixup.PAD_FIXUP_THIS_OVERLAY) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirementsForOverlay(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirementsForOverlay(dacx_);
       } else if (needFixups == RunningMove.PadFixup.PAD_FIXUP_FULL_LAYOUT) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);
       }
       Layout.PropChange[] allLpc = doMultiMoveFinishCore(x, y, padFixups);
       if (allLpc != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.moveGroup");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, allLpc);
+        UndoSupport support = uFac_.provideUndoSupport("undo.moveGroup", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, allLpc);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
-        Map<String, Boolean> orpho = rcxT_.getLayout().orphansOnlyForAll(false);
-        Layout.PropChange[] padLpc = rcxT_.getLayout().repairAllNetModuleLinkPadRequirements(rcxT_, padFixups, orpho);
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+        Map<String, Boolean> orpho = dacx_.getCurrentLayout().orphansOnlyForAll(false);
+        Layout.PropChange[] padLpc = dacx_.getCurrentLayout().repairAllNetModuleLinkPadRequirements(dacx_, padFixups, orpho);
         if ((padLpc != null) && (padLpc.length != 0)) {
-          PropChangeCmd padC = new PropChangeCmd(appState_, rcxT_, padLpc);
+          PropChangeCmd padC = new PropChangeCmd(dacx_, padLpc);
           support.addEdit(padC);
         }
         support.finish();
@@ -885,21 +897,21 @@ public class Mover extends AbstractControlFlow {
       RunningMove.PadFixup needFixups = RunningMoveGenerator.needPadFixupsForMoves(multiMov_);
       Layout.PadNeedsForLayout padFixups = null;
       if (needFixups == RunningMove.PadFixup.PAD_FIXUP_THIS_OVERLAY) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirementsForOverlay(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirementsForOverlay(dacx_);
       } else if (needFixups == RunningMove.PadFixup.PAD_FIXUP_FULL_LAYOUT) {
-        padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
+        padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);
       }
       Layout.PropChange[] allLpc = doMultiMoveFinishCore(x, y, padFixups);
       if (allLpc != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.moveNetModule");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, allLpc);
+        UndoSupport support = uFac_.provideUndoSupport("undo.moveNetModule", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, allLpc);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
         if (padFixups != null) {
-          Map<String, Boolean> orpho = rcxT_.getLayout().orphansOnlyForAll(false);
-          Layout.PropChange[] padLpc = rcxT_.getLayout().repairAllNetModuleLinkPadRequirements(rcxT_, padFixups, orpho);
+          Map<String, Boolean> orpho = dacx_.getCurrentLayout().orphansOnlyForAll(false);
+          Layout.PropChange[] padLpc = dacx_.getCurrentLayout().repairAllNetModuleLinkPadRequirements(dacx_, padFixups, orpho);
           if ((padLpc != null) && (padLpc.length != 0)) {
-            PropChangeCmd padC = new PropChangeCmd(appState_, rcxT_, padLpc);
+            PropChangeCmd padC = new PropChangeCmd(dacx_, padLpc);
             support.addEdit(padC);
           }
         }

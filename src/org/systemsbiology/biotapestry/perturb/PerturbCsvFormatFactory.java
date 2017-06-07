@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -55,6 +55,7 @@ import org.systemsbiology.biotapestry.util.CSVParser;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -229,9 +230,9 @@ public class PerturbCsvFormatFactory {
   // PRIVATE INSTANCE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////
-
-  private BTState appState_;
+;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   private HashMap<String, Map<String, AbstractParam>> newParamsInFile_;
   private HashMap<String, Map<String, String>> paramNameToPdKeyMap_;
   private boolean useDate_;
@@ -239,6 +240,7 @@ public class PerturbCsvFormatFactory {
   private boolean useBatch_;
   private boolean useInvest_;
   private boolean useCondition_;
+  private UndoFactory uFac_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -252,10 +254,11 @@ public class PerturbCsvFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public PerturbCsvFormatFactory(BTState appState, DataAccessContext dacx, boolean useDate, boolean useTime, 
+  public PerturbCsvFormatFactory(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, boolean useDate, boolean useTime, 
                                  boolean useBatch, boolean useInvest, boolean useCondition) {
-    appState_ = appState;
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     newParamsInFile_ = new HashMap<String, Map<String, AbstractParam>>();
     paramNameToPdKeyMap_ = new HashMap<String, Map<String, String>>();
     useDate_ = useDate;
@@ -290,7 +293,7 @@ public class PerturbCsvFormatFactory {
     while (blit.hasNext()) {
       List<String> block = blit.next();
       if ((blockNum % 2) == 0) {
-        csvState = new CSVState(appState_, dacx_, false, setNumber++, paramNameToPdKeyMap_, 
+        csvState = new CSVState(dacx_, false, setNumber++, paramNameToPdKeyMap_, 
                                 useDate_, useTime_, useBatch_, useInvest_, useCondition_);
         csvList.add(csvState);
         blockNum = 0;
@@ -312,10 +315,10 @@ public class PerturbCsvFormatFactory {
     TreeMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups = new TreeMap<String, SortedMap<String, SortedMap<String, BatchCollision>>>();
     boolean haveNP = flagNewbieParams(pd, allNewbies);
     boolean haveN = flagNewbies(csvList, pd, allNewbies, newbieClosest, batchDups, ttad.tad);
-         
+   
     if (haveNP || haveN) {
       findNewbieNeighbors(pd, allNewbies, newbieClosest);
-      NewbieReportingDialog nrd = new NewbieReportingDialog(appState_, appState_.getTopFrame(), allNewbies, newbieClosest);
+      NewbieReportingDialog nrd = new NewbieReportingDialog(uics_, dacx_, uics_.getTopFrame(), allNewbies, newbieClosest);
       nrd.setVisible(true);
       if (!nrd.keepGoing()) {
         return (false);
@@ -323,7 +326,7 @@ public class PerturbCsvFormatFactory {
     }
     
     if (!batchDups.isEmpty()) {
-      BatchDupReportDialog bdrd = new BatchDupReportDialog(appState_, appState_.getTopFrame(), batchDups, "batchDup.CSVDialog", "batchDup.CSVTable");
+      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, dacx_, uics_.getTopFrame(), batchDups, "batchDup.CSVDialog", "batchDup.CSVTable");
       bdrd.setVisible(true);
       if (!bdrd.keepGoing()) {
         return (false);
@@ -338,11 +341,11 @@ public class PerturbCsvFormatFactory {
     // The time for per-checks is done.  Start installing stuff in the DB:
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.pertCsv");
+    UndoSupport support = uFac_.provideUndoSupport("undo.pertCsv", dacx_);
     if (ttad.tad != null) {
       DatabaseChange dc = dacx_.getExpDataSrc().setTimeAxisDefinition(ttad.tad);
       if (dc != null) {
-        DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+        DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
         support.addEdit(dcc);
       }
     }
@@ -370,7 +373,7 @@ public class PerturbCsvFormatFactory {
     if (!tad.isInitialized()) {
       Map<String, AbstractParam> newTS = newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
       if ((newTS == null) || (newTS.size() != 1)) {
-        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(appState_, dacx_);
+        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics_, dacx_, uFac_);
         if (!keepGoing) {
           return (new TaggedTAD(null, false));
         }
@@ -386,7 +389,7 @@ public class PerturbCsvFormatFactory {
         if (TimeAxisDefinition.wantsCustomUnits(units)) {
           throw new IOException(buildNoLineErrorMessage("csvInput.customTimeNotSupported", timeVal));   
         }  
-        newtad = new TimeAxisDefinition(appState_);
+        newtad = new TimeAxisDefinition(dacx_);
         newtad.setDefinition(units, null, null, false, null);           
       }
     } else {
@@ -566,7 +569,7 @@ public class PerturbCsvFormatFactory {
   private boolean flagNewbies(List<CSVState> cssList, PerturbationData pd, Map<String, Set<String>> retval, 
                               Map<String, Map<String, String>> closest, 
                               SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups, 
-                              TimeAxisDefinition pendingTAD) throws IOException { 
+                              TimeAxisDefinition pendingTAD) throws IOException {
     boolean haveNewbie = false;
  
     Iterator<CSVState> cssit = cssList.iterator();
@@ -643,7 +646,7 @@ public class PerturbCsvFormatFactory {
           int numMatch = matches.size();
           if (numMatch != 1) {  // no match or multi-match
             int time = processTime(csv, pendingTAD);
-            String times = Experiment.getTimeDisplayString(appState_, new MinMax(time, time), true, true);
+            String times = Experiment.getTimeDisplayString(dacx_, new MinMax(time, time), true, true);
             String invests = DataUtil.getMultiDisplayString(csv.getInvestigators());
             ArrayList<String> tokStrs = new ArrayList<String>();
             List<CSVData.ExperimentTokens> srcs = csv.getSources();
@@ -754,8 +757,8 @@ public class PerturbCsvFormatFactory {
   ** Find closest matches
   */  
 
-  private Map<String, Map<String, String>> findNewbieNeighbors(PerturbationData pd, Map<String, Set<String>> allNewbies,  Map<String, Map<String, String>> retval) { 
-  
+  private Map<String, Map<String, String>> findNewbieNeighbors(PerturbationData pd, Map<String, Set<String>> allNewbies, 
+                                                               Map<String, Map<String, String>> retval) { 
     MeasureDictionary md = pd.getMeasureDictionary();
     PertDictionary pdict = pd.getPertDictionary();
     ConditionDictionary cdict = pd.getConditionDictionary();
@@ -911,24 +914,24 @@ public class PerturbCsvFormatFactory {
           String invest = invests.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.provideInvestigator(invest);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
           }
           investIDs.add(kdac.key);
         }
 
         List<CSVData.ExperimentTokens> srcs = csv.getSources();
         int numSrcs = srcs.size();
-        PertSources pss = new PertSources(appState_);
+        PertSources pss = new PertSources(dacx_);
         for (int i = 0; i < numSrcs; i++) {
           CSVData.ExperimentTokens etok = srcs.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.providePertSrcName(etok.base);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
           }
           String pertKey = csvs.getPDKey(CSVState.PERT_TYPE_PARAM_, etok.expType);
           kdac = pd.providePertSrc(kdac.key, pertKey, null, PertSource.NO_PROXY, new ArrayList<String>(), true);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
           }
           pss.addSourceID(kdac.key);
         }
@@ -936,7 +939,7 @@ public class PerturbCsvFormatFactory {
         String condKey = csvs.getPDKey(CSVState.CONDITION_PARAM_, csv.getCondition());
         PerturbationData.KeyAndDataChange kdac = pd.provideExperiment(pss, time, Experiment.NO_TIME, investIDs, condKey);
         if (kdac.undoInfo != null) {
-          support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+          support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
         }
         String psiKey = kdac.key;
         Set<String> targets = csv.getTargets();
@@ -946,7 +949,7 @@ public class PerturbCsvFormatFactory {
           kdac = pd.provideTarget(csv.getOriginalTargetName(targetKey));
           String targKey = kdac.key;
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
           }
           List<CSVData.DataPoint> meas = csv.getMeasurements(targetKey);
           int numM = meas.size();
@@ -966,14 +969,14 @@ public class PerturbCsvFormatFactory {
             if ((dp.control != null) && !dp.control.trim().equals("")) {
               kdac = pd.provideExpControl(dp.control);
               if (kdac.undoInfo != null) {
-                support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
+                support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
               }
               pdp.setControl(kdac.key);
             }
          
             pdp.setIsSig(convertSigInput(dp.isValid));
             PertDataChange pdc = pd.setDataPoint(pdp);      
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+            support.addEdit(new PertDataChangeCmd(dacx_, pdc));
             
             //
             // Annotations
@@ -988,7 +991,7 @@ public class PerturbCsvFormatFactory {
                 keyList.add(aToKey.get(tag));
               }           
               pdc = pd.setFootnotesForDataPoint(pdp.getID(), keyList);
-              support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+              support.addEdit(new PertDataChangeCmd(dacx_, pdc));
             }
            
             //
@@ -1012,7 +1015,7 @@ public class PerturbCsvFormatFactory {
             }
             pdc = pd.setUserFieldValues(pdp.getID(), (allEmpty) ? null : userV);
             if (pdc != null) {
-              support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+              support.addEdit(new PertDataChangeCmd(dacx_, pdc));
             }
           }
         }
@@ -1043,7 +1046,7 @@ public class PerturbCsvFormatFactory {
         MeasureScale newScale = new MeasureScale(nextID, sp.name, sp.conv, sp.illegal, sp.unchanged);
         PertDataChange pdc = pd.setMeasureScale(newScale);
         sToKey.put(skey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       }
     }
     
@@ -1059,7 +1062,7 @@ public class PerturbCsvFormatFactory {
         MeasureProps mProps = new MeasureProps(nextID, mp.name, scKey, mp.negThresh, mp.posThresh);
         PertDataChange pdc = pd.setMeasureProp(mProps);
         mToKey.put(mkey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
 
@@ -1074,7 +1077,7 @@ public class PerturbCsvFormatFactory {
         PertProperties pProps = new PertProperties(nextID, ppp.name, ppp.abbrev, ppp.linkRelation);
         PertDataChange pdc = pd.setPerturbationProp(pProps);
         pToKey.put(pkey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
     
@@ -1089,7 +1092,7 @@ public class PerturbCsvFormatFactory {
         ExperimentConditions eCond = new ExperimentConditions(nextID, condName);
         PertDataChange pdc = pd.setExperimentConditions(eCond);
         eToKey.put(ekey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
 
@@ -1104,7 +1107,7 @@ public class PerturbCsvFormatFactory {
         ExperimentControl ctrl = new ExperimentControl(nextID, ctrlName);
         PertDataChange pdc = pd.setExperimentControl(ctrl);
         tToKey.put(tkey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
 
@@ -1118,11 +1121,10 @@ public class PerturbCsvFormatFactory {
         String nextID = Integer.toString(pd.getUserFieldCount());
         PertDataChange pdc = pd.setUserFieldName(nextID, fieldName);
         uToKey.put(fkey, nextID);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
 
-    
     Map<String,String> aToKey = paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
     Map<String, AbstractParam> annots = newParamsInFile_.get(CSVState.ANNOT_PARAM_UC_);
     if (annots != null) {
@@ -1132,7 +1134,7 @@ public class PerturbCsvFormatFactory {
         AnnotParam aparm = (AnnotParam)annots.get(akey);
         PertDataChange pdc = pd.addAnnotation(aparm.num, aparm.message);
         aToKey.put(akey, pdc.annotKey);  // kinda bogus!
-        support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
       }
     }
     return;
@@ -1185,10 +1187,10 @@ public class PerturbCsvFormatFactory {
             BoundedDoubMinMax illegal = csvs.getIllegalBounds(dpt.measurement);
             if (!CSVData.isValidMeasurement(dpt.value, illegal)) {
               retval = true;
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = dacx_.getRMan();
               String desc = MessageFormat.format(rMan.getString("qpcrcsv.badMeasurement"), 
                                                  new Object[] {dpt.value});            
-              int result = JOptionPane.showOptionDialog(appState_.getTopFrame(), desc,
+              int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), desc,
                                                         rMan.getString("qpcrcsv.badMeasurementTitle"),
                                                         JOptionPane.DEFAULT_OPTION, 
                                                         JOptionPane.ERROR_MESSAGE, 
@@ -1217,10 +1219,10 @@ public class PerturbCsvFormatFactory {
     TimeAxisDefinition tad = (pendingTAD != null) ? pendingTAD : dacx_.getExpDataSrc().getTimeAxisDefinition();
     Integer parsed = tad.timeStringParse(csv.getTime());
     if ((parsed == null) || (parsed.intValue() < 0)) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String desc = MessageFormat.format(rMan.getString("qpcrcsv.badTimeValue"), 
                                          new Object[] {csv.getTime()});      
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), desc,
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), desc,
                                     rMan.getString("qpcrcsv.badTimeValueTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
       return (Integer.MIN_VALUE);
@@ -1302,7 +1304,7 @@ public class PerturbCsvFormatFactory {
   */
 
   String buildNoLineErrorMessage(String rStr, String tok) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String errStr = rMan.getString(rStr);
     String formStr = rMan.getString("csvInput.errFormatNoLine");
     return (MessageFormat.format(formStr, new Object[] {errStr, tok}));      
@@ -1389,14 +1391,13 @@ public class PerturbCsvFormatFactory {
     private boolean useBatch_;
     private boolean useInvest_;
     private boolean useCondition_;
-    private BTState appState_;
     private DataAccessContext dacx_;
     
-    CSVState(BTState appState, DataAccessContext dacx, boolean legacy, int setNumber, Map<String, Map<String, String>> nameToPdKey, 
+    CSVState(DataAccessContext dacx, boolean legacy, int setNumber, 
+             Map<String, Map<String, String>> nameToPdKey, 
              boolean useDate, boolean useTime,
              boolean useBatch, boolean useInvest, 
              boolean useCondition) {
-      appState_ = appState;
       dacx_ = dacx;
       setNumber_ = setNumber;
       investigators_ = new ArrayList<String>();
@@ -1444,7 +1445,7 @@ public class PerturbCsvFormatFactory {
   
       CSVData csvMatch = csvMap_.get(keyForLine);
       if (csvMatch == null) {       
-        csvMatch = new CSVData(appState_, etoks, date_, investigators_, time, condition, fullBatchID);
+        csvMatch = new CSVData(dacx_, etoks, date_, investigators_, time, condition, fullBatchID);
         csvMap_.put(keyForLine, csvMatch);
       }
       CSVData.DataPoint dp = buildMeasurement(argList, rowNum);
@@ -1458,8 +1459,8 @@ public class PerturbCsvFormatFactory {
     */  
 
     String getPDKey(String paramKey, String name) {
-      Map<String,String> toKey = nameToPdKey_.get(DataUtil.normKey(paramKey));
-      return (toKey.get(DataUtil.normKey(name)));     
+      Map<String, String> toKey = nameToPdKey_.get(DataUtil.normKey(paramKey));
+      return (toKey.get(DataUtil.normKey(name)));
     }
 
     /***************************************************************************
@@ -1496,6 +1497,7 @@ public class PerturbCsvFormatFactory {
       }
       
       Map<String, AbstractParam> scales = paramMap_.get(SCALE_PARAM_UC_);
+
       if (scales == null) {
         scales = new HashMap<String, AbstractParam>();
         paramMap_.put(SCALE_PARAM_UC_, scales);
@@ -1732,7 +1734,6 @@ public class PerturbCsvFormatFactory {
         paramMap_.put(CONTROL_PARAM_UC_, ctrlMap);
       }   
       Map<String, AbstractParam> newCtrl = newParamsInFile.get(CONTROL_PARAM_UC_);
-          
       Iterator<String> ctkit = cDict.getControlKeys();
       while (ctkit.hasNext()) {
         String key = ctkit.next();
@@ -1805,7 +1806,7 @@ public class PerturbCsvFormatFactory {
     */
       
     String buildTokenErrorMessage(String rStr, int rowNum, String tok) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.tokErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), 
@@ -1819,7 +1820,7 @@ public class PerturbCsvFormatFactory {
     */
       
     String buildParamErrorMessage(String rStr, String tok) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.paramErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), tok}));      
@@ -1831,7 +1832,7 @@ public class PerturbCsvFormatFactory {
     */
     
     String buildHeadingErrorMessage(String rStr, String tok) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.headingErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), tok}));      
@@ -2683,7 +2684,7 @@ public class PerturbCsvFormatFactory {
       this.unchanged = scale.getUnchanged();
     }
     
-    @Override    
+    @Override
     public boolean equals(Object other) {
       if (other == null) {
         return (false);
@@ -2758,7 +2759,7 @@ public class PerturbCsvFormatFactory {
       this.abbrev = pp.getAbbrev();
       this.linkRelation = pp.getLinkSignRelationship();
     }
-    
+
     @Override    
     public boolean equals(Object other) {
       if (other == null) {

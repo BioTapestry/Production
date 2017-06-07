@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,9 @@ import javax.swing.JSlider;
 import javax.swing.JTabbedPane;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
 import org.systemsbiology.biotapestry.ui.LayoutOptionsManager;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
@@ -115,6 +117,7 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   private boolean myInheritanceSquash_;   
   private int myOverlayOption_;     
   private int myOptNumber_;
+  private StaticDataAccessContext rcx_;
   
   private HaloLayoutSetupPanel haloParamPanel_;
   private WorksheetLayoutSetupPanel worksheetParamPanel_;
@@ -134,13 +137,14 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public LayoutParametersDialog(BTState appState) {
-    super(appState, "layoutParam.title", new Dimension(950, 550), 1);
-    LayoutOptionsManager lopmgr = appState_.getLayoutOptMgr();
+  public LayoutParametersDialog(UIComponentSource uics, DataAccessContext dacx) {
+    super(uics, dacx, "layoutParam.title", new Dimension(950, 550), 1);
+    rcx_ = new StaticDataAccessContext(dacx_).getContextForRoot();
+    LayoutOptionsManager lopmgr = rcx_.getLayoutOptMgr();
     LayoutOptions options = lopmgr.getLayoutOptions();
         
     LinkPlacementGrid.GoodnessParams params = options.goodness;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     myCrossingCoeff_ = (int)Math.round(params.crossingCoeff / CROSSING_COEFF_CONVERT_);
     myCrossingMultiplier_ = (int)Math.round(params.crossingMultiplier / CROSSING_MULT_CONVERT_);
     myDifferenceCoeff_ = (int)Math.round(params.differenceCoeff / DIFF_COEFF_CONVERT_);
@@ -158,7 +162,7 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
         try {
           resetDefaults();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -236,7 +240,7 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   */ 
   
   private JPanel buildIncrementalTab(LayoutOptions options) { 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     JPanel cp = new JPanel();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
@@ -260,8 +264,8 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
     UiUtil.gbcSet(gbc, 0, 4, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(incrementalCompressButton_, gbc);
           
-    layerMethodChoice_ = new JComboBox(LayoutOptions.layerOptions(appState_));
-    layerMethodChoice_.setSelectedItem(LayoutOptions.mapLayerOptions(appState_, options.layeringMethod));
+    layerMethodChoice_ = new JComboBox(LayoutOptions.layerOptions(rcx_));
+    layerMethodChoice_.setSelectedItem(LayoutOptions.mapLayerOptions(rcx_, options.layeringMethod));
     JLabel label = new JLabel(rMan.getString("layoutParam.layoutOptions"));
     UiUtil.gbcSet(gbc, 0, 5, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
@@ -289,7 +293,7 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   */ 
   
   private JPanel buildLinksTab(LayoutOptions options) { 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     JPanel cp = new JPanel();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
@@ -362,7 +366,7 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   */ 
   
   private JPanel buildPropagateTab(LayoutOptions options) { 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     JPanel cp = new JPanel();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
@@ -373,9 +377,9 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
     cp.add(inheritanceSquashButton_, gbc);
     
     JLabel overlayLabel = new JLabel(rMan.getString("layoutParam.overlayOptions"));
-    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
+    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(rcx_);
     overlayOptionCombo_ = new JComboBox(relayoutChoices);
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, options.overlayOption));    
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(rcx_, options.overlayOption));    
     
     UiUtil.gbcSet(gbc, 0, 1, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     cp.add(overlayLabel, gbc);
@@ -391,23 +395,23 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   */ 
   
   private JPanel buildFreshLayoutTab(LayoutOptionsManager lom) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     JPanel retval = new JPanel();
     retval.setBorder(new EmptyBorder(20, 20, 20, 20));
     retval.setLayout(new GridLayout(1, 1));  
     JTabbedPane tabPane = new JTabbedPane();
     retval.add(tabPane);
 
-    stackedParamPanel_ = new StackedBlockLayoutSetupPanel(appState_, null, false, lom.getStackedBlockLayoutParams(), true);  
+    stackedParamPanel_ = new StackedBlockLayoutSetupPanel(uics_, rcx_, null, false, lom.getStackedBlockLayoutParams(), true);  
     tabPane.addTab(rMan.getString("layoutParam.stacked"), stackedParamPanel_); 
  
-    worksheetParamPanel_ = new WorksheetLayoutSetupPanel(appState_, null, false, false, lom.getWorksheetLayoutParams()); 
+    worksheetParamPanel_ = new WorksheetLayoutSetupPanel(uics_, rcx_, null, false, false, lom.getWorksheetLayoutParams()); 
     tabPane.addTab(rMan.getString("layoutParam.worksheet"), worksheetParamPanel_); 
 
-    worksheetDiagParamPanel_ = new WorksheetLayoutSetupPanel(appState_, null, false, true, lom.getDiagLayoutParams());  
+    worksheetDiagParamPanel_ = new WorksheetLayoutSetupPanel(uics_, rcx_, null, false, true, lom.getDiagLayoutParams());  
     tabPane.addTab(rMan.getString("layoutParam.diagonal"), worksheetDiagParamPanel_); 
  
-    haloParamPanel_ = new HaloLayoutSetupPanel(appState_, null, null, null, lom.getHaloLayoutParams()); 
+    haloParamPanel_ = new HaloLayoutSetupPanel(rcx_, null, null, null, lom.getHaloLayoutParams()); 
     tabPane.addTab(rMan.getString("layoutParam.halo"), haloParamPanel_); 
 
     haloParamPanel_.displayProperties();
@@ -487,14 +491,14 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
     myOverlayOption_ = defOptions.overlayOption;
     firstPassButton_.setSelected(myFirstPass_);
     topoCompressButton_.setSelected(myTopoCompress_);
-    layerMethodChoice_.setSelectedItem(LayoutOptions.mapLayerOptions(appState_, myLayerMethod_));
+    layerMethodChoice_.setSelectedItem(LayoutOptions.mapLayerOptions(rcx_, myLayerMethod_));
     maxPerLayerChoice_.setSelectedItem(new Integer(myMaxPerLayer_));
     optNumberChoice_.setSelectedItem(new Integer(myOptNumber_));    
     doCrossingReductionButton_.setSelected(myDoCrossingReduction_);
     normalizeRowsButton_.setSelected(myNormalizeRows_);
     incrementalCompressButton_.setSelected(myIncrementalCompress_);
     inheritanceSquashButton_.setSelected(myInheritanceSquash_);
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, myOverlayOption_));
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(rcx_, myOverlayOption_));
     return;
   }  
 
@@ -531,10 +535,10 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   private LayoutOptions getLegacyFieldsOptions() {
     LayoutOptions retval = new LayoutOptions();
     LinkPlacementGrid.GoodnessParams params = retval.goodness;
-    params.crossingCoeff = (double)myCrossingCoeff_ * CROSSING_COEFF_CONVERT_;
-    params.crossingMultiplier = (double)myCrossingMultiplier_ * CROSSING_MULT_CONVERT_;
-    params.differenceCoeff = (double)myDifferenceCoeff_ * DIFF_COEFF_CONVERT_;
-    params.differenceSigma = (double)myDifferenceSigma_;
+    params.crossingCoeff = myCrossingCoeff_ * CROSSING_COEFF_CONVERT_;
+    params.crossingMultiplier = myCrossingMultiplier_ * CROSSING_MULT_CONVERT_;
+    params.differenceCoeff = myDifferenceCoeff_ * DIFF_COEFF_CONVERT_;
+    params.differenceSigma = myDifferenceSigma_;
     retval.firstPass = myFirstPass_;
     retval.topoCompress = myTopoCompress_;
     retval.layeringMethod = myLayerMethod_;

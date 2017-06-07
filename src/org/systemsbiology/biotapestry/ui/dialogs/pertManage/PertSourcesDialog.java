@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,14 +30,13 @@ import java.util.List;
 import java.util.TreeMap;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.EnumCell;
-import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -54,9 +53,9 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   ////////////////////////////////////////////////////////////////////////////
   
   private PerturbationData pd_;
-  private HashSet existingSrcs_;
+  private HashSet<PertSources> existingSrcs_;
   private PertSources currSources_;
-  private ArrayList pertSrcList_;  
+  private ArrayList<EnumCell> pertSrcList_;  
   private EditableTable estSrcForEdit_;
   private PertSources result_;
   
@@ -73,18 +72,18 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public PertSourcesDialog(BTState appState, PertSources currSources, Iterator existing) {
-    super(appState, "setPertSources.title", new Dimension(500, 300), 1);
+  public PertSourcesDialog(UIComponentSource uics, DataAccessContext dacx, PertSources currSources, Iterator<PertSources> existing) {
+    super(uics, dacx, "setPertSources.title", new Dimension(500, 300), 1);
     currSources_ = currSources;
-    existingSrcs_ = new HashSet();
+    existingSrcs_ = new HashSet<PertSources>();
     while (existing.hasNext()) {
-      PertSources eps = (PertSources)existing.next();
+      PertSources eps = existing.next();
       if ((currSources != null) && eps.equals(currSources)) {
         continue;
       }
       existingSrcs_.add(eps);     
     }
-    pd_ = appState.getDB().getPertData();
+    pd_ = dacx.getExpDataSrc().getPertData();
     pertSrcList_ = buildPertSourceEnum();
     JPanel tabPan = buildTable();
     addTable(tabPan, 5);
@@ -122,8 +121,8 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   
   protected void updateOptions() {
     pertSrcList_ = buildPertSourceEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_, EnumCell.class));      
     estSrcForEdit_.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)estSrcForEdit_.getModel()).setCurrentEnums(pertSrcList_);
     return;
@@ -140,18 +139,18 @@ public class PertSourcesDialog extends BTStashResultsDialog {
     estSrcForEdit_.stopTheEditing(false);
     Iterator sit = estSrcForEdit_.getModel().getValuesFromTable().iterator();
     if (!sit.hasNext()) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan_.getString("setPertSources.emptySrcList"),
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan_.getString("setPertSources.emptySrcList"),
                                     rMan_.getString("setPertSources.emptySrcListTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
       return (false);
     }
     
-    ArrayList srcsResult = (sit.hasNext()) ? new ArrayList() : null;
+    ArrayList<String> srcsResult = (sit.hasNext()) ? new ArrayList<String>() : null;
     while (sit.hasNext()) {
       EditableTable.OneEnumTableModel.TableRow ent = (EditableTable.OneEnumTableModel.TableRow)sit.next();
       EnumCell ec = ent.enumChoice;
       if (srcsResult.contains(ec.internal)) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan_.getString("setPertSources.dupSource"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan_.getString("setPertSources.dupSource"),
                                       rMan_.getString("setPertSources.dupSourceTitle"), 
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
@@ -161,7 +160,7 @@ public class PertSourcesDialog extends BTStashResultsDialog {
     result_ = new PertSources(srcsResult);
     
     if (existingSrcs_.contains(result_)) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan_.getString("setPertSources.dupOfExistingSource"),
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan_.getString("setPertSources.dupOfExistingSource"),
                                     rMan_.getString("setPertSources.dupOfExistingSourceTitle"), 
                                     JOptionPane.ERROR_MESSAGE); 
       result_ = null;
@@ -184,7 +183,7 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   */
   
   private JPanel buildTable() {    
-    estSrcForEdit_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "peaep.perturb", pertSrcList_), appState_.getTopFrame());
+    estSrcForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.tableIsUnselectable = false;
@@ -192,7 +191,7 @@ public class PertSourcesDialog extends BTStashResultsDialog {
     etp.singleSelectOnly = true;
     etp.buttonsOnSide = true;
     etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_));  
+    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_, EnumCell.class));  
     JPanel srcTablePan = estSrcForEdit_.buildEditableTable(etp);
     return (srcTablePan);
   }
@@ -216,30 +215,30 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private ArrayList buildPertSourceEnum() {
-    TreeMap sorter = new TreeMap();
-    Iterator sdkit = pd_.getSourceDefKeys();
+  private ArrayList<EnumCell> buildPertSourceEnum() {
+    TreeMap<String, List<String>> sorter = new TreeMap<String, List<String>>();
+    Iterator<String> sdkit = pd_.getSourceDefKeys();
     while (sdkit.hasNext()) {
-      String key = (String)sdkit.next();
+      String key = sdkit.next();
       PertSource ps = pd_.getSourceDef(key);
       String display = ps.getDisplayValueWithFootnotes(pd_, false);
-      ArrayList perName = (ArrayList)sorter.get(display);
+      List<String> perName = sorter.get(display);
       if (perName == null) {
-        perName = new ArrayList();
+        perName = new ArrayList<String>();
         sorter.put(display, perName);
       }
       perName.add(key);
     }
       
-    ArrayList retval = new ArrayList();
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     int count = 0;
-    Iterator vit = sorter.keySet().iterator();
+    Iterator<String> vit = sorter.keySet().iterator();
     while (vit.hasNext()) {
-      String display = (String)vit.next();
-      ArrayList perName = (ArrayList)sorter.get(display);
+      String display = vit.next();
+      List<String> perName = sorter.get(display);
       int pns = perName.size();
       for (int i = 0; i < pns; i++) {
-        String key = (String)perName.get(i);
+        String key = perName.get(i);
         retval.add(new EnumCell(display, key, count, count));
       }
       count++;
@@ -253,18 +252,18 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   ** Get the source display list
   */
   
-  private List buildSourceDisplayList() {
-    ArrayList retval = new ArrayList();
+  private List<EditableTable.OneEnumTableModel.TableRow> buildSourceDisplayList() {
+    ArrayList<EditableTable.OneEnumTableModel.TableRow> retval = new ArrayList<EditableTable.OneEnumTableModel.TableRow>();
     if (currSources_ == null) {
       return (retval);
     }
-    Iterator psit = currSources_.getSources(); 
+    Iterator<String> psit = currSources_.getSources(); 
     EditableTable.OneEnumTableModel rpt = (EditableTable.OneEnumTableModel)estSrcForEdit_.getModel();  
     int count = 0;
     int useIndex = -1;
     int numSrc = pertSrcList_.size();
     while (psit.hasNext()) {
-      String psID = (String)psit.next();
+      String psID = psit.next();
       EditableTable.OneEnumTableModel.TableRow tr = rpt.new TableRow();
       tr.origOrder = new Integer(count++);
       for (int i = 0; i < numSrc; i++) {

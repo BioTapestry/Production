@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -159,9 +159,9 @@ class TimeSpan {
   **
   */
   
-   String getSpanAsString(BTState appState) { 
+   String getSpanAsString(DataAccessContext dacx) { 
     // E.g. "23-28 h"
-    return (spanToString(appState, new MinMax(minTime_, maxTime_)));
+    return (spanToString(dacx, new MinMax(minTime_, maxTime_)));
   }
   
   /***************************************************************************
@@ -203,7 +203,7 @@ class TimeSpan {
     ArrayList<Batch> retvalBase = new ArrayList<Batch>();
     Iterator<Batch> bit = batches_.iterator();
     while (bit.hasNext()) {
-      Batch b = (Batch)bit.next();
+      Batch b = bit.next();
       int myTime = b.getTimeNumber();
       if (myTime == time) {
         retvalBase.add(b);
@@ -237,7 +237,7 @@ class TimeSpan {
   */
   
    Batch getBatch(int index) {
-    return ((Batch)batches_.get(index));
+    return (batches_.get(index));
   }
   
   /***************************************************************************
@@ -248,7 +248,7 @@ class TimeSpan {
    public Batch getBatchWithIDAndInvest(String batchID, String invest) {
     int nsb = batches_.size();
     for (int i = 0; i < nsb; i++) {
-      Batch checkit = (Batch)batches_.get(i);
+      Batch checkit = batches_.get(i);
       String batchKey = checkit.getBatchKey();
       if (batchKey == null) {
         continue;
@@ -313,7 +313,7 @@ class TimeSpan {
   */
   
    String getRegionRestriction(int index) {
-    return ((String)regionRestrictions_.get(index));
+    return (regionRestrictions_.get(index));
   }   
    
   /***************************************************************************
@@ -385,7 +385,7 @@ class TimeSpan {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, SpanTimeProfile spt, BTState appState) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, SpanTimeProfile spt, DataAccessContext dacx) {
     ind.indent();
     qtp.paragraph(false);
     //
@@ -403,7 +403,7 @@ class TimeSpan {
           out.print("(");
           writeDetailedHTML(bftit, out, ind, qtp, batchTime);
           out.print(" [");
-          String tdisp = TimeAxisDefinition.getTimeDisplay(appState, batchTime, true, true);
+          String tdisp = TimeAxisDefinition.getTimeDisplay(dacx, batchTime, true, true);
           tdisp = tdisp.replaceAll(" ", "&nbsp;");
           out.print(tdisp);
           out.print("])");
@@ -484,8 +484,8 @@ class TimeSpan {
   **
   */
   
-   static TimeSpan buildFromXML(BTState appState, String elemName, 
-                                      Attributes attrs) throws IOException {
+   static TimeSpan buildFromXML(DataAccessContext dacx, String elemName, 
+                                Attributes attrs) throws IOException {
     if (!elemName.equals("timeSpan")) {
       return (null);
     }
@@ -512,7 +512,7 @@ class TimeSpan {
     }
     
     if (legacySpan != null) {
-      return (new TimeSpan(appState, legacySpan));
+      return (new TimeSpan(dacx, legacySpan));
     } else if (minValStr != null) {
       try {
         int minVal = Integer.parseInt(minValStr);
@@ -520,7 +520,7 @@ class TimeSpan {
         if (maxValStr != null) {
           maxVal = Integer.parseInt(maxValStr);
         }
-        if (!spanIsOk(appState, minVal, maxVal)) {
+        if (!spanIsOk(dacx, minVal, maxVal)) {
           throw new IOException();
         } 
         return (new TimeSpan(minVal, maxVal));
@@ -551,9 +551,9 @@ class TimeSpan {
   **
   */
   
-   static String spanToString(BTState appState, MinMax bounds) {
+   static String spanToString(DataAccessContext dacx, MinMax bounds) {
     // E.g. "23-28 h"
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String displayUnitAbbrev = tad.unitDisplayAbbrev();
     
     String minStr;
@@ -624,14 +624,14 @@ class TimeSpan {
   ** Constructor (Legacy IO only)
   */
 
-  private TimeSpan(BTState appState, String legacySpan) throws IOException {
+  private TimeSpan(DataAccessContext dacx, String legacySpan) throws IOException {
     try {
       minTime_ = QPCRData.getMinimum(legacySpan); 
       maxTime_ = QPCRData.getMaximum(legacySpan);
     } catch (IllegalArgumentException ex) {
       throw new IOException();
     }
-    if (!spanIsOk(appState, minTime_, maxTime_)) {
+    if (!spanIsOk(dacx, minTime_, maxTime_)) {
       throw new IOException();
     }    
     batches_ = new ArrayList<Batch>();
@@ -650,8 +650,8 @@ class TimeSpan {
   ** Checks span validity
   */
 
-  private static boolean spanIsOk(BTState appState, int min, int max) {
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+  private static boolean spanIsOk(DataAccessContext dacx, int min, int max) {
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.spanIsOk(min, max)) {      
       return (false);
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,8 +22,13 @@ package org.systemsbiology.biotapestry.cmd.flow;
 
 import java.awt.Point;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -55,8 +60,10 @@ public class BatchJobControlFlowHarness extends ServerControlFlowHarness {
   ** Constructor 
   */ 
   
-  public BatchJobControlFlowHarness(BTState appState, SerializableDialogPlatform dPlat) {
-    super(appState, dPlat);
+  public BatchJobControlFlowHarness(HarnessBuilder hBld, UIComponentSource uics, RememberSource rSrc, 
+                                    UndoFactory uFac, TabSource tSrc, PathAndFileSource pafs, 
+                                    CmdSource cSrc, SerializableDialogPlatform dPlat) {  
+    super(dPlat, hBld, uics, rSrc, uFac, tSrc, pafs, cSrc); 
     currFlow = null;
   }
      

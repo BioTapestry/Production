@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.view;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -100,8 +102,7 @@ public class Modules extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Modules(BTState appState, ModAction action) {
-    super(appState);
+  public Modules(ModAction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -123,8 +124,9 @@ public class Modules extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    TaggedSet nmSet = rcx.oso.getCurrentNetModules();
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    TaggedSet nmSet = rcx.getOSO().getCurrentNetModules();
     return (nmSet.set.size() > 1);
   }
 
@@ -135,8 +137,8 @@ public class Modules extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx);
     return (retval);
   }
   
@@ -155,6 +157,7 @@ public class Modules extends AbstractControlFlow {
         throw new IllegalStateException();
       } else { 
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepView")) {
         next = ans.stepView();
@@ -173,30 +176,33 @@ public class Modules extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private ModAction myAction_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
+    private ModAction myAction_;   
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, ModAction action, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ModAction action, StaticDataAccessContext dacx) {
+      super(dacx);
       myAction_ = action;
       nextStep_ = "stepView";
-      dacx_ = dacx;
     }
      
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(ModAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myAction_ = action;
+      nextStep_ = "stepView";
+    }
+
     /***************************************************************************
     **
     ** Set params
@@ -214,15 +220,15 @@ public class Modules extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepView() {
       String netModKey = intersect_.getObjectID();  
-      NetOverlayController noc = appState_.getNetOverlayController();
+      NetOverlayController noc = uics_.getNetOverlayController();
       UndoSupport support;
       switch (myAction_) {
         case DROP_FROM_CURRENT:
-          support = new UndoSupport(appState_, "undo.hideOneVisibleModule");
+          support = uFac_.provideUndoSupport("undo.hideOneVisibleModule", dacx_);
           noc.dropACurrentModule(netModKey, support, dacx_);     
           break;
         case SET_AS_SINGLE:  
-          support = new UndoSupport(appState_, "undo.setSingleVisibleModule");
+          support = uFac_.provideUndoSupport("undo.setSingleVisibleModule", dacx_);
           noc.setToSingleCurrentModule(netModKey, support, dacx_);
           break;   
         default:

@@ -49,7 +49,7 @@ public class XPlatModelNode {
   //
   ////////////////////////////////////////////////////////////////////////////  
    
-  public enum ModelType {SUPER_ROOT, DB_GENOME, GENOME_INSTANCE, DYNAMIC_INSTANCE, DYNAMIC_PROXY};
+  public enum ModelType {SUPER_ROOT, DB_GENOME, GENOME_INSTANCE, DYNAMIC_INSTANCE, DYNAMIC_PROXY, GROUPING_ONLY};
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -144,6 +144,7 @@ public class XPlatModelNode {
       }
     }
     
+    @Override
     public String toString() {
     	return "{\"id\":\"" + this.id + "\",\"type\":\"" + this.modType.toString() + "\"}";
     }
@@ -178,7 +179,7 @@ public class XPlatModelNode {
     
     public boolean currentModelMatch(DataAccessContext dacx) {
       if (modType == XPlatModelNode.ModelType.DYNAMIC_PROXY) {
-        Genome currGenome = dacx.getGenome();
+        Genome currGenome = dacx.getCurrentGenome();
         if (currGenome == null) {
           return (false);
         }
@@ -188,7 +189,7 @@ public class XPlatModelNode {
           return (false);
         }
       } else {
-        return (id.equals(dacx.getGenomeID()));
+        return (id.equals(dacx.getCurrentGenomeID()));
       }
     }
     
@@ -248,7 +249,7 @@ public class XPlatModelNode {
       TaggedSet fvs = new TaggedSet();
       TaggedSet fvr = new TaggedSet();
       boolean isFirst = ovr.getFirstViewState(fvs, fvr);
-      NetOverlayProperties noProps = dacx.getLayout().getNetOverlayProperties(ovr.getID());
+      NetOverlayProperties noProps = dacx.getCurrentLayout().getNetOverlayProperties(ovr.getID());
       boolean isOpaque = (noProps.getType() == NetOverlayProperties.OvrType.OPAQUE);
       XPlatOverlayDef ovdef = new XPlatOverlayDef(ovr.getID(), ovr.getName(), isOpaque, isFirst);
       Iterator<NetModule> nmit = ovr.getModuleIterator();       

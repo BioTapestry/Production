@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.HashSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 
 /****************************************************************************
@@ -90,8 +90,8 @@ public class InternalLink extends DBGenomeItem {
   ** node.
   */
 
-  public InternalLink(BTState appState, String id, String src, String targ, int sign, int tpad, int spad) {   
-    super(appState, null, id);
+  public InternalLink(DataAccessContext dacx, String id, String src, String targ, int sign, int tpad, int spad) {   
+    super(dacx, null, id);
     src_ = src;
     targ_ = targ;
     sign_ = sign;
@@ -111,8 +111,8 @@ public class InternalLink extends DBGenomeItem {
   ** XML-based contructor
   */
 
-  public InternalLink(BTState appState, String id, String src, String targ, String sign, String tpad, String spad) throws IOException {   
-    super(appState, null, id);
+  public InternalLink(DataAccessContext dacx, String id, String src, String targ, String sign, String tpad, String spad) throws IOException {   
+    super(dacx, null, id);
     if ((src == null) || (targ == null)) {
       throw new IOException();
     }
@@ -291,8 +291,7 @@ public class InternalLink extends DBGenomeItem {
   **
   */
   
-  public static InternalLink buildFromXML(BTState appState, Genome genome,
-                                          Attributes attrs) throws IOException {
+  public static InternalLink buildFromXML(DataAccessContext dacx, Attributes attrs) throws IOException {
     String id = null;
     String src = null;
     String targ = null;
@@ -324,7 +323,7 @@ public class InternalLink extends DBGenomeItem {
       }
     }
     
-    return (new InternalLink(appState, id, src, targ, sign, tpad, spad));
+    return (new InternalLink(dacx, id, src, targ, sign, tpad, spad));
   }  
 
   /***************************************************************************

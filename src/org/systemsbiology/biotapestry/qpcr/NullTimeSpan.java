@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,8 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.MinMax;
 
@@ -46,7 +46,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   private int minTime_;
   private int maxTime_;
   private boolean isSpan_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -59,8 +59,8 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(BTState appState, int min) {
-    appState_ = appState; 
+  NullTimeSpan(DataAccessContext dacx, int min) {
+    dacx_ = dacx; 
     minTime_ = min;
     isSpan_ = false;
     maxTime_ = -1;
@@ -71,8 +71,8 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(BTState appState, int min, int max) {
-    appState_ = appState; 
+  NullTimeSpan(DataAccessContext dacx, int min, int max) {
+    dacx_ = dacx;
     minTime_ = min;
     isSpan_ = true;
     maxTime_ = max;
@@ -83,8 +83,8 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(BTState appState, MinMax mm) {
-    appState_ = appState; 
+  NullTimeSpan(DataAccessContext dacx, MinMax mm) {
+    dacx_ = dacx;
     minTime_ = mm.min;
     isSpan_ = mm.min < mm.max;
     maxTime_ = isSpan_ ? mm.max : -1;
@@ -110,6 +110,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Clone
   */
 
+   @Override
    public NullTimeSpan clone() {
     try {
       return ((NullTimeSpan)super.clone());
@@ -124,7 +125,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   */
   
    void mergeInNewValues(NullTimeSpan other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.minTime_ = other.minTime_;
     this.isSpan_ = other.isSpan_;
     this.maxTime_ = other.maxTime_;
@@ -180,7 +181,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   
    String displayString() {
     StringBuffer buf = new StringBuffer();
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     boolean namedStages = tad.haveNamedStages();
     String minTime = (namedStages) ? tad.getNamedStageForIndex(minTime_).name : Integer.toString(minTime_);
     buf.append(minTime);
@@ -310,7 +311,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   **
   */
   
-   static NullTimeSpan buildFromXML(BTState appState, String elemName, 
+   static NullTimeSpan buildFromXML(DataAccessContext dacx, String elemName, 
                                     Attributes attrs) throws IOException {
 
     if (!elemName.equals("defaultNullTimes") && !elemName.equals("nullTimes")) {
@@ -352,12 +353,11 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
       throw new IOException();
     }
     
-    Database db = appState.getDB();
-    TimeAxisDefinition tad = db.getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.spanIsOk(minTime, (isSpan) ? maxTime : minTime)) {      
       throw new IOException();
     }
 
-    return ((isSpan) ? new NullTimeSpan(appState, minTime, maxTime) : new NullTimeSpan(appState, minTime));
+    return ((isSpan) ? new NullTimeSpan(dacx, minTime, maxTime) : new NullTimeSpan(dacx, minTime));
   }  
 }

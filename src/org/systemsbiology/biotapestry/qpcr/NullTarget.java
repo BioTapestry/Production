@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -110,7 +110,8 @@ class NullTarget implements Cloneable {
   ** Clone
   */
 
-   public Object clone() {
+  @Override
+  public NullTarget clone() {
     try {
       NullTarget newVal = (NullTarget)super.clone();
       newVal.spans_ = new ArrayList<NullTimeSpan>();
@@ -134,7 +135,7 @@ class NullTarget implements Cloneable {
   ** Merge in new values
   */
   
-   void mergeInNewValues(NullTarget other) {
+  void mergeInNewValues(NullTarget other) {
     this.target_ = other.target_;
     this.region_ = other.region_;
     this.spans_ = new ArrayList<NullTimeSpan>();
@@ -313,7 +314,7 @@ class NullTarget implements Cloneable {
   */
   
    NullTimeSpan getTimeSpan(int index) {
-    return ((NullTimeSpan)spans_.get(index));
+    return (spans_.get(index));
   }
   
   /***************************************************************************
@@ -352,7 +353,7 @@ class NullTarget implements Cloneable {
   */
   
    Batch getBatch(int index) {
-    return ((Batch)supportBatches_.get(index));
+    return (supportBatches_.get(index));
   }
   
   /***************************************************************************

@@ -23,8 +23,14 @@ package org.systemsbiology.biotapestry.cmd.flow;
 import java.awt.Point;
 
 import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -50,9 +56,16 @@ public abstract class ServerControlFlowHarness {
   protected DialogPlatform dPlat;
   protected ControlFlow currFlow;
   protected DialogAndInProcessCmd currDaipc;
-  protected BTState appState;
-  protected DataAccessContext dacx;
+  protected StaticDataAccessContext dacx;
   
+  protected HarnessBuilder hBld_;  
+  protected UIComponentSource uics_;  
+  protected RememberSource rSrc_;
+  protected UndoFactory uFac_;   
+  protected TabSource tSrc_; 
+  protected PathAndFileSource pafs_;
+  protected CmdSource cSrc_;
+   
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -64,11 +77,20 @@ public abstract class ServerControlFlowHarness {
   ** Constructor 
   */ 
   
-  public ServerControlFlowHarness(BTState appState, DialogPlatform dPlat) {
-    this.appState = appState;
+  public ServerControlFlowHarness(DialogPlatform dPlat, HarnessBuilder hBld,
+                                  UIComponentSource uics, RememberSource rSrc,UndoFactory uFac, 
+                                  TabSource tSrc, PathAndFileSource pafs, CmdSource cSrc) {
+  //  this.appState = appState;
     this.dPlat = dPlat;
     currFlow = null;
     currDaipc = null;
+    hBld_ = hBld;  
+    uics_ = uics;
+    rSrc_ = rSrc;
+    uFac_ = uFac;   
+    tSrc_ = tSrc; 
+    pafs_ = pafs;
+    cSrc_ = cSrc;
   }
      
   ////////////////////////////////////////////////////////////////////////////
@@ -105,19 +127,76 @@ public abstract class ServerControlFlowHarness {
   
   /***************************************************************************
   **
-  ** Get application state
+  ** Get the ability to launch another harness:
   */
     
-  public BTState getBTState() {
-    return (appState);
+  public HarnessBuilder getHarnessBuilder() {
+    return (hBld_);
+  }
+
+  /***************************************************************************
+  **
+  ** Get UI stuff
+  */
+    
+  public UIComponentSource getUI() {
+    return (uics_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get persistent answers to questions
+  */
+    
+  public RememberSource getMemorySource() {
+    return (rSrc_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get an undo factory
+  */
+    
+  public UndoFactory getUndoFactory() {
+    return (uFac_);
+  }
+
+  /***************************************************************************
+  **
+  ** Get a tab source
+  */
+    
+  public TabSource getTabSource() {
+    return (tSrc_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get a PathAndFile source
+  */
+    
+  public PathAndFileSource getPathAndFileSource() {
+    return (pafs_);
   }
  
   /***************************************************************************
   **
-  ** Get application state
+  ** Get a command source
+  */
+    
+  public CmdSource getCmdSource() {
+    return (cSrc_);
+  }
+
+  /***************************************************************************
+  **
+  ** Get data context for commands that do NOT need to track across tabs or model changes
   */ 
     
-  public DataAccessContext getDataAccessContext() {
+  public StaticDataAccessContext getDataAccessContext() {
+    if (dacx == null) {
+      throw new IllegalStateException();
+    }
     return (dacx);
   }
 
@@ -144,12 +223,12 @@ public abstract class ServerControlFlowHarness {
   ** Set current control flow
   */ 
    
-  public void initFlow(ControlFlow theFlow, DataAccessContext dacx) {
+  public void initFlow(ControlFlow theFlow, StaticDataAccessContext dacx) {
     currFlow = theFlow;
     currDaipc = null;
     this.dacx = dacx;
   }
- 
+  
   /***************************************************************************
   **
   ** Step the flow 
@@ -200,12 +279,13 @@ public abstract class ServerControlFlowHarness {
   ////////////////////////////////////////////////////////////////////////////
 
   public interface Dialog {
-    public boolean isModal();
+    public boolean dialogIsModal();
   }
    
   public interface UserInputs {
     public void clearHaveResults();
     public boolean haveResults();
+    public void setHasResults();
     public boolean isForApply();
   } 
 }

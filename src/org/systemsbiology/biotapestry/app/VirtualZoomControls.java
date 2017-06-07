@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,6 @@ import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.nav.ZoomChangeTracker;
-import org.systemsbiology.biotapestry.nav.ZoomCommandSupport;
 
 /****************************************************************************
 **
@@ -48,7 +47,8 @@ public class VirtualZoomControls implements ZoomChangeTracker {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
   private HashMap<FlowMeister.FlowKey, Boolean> buttonStat_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -62,10 +62,9 @@ public class VirtualZoomControls implements ZoomChangeTracker {
   ** Constructor 
   */ 
   
-  public VirtualZoomControls(BTState appState) {
-    appState_ = appState;
-    appState_.setVirtualZoom(this);
-    appState_.setZoomCommandSupport(new ZoomCommandSupport(this, appState_));
+  public VirtualZoomControls(UIComponentSource uics, CmdSource cSrc) {
+    uics_ = uics;
+    cSrc_ = cSrc;
     buttonStat_ = new HashMap<FlowMeister.FlowKey, Boolean>();
   }  
    
@@ -93,7 +92,7 @@ public class VirtualZoomControls implements ZoomChangeTracker {
     if (!scrollOnly) {
       handleZoomButtons();
     }
-    appState_.getZoomTarget().setCurrClipRect(appState_.getZoomCommandSupport().getCurrClipRect());
+    uics_.getZoomTarget().setCurrClipRect(uics_.getZoomCommandSupport().getCurrClipRect());
     //
     // Note that if we actually begin to use the clip rect as a drawing
     // speed up, we would need to call a repaint on each scroll
@@ -101,7 +100,7 @@ public class VirtualZoomControls implements ZoomChangeTracker {
     // also model visual complexity!  Could do this repaint inside of SUPanel
     // and let it decide it it is necessary....
     //
-    // appState_.getSUPanel().repaint();
+    // uics_.getSUPanel().repaint();
     return;
   }  
   
@@ -114,18 +113,18 @@ public class VirtualZoomControls implements ZoomChangeTracker {
     //
     // Enable/disable zoom actions based on zoom limits:
     //
-    MainCommands mcmd = appState_.getMainCmds();
-    if (!appState_.isHeadless()) {
+    MainCommands mcmd = cSrc_.getMainCmds();
+    if (!uics_.isHeadless()) {
       MainCommands.ChecksForEnabled zaOutWI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_OUT, true);
       MainCommands.ChecksForEnabled zaOutNI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_OUT, false);
       MainCommands.ChecksForEnabled zaInWI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_IN, true);
       MainCommands.ChecksForEnabled zaInNI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_IN, false);            
-      if (appState_.getZoomCommandSupport().zoomIsWide()) {
+      if (uics_.getZoomCommandSupport().zoomIsWide()) {
         zaOutWI.setConditionalEnabled(false);
         if (zaOutNI != null) zaOutNI.setConditionalEnabled(false);
         zaInWI.setConditionalEnabled(true);
         if (zaInNI != null) zaInNI.setConditionalEnabled(true);
-      } else if (appState_.getZoomCommandSupport().zoomIsMax()) {
+      } else if (uics_.getZoomCommandSupport().zoomIsMax()) {
         zaOutWI.setConditionalEnabled(true);
         if (zaOutNI != null) zaOutNI.setConditionalEnabled(true);
         zaInWI.setConditionalEnabled(false);
@@ -148,10 +147,10 @@ public class VirtualZoomControls implements ZoomChangeTracker {
         throw new IllegalStateException();
       }
            
-      if (appState_.getZoomCommandSupport().zoomIsWide()) {
+      if (uics_.getZoomCommandSupport().zoomIsWide()) {
         buttonStat_.put(FlowMeister.MainFlow.ZOOM_OUT, new Boolean(false));   
         buttonStat_.put(FlowMeister.MainFlow.ZOOM_IN, new Boolean(true));
-      } else if (appState_.getZoomCommandSupport().zoomIsMax()) {
+      } else if (uics_.getZoomCommandSupport().zoomIsMax()) {
         buttonStat_.put(FlowMeister.MainFlow.ZOOM_OUT, new Boolean(true));   
         buttonStat_.put(FlowMeister.MainFlow.ZOOM_IN, new Boolean(false));   
       } else {
@@ -171,9 +170,9 @@ public class VirtualZoomControls implements ZoomChangeTracker {
     //
     // Enable/disable zoom actions based on zoom limits:
     //   
-    boolean onSelPath = appState_.getZoomTarget().haveCurrentSelectionForBounds();
-    MainCommands mcmd = appState_.getMainCmds();
-    if (!appState_.isHeadless()) {     
+    boolean onSelPath = uics_.getZoomTarget().haveCurrentSelectionForBounds();
+    MainCommands mcmd = cSrc_.getMainCmds();
+    if (!uics_.isHeadless()) {     
       MainCommands.ChecksForEnabled z2cWI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_TO_CURRENT_SELECTED, true);
       MainCommands.ChecksForEnabled z2cNI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.ZOOM_TO_CURRENT_SELECTED, false);         
       z2cWI.setConditionalEnabled(onSelPath);

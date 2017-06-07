@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 package org.systemsbiology.biotapestry.timeCourse;
 
 import java.util.Set;
-import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.io.PrintWriter;
@@ -29,8 +28,12 @@ import java.text.MessageFormat;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.parser.GlueStick;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -41,7 +44,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 ** This holds temporal input range data for a gene
 */
 
-public class TemporalRange {
+public class TemporalRange implements Cloneable {
       
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -118,6 +121,28 @@ public class TemporalRange {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Clone
+  **
+  */  
+  
+  @Override
+  public TemporalRange clone() { 
+    try {
+      TemporalRange newVal = (TemporalRange)super.clone();
+      newVal.data_ = new ArrayList<InputTimeRange>();
+      int size = this.data_.size();
+      for (int i = 0; i < size; i++) {
+        InputTimeRange itr = this.data_.get(i);
+        newVal.data_.add(itr.clone());
+      }
+      return (newVal);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  } 
 
   /***************************************************************************
   **
@@ -289,7 +314,7 @@ public class TemporalRange {
   ** Get an HTML inputs table suitable for display.
   */
   
-  public void getInputsTable(BTState appState, PrintWriter out, Set<String> srcIDs) {
+  public void getInputsTable(DataAccessContext dacx, PrintWriter out, Set<String> srcIDs) {
 
     if (data_.size() == 0) {
       return;
@@ -325,10 +350,10 @@ public class TemporalRange {
     // Figure out if we accept numbers or names for the stages:
     //
     
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     boolean namedStages = tad.haveNamedStages();
     String displayUnits = tad.unitDisplayAbbrev();
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
 
     boolean isFirst = true;
     Iterator<InputTimeRange> perts = getTimeRanges();
@@ -369,7 +394,7 @@ public class TemporalRange {
         } else { 
           out.print(" bgcolor=\"#EE6666\">");
         }
-        getRangeLine(out, srcIDs, rar, tad, namedStages, displayUnits, rMan); 
+        getRangeLine(out, rar, tad, namedStages, displayUnits, rMan); 
         out.println("</td>");
         out.println("</tr>");
       }
@@ -411,8 +436,7 @@ public class TemporalRange {
   ** Get single range line for display
   */
   
-  @SuppressWarnings("unused")
-  public void getRangeLine(PrintWriter out, Set<String> srcIDs, RegionAndRange rar,  TimeAxisDefinition tad, boolean namedStages, String displayUnits, ResourceManager rMan ) { 
+  public void getRangeLine(PrintWriter out, RegionAndRange rar, TimeAxisDefinition tad, boolean namedStages, String displayUnits, ResourceManager rMan ) { 
     //
     // FIX ME: In endomesoderm, 0 hr used to be written as "M".  Not currently supported.
     //
@@ -457,57 +481,58 @@ public class TemporalRange {
   // PUBLIC CLASS METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-  
+ 
   /***************************************************************************
   **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("temporalRange");
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static TemporalRange buildFromXML(String elemName, 
-                                           Attributes attrs) throws IOException {
-    if (!elemName.equals("temporalRange")) {
-      return (null);
+  ** For XML I/O
+  */  
+      
+  public static class TemporalRangeWorker extends AbstractFactoryClient {
+    
+    private DataAccessContext dacx_;
+    private InputTimeRange.InputTimeRangeWorker itrw_;
+    
+    
+    public TemporalRangeWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("temporalRange");
+      itrw_ = new InputTimeRange.InputTimeRangeWorker(whiteboard);
+      installWorker(itrw_, new MyInputTimeRangeGlue());
     }
     
-    String name = null;
-    String note = null;
-    String internalOnly = null;
-    
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("name")) {
-          name = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("note")) {
-          note = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("internalOnly")) {
-          internalOnly = val;
-        }
-      }
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      itrw_.installContext(dacx);
     }
 
-    if (name == null) {
-      throw new IOException();
-    }
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("temporalRange")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.temporalRange = buildFromXML(elemName, attrs);
+        retval = board.temporalRange;
+      }
+      return (retval);     
+    }  
     
-    return (new TemporalRange(name, note, internalOnly));
+    private TemporalRange buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String name = AttributeExtractor.extractAttribute(elemName, attrs, "temporalRange", "name", true);
+      name = CharacterEntityMapper.unmapEntities(name, false);
+      String note = AttributeExtractor.extractAttribute(elemName, attrs, "temporalRange", "note", false);
+      if (note != null) {
+        note = CharacterEntityMapper.unmapEntities(note, false);
+      }
+      String internalOnly = AttributeExtractor.extractAttribute(elemName, attrs, "temporalRange", "internalOnly", false);  
+      return (new TemporalRange(name, note, internalOnly));
+    }
+  }
+  
+  public static class MyInputTimeRangeGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.temporalRange.addTimeRange(board.inputTimeRange);
+      return (null);
+    }
   }
 }

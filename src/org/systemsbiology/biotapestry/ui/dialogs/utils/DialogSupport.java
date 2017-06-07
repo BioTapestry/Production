@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,7 +35,8 @@ import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.border.Border;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -54,7 +55,8 @@ public class DialogSupport {
   ////////////////////////////////////////////////////////////////////////////  
 
   private DialogSupportClient dsClient_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   private ResourceManager rMan_; 
   private GridBagConstraints gbc_;
   private JDialog closeMe_;
@@ -81,11 +83,12 @@ public class DialogSupport {
   **
   ** Constructor 
   */ 
-  
-  public DialogSupport(DialogSupportClient client, BTState appState, GridBagConstraints gbc) {
-    appState_ = appState;
+   
+  public DialogSupport(DialogSupportClient client, UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc) {
+    uics_ = uics;
+    dacx_ = dacx;
     dsClient_ = client;
-    rMan_ = appState_.getRMan();
+    rMan_ = dacx_.getRMan();
     gbc_ = gbc;
   }
   
@@ -94,10 +97,11 @@ public class DialogSupport {
   ** Constructor 
   */ 
   
-  public DialogSupport(BTState appState, GridBagConstraints gbc, JDialog closeMe) {
-    appState_ = appState;
+  public DialogSupport(UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc, JDialog closeMe) {
+    uics_ = uics;
+    dacx_ = dacx;
     closeMe_ = closeMe;
-    rMan_ = appState_.getRMan();
+    rMan_ = dacx_.getRMan();
     gbc_ = gbc;
   }  
   
@@ -106,9 +110,10 @@ public class DialogSupport {
   ** Constructor 
   */ 
   
-  public DialogSupport(BTState appState, GridBagConstraints gbc) {
-    appState_ = appState;
-    rMan_ = appState_.getRMan();
+  public DialogSupport(UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc) {
+    uics_ = uics;
+    dacx_ = dacx;
+    rMan_ = dacx_.getRMan();
     gbc_ = gbc;
   }  
   
@@ -151,9 +156,9 @@ public class DialogSupport {
           try {
             dsClient_.applyAction();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           } catch (OutOfMemoryError oom) {
-            appState_.getExceptionHandler().displayOutOfMemory(oom);
+            uics_.getExceptionHandler().displayOutOfMemory(oom);
           }
         }
       });
@@ -164,9 +169,9 @@ public class DialogSupport {
         try {
           dsClient_.okAction();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });     
@@ -176,9 +181,9 @@ public class DialogSupport {
         try {
           dsClient_.closeAction();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });
@@ -261,9 +266,9 @@ public class DialogSupport {
           try {
             dsClient_.applyAction();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           } catch (OutOfMemoryError oom) {
-            appState_.getExceptionHandler().displayOutOfMemory(oom);
+            uics_.getExceptionHandler().displayOutOfMemory(oom);
           }
         }
       });
@@ -274,9 +279,9 @@ public class DialogSupport {
         try {
           dsClient_.okAction();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });     
@@ -286,9 +291,9 @@ public class DialogSupport {
         try {
           dsClient_.closeAction();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });
@@ -352,9 +357,9 @@ public class DialogSupport {
           closeMe_.setVisible(false);
           closeMe_.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });
@@ -595,6 +600,22 @@ public class DialogSupport {
   }
   
   /***************************************************************************
+  **
+  ** Add a component with a label, no rightward stretch
+  */ 
+  
+  public int addLabeledWidgetNoStretch(JPanel cp, JLabel label, JComponent comp, boolean fixHeight, boolean flushLeft,
+                                 int rowNum, int columns) {
+    double vFac = (fixHeight) ? 0.0 : 1.0;
+    int eorw = (flushLeft) ? UiUtil.W : UiUtil.E;
+    UiUtil.gbcSet(gbc_, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, eorw, 0.0, vFac);
+    cp.add(label, gbc_);
+    UiUtil.gbcSet(gbc_, 1, rowNum++, columns - 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, vFac);    
+    cp.add(comp, gbc_);        
+    return (rowNum);
+  }
+  
+  /***************************************************************************
    **
    ** Add a labeled button pair to a full row
    */ 
@@ -653,4 +674,27 @@ public class DialogSupport {
     cp.add(tablePan, gbc_);
     return (rowNum);
   } 
+  
+  /***************************************************************************
+  **
+  ** Add a row of labeled widgets
+  */ 
+  
+  public int addSeriesToRow(JPanel cp, List<JLabel> labs, List<JComponent> comps, int rowNum, int start) { 
+    
+    int lSize = labs.size();
+    int cSize = comps.size();
+    if (lSize != cSize) {
+      throw new IllegalArgumentException();
+    }
+    for (int i = 0; i < lSize; i++) {
+      JLabel lab = labs.get(i);
+      JComponent comp = comps.get(i);
+      UiUtil.gbcSet(gbc_, start + (i * 2), rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);
+      cp.add(lab, gbc_);
+      UiUtil.gbcSet(gbc_, start + (i * 2) + 1, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
+      cp.add(comp, gbc_);   
+    }
+    return (rowNum + 1);
+  }
 }

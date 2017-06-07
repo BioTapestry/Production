@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,10 +31,12 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.PadConstraints;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -49,7 +51,6 @@ import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.DBNode;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
@@ -93,7 +94,7 @@ import org.systemsbiology.biotapestry.util.Vector2D;
 ** Handle inserting a node into a link
 */
 
-public class InsertNodeInLink extends AbstractControlFlow implements BackgroundWorkerOwner {
+public class InsertNodeInLink extends AbstractControlFlow {
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -120,8 +121,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Constructor 
   */ 
   
-  public InsertNodeInLink(BTState appState, boolean doGene) {
-    super(appState);
+  public InsertNodeInLink(boolean doGene) {
     doGene_ = doGene;
     name = (doGene) ? "linkPopup.insertGene" : "linkPopup.insertNode";
     desc = (doGene) ? "linkPopup.insertGene" : "linkPopup.insertNode";
@@ -141,37 +141,14 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg || !canSplit) {
       return (false);
     }
-    Genome genome = rcx.getGenome();
-    return (genome instanceof DBGenome);
+    return (rcx.currentGenomeIsRootDBGenome());
   }
-  
-  /***************************************************************************
-  **
-  ** We can do a background thread in the desktop version
-  ** 
-  */
 
-  public boolean handleRemoteException(Exception remoteEx) {
-    return (false);
-  }        
- 
-  public void cleanUpPreEnable(Object result) {
-    return;
-  }
- 
-  public void cleanUpPostRepaint(Object result) {
-    (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
-    return;
-  } 
-  
-  public void handleCancellation() {
-    return;
-  } 
-  
   /***************************************************************************
   **
   ** Handle out-of-band question/response
@@ -197,8 +174,8 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new StepState(appState_, doGene_, this, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new StepState(doGene_, dacx));  
   }
   
   /***************************************************************************
@@ -215,17 +192,15 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         throw new IllegalArgumentException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
-          next = ans.stepBiWarning(cfh);      
+          next = ans.stepBiWarning();      
         } else if (ans.getNextStep().equals("stepGenNodeInfoDialog")) {
-          next = ans.stepGenNodeInfoDialog(cfh);      
+          next = ans.stepGenNodeInfoDialog();      
         } else if (ans.getNextStep().equals("stepBuildNodeCreationInfo")) {
           next = ans.stepBuildNodeCreationInfo(last);           
         } else if (ans.getNextStep().equals("stepDoTheInsertion")) {
-          next = ans.stepDoTheInsertion(last);      
+          next = ans.stepDoTheInsertion();      
         } else {
           throw new IllegalStateException();
         }
@@ -242,7 +217,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage.
   */  
  
-  private void addNewNodeInsertedIntoLinkage(BTState appState, Node legacyNodeField, DataAccessContext rcxR,
+  private static void addNewNodeInsertedIntoLinkage(Node legacyNodeField, StaticDataAccessContext rcxR,
                                               boolean doGene, int resolution, Set<String> resolved, 
                                               int x, int y, Intersection intersect,
                                               UndoSupport support, Map<String, Set<String>> neededLinksPerGenomeInstance,
@@ -255,12 +230,12 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     HashMap<String, String> postMidLinks = new HashMap<String, String>();
     LinkSegmentID oneSeg = intersect.segmentIDFromIntersect();
 
-    BusProperties bp = rcxR.getLayout().getLinkProperties(intersect.getObjectID());
+    BusProperties bp = rcxR.getCurrentLayout().getLinkProperties(intersect.getObjectID());
     BusProperties origRootLp = bp.clone(); 
 
     Point2D nodeLoc = new Point2D.Double();
-    Node useNode = addNewNodeIntoLinkageForRoot(appState, legacyNodeField, rcxR, doGene, x, y, oneSeg, resolved, bp,
-                                                origRootLp, directFixups, preMidLinks, postMidLinks, nodeLoc, support);
+    Node useNode = addNewNodeIntoLinkageForRoot(legacyNodeField, rcxR, doGene, x, y, oneSeg, resolved, bp,
+                                                directFixups, preMidLinks, postMidLinks, nodeLoc, support);
 
     //
     // Insert the node into every root instance that has a corresponding link instance
@@ -293,9 +268,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     while (it.hasNext()) {
       GenomeInstance gi = it.next();
       pCount++;
-      DataAccessContext rcxI = new DataAccessContext(rcxR, gi);
+      StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi);
       
-      insertNodeInRootInstance(appState, legacyNodeField, rcxR, rcxI, useNode, resolved, 
+      insertNodeInRootInstance(legacyNodeField, rcxR, rcxI, useNode, resolved, 
                                linkInstanceToNodePerGenome,
                                oldToNewForFanOutPerGenome,
                                oldToNewForFanInPerGenome,             
@@ -318,15 +293,16 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     // Propagate to all subset models.  FIX ME!  Do progress report...
     //
     
-    addNewNodeInsertedIntoLinkageForSubsets(appState, useNode, processed, pCount,
+    StaticDataAccessContext pulledOut = rcxR.getContextForRoot();
+    addNewNodeInsertedIntoLinkageForSubsets(pulledOut, processed, pCount,
                                             linkInstanceToNodePerGenome,
                                             oldToNewForFanOutPerGenome,
                                             oldToNewForFanInPerGenome,            
-                                            doGene, support);
+                                            support);
     
     // Deletions and direct link fixups:
     
-    addNewNodeInsertedIntoLinkageKillAndClean(appState, rcxR, resolved, directFixups, support);
+    addNewNodeInsertedIntoLinkageKillAndClean(rcxR, resolved, directFixups, support);
 
     if (monitor != null) {
       monitor.updateProgress((int)(endFrac * 100.0));
@@ -336,7 +312,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     // These no longer make sense:
     //
     
-    appState.getDB().clearAllDynamicProxyCaches();
+    rcxR.getGenomeSource().clearAllDynamicProxyCaches();
         
     //
     // Finally do relevant change events
@@ -353,11 +329,11 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage: root model install
   */  
  
-  private Node addNewNodeIntoLinkageForRoot(BTState appState, Node legacyNodeField, DataAccessContext rcxR,
+  private static Node addNewNodeIntoLinkageForRoot(Node legacyNodeField, StaticDataAccessContext rcxR,
                                             boolean doGene, int x, int y, 
                                             LinkSegmentID oneSeg, Set<String> resolved,
                                             BusProperties bp,
-                                            BusProperties origRootLp, List<DirectFixupInfo> directFixups, 
+                                            List<DirectFixupInfo> directFixups, 
                                             Map<String, String> preMidLinks, Map<String, String> postMidLinks, Point2D nodeLoc,
                                             UndoSupport support) {
 
@@ -370,12 +346,12 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     
     GenomeChange gc;
     if (doGene) {
-      gc = ((DBGenome)rcxR.getGenome()).addGeneWithExistingLabel((Gene)legacyNodeField);
+      gc = rcxR.getCurrentGenomeAsDBGenome().addGeneWithExistingLabel((Gene)legacyNodeField);
     } else {
-      gc = ((DBGenome)rcxR.getGenome()).addNodeWithExistingLabel(legacyNodeField);
+      gc = rcxR.getCurrentGenomeAsDBGenome().addNodeWithExistingLabel(legacyNodeField);
     }
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxR, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
       support.addEdit(gcc);
     }
     
@@ -386,7 +362,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     double xCoord = UiUtil.forceToGridValue(x + pir.offset.getX(), UiUtil.GRID_SIZE);
     double yCoord = UiUtil.forceToGridValue(y + pir.offset.getY(), UiUtil.GRID_SIZE);
     nodeLoc.setLocation(xCoord, yCoord);
-    NodeProperties np = new NodeProperties(rcxR.cRes, rcxR.getLayout(), legacyNodeField.getNodeType(), 
+    NodeProperties np = new NodeProperties(rcxR.getColorResolver(), legacyNodeField.getNodeType(), 
                                             legacyNodeField.getID(), xCoord, yCoord, false); 
     np.setOrientation(pir.orientation);
     // Match node to link color:
@@ -395,16 +371,16 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       np.setSecondColor(bp.getColorName());
     }
     //BOGUS!  FIXME!
-    String genomeKey = rcxR.getGenomeID();
-    String loTarg = rcxR.getLayout().getTarget();
+    String genomeKey = rcxR.getCurrentGenomeID();
+    String loTarg = rcxR.getCurrentLayout().getTarget();
     if (!loTarg.equals(genomeKey)) {
       throw new IllegalStateException();
     }
     Layout.PropChange[] lpc = new Layout.PropChange[1]; 
-    NodeProperties newProps = new NodeProperties(np, rcxR.getLayout(), legacyNodeField.getNodeType());
-    lpc[0] = rcxR.getLayout().setNodeProperties(legacyNodeField.getID(), newProps);
+    NodeProperties newProps = new NodeProperties(np, legacyNodeField.getNodeType());
+    lpc[0] = rcxR.getCurrentLayout().setNodeProperties(legacyNodeField.getID(), newProps);
     if (lpc != null) {
-      PropChangeCmd pcc = new PropChangeCmd(appState, rcxR, lpc);
+      PropChangeCmd pcc = new PropChangeCmd(rcxR, lpc);
       support.addEdit(pcc);
     }        
     
@@ -417,45 +393,45 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     boolean haveToMid = false;
     while (rit.hasNext()) {
       String linkID = rit.next();
-      Linkage rootLink = rcxR.getGenome().getLinkage(linkID);
+      Linkage rootLink = rcxR.getCurrentGenome().getLinkage(linkID);
       String trgID = rootLink.getTarget();
       String midID = legacyNodeField.getID();
       if (!haveToMid) {
         String srcID = rootLink.getSource();
         firstLinkID = rcxR.getNextKey();
-        DBLinkage newLinkage = new DBLinkage(appState, null, firstLinkID, srcID, midID, 
+        DBLinkage newLinkage = new DBLinkage(rcxR, null, firstLinkID, srcID, midID, 
                                              Linkage.NONE, pir.landingPad, rootLink.getLaunchPad()); 
-        gc = ((DBGenome)rcxR.getGenome()).addLinkWithExistingLabel(newLinkage);
+        gc = ((DBGenome)rcxR.getCurrentGenome()).addLinkWithExistingLabel(newLinkage);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxR, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
           support.addEdit(gcc);
         }
         preMidLinks.put(srcID, firstLinkID);
         haveToMid = true;
       }
       String newLinkID = rcxR.getNextKey();      
-      DBLinkage newLinkage2 = new DBLinkage(appState, null, newLinkID, midID, trgID, rootLink.getSign(), 
+      DBLinkage newLinkage2 = new DBLinkage(rcxR, null, newLinkID, midID, trgID, rootLink.getSign(), 
                                             rootLink.getLandingPad(), pir.launchPad);
       String origName = rootLink.getName();
       if ((origName != null) && !origName.trim().equals("")) {
         newLinkage2.setName(origName);
       }
-      gc = ((DBGenome)rcxR.getGenome()).addLinkWithExistingLabel(newLinkage2);
+      gc = ((DBGenome)rcxR.getCurrentGenome()).addLinkWithExistingLabel(newLinkage2);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxR, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
         support.addEdit(gcc);
       }
       postMidLinks.put(linkID, newLinkID);
     }
     
     HashMap<String, NodeInsertionDirective> directFixupLinks = new HashMap<String, NodeInsertionDirective>();
-    Layout.PropChange[] changes = rcxR.getLayout().supportLinkNodeInsertion(oneSeg, resolved, 
+    Layout.PropChange[] changes = rcxR.getCurrentLayout().supportLinkNodeInsertion(oneSeg, resolved, 
                                                                       legacyNodeField.getID(), 
                                                                       firstLinkID, postMidLinks,
                                                                       rcxR,
                                                                       directFixupLinks, pir);
     directFixups.add(new DirectFixupInfo(rcxR, directFixupLinks));
-    support.addEdit(new PropChangeCmd(appState, rcxR, changes));
+    support.addEdit(new PropChangeCmd(rcxR, changes));
      
     return (legacyNodeField); 
   }  
@@ -465,7 +441,8 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage: per root genome instance
   */  
  
-  private void insertNodeInRootInstance(BTState appState, Node legacyNodeField, DataAccessContext rcxR, DataAccessContext rcxI,
+  private static void insertNodeInRootInstance(Node legacyNodeField, 
+                                        StaticDataAccessContext rcxR, StaticDataAccessContext rcxI,
                                         Node useNode, Set<String> resolved, 
                                         Map<String, Map<String, String>> linkInstanceToNodePerGenome,
                                         Map<String, Map<String, Map<String, String>>> oldToNewForFanOutPerGenome,
@@ -476,10 +453,10 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
                                         BusProperties origRootLp, Point2D nodeLoc,           
                                         boolean doGene, int resolution,
                                         UndoSupport support) {
-    if (rcxI.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcxI.getCurrentGenomeAsInstance().getVfgParent() != null) {
       return;
     }
-    String giID = rcxI.getGenomeID();
+    String giID = rcxI.getCurrentGenomeID();
 
     //
     // Track which mid node goes with each existing link instance.  Track per
@@ -532,13 +509,13 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
 
     directFixups.add(new DirectFixupInfo(rcxI, directFixupLinksForGilo));
         
-    Map<String, BusProperties.RememberProps> rememberProps = rcxI.getLayout().buildRememberProps(rcxI);    
+    Map<String, BusProperties.RememberProps> rememberProps = rcxI.getCurrentLayout().buildRememberProps(rcxI);    
     HashMap<String, Map<String, String>> linkBuiltFromSource = new HashMap<String, Map<String, String>>();
     processed.add(giID);
     Iterator<String> resit = resolved.iterator();
     while (resit.hasNext()) {
       String linkID = resit.next();
-      insertNodeInRootInstancePerResolvedLink(appState, legacyNodeField, rcxR, rcxI,
+      insertNodeInRootInstancePerResolvedLink(legacyNodeField, rcxR, rcxI,
                                               linkID, useNode, zeroOffset,
                                               linkInstanceToNode, 
                                               nodeToExistingLinkages,
@@ -567,13 +544,13 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       Layout.InheritedLinkNodeInsertionResult result = null;
       if (fanIn == 1) {
         String loFirstLinkID = fanInLinks.values().iterator().next();
-        result = rcxI.getLayout().supportInheritedLinkNodeInsertion(oneSeg, existing,
+        result = rcxI.getCurrentLayout().supportInheritedLinkNodeInsertion(oneSeg, existing,
                                                                origRootLp, nodeLoc,                  
                                                                rcxR, rcxI,
                                                                newNodeID, loFirstLinkID, 
                                                                fanOutLinks, directFixupLinksForGilo);
         if (result != null) {
-          support.addEdit(new PropChangeCmd(appState, rcxI, result.changes));
+          support.addEdit(new PropChangeCmd(rcxI, result.changes));
           didLayout = true;
         }
       }
@@ -583,8 +560,8 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       //
 
       if (result != null) {
-        InvertedSrcTrg ist = new InvertedSrcTrg(rcxI.getGenome());
-        LinkSupport.specialtyPadChanges(appState, result.padChanges, rcxI, support, ist);
+        InvertedSrcTrg ist = new InvertedSrcTrg(rcxI.getCurrentGenome());
+        LinkSupport.specialtyPadChanges(result.padChanges, rcxI, support, ist);
       }
 
       //
@@ -605,12 +582,12 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
             if (needed > currPads) { 
               GenomeChange gc;
               if (nodeType == Node.GENE) {        
-                 gc = rcxI.getGenome().changeGeneSize(useNode.getID(), needed);
+                 gc = rcxI.getCurrentGenome().changeGeneSize(useNode.getID(), needed);
               } else {
-                 gc = rcxI.getGenome().changeNodeSize(useNode.getID(), needed);
+                 gc = rcxI.getCurrentGenome().changeNodeSize(useNode.getID(), needed);
               }
               if (gc != null) {
-                GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxI, gc);
+                GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
                 support.addEdit(gcc);
               }
             }
@@ -644,9 +621,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         } else {
           mappedRememberProps = null;
         }
-        Layout.PropChange lochange = rcxI.getLayout().bestFitNodePlacementForInsertion(rcxR.getLayout(), newNodeID, rcxI);          
+        Layout.PropChange lochange = rcxI.getCurrentLayout().bestFitNodePlacementForInsertion(rcxR.getCurrentLayout(), newNodeID, rcxI);          
         if (lochange != null) {
-          support.addEdit(new PropChangeCmd(appState, rcxI, lochange));
+          support.addEdit(new PropChangeCmd(rcxI, lochange));
         }
         Set<String> needAuto = neededLinksPerGenomeInstance.get(giID);
         if (needAuto == null) {
@@ -654,12 +631,12 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
           neededLinksPerGenomeInstance.put(giID, needAuto);        
         }
         List<String> plfm = propLinksForMid.get(newNodeID);        
-        multiFanInPadFixup(appState, plfm, newNodeID, rcxI, support);
+        multiFanInPadFixup(plfm, newNodeID, rcxI, support);
         Iterator<String> plfmit = plfm.iterator();
         while (plfmit.hasNext()) {
           String lid = plfmit.next();
           needAuto.add(lid);
-          LayoutLinkSupport.autoAddCrudeLinkProperties(appState, rcxI, lid, support, mappedRememberProps);
+          LayoutLinkSupport.autoAddCrudeLinkProperties(rcxI, lid, support, mappedRememberProps);
         }
       }      
     }
@@ -672,7 +649,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Find best node assignment for multi-fan ins.
   */  
  
-  private void multiFanInPadFixup(BTState appState, List<String> linksForNewNode, String newNodeID, DataAccessContext rcx, UndoSupport support) {  
+  private static void multiFanInPadFixup(List<String> linksForNewNode, String newNodeID, StaticDataAccessContext rcx, UndoSupport support) {  
   
     Map<String, PadConstraints> padConstraints = new HashMap<String, PadConstraints>();
     int numL = linksForNewNode.size();
@@ -683,9 +660,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     }  
  
     HashSet<Node> newNodeInstances = new HashSet<Node>();
-    Node newNodeInstance = rcx.getGenome().getNode(newNodeID);
+    Node newNodeInstance = rcx.getCurrentGenome().getNode(newNodeID);
     newNodeInstances.add(newNodeInstance);
-    LayoutLinkSupport.wigglePadCore(appState, newNodeInstances.iterator(), rcx, padConstraints, support);
+    LayoutLinkSupport.wigglePadCore(newNodeInstances.iterator(), rcx, padConstraints, support);
     return;
   }
  
@@ -694,17 +671,15 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage: submodel support
   */  
  
-  private void addNewNodeInsertedIntoLinkageForSubsets(BTState appState, Node useNode, Set<String> processed, int pCount,
-                                                         Map<String, Map<String, String>> linkInstanceToNodePerGenome,
-                                                         Map<String, Map<String, Map<String, String>>> oldToNewForFanOutPerGenome,
-                                                         Map<String, Map<String, Map<String, String>>> oldToNewForFanInPerGenome,             
-                                                         boolean doGene, UndoSupport support) {
+  private static void addNewNodeInsertedIntoLinkageForSubsets(StaticDataAccessContext rcx, Set<String> processed, int pCount,
+                                                       Map<String, Map<String, String>> linkInstanceToNodePerGenome,
+                                                       Map<String, Map<String, Map<String, String>>> oldToNewForFanOutPerGenome,
+                                                       Map<String, Map<String, Map<String, String>>> oldToNewForFanInPerGenome,             
+                                                       UndoSupport support) {
     //
     // Propagate to all subset models.  Multiple passes needed to handle deep
     // subset hierarchies:
     //
-    
-    DataAccessContext rcx = new DataAccessContext(appState);
      
     while (processed.size() < pCount) {
       Iterator<GenomeInstance> it = rcx.getGenomeSource().getInstanceIterator();    
@@ -719,7 +694,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         if (!processed.contains(parentID)) { // Skip if parent not done...
           continue;
         }
-        DataAccessContext rcxP = new DataAccessContext(rcx, myID);
+        StaticDataAccessContext rcxP = new StaticDataAccessContext(rcx, myID);
         GenomeInstance rootInstance = git.getVfgParentRoot();
         String rootParentID = rootInstance.getID();
         processed.add(myID);
@@ -734,7 +709,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
           if (nid != null) {
             if (git.getNode(nid) == null) {
               NodeInstance ni = (NodeInstance)parent.getNode(nid);
-              PropagateSupport.addNewNodeToSubsetInstance(appState, rcxP, ni, support);          
+              PropagateSupport.addNewNodeToSubsetInstance(rcxP, ni, support);          
             }
             if (oldToNewForFanOut != null) {
               Map<String, String> fanOutMap = oldToNewForFanOut.get(nid);
@@ -760,7 +735,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         for (int i = 0; i < numPL; i++) {
           String linkID = linksToProp.get(i);
           LinkageInstance li = (LinkageInstance)parent.getLinkage(linkID);
-          PropagateSupport.addNewLinkToSubsetInstance(appState, rcxP, li, support);
+          PropagateSupport.addNewLinkToSubsetInstance(rcxP, li, support);
         }   
       }
     }
@@ -773,7 +748,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage: Deletions and final fixups
   */  
  
-  private void addNewNodeInsertedIntoLinkageKillAndClean(BTState appState, DataAccessContext rcxLT,
+  private static void addNewNodeInsertedIntoLinkageKillAndClean(StaticDataAccessContext rcxLT,
                                                          Set<String> resolved, List<DirectFixupInfo> directFixups,
                                                          UndoSupport support) {    
     //
@@ -781,7 +756,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     // to propagate, we destroy them.
     //
     
-    RemoveLinkage.deleteLinkSetFromModel(appState, resolved, rcxLT, support);
+    RemoveLinkage.deleteLinkSetFromModel(resolved, rcxLT, support);
     
     //
     // Any node that was inserted in a start drop now needs to have a direct link
@@ -794,9 +769,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       while (doit.hasNext()) {
         String linkID = doit.next();
         NodeInsertionDirective nid = dfi.doLinks.get(linkID);
-        Layout.PropChange pc = dfi.rcx.getLayout().makeLinkageDirectForLink(linkID, nid, dfi.rcx);
+        Layout.PropChange pc = dfi.rcx.getCurrentLayout().makeLinkageDirectForLink(linkID, nid, dfi.rcx);
         if (pc != null) {
-          support.addEdit(new PropChangeCmd(appState, dfi.rcx, pc));
+          support.addEdit(new PropChangeCmd(dfi.rcx, pc));
         }  
       }
     }
@@ -809,8 +784,8 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Add a new node inserted into a linkage: per root genome instance resolved link
   */  
  
-  private void insertNodeInRootInstancePerResolvedLink(BTState appState, Node legacyNodeField, 
-                                                       DataAccessContext rcxR, DataAccessContext rcxI,
+  private static void insertNodeInRootInstancePerResolvedLink(Node legacyNodeField, 
+                                                       StaticDataAccessContext rcxR, StaticDataAccessContext rcxI,
                                                        String linkID, Node useNode,
                                                        Vector2D zeroOffset,
                                                        Map<String, String> linkInstanceToNode,
@@ -826,7 +801,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ArrayList<LinkageInstance> newLinksToAdd = new ArrayList<LinkageInstance>();
     HashMap<String, Set<Integer>> generatedINums = new HashMap<String, Set<Integer>>();
     HashMap<String, Map<String, String>> linkBuiltToTarget = new HashMap<String, Map<String, String>>();
-    Iterator<Linkage> lit = rcxI.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcxI.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       LinkageInstance li = (LinkageInstance)lit.next();
       String liid = li.getID();
@@ -836,31 +811,31 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       //
       // Now have a linkage instance that is derived from the inserted root
       //
-      NodeInstance src = (NodeInstance)rcxI.getGenome().getNode(li.getSource());
-      NodeInstance trg = (NodeInstance)rcxI.getGenome().getNode(li.getTarget());
+      NodeInstance src = (NodeInstance)rcxI.getCurrentGenome().getNode(li.getSource());
+      NodeInstance trg = (NodeInstance)rcxI.getCurrentGenome().getNode(li.getTarget());
       GroupMembership groupMemb = 
-        (resolution == USE_SOURCE) ? rcxI.getGenomeAsInstance().getNodeGroupMembership(src) : rcxI.getGenomeAsInstance().getNodeGroupMembership(trg);
+        (resolution == USE_SOURCE) ? rcxI.getCurrentGenomeAsInstance().getNodeGroupMembership(src) : rcxI.getCurrentGenomeAsInstance().getNodeGroupMembership(trg);
       if (groupMemb.mainGroups.isEmpty()) { // should be caught earlier!
         throw new IllegalStateException();
       }
       
       String grpID = groupMemb.mainGroups.iterator().next();
-      Group group = rcxI.getGenomeAsInstance().getGroup(grpID);
+      Group group = rcxI.getCurrentGenomeAsInstance().getGroup(grpID);
       String nid;
       if (group.instanceIsInGroup(useNode.getID())) {
-        Node niFromGroup = group.getInstanceInGroup(useNode.getID(), rcxI.getGenomeAsInstance());
+        Node niFromGroup = group.getInstanceInGroup(useNode.getID(), rcxI.getCurrentGenomeAsInstance());
         nid = niFromGroup.getID();
       } else {
-        NodeInstance ni = PropagateSupport.propagateNodeNoLayout(appState, doGene, rcxI, (DBNode)legacyNodeField, group, support, null);          
+        NodeInstance ni = PropagateSupport.propagateNodeNoLayout(doGene, rcxI, (DBNode)legacyNodeField, group, support, null);          
         nid = ni.getID();
         // Add it to all the subgroups too:          
         Iterator<String> grit = groupMemb.subGroups.iterator();
         while (grit.hasNext()) {
           grpID = grit.next();
-          group = rcxI.getGenomeAsInstance().getGroup(grpID);
-          GroupChange grc = group.addMember(new GroupMember(nid), rcxI.getGenomeID());
+          group = rcxI.getCurrentGenomeAsInstance().getGroup(grpID);
+          GroupChange grc = group.addMember(new GroupMember(nid), rcxI.getCurrentGenomeID());
           if (grc != null) {
-            GroupChangeCmd grcc = new GroupChangeCmd(appState, rcxI, grc);
+            GroupChangeCmd grcc = new GroupChangeCmd(rcxI, grc);
             support.addEdit(grcc);
           }
         }
@@ -869,7 +844,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         //
         // Note we will only know the final node location once we figure out links.  Use zero for now.
         
-        PropagateSupport.propagateNodeLayoutProps(appState, rcxI, useNode, ni, rcxR.getLayout(), zeroOffset, support);
+        PropagateSupport.propagateNodeLayoutProps(rcxI, useNode, ni, rcxR.getCurrentLayout(), zeroOffset, support);
       }
       //
       // Track link through node, node for link:
@@ -887,15 +862,15 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       // halves are only built if we haven't already built them.
       //
 
-      Linkage rootLink = rcxR.getGenome().getLinkage(linkID);
+      Linkage rootLink = rcxR.getCurrentGenome().getLinkage(linkID);
       String midID = linkInstanceToNode.get(liid);
       String srcID = src.getID();
       String trgID = trg.getID();
-      NodeInstance mid = (NodeInstance)rcxI.getGenome().getNode(midID);
+      NodeInstance mid = (NodeInstance)rcxI.getCurrentGenome().getNode(midID);
       String preLinkID = preMidLinks.get(rootLink.getSource());
-      DBLinkage preLink = (DBLinkage)rcxR.getGenome().getLinkage(preLinkID);    
+      DBLinkage preLink = (DBLinkage)rcxR.getCurrentGenome().getLinkage(preLinkID);    
       String postLinkID = postMidLinks.get(linkID);
-      DBLinkage postLink = (DBLinkage)rcxR.getGenome().getLinkage(postLinkID);
+      DBLinkage postLink = (DBLinkage)rcxR.getCurrentGenome().getLinkage(postLinkID);
       List<String> propLinks = propLinksForMid.get(midID);
       if (propLinks == null) {
         propLinks = new ArrayList<String>();
@@ -941,11 +916,11 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
           excludeSet = new HashSet<Integer>();
           generatedINums.put(preLinkID, excludeSet);
         }
-        int instanceCount = rcxI.getGenomeAsInstance().getNextLinkInstanceNumberWithExclusion(preLinkID, excludeSet);
+        int instanceCount = rcxI.getCurrentGenomeAsInstance().getNextLinkInstanceNumberWithExclusion(preLinkID, excludeSet);
         excludeSet.add(new Integer(instanceCount));
         int srcInstance = GenomeItemInstance.getInstanceID(src.getInstance());
         int midInstance = GenomeItemInstance.getInstanceID(mid.getInstance());                        
-        LinkageInstance newLink = new LinkageInstance(appState, preLink, instanceCount, srcInstance, midInstance);
+        LinkageInstance newLink = new LinkageInstance(rcxI, preLink, instanceCount, srcInstance, midInstance);
         newLink.setLaunchPad(li.getLaunchPad());
         propLinks.add(newLink.getID());
         newLinksToAdd.add(newLink);  // can't add yet; we are iterating
@@ -960,11 +935,11 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
           excludeSet = new HashSet<Integer>();
           generatedINums.put(postLinkID, excludeSet);
         }          
-        int instanceCount = rcxI.getGenomeAsInstance().getNextLinkInstanceNumberWithExclusion(postLinkID, excludeSet);
+        int instanceCount = rcxI.getCurrentGenomeAsInstance().getNextLinkInstanceNumberWithExclusion(postLinkID, excludeSet);
         excludeSet.add(new Integer(instanceCount));
         int midInstance = GenomeItemInstance.getInstanceID(mid.getInstance());
         int trgInstance = GenomeItemInstance.getInstanceID(trg.getInstance());
-        LinkageInstance newLink = new LinkageInstance(appState, postLink, instanceCount, midInstance, trgInstance);
+        LinkageInstance newLink = new LinkageInstance(rcxI, postLink, instanceCount, midInstance, trgInstance);
         newLink.setLandingPad(li.getLandingPad());
         propLinks.add(newLink.getID());
         newLinksToAdd.add(newLink); // can't add yet; we are iterating
@@ -980,9 +955,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     int numToAdd = newLinksToAdd.size();
     for (int i = 0; i < numToAdd; i++) {        
       LinkageInstance newLink = newLinksToAdd.get(i);
-      GenomeChange gc = rcxI.getGenomeAsInstance().addLinkage(newLink);
+      GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addLinkage(newLink);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcxI, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
         support.addEdit(gcc);
       }
     }
@@ -995,19 +970,11 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupPointCmdState {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupPointCmdState, BackgroundWorkerOwner {
+    
     private boolean myDoGene_;
     private Intersection inter_;
-    private InsertNodeInLink bwo_;
     private AddNodeSupport ans_;
-    private DataAccessContext rcxT_;
-//    private String genomeKey_;
-//    private Genome targetGenome;
- //  private Layout targetLayout;
     private Point pt_;
      
     /***************************************************************************
@@ -1015,24 +982,13 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean doGene, InsertNodeInLink bwo, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean doGene, StaticDataAccessContext dacx) {
+      super(dacx);
       myDoGene_ = doGene;
-      bwo_ = bwo;
-      ans_ = new AddNodeSupport(appState, doGene, dacx);
-      rcxT_ = dacx;
+      ans_ = new AddNodeSupport(doGene, uics_, dacx_);
       nextStep_ = "stepBiWarning";
     }
     
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-      
     /***************************************************************************
     **
     ** for preload
@@ -1050,7 +1006,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       
     public void setPopupPoint(Point2D ptp) {
       pt_ = new Point();
-      appState_.getZoomTarget().transformClick(ptp.getX(), ptp.getY(), pt_);
+      uics_.getZoomTarget().transformClick(ptp.getX(), ptp.getY(), pt_);
       return;
     }
        
@@ -1078,10 +1034,10 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Warn of build instructions
     */
       
-    private DialogAndInProcessCmd stepBiWarning(ServerControlFlowHarness cfh) {
+    private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -1098,9 +1054,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Generate dialog to get node info from user
     */
          
-    private DialogAndInProcessCmd stepGenNodeInfoDialog(ServerControlFlowHarness cfh) {   
-      TaggedSet currentNetMods = appState_.getCurrentNetModules();  
-      DialogAndInProcessCmd daipc = ans_.getRootCreationDialog(cfh, (DBGenome)rcxT_.getGenome(), currentNetMods.set, this);
+    private DialogAndInProcessCmd stepGenNodeInfoDialog() {   
+      TaggedSet currentNetMods = dacx_.getOSO().getCurrentNetModules();  
+      DialogAndInProcessCmd daipc = ans_.getRootCreationDialog(cfh_, dacx_, currentNetMods.set, this);
       nextStep_ = "stepBuildNodeCreationInfo";
       return (daipc);
     }
@@ -1126,7 +1082,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Finish the job
     */ 
        
-    private DialogAndInProcessCmd stepDoTheInsertion(DialogAndInProcessCmd cmd) {
+    private DialogAndInProcessCmd stepDoTheInsertion() {
 
       String undoStr = (myDoGene_) ? "undo.insertGeneInLink" : "undo.insertNodeInLink";
       //
@@ -1136,30 +1092,30 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
       //
       
       HashSet<String> resolved = new HashSet<String>();
-      int resolution = addNewNodeInsertedIntoLinkageForegroundPrep(appState_, inter_, resolved, rcxT_);           
+      int resolution = addNewNodeInsertedIntoLinkageForegroundPrep(inter_, resolved, dacx_);           
       if (resolution == STOP_PROCESSING) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
         
-      UndoSupport support = new UndoSupport(appState_, undoStr);          
-      appState_.getGenomePresentation().clearSelections(rcxT_, support);
+      UndoSupport support = uFac_.provideUndoSupport(undoStr, dacx_);          
+      uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         
       //
       // We may need to do lots of link relayout operations.  This MUST occur on a background
       // thread!
       //
       NodeInsertionRunner runner = 
-        bwo_.new NodeInsertionRunner(appState_, ans_.getNewNode(), rcxT_, myDoGene_, resolution, resolved, inter_, pt_, support);
+         new NodeInsertionRunner(ans_.getNewNode(), dacx_, myDoGene_, resolution, resolved, inter_, pt_, support);
       BackgroundWorkerClient bwc;   
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, bwo_, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
       } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, bwo_, runner, support);
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, support);
       }
       runner.setClient(bwc);
       bwc.launchWorker();
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
                                                                                        : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
       return (daipc);
     }
@@ -1169,21 +1125,22 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Add a new node inserted into a linkage: foreground thread prep work
     */  
    
-    private int addNewNodeInsertedIntoLinkageForegroundPrep(BTState appState, Intersection intersect, Set<String> resolved, DataAccessContext rcx) {   
+    private int addNewNodeInsertedIntoLinkageForegroundPrep(Intersection intersect, 
+                                                            Set<String> resolved, StaticDataAccessContext rcx) {   
       LinkSegmentID oneSeg = intersect.segmentIDFromIntersect();
   
       //
       // Do the insertion on the root model:
       //
       
-      BusProperties bp = rcx.getLayout().getLinkProperties(intersect.getObjectID());
+      BusProperties bp = rcx.getCurrentLayout().getLinkProperties(intersect.getObjectID());
       resolved.addAll(bp.resolveLinkagesThroughSegment(oneSeg));
       
       //
       // Figure out if we have ambigity:
       //
       
-      int resolution = resolveNewGroupMembership(appState, resolved, rcx);
+      int resolution = resolveNewGroupMembership(uics_, resolved, rcx);
       return (resolution);
     }
     
@@ -1192,7 +1149,7 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     ** Figure out which region to send the new node to, if there is ambiguity:
     */  
    
-    private int resolveNewGroupMembership(BTState appState, Set<String> linkSet, DataAccessContext rcx) { 
+    private int resolveNewGroupMembership(UIComponentSource uics, Set<String> linkSet, StaticDataAccessContext rcx) { 
       Iterator<GenomeInstance> it = rcx.getGenomeSource().getInstanceIterator();    
       while (it.hasNext()) {
         GenomeInstance gi = it.next();
@@ -1214,23 +1171,23 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
           GroupMembership srcGroupMemb = gi.getNodeGroupMembership(src);        
           GroupMembership trgGroupMemb = gi.getNodeGroupMembership(trg);
           if ((srcGroupMemb.mainGroups.size() != 1) || (trgGroupMemb.mainGroups.size() != 1)) {
-            JOptionPane.showMessageDialog(appState.getTopFrame(), rcx.rMan.getString("insertNode.groupConfusion"), 
-                                          rcx.rMan.getString("insertNode.groupConfusionTitle"),
+            JOptionPane.showMessageDialog(uics.getTopFrame(), rcx.getRMan().getString("insertNode.groupConfusion"), 
+                                          rcx.getRMan().getString("insertNode.groupConfusionTitle"),
                                           JOptionPane.ERROR_MESSAGE);
             return (STOP_PROCESSING);
           }
           String srcGrpID = srcGroupMemb.mainGroups.iterator().next();
           String trgGrpID = trgGroupMemb.mainGroups.iterator().next();       
           if (!srcGrpID.equals(trgGrpID)) {
-            int result = JOptionPane.showOptionDialog(appState.getTopFrame(), rcx.rMan.getString("insertNode.chooseRegionDestination"),
-                                                      rcx.rMan.getString("insertNode.chooseRegionDestinationTitle"),
+            int result = JOptionPane.showOptionDialog(uics.getTopFrame(), rcx.getRMan().getString("insertNode.chooseRegionDestination"),
+                                                      rcx.getRMan().getString("insertNode.chooseRegionDestinationTitle"),
                                                       JOptionPane.DEFAULT_OPTION, 
                                                       JOptionPane.QUESTION_MESSAGE, 
                                                       null, new Object[] {
-                                                        rcx.rMan.getString("insertNode.source"),
-                                                        rcx.rMan.getString("insertNode.target"),
-                                                        rcx.rMan.getString("dialogs.cancel"),        
-                                                      }, rcx.rMan.getString("insertNode.target"));
+                                                        rcx.getRMan().getString("insertNode.source"),
+                                                        rcx.getRMan().getString("insertNode.target"),
+                                                        rcx.getRMan().getString("dialogs.cancel"),        
+                                                      }, rcx.getRMan().getString("insertNode.target"));
             if (result == JOptionPane.CLOSED_OPTION) {
               return (STOP_PROCESSING);
             } else if (result == 0) {
@@ -1244,7 +1201,30 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         }
       }
       return (NO_AMBIGUITY);
-    }  
+    }
+    
+    /***************************************************************************
+    **
+    ** We can do a background thread in the desktop version
+    ** 
+    */
+  
+    public boolean handleRemoteException(Exception remoteEx) {
+      return (false);
+    }        
+   
+    public void cleanUpPreEnable(Object result) {
+      return;
+    }
+   
+    public void cleanUpPostRepaint(Object result) {
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      return;
+    } 
+    
+    public void handleCancellation() {
+      return;
+    }   
   }
   
   /***************************************************************************
@@ -1252,9 +1232,8 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   ** Background multi-layout link runner
   */ 
     
-  private class NodeInsertionRunner extends BackgroundWorker {
+  private static class NodeInsertionRunner extends BackgroundWorker {
     
-    private BTState myAppState_;
     private UndoSupport support_;
     private ArrayList<LayoutLinkSupport.GlobalLinkRequest> requestList_;
     private int resolution_;
@@ -1263,13 +1242,12 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     private Intersection intersected_;
     private boolean doGene_;
     private Node legacyNodeField_; 
-    private DataAccessContext rcx_;
+    private StaticDataAccessContext rcx_;
         
-    public NodeInsertionRunner(BTState appState, Node legacyNodeField, DataAccessContext rcx, 
+    public NodeInsertionRunner(Node legacyNodeField, StaticDataAccessContext rcx, 
                                boolean doGene, int resolution, Set<String> resolved, 
                                Intersection intersected, Point pt, UndoSupport support) {
       super(new LinkRouter.RoutingResult());
-      myAppState_ = appState;
       support_ = support;
       requestList_ = new ArrayList<LayoutLinkSupport.GlobalLinkRequest>();
       pt_ = pt;
@@ -1284,9 +1262,9 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
     public Object runCore() throws AsynchExitRequestException {
       
       HashMap<String, Set<String>> neededLinksPerGenomeInstance = new HashMap<String, Set<String>>();
-      Map<String, PadNeedsForLayout> globalPadNeeds = (new FullGenomeHierarchyOracle(myAppState_)).getGlobalNetModuleLinkPadNeeds();
+      Map<String, PadNeedsForLayout> globalPadNeeds = rcx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
        
-      addNewNodeInsertedIntoLinkage(myAppState_, legacyNodeField_, rcx_, doGene_, 
+      addNewNodeInsertedIntoLinkage(legacyNodeField_, rcx_, doGene_, 
                                     resolution_, resolved_, pt_.x, pt_.y, intersected_, 
                                     support_, neededLinksPerGenomeInstance, this, 0.0, 0.2);      
         
@@ -1296,14 +1274,14 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
         LayoutLinkSupport.GlobalLinkRequest glr = new LayoutLinkSupport.GlobalLinkRequest();
         glr.genome = rcx_.getGenomeSource().getGenome(giID);
         glr.gSrc = rcx_.getGenomeSource();
-        glr.layout = rcx_.lSrc.getLayoutForGenomeKey(giID);
+        glr.layout = rcx_.getLayoutSource().getLayoutForGenomeKey(giID);
         glr.badLinks = neededLinksPerGenomeInstance.get(giID);
         requestList_.add(glr);
       }      
          
-      LayoutOptions lopt = new LayoutOptions(myAppState_.getLayoutOptMgr().getLayoutOptions());
-      LinkRouter.RoutingResult result = LayoutLinkSupport.relayoutLinksGlobally(myAppState_, requestList_, support_, lopt, this, 0.2, 1.0);
-      ModificationCommands.repairNetModuleLinkPadsGlobally(myAppState_, rcx_, globalPadNeeds, false, support_);
+      LayoutOptions lopt = new LayoutOptions(rcx_.getLayoutOptMgr().getLayoutOptions());
+      LinkRouter.RoutingResult result = LayoutLinkSupport.relayoutLinksGlobally(rcx_, requestList_, support_, lopt, this, 0.2, 1.0);
+      ModificationCommands.repairNetModuleLinkPadsGlobally(rcx_, globalPadNeeds, false, support_);
       return (result);
     }
     
@@ -1323,10 +1301,10 @@ public class InsertNodeInLink extends AbstractControlFlow implements BackgroundW
   */
   
   private static class DirectFixupInfo {    
-    DataAccessContext rcx;
+    StaticDataAccessContext rcx;
     Map<String, NodeInsertionDirective> doLinks;
     
-    DirectFixupInfo(DataAccessContext rcx, Map<String, NodeInsertionDirective> doLinks) {
+    DirectFixupInfo(StaticDataAccessContext rcx, Map<String, NodeInsertionDirective> doLinks) {
       this.rcx = rcx;
       this.doLinks = doLinks;
     }    

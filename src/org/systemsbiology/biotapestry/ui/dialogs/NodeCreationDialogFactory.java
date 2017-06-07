@@ -177,6 +177,11 @@ public class NodeCreationDialogFactory extends DialogFactory {
       finishConstruction();
     }
     
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -256,6 +261,11 @@ public class NodeCreationDialogFactory extends DialogFactory {
      }      
      public boolean isForApply() {
        return (false);
-     }   
+     } 
+     
+ 	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
    } 
 }

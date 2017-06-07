@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,6 +20,9 @@
 package org.systemsbiology.biotapestry.nav;
 
 import javax.swing.tree.DefaultMutableTreeNode;
+
+import org.systemsbiology.biotapestry.util.UniqueLabeller;
+
 import java.util.HashMap;
 
 /***************************************************************************
@@ -32,8 +35,12 @@ public class NavTreeChange {
 
   public DefaultMutableTreeNode oldRoot;
   public DefaultMutableTreeNode newRoot;
-  public HashMap<String, DefaultMutableTreeNode> oldMap;
-  public HashMap<String, DefaultMutableTreeNode> newMap;
+  public UniqueLabeller oldLabels;
+  public UniqueLabeller newLabels;
+  public HashMap<NavTree.ModelID, NavTree.NodeID> oldModMap;
+  public HashMap<NavTree.ModelID, NavTree.NodeID> newModMap;
+  public HashMap<NavTree.NodeID, DefaultMutableTreeNode> oldNodeMap;
+  public HashMap<NavTree.NodeID, DefaultMutableTreeNode> newNodeMap;
   public DefaultMutableTreeNode contentNode;  
   public NavTree.NavNodeContents oldContents;
   public NavTree.NavNodeContents newContents;

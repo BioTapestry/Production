@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,9 +39,10 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.ColorResolver;
-import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -205,6 +206,23 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+ 
+    for (LinkSegment ls : segments_.values()) {
+      ls.mapColorTags(ctm);
+    }
+    for (LinkBusDrop ls : drops_) {
+      ls.mapColorTags(ctm);
+    }
+    drawStyle_.mapColorTags(ctm);
+    return;
+  }  
+ 
   /***************************************************************************
   **
   ** Break tree for new source
@@ -704,8 +722,8 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
                                                 double intersectTol) {
 
     GenomeSource gSrc = icx.getGenomeSource();
-    Genome genome = icx.getGenome();
-    ThickInfo ti = maxThickForIntersect(gSrc, genome, icx.oso, intersectTol);  // kinda cheap!
+    Genome genome = icx.getCurrentGenome();
+    ThickInfo ti = maxThickForIntersect(gSrc, genome, icx.getOSO(), intersectTol);  // kinda cheap!
     int upperBound = ti.maxThick;
     boolean twoPass = ti.twoPass;
     double upperTol = upperBound / 2.0;
@@ -720,7 +738,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
       if ((omittedDrops != null) && omittedDrops.contains(targRef)) {
         return (null);
       }
-      if (!linkIsInModel(gSrc, genome, icx.oso, targRef)) {
+      if (!linkIsInModel(gSrc, genome, icx.getOSO(), targRef)) {
         return (null);
       }            
       LinkSegment fakeDirect = getDirectLinkPath(icx);
@@ -743,7 +761,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
           continue;
         }
       }
-      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.oso, dropRef)) {
+      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.getOSO(), dropRef)) {
         continue;
       }        
       LinkSegment dropSeg;
@@ -901,7 +919,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** the start drop; it gets the start drop too.
   */
   
-  public LinkSegment getSegmentGeometryForParent(LinkSegmentID segID, boolean forceToGrid, DataAccessContext icx) {
+  public LinkSegment getSegmentGeometryForParent(LinkSegmentID segID, boolean forceToGrid, StaticDataAccessContext icx) {
     
     if (segID.isDirect()) {
       return (null);
@@ -965,7 +983,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     
     if (isDirect()) {
       String targRef = getTargetDrop().getTargetRef();
-      if ((targRef != null) && !linkIsInModel(icx.getGenomeSource(), icx.getGenome(), oso, targRef)) {
+      if ((targRef != null) && !linkIsInModel(icx.getGenomeSource(), icx.getCurrentGenome(), oso, targRef)) {
         return (retval);
       }
       LinkSegment fakeDirect = getDirectLinkPath(icx);
@@ -987,7 +1005,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     while (dit.hasNext()) {
       LinkBusDrop drop = dit.next();
       String dropRef = drop.getTargetRef();
-      if ((dropRef != null) && !linkIsInModel(icx.getGenomeSource(), icx.getGenome(), oso, dropRef)) {
+      if ((dropRef != null) && !linkIsInModel(icx.getGenomeSource(), icx.getCurrentGenome(), oso, dropRef)) {
         continue;
       }
       LinkSegment dropSeg;
@@ -1648,7 +1666,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Merge another tree with only one path in it
   */
   
-  public void mergeSinglePathTree(LinkProperties spTree, DataAccessContext icx) {
+  public void mergeSinglePathTree(LinkProperties spTree, StaticDataAccessContext icx) {
     //
     // We need to add the given single-path tree into our tree, where it is
     // probable that the single path shares the geometry of part of our
@@ -2049,7 +2067,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Get a split point
   */
   
-  public Point2D getSplitPoint(LinkSegmentID segID, Point2D splitPtIn, DataAccessContext icx) { 
+  public Point2D getSplitPoint(LinkSegmentID segID, Point2D splitPtIn, StaticDataAccessContext icx) { 
     Point2D splitPt = (Point2D)splitPtIn.clone();
     LinkSegment lseg = getSegmentGeometryForID(segID, icx, true);
     double frac = lseg.fractionOfRun(splitPtIn);
@@ -2064,10 +2082,10 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   
   public LinkSegmentID findSegmentSupportingLinkSet(BusProperties rootBus, 
                                                     LinkSegmentID rootMatchingSegID,
-                                                    DataAccessContext rcxRoot,
-                                                    Set<String> linksToMatch, DataAccessContext icxi) {
+                                                    StaticDataAccessContext rcxRoot,
+                                                    Set<String> linksToMatch, StaticDataAccessContext icxi) {
  
-    DataAccessContext icx = new DataAccessContext(icxi, rcxRoot.getGenome(), rcxRoot.getLayout());
+    StaticDataAccessContext icx = new StaticDataAccessContext(icxi, rcxRoot.getCurrentGenome(), rcxRoot.getCurrentLayout());
     LinkSegment rootMatchingSeg = rootBus.getSegmentGeometryForID(rootMatchingSegID, icx, true);
 
     HashSet<String> allLinks = new HashSet<String>(getLinkageList());
@@ -3733,11 +3751,11 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     
     ArrayList<LinkSegmentID> retval = new ArrayList<LinkSegmentID>();
     GenomeSource gSrc = icx.getGenomeSource();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
         
     if (isDirect()) {
       String targRef = getTargetDrop().getTargetRef();
-      if (!linkIsInModel(gSrc, genome, icx.oso, targRef)) {
+      if (!linkIsInModel(gSrc, genome, icx.getOSO(), targRef)) {
         return (retval);
       }
       retval.add(LinkSegmentID.buildIDForType(targRef, LinkSegmentID.DIRECT_LINK));
@@ -3754,7 +3772,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     while (dit.hasNext()) {
       LinkBusDrop drop = dit.next();
       String dropRef = drop.getTargetRef();
-      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.oso, dropRef)) {
+      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.getOSO(), dropRef)) {
         continue;
       }
       int dropType = (dropRef == null) ? LinkSegmentID.START_DROP : LinkSegmentID.END_DROP;
@@ -3784,18 +3802,18 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
  ** Get a list of LinkSegmentIDs for one link
   */
   
-  public List<LinkSegmentID> getBusLinkSegmentsForOneLink(DataAccessContext icx, String linkID) { 
+  public List<LinkSegmentID> getBusLinkSegmentsForOneLink(StaticDataAccessContext icx, String linkID) { 
     
     ArrayList<LinkSegmentID> retval = new ArrayList<LinkSegmentID>();
     GenomeSource gSrc = icx.getGenomeSource();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
    
     if (isDirect()) {
       String targRef = getTargetDrop().getTargetRef();
       if (!targRef.equals(linkID)) {
         return (retval);
       }
-      if (!linkIsInModel(gSrc, genome, icx.oso, targRef)) {
+      if (!linkIsInModel(gSrc, genome, icx.getOSO(), targRef)) {
         return (retval);
       }
       retval.add(LinkSegmentID.buildIDForType(targRef, LinkSegmentID.DIRECT_LINK));
@@ -3815,7 +3833,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
       if ((dropRef != null) && (!dropRef.equals(linkID))) {
         continue;
       } 
-      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.oso, dropRef)) {
+      if ((dropRef != null) && !linkIsInModel(gSrc, genome, icx.getOSO(), dropRef)) {
         continue;
       }
       int dropType = (dropRef == null) ? LinkSegmentID.START_DROP : LinkSegmentID.END_DROP;
@@ -3978,7 +3996,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Merge a single link into this one at a given segment
   */
   
-  public void mergeSingleToTreeAtSegment(LinkProperties slp, DataAccessContext icx, LinkSegmentID sid) {
+  public void mergeSingleToTreeAtSegment(LinkProperties slp, StaticDataAccessContext icx, LinkSegmentID sid) {
 
     if (!slp.isSingleDropTree()) {
       throw new IllegalArgumentException();
@@ -4006,7 +4024,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     // Do some sanity checking
     //
     
-    sourceSanityCheck(icx.getGenome(), slp);
+    sourceSanityCheck(icx.getCurrentGenome(), slp);
   
     //
     // Figure out where we are going to connect up the new segment.  If we
@@ -4586,7 +4604,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** topology to match:
   */  
  
-  public int repairLinkTree(DataAccessContext icx,
+  public int repairLinkTree(StaticDataAccessContext icx,
                             BTProgressMonitor monitor, double minFrac, double maxFrac, QuadTree quad) throws AsynchExitRequestException {   
     boolean found = false;
     // Just in case the repair operation is not going to converge, put a cap on
@@ -4641,7 +4659,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Find overlap errors
   */
   
-  private List<RepairRequest> findOverlapErrors(DataAccessContext icx, QuadTree quad) {
+  private List<RepairRequest> findOverlapErrors(StaticDataAccessContext icx, QuadTree quad) {
 
     ArrayList<RepairRequest> retval = new ArrayList<RepairRequest>();
     if (isDirect()) {
@@ -4849,7 +4867,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Get the deepest non-ortho link segment
   */
   
-  public LinkSegmentID getDeepestNonOrtho(DataAccessContext icx, Set<LinkSegmentID> skipIDs) {
+  public LinkSegmentID getDeepestNonOrtho(StaticDataAccessContext icx, Set<LinkSegmentID> skipIDs) {
    
     //
     // The current implementation of fixing a segment is recursive.  So one
@@ -4862,7 +4880,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     if (nonOrtho.isEmpty()) {
       return (null);
     }
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     if (isDirect()) {
       LinkSegmentID dirID = LinkSegmentID.buildIDForDirect(getALinkID(genome));
       return ((skipIDs.contains(dirID)) ? null : dirID);     
@@ -5087,7 +5105,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** repair one overlap error
   */
   
-  private boolean repairOverlapErrors(DataAccessContext icx,
+  private boolean repairOverlapErrors(StaticDataAccessContext icx,
                                       RepairRequest request) {
  
     LinkSegment.OverlapResult ovrRes = request.ovrRes;
@@ -5254,7 +5272,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
       if (psid != null) {
         retval.parentIDs.put(lsid, psid);
       }
-      FixOrthoOptions.ForceDirsAndMatches forceDirs = fixNonOrthoForDirs(lsid, noSeg, icx.getGenome(), icx.getLayout());
+      FixOrthoOptions.ForceDirsAndMatches forceDirs = fixNonOrthoForDirs(lsid, noSeg, icx.getCurrentGenome(), icx.getCurrentLayout());
       retval.forceDirs.put(lsid, forceDirs);
     }
     retval.prepare(this);
@@ -5815,7 +5833,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Build segment tree
   */
   
-  public SegmentWithKids buildSegmentTree(DataAccessContext icx) {
+  public SegmentWithKids buildSegmentTree(StaticDataAccessContext icx) {
 
     if (isDirect()) {
       return (null);
@@ -5975,7 +5993,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Get the depth-first listing of the tree targets (link IDS)
   */
   
-  public String getDepthFirstDebug(DataAccessContext icx) {
+  public String getDepthFirstDebug(StaticDataAccessContext icx) {
     
     StringBuffer retval = new StringBuffer();
 
@@ -7470,13 +7488,13 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** Get the segment ID to associate with a label
   */
   
-  protected LinkSegmentID getSegmentIDForLabel(DataAccessContext icx, OverlayStateOracle oso) {
+  protected LinkSegmentID getSegmentIDForLabel(StaticDataAccessContext icx, OverlayStateOracle oso) {
 
     //
     // Gotta be DBGenome or a root instance:
     //
     
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     if (genome instanceof GenomeInstance) {
       if (((GenomeInstance)genome).getVfgParent() != null) {

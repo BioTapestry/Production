@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,10 +37,14 @@ import javax.swing.event.MenuListener;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MenuSource;
 import org.systemsbiology.biotapestry.cmd.PopCommands;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -72,8 +76,12 @@ public class PopControl {
   // PRIVATE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////
- 
-  private BTState appState_;
+  
+  private UIComponentSource uics_;
+  private HarnessBuilder hBld_;
+  private CmdSource cSrc_;
+  private TabSource tSrc_;
+  private ResourceManager rMan_;
   
 //  private PopCommands popCmds_;
  // private boolean readOnly_;
@@ -119,13 +127,17 @@ public class PopControl {
   ** Constructor
   */
   
-  public PopControl(BTState appState, DataAccessContext dacx) {
-    appState_ = appState;
-    boolean isHeadless = appState_.isHeadless();
-    if (appState_.getIsEditor()) {
+  public PopControl(DataAccessContext dacx, UIComponentSource uics, CmdSource cSrc, TabSource tSrc, HarnessBuilder hBld) {
+    uics_ = uics;
+    cSrc_ = cSrc;
+    tSrc_ = tSrc;
+    rMan_ = dacx.getRMan();
+    hBld_ = hBld;
+    boolean isHeadless = uics.isHeadless();
+    if (uics.getIsEditor()) {
       if (!isHeadless) {
-        emsa_ = appState_.getPopCmds().getAction(FlowMeister.PopFlow.EDIT_MULTI_SELECTIONS, null);
-        mergeNodes_ =  appState_.getPopCmds().getAction(FlowMeister.PopFlow.MERGE_NODES, null);
+        emsa_ = cSrc_.getPopCmds().getAction(FlowMeister.PopFlow.EDIT_MULTI_SELECTIONS, null);
+        mergeNodes_ =  cSrc_.getPopCmds().getAction(FlowMeister.PopFlow.MERGE_NODES, null);
       }
     }
     if (!isHeadless) {
@@ -164,7 +176,7 @@ public class PopControl {
   
   public XPlatMenu generateMenu(Intersection intersect, DataAccessContext dacx) {
     if (intersect == null) {
-      ResourceManager rMan = dacx.rMan;
+      ResourceManager rMan = dacx.getRMan();
       XPlatMenu xPlatEmptySel = new XPlatMenu(rMan.getString("command.selectedItemMenu"), rMan.getChar("command.selectedItemMenuMnem"));
       xPlatEmptySel.setEnabled(false);
       return (xPlatEmptySel);
@@ -188,15 +200,16 @@ public class PopControl {
   ** Stock the given menu with single selection actions
   */
   
-  private GenerateOrStockResult generateOrStockMenu(JMenu menu, Intersection intersect, DataAccessContext dacx) {
-    PopCommands popCmds = appState_.getPopCmds();
+  private GenerateOrStockResult generateOrStockMenu(JMenu menu, Intersection intersect, 
+                                                    DataAccessContext dacx) {
+    PopCommands popCmds = cSrc_.getPopCmds();
     
     popCmds.setIntersection(intersect);
     popCmds.setAbsScreenPoint(null);
     
-    Genome genome = dacx.getGenome();
+    Genome genome = dacx.getCurrentGenome();
     String objID = intersect.getObjectID();
-    boolean readOnly = !appState_.getIsEditor();
+    boolean readOnly = !uics_.getIsEditor();
      
     NodePopup mainGuts = null;
     boolean doGene = false;
@@ -215,15 +228,15 @@ public class PopControl {
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
       bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));
       bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));
-      String overlayKey = dacx.oso.getCurrentOverlay();
-      MenuSource ms = new MenuSource(appState_.getFloM(), readOnly, appState_.getDoGaggle());
+      String overlayKey = dacx.getOSO().getCurrentOverlay();
+      MenuSource ms = new MenuSource(uics_, tSrc_, cSrc_);
       XPlatMenu xpm = ms.defineNodeMenuPopup(genome, objID, doGene, overlayKey, true, dacx);
       
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         menu.removeAll();
         mainGuts.preparePopup(xpm, bifo, new MenuItemTarget(menu));
       } else {
-        ms.activateXPlatPopup(xpm, bifo, objID, intersect.getSubID(), dacx);    
+        ms.activateXPlatPopup(xpm, bifo, objID, intersect.getSubID(), dacx, uics_, cSrc_);    
       }
       return (new GenerateOrStockResult(true, xpm));
     }
@@ -231,19 +244,19 @@ public class PopControl {
     XPlatMenu xpm = null;
     Linkage link = genome.getLinkage(objID);
     if (link != null) {    
-      if (!appState_.isHeadless()) {  
-        Layout layout = dacx.getLayout();
-        DataAccessContext rcx = new DataAccessContext(appState_, genome, layout);
+      if (!uics_.isHeadless()) {  
+        Layout layout = dacx.getCurrentLayout();
+        StaticDataAccessContext rcx = new StaticDataAccessContext(dacx, genome, layout);
         popCmds.setupRemoteLinkSelection(rcx, link);
         menu.removeAll();
         linkMainGuts_.preparePopup(new MenuItemTarget(menu));
       } else {
-        MenuSource ms = new MenuSource(appState_.getFloM(), readOnly, appState_.getDoGaggle());
+        MenuSource ms = new MenuSource(uics_, tSrc_, cSrc_);
         xpm = linkMainGuts_.getMenuDef();
         MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
         bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));
         bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));
-        ms.activateXPlatPopup(xpm, bifo, objID, null, dacx);       
+        ms.activateXPlatPopup(xpm, bifo, objID, null, dacx, uics_, cSrc_);       
       }
       return (new GenerateOrStockResult(true, xpm));
     }
@@ -279,24 +292,24 @@ public class PopControl {
   
   private GenerateOrStockResult generateOrStockMultiSelMenu(JMenu menu, Map<String, Intersection> intersects, DataAccessContext dacx) {
      
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       menu.removeAll();
       if (emsa_ != null) {
         menu.add(emsa_);
       }
-      Genome genome = dacx.getGenome();
-      Layout layout = dacx.getLayout();
-      PopCommands popCmds = appState_.getPopCmds();
+      Genome genome = dacx.getCurrentGenome();
+      Layout layout = dacx.getCurrentLayout();
+      PopCommands popCmds = cSrc_.getPopCmds();
       HashSet<String> genes = new HashSet<String>();
       HashSet<String> nodes = new HashSet<String>();
       HashSet<String> links = new HashSet<String>();
-      boolean retval = appState_.getSUPanel().getDividedSelections(genome, layout, genes, nodes, links);
+      boolean retval = uics_.getSUPanel().getDividedSelections(genome, layout, genes, nodes, links);
       popCmds.setMultiSelections(genes, nodes, links);
       return (new GenerateOrStockResult(retval, null));
     } else {
-      ResourceManager rMan = dacx.rMan;
+      ResourceManager rMan = dacx.getRMan();
       XPlatMenu xPlatMultiSel = new XPlatMenu(rMan.getString("command.selectedItemMenu"), rMan.getChar("command.selectedItemMenuMnem"));
-      xPlatMultiSel.addItem(new XPlatAction(appState_.getFloM(), rMan, FlowMeister.PopFlow.EDIT_MULTI_SELECTIONS));     
+      xPlatMultiSel.addItem(new XPlatAction(cSrc_.getFloM(), rMan, FlowMeister.PopFlow.EDIT_MULTI_SELECTIONS));     
       return (new GenerateOrStockResult(true, xPlatMultiSel));
     }
   }
@@ -307,19 +320,20 @@ public class PopControl {
   */
   
   public void showPopup(DataAccessContext rcx, Intersection.AugmentedIntersection aug, int x, int y, Point screenAbs) {
-    PopCommands popCmds = appState_.getPopCmds();
-    boolean readOnly = !appState_.getIsEditor();
-    FlowMeister flom = appState_.getFloM();
+    PopCommands popCmds = cSrc_.getPopCmds();
+    boolean readOnly = !uics_.getIsEditor();
     popCmds.setPopup(new Point2D.Float(x, y));
     popCmds.setIntersection(aug.intersect);
     popCmds.setAbsScreenPoint(screenAbs);
     HashSet<String> genes = new HashSet<String>();
     HashSet<String> nodes = new HashSet<String>();
     HashSet<String> links = new HashSet<String>();
-    Genome genome = rcx.getGenome();
-    Layout layout = rcx.getLayout();
-    appState_.getSUPanel().getDividedSelections(genome, layout, genes, nodes, links); 
+    Genome genome = rcx.getCurrentGenome();
+    Layout layout = rcx.getCurrentLayout();
+    uics_.getSUPanel().getDividedSelections(genome, layout, genes, nodes, links); 
     popCmds.setMultiSelections(genes, nodes, links);
+    MenuSource mSrc = new MenuSource(uics_, tSrc_, cSrc_);
+    
 
     //
     // Double-checking that we have something is probably overkill, but that's how it
@@ -327,19 +341,19 @@ public class PopControl {
     //
     switch (aug.type) {
       case Intersection.IS_GENE:
-        Gene gene = rcx.getGenome().getGene(aug.intersect.getObjectID());
+        Gene gene = rcx.getCurrentGenome().getGene(aug.intersect.getObjectID());
         if (gene != null) {
-          genePopupGuts_.showPopup(new MenuSource(flom, readOnly, appState_.getDoGaggle()), rcx.getGenome(), aug.intersect, x, y, true, rcx);       
+          genePopupGuts_.showPopup(mSrc, rcx.getCurrentGenome(), aug.intersect, x, y, true, rcx);       
         }
         break;
       case Intersection.IS_NODE:
-        Node node = rcx.getGenome().getNode(aug.intersect.getObjectID());
+        Node node = rcx.getCurrentGenome().getNode(aug.intersect.getObjectID());
         if (node != null) {
-          nodePopupGuts_.showPopup(new MenuSource(flom, readOnly, appState_.getDoGaggle()), rcx.getGenome(), aug.intersect, x, y, false, rcx);
+          nodePopupGuts_.showPopup(mSrc, rcx.getCurrentGenome(), aug.intersect, x, y, false, rcx);
         }
         break;        
       case Intersection.IS_LINK: 
-        if (rcx.getGenome().getLinkage(aug.intersect.getObjectID()) != null) {
+        if (rcx.getCurrentGenome().getLinkage(aug.intersect.getObjectID()) != null) {
           LinkSegmentID segID = aug.intersect.segmentIDFromIntersect();
           if (!readOnly && (segID != null) && (segID.isTaggedWithEndpoint())) {
             linkPointPop_.showPopup(x, y);           
@@ -349,18 +363,18 @@ public class PopControl {
         }
         break;        
       case Intersection.IS_NOTE:
-        if (!readOnly && (rcx.getGenome().getNote(aug.intersect.getObjectID()) != null)) {
+        if (!readOnly && (rcx.getCurrentGenome().getNote(aug.intersect.getObjectID()) != null)) {
           notPop_.showPopup(x, y);
         }
         break;        
       case Intersection.IS_GROUP:
-        if ((rcx.getGenome() instanceof GenomeInstance) &&
-               (rcx.getGenomeAsInstance().getGroup(aug.intersect.getObjectID()) != null)) {
-          regionPop_.showPopup(new MenuSource(flom, readOnly, appState_.getDoGaggle()), rcx.getGenome(), aug.intersect, x, y, rcx);
+        if ((rcx.getCurrentGenome() instanceof GenomeInstance) &&
+               (rcx.getCurrentGenomeAsInstance().getGroup(aug.intersect.getObjectID()) != null)) {
+          regionPop_.showPopup(mSrc, rcx.getCurrentGenome(), aug.intersect, x, y, rcx);
         }
         break;
       case Intersection.IS_MODULE:
-        modulePop_.showPopup(new MenuSource(flom, readOnly, appState_.getDoGaggle()), rcx.getLayout(), aug.intersect, x, y, rcx);
+        modulePop_.showPopup(mSrc, rcx.getCurrentLayout(), aug.intersect, x, y, rcx);
         break;
       case Intersection.IS_MODULE_LINK_TREE:
         if (!readOnly) {
@@ -398,7 +412,7 @@ public class PopControl {
 
   private void buildPopups(DataAccessContext dacx) {
  
-    MenuSource ms = new MenuSource(appState_.getFloM(), !appState_.getIsEditor(), appState_.getDoGaggle());
+    MenuSource ms = new MenuSource(uics_, tSrc_, cSrc_);
     MenuSource.SupportedMenus supp = ms.getSupportedMenuClasses();
     
     //
@@ -441,12 +455,12 @@ public class PopControl {
   private class PopupHandler implements PopupMenuListener {
     
     public void popupMenuCanceled(PopupMenuEvent e) {
-      appState_.getSUPanel().forceShowingModuleComponents(null);
+      uics_.getSUPanel().forceShowingModuleComponents(null);
     }
     
     public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
-      appState_.getSUPanel().forceShowingModuleComponents(null);
-      appState_.getSUPanel().requestFocusForModelInWindow();
+      uics_.getSUPanel().forceShowingModuleComponents(null);
+      uics_.getSUPanel().requestFocusForModelInWindow();
     }
     
     public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
@@ -502,7 +516,7 @@ public class PopControl {
     void showPopup(int x, int y) { 
       popMenu_.removeAll();  
       preparePopup(new MenuItemTarget(popMenu_));
-      appState_.getSUPanel().showPopup(popMenu_, x, y);
+      uics_.getSUPanel().showPopup(popMenu_, x, y);
       popMenu_.requestFocusInWindow();
       return;
     }
@@ -513,10 +527,10 @@ public class PopControl {
     */
  
     void preparePopup(MenuItemTarget useMenu) { 
-      DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
-      DesktopMenuFactory.ActionSource asrc = new DesktopMenuFactory.ActionSource(appState_);
+      DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, rMan_, uics_, hBld_);
+      DesktopMenuFactory.ActionSource asrc = new DesktopMenuFactory.ActionSource(cSrc_);
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
-      boolean readOnly = !appState_.getIsEditor();
+      boolean readOnly = !uics_.getIsEditor();
       bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));
       bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));    
       dmf.buildMenuGeneral(menuDef_, asrc, bifo, useMenu);      
@@ -562,8 +576,8 @@ public class PopControl {
     */
   
     void preparePopup(XPlatMenu xpm, MenuSource.BuildInfo bifo, MenuItemTarget mit) {
-      DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
-      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(appState_), bifo, mit);
+      DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, rMan_, uics_, hBld_);
+      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(cSrc_), bifo, mit);
       Iterator<AbstractAction> cavit = bifo.allActions.iterator();
       while (cavit.hasNext()) {
         PopCommands.PopAction pa = (PopCommands.PopAction)cavit.next();
@@ -596,15 +610,15 @@ public class PopControl {
   
     void showPopup(MenuSource ms, Genome genome, Intersection selected, int x, int y, boolean doGene, DataAccessContext dacx) {
       popMenu_.removeAll();    
-      boolean readOnly = !appState_.getIsEditor();
+      boolean readOnly = !uics_.getIsEditor();
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
       bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));
       bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));
-      String overlayKey = appState_.getCurrentOverlay();
+      String overlayKey = dacx.getOSO().getCurrentOverlay();
       XPlatMenu xpm = ms.defineNodeMenuPopup(genome, selected.getObjectID(), doGene, overlayKey, false, dacx); 
       MenuItemTarget mit = new MenuItemTarget(popMenu_);
       preparePopup(xpm, bifo, mit);
-      appState_.getSUPanel().showPopup(popMenu_, x, y);
+      uics_.getSUPanel().showPopup(popMenu_, x, y);
       popMenu_.requestFocusInWindow();
       return;
     } 
@@ -628,7 +642,7 @@ public class PopControl {
   
     @Override
     void showPopup(int x, int y) {
-      appState_.getPopCmds().setupNormalLinkSelection();
+      cSrc_.getPopCmds().setupNormalLinkSelection();
       super.showPopup(x, y);
       return;
     }
@@ -673,27 +687,23 @@ public class PopControl {
       
       GenomeInstance gi = (GenomeInstance)genome;
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
-      boolean readOnly = !appState_.getIsEditor();
+      boolean readOnly = !uics_.getIsEditor();
       bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));
       bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));
       XPlatMenu xpm = ms.defineRegionPopup(gi, selected.getObjectID(), dacx);
-      DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
-      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(appState_), bifo, new MenuItemTarget(popup_));
+      DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, rMan_, uics_, hBld_);
+      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(cSrc_), bifo, new MenuItemTarget(popup_));
       Iterator<AbstractAction> cavit = bifo.allActions.iterator();
       while (cavit.hasNext()) {
         PopCommands.PopAction pa = (PopCommands.PopAction)cavit.next();
         pa.setEnabled(pa.isValid());
       }
-      appState_.getSUPanel().showPopup(popup_, x, y);
+      uics_.getSUPanel().showPopup(popup_, x, y);
       popup_.requestFocusInWindow();
       return;
     }        
   }
-  
-  
-  
-  
-  
+
   /***************************************************************************
   **
   ** Used for net module popup
@@ -733,15 +743,15 @@ public class PopControl {
     */
     
     public void menuSelected(MenuEvent e) { 
-      appState_.getSUPanel().forceShowingModuleComponents(showCompsForModule_);
+      uics_.getSUPanel().forceShowingModuleComponents(showCompsForModule_);
     }
 
     public void menuDeselected(MenuEvent e) {
-      appState_.getSUPanel().forceShowingModuleComponents(null);
+      uics_.getSUPanel().forceShowingModuleComponents(null);
     }
 
     public void menuCanceled(MenuEvent e) {
-      appState_.getSUPanel().forceShowingModuleComponents(null);
+      uics_.getSUPanel().forceShowingModuleComponents(null);
     }   
     
     
@@ -752,15 +762,15 @@ public class PopControl {
   
     void showPopup(MenuSource ms, Layout layout, Intersection selected, int x, int y, DataAccessContext dacx) {
       popup_.removeAll();
-      String overlayKey = appState_.getCurrentOverlay();
-      boolean readOnly = !appState_.getIsEditor();
+      String overlayKey = dacx.getOSO().getCurrentOverlay();
+      boolean readOnly = !uics_.getIsEditor();
       MenuSource.BuildInfo bifo = new MenuSource.BuildInfo();
       bifo.conditions.put("VIEWER", Boolean.valueOf(readOnly));
       bifo.conditions.put("EDITOR", Boolean.valueOf(!readOnly));      
       NetModuleFree.IntersectionExtraInfo ei = (NetModuleFree.IntersectionExtraInfo)selected.getSubID();    
       XPlatMenu xpm = ms.defineNetModulePopup(layout, overlayKey, selected.getObjectID(), ei, dacx);
-      DesktopMenuFactory dmf = new DesktopMenuFactory(appState_);
-      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(appState_), bifo, new MenuItemTarget(popup_));
+      DesktopMenuFactory dmf = new DesktopMenuFactory(cSrc_, rMan_, uics_, hBld_);
+      dmf.buildMenuGeneral(xpm, new DesktopMenuFactory.ActionSource(cSrc_), bifo, new MenuItemTarget(popup_));
       Iterator<AbstractAction> cavit = bifo.allActions.iterator();
       while (cavit.hasNext()) {
         PopCommands.PopAction pa = (PopCommands.PopAction)cavit.next();
@@ -776,7 +786,7 @@ public class PopControl {
         dnmi.addChangeListener(new ChangeListener() {
           public void stateChanged(ChangeEvent ev) {
             boolean armed = ((JMenuItem)popup_.getComponent(componentPos1_)).isArmed();     
-            appState_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
+            uics_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
           }
         });     
        
@@ -785,7 +795,7 @@ public class PopControl {
         dnmi2.addChangeListener(new ChangeListener() {
           public void stateChanged(ChangeEvent ev) {
             boolean armed = ((JMenuItem)popup_.getComponent(componentPos2_)).isArmed();     
-            appState_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
+            uics_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
           }
         });     
              
@@ -794,7 +804,7 @@ public class PopControl {
         dnmi3.addChangeListener(new ChangeListener() {
           public void stateChanged(ChangeEvent ev) {
             boolean armed = ((JMenuItem)popup_.getComponent(componentPos3_)).isArmed();     
-            appState_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
+            uics_.getSUPanel().forceShowingModuleComponents((armed) ? showCompsForModule_ : null);
           }
         });
         
@@ -804,7 +814,7 @@ public class PopControl {
         showCompsForModule_ = (nmp.getType() != NetModuleProperties.MEMBERS_ONLY) ? moduleID : null;
       }
       
-      appState_.getSUPanel().showPopup(popup_, x, y);
+      uics_.getSUPanel().showPopup(popup_, x, y);
       popup_.requestFocusInWindow();
       return;
     }     

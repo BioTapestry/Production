@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -52,7 +52,6 @@ public class FontSettingPanel extends JPanel {
   private JCheckBox useBold_;
   private JCheckBox useItalic_;
   private JLabel sizeLabel_;
-  private BTState appState_;
   
   private static final long serialVersionUID = 1L;
 
@@ -67,11 +66,10 @@ public class FontSettingPanel extends JPanel {
   ** Constructor 
   */ 
   
-  public FontSettingPanel(BTState appState) {     
-    appState_ = appState;   
+  public FontSettingPanel(DataAccessContext dacx) {
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
   
     sizeCombo_ = new JComboBox();
     useSerif_ = new JCheckBox();
@@ -144,6 +142,7 @@ public class FontSettingPanel extends JPanel {
   ** Set enabled state
   */
   
+  @Override
   public void setEnabled(boolean enabled) {
     super.setEnabled(enabled);
     sizeLabel_.setEnabled(enabled);

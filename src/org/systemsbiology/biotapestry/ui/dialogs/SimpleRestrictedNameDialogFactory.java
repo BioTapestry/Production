@@ -165,7 +165,11 @@ public class SimpleRestrictedNameDialogFactory extends DialogFactory {
           
       finishConstruction();
     }
- 
+    
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     /***************************************************************************
     **
     ** Do the bundle 
@@ -210,6 +214,10 @@ public class SimpleRestrictedNameDialogFactory extends DialogFactory {
       haveResult = false;
       return;
     }   
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }  

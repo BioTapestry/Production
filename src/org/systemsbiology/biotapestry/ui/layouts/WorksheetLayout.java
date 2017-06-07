@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,8 @@ import org.systemsbiology.biotapestry.analysis.NodeGrouper;
 import org.systemsbiology.biotapestry.analysis.Link;
 import org.systemsbiology.biotapestry.analysis.CycleFinder;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
@@ -77,19 +78,19 @@ public class WorksheetLayout implements SpecialtyLayout {
       this.tag_ = tag;  
     }
      
-    public EnumChoiceContent<TargTypes> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<TargTypes>(appState.getRMan().getString("worksheetLayout." + tag_), this));
+    public EnumChoiceContent<TargTypes> generateCombo(StaticDataAccessContext dacx) {
+      return (new EnumChoiceContent<TargTypes>(dacx.getRMan().getString("worksheetLayout." + tag_), this));
     }
    
-    public static Vector<EnumChoiceContent<TargTypes>> getChoices(BTState appState) {
+    public static Vector<EnumChoiceContent<TargTypes>> getChoices(StaticDataAccessContext dacx) {
       Vector<EnumChoiceContent<TargTypes>> retval = new Vector<EnumChoiceContent<TargTypes>>();
-      TimeCourseData tcd = appState.getDB().getTimeCourseData();    
-      boolean allowByTime = tcd.haveData();
+      TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();    
+      boolean allowByTime = tcd.haveDataEntries();
       for (TargTypes tt: values()) {
         if ((tt == TARGS_BY_TIME) && !allowByTime) {
           continue;
         }
-        retval.add(tt.generateCombo(appState));    
+        retval.add(tt.generateCombo(dacx));    
       }
       return (retval);
     }
@@ -111,14 +112,14 @@ public class WorksheetLayout implements SpecialtyLayout {
       this.tag_ = tag;  
     }
      
-    public EnumChoiceContent<SrcTypes> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<SrcTypes>(appState.getRMan().getString("worksheetLayout." + tag_), this));
+    public EnumChoiceContent<SrcTypes> generateCombo(StaticDataAccessContext dacx) {
+      return (new EnumChoiceContent<SrcTypes>(dacx.getRMan().getString("worksheetLayout." + tag_), this));
     }
    
-    public static Vector<EnumChoiceContent<SrcTypes>> getChoices(BTState appState) {
+    public static Vector<EnumChoiceContent<SrcTypes>> getChoices(StaticDataAccessContext dacx) {
       Vector<EnumChoiceContent<SrcTypes>> retval = new Vector<EnumChoiceContent<SrcTypes>>();
-      TimeCourseData tcd = appState.getDB().getTimeCourseData();    
-      boolean allowByTime = tcd.haveData();
+      TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();    
+      boolean allowByTime = tcd.haveDataEntries();
       for (SrcTypes st: values()) {
         if ((st == SRCS_BY_TIME) && !allowByTime) {
           continue;
@@ -126,7 +127,7 @@ public class WorksheetLayout implements SpecialtyLayout {
         if (st == SRCS_BY_SINGLE) {
           continue;
         }
-        retval.add(st.generateCombo(appState));    
+        retval.add(st.generateCombo(dacx));    
       }
       return (retval);
     }
@@ -168,7 +169,7 @@ public class WorksheetLayout implements SpecialtyLayout {
   
   private TreeMap<Integer, List<GeneAndSatelliteCluster>> clustPerRow_;
   private double rightmostTrack_;
-  private BTState appState_;
+  private StaticDataAccessContext preForkRcx_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -181,9 +182,9 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** Constructor
   */
 
-  public WorksheetLayout(BTState appState, boolean forDiagonal) {
-    appState_ = appState;
+  public WorksheetLayout(boolean forDiagonal, StaticDataAccessContext rcx) {
     forDiagonal_ = forDiagonal;
+    preForkRcx_ = rcx;
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -198,7 +199,7 @@ public class WorksheetLayout implements SpecialtyLayout {
   */
   
   public SpecialtyLayout forkForSubset(SpecialtyLayoutData sld) {
-    WorksheetLayout retval = new WorksheetLayout(appState_, forDiagonal_);
+    WorksheetLayout retval = new WorksheetLayout(forDiagonal_, preForkRcx_);
     retval.sld_ = sld;
     return (retval);
   }
@@ -245,7 +246,7 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** Answer if the network topology can be handled by this layout
   */
   
-  public int topologyIsHandled(DataAccessContext rcx) {  
+  public int topologyIsHandled(StaticDataAccessContext rcx) {  
     return (TOPOLOGY_HANDLED);  // Everybody is handled
   }
     
@@ -332,7 +333,7 @@ public class WorksheetLayout implements SpecialtyLayout {
     
     List<String> ttGroups = ng.findTerminalTargetsByGroups(groups);
     int numTClust = ttGroups.size();
-    termClusters_ = GeneAndSatelliteCluster.fillTargetClustersByGroups(sld_.appState, ttGroups, groups, sld_.nps, sld_.rcx,
+    termClusters_ = GeneAndSatelliteCluster.fillTargetClustersByGroups(ttGroups, groups, sld_.nps, sld_.rcx,
                                                                        traceOffset, true, false, false);
     
     if ((monitor != null) && !monitor.keepGoing()) {
@@ -343,11 +344,11 @@ public class WorksheetLayout implements SpecialtyLayout {
     // Find target cluster assignment based on...:
     //       
     
-    RowBuilder builder = new RowBuilder(sld_.appState);
+    RowBuilder builder = new RowBuilder();
     SortedMap<Integer, List<GeneAndSatelliteCluster>> tClustRows = null;
     boolean deferred = false;
     if (targGroups == TargTypes.TARGS_BY_TIME) {
-      tClustRows = builder.assignRowsByTime(termClusters_, targSize, null);
+      tClustRows = builder.assignRowsByTime(sld_.rcx, termClusters_, targSize, null);
     } else if (targGroups == TargTypes.TARGS_BY_ALPHA) {
       tClustRows = builder.assignRowsByAlpha(termClusters_, sld_.nps, targSize, null);
     } else if (targGroups == TargTypes.TARGS_BY_INPUTS) {
@@ -364,7 +365,7 @@ public class WorksheetLayout implements SpecialtyLayout {
     //
     
     ArrayList<GeneAndSatelliteCluster> sClustList = new ArrayList<GeneAndSatelliteCluster>();
-    findSources(sld_.nps, termClusters_, groups, sClustList, traceOffset, wlp.textToo);
+    findSources(termClusters_, groups, sClustList, traceOffset, wlp.textToo);
     int numSClust = sClustList.size(); 
 
     if ((monitor != null) && !monitor.keepGoing()) {
@@ -553,6 +554,7 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** Layout links to target clusters:
   */
   
+  @SuppressWarnings("unused")
   private void layoutTargetLinks(GenomeSubset subset, ClusterSeries series,
                                  Map<String, SuperSrcRouterPointSource> traceDefs, 
                                  SpecialtyInstructions si, 
@@ -923,11 +925,11 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** Get the parameter dialog
   */
   
-  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(Genome genome, String selectedID, boolean forSubset) {
+  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(UIComponentSource uics, Genome genome, String selectedID, boolean forSubset) {
     SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType lot = (forDiagonal_) ?
       SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType.DIAGONAL :
       SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType.WORKSHEET; 
-    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(appState_, genome, lot, forSubset));
+    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(uics, preForkRcx_, genome, lot, forSubset));
   }
   
   /***************************************************************************
@@ -972,8 +974,8 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** default values:
   */
   
-  public static void forceParamsAsNeeded(BTState appState, WorksheetLayoutParams params) {
-    boolean allowByTime = appState.getDB().getTimeCourseData().haveData();
+  public static void forceParamsAsNeeded(DataAccessContext dacx, WorksheetLayoutParams params) {
+    boolean allowByTime = dacx.getExpDataSrc().getTimeCourseData().haveDataEntries();
     if (!allowByTime) {
       if (params.targGroups == TargTypes.TARGS_BY_TIME) {
         params.targGroups = TargTypes.TARGS_BY_INPUTS;
@@ -1040,8 +1042,7 @@ public class WorksheetLayout implements SpecialtyLayout {
   ** Find the nodes that are sources.
   */
   
-  private SortedSet<String> findSources(SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                        List<GeneAndSatelliteCluster> termClusters, 
+  private SortedSet<String> findSources(List<GeneAndSatelliteCluster> termClusters, 
                                         Map<String, NodeGrouper.GroupElement> groups, 
                                         List<GeneAndSatelliteCluster> sClustList, double traceOffset, boolean textToo) {
 
@@ -1073,7 +1074,7 @@ public class WorksheetLayout implements SpecialtyLayout {
     Iterator<String> psit = sources.iterator();
     while (psit.hasNext()) {
       String srcID = psit.next();
-      GeneAndSatelliteCluster sc = new GeneAndSatelliteCluster(sld_.appState, srcID, false, traceOffset, false, textToo);
+      GeneAndSatelliteCluster sc = new GeneAndSatelliteCluster(srcID, false, traceOffset, false, textToo);
       sc.prepFromGroupsPhaseOne(sld_.nps, groups, false);
       sClustList.add(sc);
     }    
@@ -1088,13 +1089,14 @@ public class WorksheetLayout implements SpecialtyLayout {
   
   private ClusterSeries buildClusterSeriesByTime(List<GeneAndSatelliteCluster> sClustList, int traceMult) {
 
-    TimeCourseData tcd = sld_.appState.getDB().getTimeCourseData();    
+    TimeCourseData tcd = sld_.rcx.getExpDataSrc().getTimeCourseData();    
+     
     ClusterSeries series = new ClusterSeries(false, traceMult);
     int numClust = sClustList.size();
     for (int i = 0; i < numClust; i++) {
       GeneAndSatelliteCluster sc = sClustList.get(i); 
       String srcID = sc.getCoreID();
-      int firstTime = tcd.getFirstExpressionTime(srcID);
+      int firstTime = tcd.getFirstExpressionTime(srcID,  sld_.rcx);
       series.addSourceCluster(firstTime, sc);
     }
     

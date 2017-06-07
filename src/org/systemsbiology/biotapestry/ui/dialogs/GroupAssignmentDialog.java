@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,14 +37,15 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.add.GroupCreationSupport;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -61,13 +62,14 @@ public class GroupAssignmentDialog extends JDialog {
   ////////////////////////////////////////////////////////////////////////////  
 
   private JComboBox groupCombo_;
-  private BTState appState_;
   private Point2D directCenter_;
   private String result_;
   private boolean newGroup_;
   private Rectangle approxBounds_;
   private UndoSupport support_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -82,17 +84,18 @@ public class GroupAssignmentDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public GroupAssignmentDialog(BTState appState, DataAccessContext rcx, UndoSupport support, 
-                               List<Group> availableGroups, Rectangle approxBounds, Point2D directCenter) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("groupassign.title"), true);
-    rcx_ = rcx;
-    appState_ = appState;
+  public GroupAssignmentDialog(UIComponentSource uics, StaticDataAccessContext dacx, UndoSupport support, 
+                               List<Group> availableGroups, Rectangle approxBounds, Point2D directCenter, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("groupassign.title"), true);
+    dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
     directCenter_ = directCenter;
     support_ = support;
     newGroup_ = false;
     approxBounds_ = approxBounds;
 
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(600, 250);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -130,7 +133,7 @@ public class GroupAssignmentDialog extends JDialog {
       public void actionPerformed(ActionEvent ev) {
         try {
           GroupCreationSupport creation = 
-            new GroupCreationSupport(appState_, rcx_, false, approxBounds_, null, directCenter_);
+            new GroupCreationSupport(uics_, dacx_, false, approxBounds_, null, directCenter_, uFac_);
           Group newGroup = creation.handleCreation(support_);
           if (newGroup == null) {
             return;
@@ -140,7 +143,7 @@ public class GroupAssignmentDialog extends JDialog {
           groupCombo_.setSelectedIndex(groupCombo_.getItemCount() - 1);
           newGroup_ = true;
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -166,7 +169,7 @@ public class GroupAssignmentDialog extends JDialog {
           GroupAssignmentDialog.this.setVisible(false);
           GroupAssignmentDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -177,7 +180,7 @@ public class GroupAssignmentDialog extends JDialog {
           GroupAssignmentDialog.this.setVisible(false);
           GroupAssignmentDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -192,7 +195,7 @@ public class GroupAssignmentDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 2, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   /***************************************************************************

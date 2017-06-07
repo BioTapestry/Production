@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2013 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -46,14 +46,15 @@ import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.search.NetworkSearch;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.ui.SourceAndTargetSelector;
@@ -118,12 +119,12 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 		SearchDialogBuildArgs sdba = (SearchDialogBuildArgs) ba;
 
 		switch (platform.getPlatform()) {
-			case DESKTOP:
-				return (new DesktopDialog(cfh, sdba.selectedName, sdba.currOvr,sdba.linksHidden));
-			case WEB:
-				return (new SerializableDialog(cfh, sdba.selectedName,sdba.currOvr, sdba.linksHidden));
-			default:
-				throw new IllegalArgumentException("The platform is not supported: " + platform.getPlatform());
+		case DESKTOP:
+			return (new DesktopDialog(cfh, sdba.selectedName, sdba.currOvr,sdba.linksHidden, sdba.dacx));
+		case WEB:
+			return (new SerializableDialog(cfh, sdba.selectedName,sdba.currOvr, sdba.linksHidden, sdba.dacx));
+		default:
+			throw new IllegalArgumentException("The platform is not supported: " + platform.getPlatform());
 		}
 
 	}
@@ -139,8 +140,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 	 ** Get combo box guts
 	 */
 
-	private static Vector<TrueObjChoiceContent> getMatchChoices(BTState appState) {
-		ResourceManager rMan = appState.getRMan();
+	private static Vector<TrueObjChoiceContent> getMatchChoices(DataAccessContext dacx) {
+		ResourceManager rMan = dacx.getRMan();
 		Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
 		retval.add(new TrueObjChoiceContent(rMan.getString("nsearch.fullMatch"),NetworkSearch.MatchTypes.FULL_MATCH_));
 		retval.add(new TrueObjChoiceContent(rMan.getString("nsearch.partialMatch"),NetworkSearch.MatchTypes.PARTIAL_MATCH_));
@@ -152,9 +153,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 	 ** Get combo box guts for module method
 	 */
 
-	private static Vector<ChoiceContent> getModuleMethods(BTState appState,
-		boolean haveNV, boolean haveTags) {
-		ResourceManager rMan = appState.getRMan();
+	private static Vector<ChoiceContent> getModuleMethods(DataAccessContext dacx, boolean haveNV, boolean haveTags) {
+		ResourceManager rMan = dacx.getRMan();
 		Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
 		if (haveTags) {
 			retval.add(new ChoiceContent(rMan.getString("nsearch.moduleByKey"),NetOverlayOwner.MODULE_BY_KEY));
@@ -203,7 +203,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 	 */
 
 	private static Vector<String> getValueChoices(String name,
-		Map<String, Set<String>> valsForNames) {
+			Map<String, Set<String>> valsForNames) {
 		Vector<String> retval = new Vector<String>();
 		String normName = DataUtil.normKey(name);
 		TreeSet<String> valSet = new TreeSet<String>(valsForNames.get(normName));
@@ -220,12 +220,11 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 	 ** Common module search build
 	 */
 
-	private static boolean buildModuleSearch(BTState appState, String currOvr,
-		Map<String, Set<String>> valsForNames, HashSet<String> globalTags,
-		HashSet<String> allNames) {
+	private static boolean buildModuleSearch(DataAccessContext dacx, String currOvr,
+			Map<String, Set<String>> valsForNames, HashSet<String> globalTags,
+			HashSet<String> allNames) {
 		HashSet<String> allValues = new HashSet<String>();
-		FullGenomeHierarchyOracle oracle = new FullGenomeHierarchyOracle(appState);
-		oracle.getGlobalTagsAndNVPairsForModules(valsForNames, allNames,allValues, globalTags, null);
+		dacx.getFGHO().getGlobalTagsAndNVPairsForModules(valsForNames, allNames,allValues, globalTags, null);
 		boolean enableModuleSearch = (currOvr != null) && ((allNames.size() > 0) || (globalTags.size() > 0));
 		return (enableModuleSearch);
 	}
@@ -241,30 +240,31 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 		String selectedName;
 		String currOvr;
 		boolean linksHidden;
+		DataAccessContext dacx;
+		
 
-		public SearchDialogBuildArgs(Genome genome, String selectedName,String currOvr, boolean linksHidden) {
-			super(genome);
+		public SearchDialogBuildArgs(String selectedName, String currOvr, boolean linksHidden, DataAccessContext dacx) {
+			super(dacx.getCurrentGenome());
 			this.selectedName = selectedName;
 			this.currOvr = currOvr;
 			this.linksHidden = linksHidden;
+			this.dacx = dacx;
 		}
 	}
 
-	// //////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////
 	//
 	// DIALOG CLASSES
 	//
-	// //////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////
 
-	// //////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////
 	// SerializableDialog
-	// //////////////////////////////////////////////////////
+	///////////////////////////////////////////////////////
 	//
 	//
-
 	public static class SerializableDialog implements SerializableDialogPlatform.Dialog {
 
-		private BTState appState_;
 		private XPlatUIDialog xplatDialog_;
 		private ServerControlFlowHarness scfh_;
 		private XPlatPrimitiveElementFactory primElemFac_;
@@ -272,24 +272,36 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 		private String selectedName_;
 		private String currOvr_;
 		private boolean linksHidden_;
-
-		public SerializableDialog(ServerControlFlowHarness cfh,String selectedName, String currOvr, boolean linksHidden) {
+		private DataAccessContext dacx_;
+		
+		///////////////////////
+		// SerializableDialog
+		//////////////////////
+		//
+		//
+		public SerializableDialog(ServerControlFlowHarness cfh, String selectedName, String currOvr, 
+		                          boolean linksHidden, DataAccessContext dacx) {
 			this.scfh_ = cfh;
-			this.appState_ = cfh.getBTState();
-			this.rMan_ = this.appState_.getRMan();
+			this.rMan_ = dacx.getRMan();
 			this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan_);
 			this.currOvr_ = currOvr;
 			this.linksHidden_ = linksHidden;
 			this.selectedName_ = selectedName;
+			dacx_ = dacx;
 		}
 
-		public boolean isModal() {
-			return (true);
-		}
+		////////////
+		// isModal
+		///////////
+		//
+		//
+		public boolean dialogIsModal() {
+      return (true);
+    }
 
-		/**
+		/*****************
 		 * buildDialog
-		 * 
+		 *****************
 		 * 
 		 * 
 		 * @param title
@@ -366,11 +378,11 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			);
 			searchBtn.setParameter("class", "RightHand");
 			searchBtn.addUiElementEventAction("click",XPlatUIElementActionType.GET_ELEMENT_PROPS);
-			
+
 			XPlatUIPrimitiveElement cancelBtn = this.primElemFac_.makeClientCancelButton(null, keyVal);
 			cancelBtn.getEvent("click").addParameter("action",keyVal.toString());
 			cancelBtn.setParameter("class", "RightHand");
-			
+
 			this.xplatDialog_.addElementToCollection("main", "bottom", cancelBtn);
 			this.xplatDialog_.addElementToCollection("main", "bottom", searchBtn);
 
@@ -383,12 +395,11 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			this.xplatDialog_.addCancelParameter("action", keyVal.toString());
 
 			this.xplatDialog_.setUserInputs(new SearchRequest(true));
-
 		}
 
-		/**
+		/************************
 		 * buildModuleSearchTab
-		 * 
+		 ************************
 		 * 
 		 * 
 		 * 
@@ -400,18 +411,18 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			Map<String, Set<String>> valsForNames_ = new HashMap<String, Set<String>>();
 			HashSet<String> globalTags = new HashSet<String>();
 			HashSet<String> allNames = new HashSet<String>();
-			boolean enableModuleSearch = buildModuleSearch(appState_,this.currOvr_, valsForNames_, globalTags, allNames);
+			boolean enableModuleSearch = buildModuleSearch(dacx_ ,this.currOvr_, valsForNames_, globalTags, allNames);
 
 			if (enableModuleSearch) {
 				// Search Type Combo
 				Map<String, Object> methodVals = new HashMap<String, Object>();
-				for (ChoiceContent cc : getModuleMethods(appState_,allNames.size() > 0, globalTags.size() > 0)) {
+				for (ChoiceContent cc : getModuleMethods(dacx_, allNames.size() > 0, globalTags.size() > 0)) {
 					methodVals.put(Integer.toString(cc.val), cc.name);
 				}
 
 				XPlatUIPrimitiveElement searchModeCombo = this.primElemFac_.makeTxtComboBox(
-					"searchMode",Integer.toString(getModuleMethods(appState_,allNames.size() > 0,globalTags.size() > 0).get(0).val),
-					null, true,this.rMan_.getString("nsearch.moduleMethod"),methodVals
+					"searchMode",Integer.toString(getModuleMethods(dacx_, allNames.size() > 0,globalTags.size() > 0).get(0).val),
+					null, this.rMan_.getString("nsearch.moduleMethod"),methodVals
 				);
 				searchModeCombo.setFloat(false);
 				searchModeCombo.setParameter("bundleAs", "searchMode");
@@ -433,8 +444,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 				}
 
 				XPlatUIPrimitiveElement keyCombo = this.primElemFac_.makeTxtComboBox(
-					"tagValue",Integer.toString(getModuleMethods(appState_,allNames.size() > 0,globalTags.size() > 0).get(0).val),
-					null, true,this.rMan_.getString("nsearch.tagChoices"),keys
+					"tagValue",Integer.toString(getModuleMethods(dacx_, allNames.size() > 0,globalTags.size() > 0).get(0).val),
+					null, this.rMan_.getString("nsearch.tagChoices"),keys
 				);
 				keyCombo.setFloat(false);
 				keyCombo.setParameter("bundleAs", "tagVal");
@@ -462,8 +473,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 				}
 
 				XPlatUIPrimitiveElement valCombo = this.primElemFac_.makeTxtComboBox(
-					"valChoice",Integer.toString(getModuleMethods(appState_,allNames.size() > 0,globalTags.size() > 0).get(0).val),
-					null, true,this.rMan_.getString("nsearch.valueChoices"),valueByName
+					"valChoice",Integer.toString(getModuleMethods(dacx_, allNames.size() > 0,globalTags.size() > 0).get(0).val),
+					null, this.rMan_.getString("nsearch.valueChoices"),valueByName
 				);
 				valCombo.setFloat(true);
 				valCombo.setParameter("style", "width: 175px;");
@@ -471,8 +482,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 				valCombo.setValidity("searchMode",Integer.toString(NetOverlayOwner.MODULE_BY_NAME_VALUE));
 
 				XPlatUIPrimitiveElement nameCombo = this.primElemFac_.makeTxtComboBox(
-					"nameChoice",Integer.toString(getModuleMethods(appState_,allNames.size() > 0,globalTags.size() > 0).get(0).val),
-					null, true,	this.rMan_.getString("nsearch.nameChoices"),nameVals
+					"nameChoice",Integer.toString(getModuleMethods(dacx_, allNames.size() > 0,globalTags.size() > 0).get(0).val),
+					null, this.rMan_.getString("nsearch.nameChoices"),nameVals
 				);
 				nameCombo.setFloat(true);
 				nameCombo.setParameter("bundleAs", "nameChoice");
@@ -495,14 +506,12 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 
 				container.addElement("bottom", lowerPane);
 			}
-
 			return enableModuleSearch;
-
 		}
 
-		/**
+		/***********************
 		 * buildNodeSearchTab
-		 * 
+		 **********************
 		 * 
 		 * 
 		 * 
@@ -515,7 +524,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			searchTypeVals.put(SourceAndTargetSelector.Searches.DIRECT_SELECT.toString(),this.rMan_.getString("nsearch.directSearch"));
 			searchTypeVals.put(SourceAndTargetSelector.Searches.TARGET_SELECT.toString(),this.rMan_.getString("nsearch.targetSearch"));
 			searchTypeVals.put(SourceAndTargetSelector.Searches.SOURCE_SELECT.toString(),this.rMan_.getString("nsearch.sourceSearch"));
-			
+
 			XPlatUIPrimitiveElement searchTypeSelex = this.primElemFac_.makeSelectionGroup(
 				"searchType",SourceAndTargetSelector.Searches.DIRECT_SELECT.toString(), null, false, 
 				this.rMan_.getString("nsearch.searchType"),searchTypeVals
@@ -524,8 +533,9 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			valueOrder.add(SourceAndTargetSelector.Searches.DIRECT_SELECT.toString());
 			valueOrder.add(SourceAndTargetSelector.Searches.TARGET_SELECT.toString());
 			valueOrder.add(SourceAndTargetSelector.Searches.SOURCE_SELECT.toString());
-			
+
 			searchTypeSelex.setParameter("valueOrder", valueOrder);
+			searchTypeSelex.setParameter("class","Justified");
 
 			Map<String, Object> onChangeParams = new HashMap<String, Object>();
 			onChangeParams.put("conditionValueLoc", "ELEMENT_VALUES");
@@ -542,12 +552,12 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			itemNameTxtBox.setParameter("bundleAs", "search");
 
 			Map<String, Object> matchVals = new HashMap<String, Object>();
-			for (TrueObjChoiceContent tocc : getMatchChoices(this.appState_)) {
+			for (TrueObjChoiceContent tocc : getMatchChoices(dacx_)) {
 				matchVals.put(tocc.val.toString(), tocc.name);
 			}
 
 			XPlatUIPrimitiveElement matchTypeCombo = this.primElemFac_.makeTxtComboBox(
-				"matchType",getMatchChoices(this.appState_).get(1).val.toString(), null, false, null, matchVals
+				"matchType",getMatchChoices(dacx_).get(1).val.toString(), null, null, matchVals
 			);
 			matchTypeCombo.setFloat(true);
 			matchTypeCombo.setParameter("style", "margin-left: 15px;");
@@ -580,9 +590,9 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			container.addElement("bottom", borderedPane);
 		}
 
-		/**
-		 * getDialog
-		 * 
+		/**********************
+		 * getDialog(FlowKey)
+		 *********************
 		 * 
 		 * 
 		 * 
@@ -592,10 +602,9 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			return xplatDialog_;
 		}
 
-		/**
+		/**************
 		 * getDialog
-		 * 
-		 * 
+		 **************
 		 * 
 		 * 
 		 */
@@ -603,12 +612,10 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			buildDialog(this.rMan_.getString("nsearch.title"), 500, 700, null);
 			return xplatDialog_;
 		}
-		
-		/**
+
+		/*************************
 		 * generateSearchRequest
-		 * 
-		 * 
-		 * 
+		 *************************
 		 * 
 		 * @param ui
 		 * @return SearchRequest
@@ -621,7 +628,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			}
 
 			SearchRequest sr = (SearchRequest) ui;
-			
+
 			sr.clearCurrent = !((SearchRequest) ui).addToCurrent;
 
 			if (sr.whichTab == 0) {
@@ -638,23 +645,33 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			return sr;
 		}
 		
-	    private Set<String> queBombForModuleSearch(SearchRequest request) {
-	        RemoteRequest daBomb = new RemoteRequest("queBombFindModuleMatches");
-	        if (request.tagVal != null) {
-	          daBomb.setStringArg("tagVal", request.tagVal);
-	        } else if (request.nvp != null) {
-	          daBomb.setObjectArg("nvp", request.nvp);  
-	        } else {
-	          throw new IllegalArgumentException();
-	        }
-	        RemoteRequest.Result dbres = this.scfh_.receiveRemoteRequest(daBomb);
-	        Set<String> retval = dbres.getSetAnswer("found");
-	        return (retval);
-	      }
-
-		/**
-		 * queBombForSearch
+		/*******************************
+		 * queBombForModuleSearch
+		 *******************************
 		 * 
+		 * 
+		 * 
+		 * @param request
+		 * @return
+		 * 
+		 */
+		private Set<String> queBombForModuleSearch(SearchRequest request) {
+			RemoteRequest daBomb = new RemoteRequest("queBombFindModuleMatches");
+			if (request.tagVal != null) {
+				daBomb.setStringArg("tagVal", request.tagVal);
+			} else if (request.nvp != null) {
+				daBomb.setObjectArg("nvp", request.nvp);  
+			} else {
+				throw new IllegalArgumentException();
+			}
+			RemoteRequest.Result dbres = this.scfh_.receiveRemoteRequest(daBomb);
+			Set<String> retval = dbres.getSetAnswer("found");
+			return (retval);
+		}
+
+		/*************************
+		 * queBombForSearch
+		 *************************
 		 * 
 		 * 
 		 * @param search
@@ -672,42 +689,48 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			return (retval);
 		}
 
-		/**
+		/******************
 		 * checkForErrors
-		 * 
-		 * 
-		 * 
-		 * 
+		 ******************
+		 *
+		 *
 		 */
 		public SimpleUserFeedback checkForErrors(UserInputs ui) {
 			SearchRequest sr = generateSearchRequest(ui);
 			if (sr != null && sr.found != null && sr.found.isEmpty()) {
-				ResourceManager rMan = appState_.getRMan();
+				ResourceManager rMan = dacx_.getRMan();
 				return new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR,
 					rMan.getString("nsearch.nothingFound"),
-					rMan.getString("nsearch.nothingFoundTitle"));
+					rMan.getString("nsearch.nothingFoundTitle"),false
+				);
 			}
 			return null;
 		}
 
-	} // SerializableDialog
-	
+		public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+			// TODO Auto-generated method stub
+			return null;
+		}
 
-	// //////////////////////////////////////////////////////////////////////////////////////////////////////////
+	} // SerializableDialog
+
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// DesktopDialog
-	// //////////////////////////////////////////////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//
 	//
 
 	public static class DesktopDialog extends JDialog implements DesktopDialogPlatform.Dialog {
 
-		// //////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////
 		//
 		// PRIVATE INSTANCE MEMBERS
 		//
-		// //////////////////////////////////////////////////////////////////////////
+		///////////////////////////////////////////////////////////////////////////
 
-		private BTState appState_;
+		private DataAccessContext dacx_;
+		private UIComponentSource uics_;
 
 		private JCheckBox includeItemBox_;
 		private JCheckBox includeLinksBox_;
@@ -735,30 +758,30 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 
 		private static final long serialVersionUID = 1L;
 
-		// //////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////
 		//
 		// PUBLIC CONSTRUCTORS
 		//
-		// //////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////
 
 		/***************************************************************************
 		 ** 
 		 ** Constructor
 		 */
 
-		public DesktopDialog(ServerControlFlowHarness cfh, String selectedName,	String currOvr, boolean linksHidden) {
-			super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("nsearch.title"), true);
-			appState_ = cfh.getBTState();
+		public DesktopDialog(ServerControlFlowHarness cfh, String selectedName,	String currOvr, boolean linksHidden, DataAccessContext dacx) {
+			super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("nsearch.title"), true);
+			uics_ = cfh.getUI();
 			linksHidden_ = linksHidden;
 			cfh_ = cfh.getClientHarness();
+			dacx_ = dacx;
 
 			valsForNames_ = new HashMap<String, Set<String>>();
 			HashSet<String> globalTags = new HashSet<String>();
 			HashSet<String> allNames = new HashSet<String>();
-			boolean enableModuleSearch = buildModuleSearch(appState_, currOvr,
-					valsForNames_, globalTags, allNames);
+			boolean enableModuleSearch = buildModuleSearch(dacx_, currOvr,valsForNames_, globalTags, allNames);
 
-			ResourceManager rMan = appState_.getRMan();
+			ResourceManager rMan = dacx_.getRMan();
 			setSize(600, 500);
 			JPanel cp = (JPanel) getContentPane();
 			cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -766,8 +789,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			GridBagConstraints gbc = new GridBagConstraints();
 
 			tabPane_ = new JTabbedPane();
-			tabPane_.addTab(rMan.getString("nsearch.nameSearch"),
-					buildNodeSearchTab(selectedName));
+			tabPane_.addTab(rMan.getString("nsearch.nameSearch"),buildNodeSearchTab(selectedName));
 			tabPane_.addTab(
 				rMan.getString("nsearch.moduleSearch"),buildModuleSearchTab(allNames, globalTags,enableModuleSearch)
 			);
@@ -790,7 +812,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 					try {
 						request_ = generateSearchRequest();
 						if ((request_.found != null) && request_.found.isEmpty()) {
-							ResourceManager rMan = appState_.getRMan();
+							ResourceManager rMan = dacx_.getRMan();
 							SimpleUserFeedback suf = new SimpleUserFeedback(
 								SimpleUserFeedback.JOP.ERROR, rMan.getString("nsearch.nothingFound"),rMan.getString("nsearch.nothingFoundTitle")
 							);
@@ -799,7 +821,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 							cfh_.sendUserInputs(request_);
 						}
 					} catch (Exception ex) {
-						appState_.getExceptionHandler().displayException(ex);
+						uics_.getExceptionHandler().displayException(ex);
 					}
 				}
 			});
@@ -811,7 +833,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 						DesktopDialog.this.setVisible(false);
 						DesktopDialog.this.dispose();
 					} catch (Exception ex) {
-						appState_.getExceptionHandler().displayException(ex);
+						uics_.getExceptionHandler().displayException(ex);
 					}
 				}
 			});
@@ -826,14 +848,14 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			//
 			UiUtil.gbcSet(gbc, 0, rowNum, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.SE, 1.0, 0.0);
 			cp.add(buttonPanel, gbc);
-			setLocationRelativeTo(appState_.getTopFrame());
+			setLocationRelativeTo(uics_.getTopFrame());
 		}
 
-		// //////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////
 		//
 		// PRIVATE INNER CLASSES
 		//
-		// //////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////
 
 		private class ButtonTracker implements ActionListener {
 			public void actionPerformed(ActionEvent ev) {
@@ -842,16 +864,20 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 					includeItemBox_.setEnabled(!isDirect);
 					includeLinksBox_.setEnabled(!linksHidden_ && !isDirect);
 				} catch (Exception ex) {
-					appState_.getExceptionHandler().displayException(ex);
+					uics_.getExceptionHandler().displayException(ex);
 				}
 			}
 		}
 
-		// //////////////////////////////////////////////////////////////////////////
+	  public boolean dialogIsModal() {
+      return (true);
+    }
+	
+		////////////////////////////////////////////////////////////////////////////
 		//
 		// PRIVATE METHODS
 		//
-		// //////////////////////////////////////////////////////////////////////////
+		///////////////////////////////////////////////////////////////////////////
 
 		/***************************************************************************
 		 ** 
@@ -860,7 +886,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 
 		private JPanel buildNodeSearchTab(String selectedName) {
 
-			ResourceManager rMan = appState_.getRMan();
+			ResourceManager rMan = dacx_.getRMan();
 			JPanel cp = new JPanel();
 			cp.setLayout(new GridBagLayout());
 			GridBagConstraints gbc = new GridBagConstraints();
@@ -916,7 +942,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			UiUtil.gbcSet(gbc, 1, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.CEN, 1.0, 1.0);
 			cp.add(stringField_, gbc);
 
-			matchTypeCombo_ = new JComboBox(getMatchChoices(appState_));
+			matchTypeCombo_ = new JComboBox(getMatchChoices(dacx_));
 
 			UiUtil.gbcSet(gbc, 2, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.CEN, 0.0, 1.0);
 			cp.add(matchTypeCombo_, gbc);
@@ -958,10 +984,9 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 		 ** Module search tab
 		 */
 
-		private JPanel buildModuleSearchTab(Set<String> allNames,
-				Set<String> globalTags, boolean enableModSearch) {
+		private JPanel buildModuleSearchTab(Set<String> allNames,Set<String> globalTags, boolean enableModSearch) {
 
-			ResourceManager rMan = appState_.getRMan();
+			ResourceManager rMan = dacx_.getRMan();
 			JPanel cp = new JPanel();
 			cp.setLayout(new GridBagLayout());
 			GridBagConstraints gbc = new GridBagConstraints();
@@ -978,7 +1003,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 
 			int rowNum = 0;
 			JLabel label = new JLabel(rMan.getString("nsearch.moduleMethod"));
-			moduleMethodChoices_ = new JComboBox(getModuleMethods(appState_,haveNV, haveTags));
+			moduleMethodChoices_ = new JComboBox(getModuleMethods(dacx_, haveNV, haveTags));
 			moduleMethodChoices_.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
 					try {
@@ -991,18 +1016,16 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 						moduleValueLabel_.setEnabled(!useTags);
 						moduleValueChoices_.setEnabled(!useTags);
 					} catch (Exception ex) {
-						appState_.getExceptionHandler().displayException(ex);
+						uics_.getExceptionHandler().displayException(ex);
 					}
 					return;
 				}
 			});
 
-			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,
-					UiUtil.E, 0.0, 1.0);
+			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,UiUtil.E, 0.0, 1.0);
 			cp.add(label, gbc);
 
-			UiUtil.gbcSet(gbc, 1, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,
-					UiUtil.W, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 1, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.W, 1.0, 1.0);
 			cp.add(moduleMethodChoices_, gbc);
 
 			//
@@ -1012,12 +1035,10 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			moduleTagLabel_ = new JLabel(rMan.getString("nsearch.tagChoices"));
 			moduleTagChoices_ = new JComboBox(getTagChoices(globalTags));
 
-			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,
-					UiUtil.E, 0.0, 1.0);
+			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,UiUtil.E, 0.0, 1.0);
 			cp.add(moduleTagLabel_, gbc);
 
-			UiUtil.gbcSet(gbc, 1, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,
-					UiUtil.W, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 1, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.W, 1.0, 1.0);
 			cp.add(moduleTagChoices_, gbc);
 
 			//
@@ -1031,38 +1052,31 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			moduleNameChoices_.addActionListener(new ActionListener() {
 				public void actionPerformed(ActionEvent ev) {
 					try {
-						String name = (String) moduleNameChoices_
-								.getSelectedItem();
+						String name = (String) moduleNameChoices_.getSelectedItem();
 						restockValues(name);
 					} catch (Exception ex) {
-						appState_.getExceptionHandler().displayException(ex);
+						uics_.getExceptionHandler().displayException(ex);
 					}
 					return;
 				}
 			});
 
-			moduleValueLabel_ = new JLabel(
-					rMan.getString("nsearch.valueChoices"));
+			moduleValueLabel_ = new JLabel(rMan.getString("nsearch.valueChoices"));
 			moduleValueChoices_ = new JComboBox();
 
-			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,
-					UiUtil.E, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,UiUtil.E, 1.0, 1.0);
 			cp.add(moduleNameLabel_, gbc);
 
-			UiUtil.gbcSet(gbc, 1, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,
-					UiUtil.CEN, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 1, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.CEN, 1.0, 1.0);
 			cp.add(moduleNameChoices_, gbc);
 
-			UiUtil.gbcSet(gbc, 2, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,
-					UiUtil.E, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 2, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5,UiUtil.E, 1.0, 1.0);
 			cp.add(moduleValueLabel_, gbc);
 
-			UiUtil.gbcSet(gbc, 3, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,
-					UiUtil.CEN, 1.0, 1.0);
+			UiUtil.gbcSet(gbc, 3, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.CEN, 1.0, 1.0);
 			cp.add(moduleValueChoices_, gbc);
 
-			ChoiceContent cc = (ChoiceContent) moduleMethodChoices_
-					.getSelectedItem();
+			ChoiceContent cc = (ChoiceContent) moduleMethodChoices_.getSelectedItem();
 			boolean useTags = (cc.val == NetOverlayOwner.MODULE_BY_KEY);
 			moduleNameLabel_.setEnabled(!useTags);
 			moduleNameChoices_.setEnabled(!useTags);
@@ -1121,8 +1135,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 					}
 				}
 
-				NetworkSearch.MatchTypes matchType = (NetworkSearch.MatchTypes) ((TrueObjChoiceContent) matchTypeCombo_
-						.getSelectedItem()).val;
+				NetworkSearch.MatchTypes matchType = (NetworkSearch.MatchTypes) 
+					((TrueObjChoiceContent) matchTypeCombo_.getSelectedItem()).val;
 				String search = stringField_.getText().trim();
 				retval.found = queBombForSearch(search, matchType);
 				retval.clearCurrent = !addToCurrentBox_.isSelected();
@@ -1134,13 +1148,10 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 				retval.tagVal = null;
 				retval.nvp = null;
 				if (retval.useTags) {
-					retval.tagVal = (String) moduleTagChoices_
-							.getSelectedItem();
+					retval.tagVal = (String) moduleTagChoices_.getSelectedItem();
 				} else {
-					String currName = (String) moduleNameChoices_
-							.getSelectedItem();
-					String currVal = (String) moduleValueChoices_
-							.getSelectedItem();
+					String currName = (String) moduleNameChoices_.getSelectedItem();
+					String currVal = (String) moduleValueChoices_.getSelectedItem();
 					retval.nvp = new NameValuePair(currName, currVal);
 				}
 				retval.found = queBombForModuleSearch(retval);
@@ -1163,26 +1174,26 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			Set<String> retval = dbres.getSetAnswer("found");
 			return (retval);
 		}
-		
-		 /***************************************************************************
-     ** 
-     ** Talk to the expert!
-     ** 
-     */
 
-    private Set<String> queBombForModuleSearch(SearchRequest request) {
-      RemoteRequest daBomb = new RemoteRequest("queBombFindModuleMatches");
-      if (request.tagVal != null) {
-        daBomb.setStringArg("tagVal", request.tagVal);
-      } else if (request.nvp != null) {
-        daBomb.setObjectArg("nvp", request.nvp);  
-      } else {
-        throw new IllegalArgumentException();
-      }
-      RemoteRequest.Result dbres = cfh_.routeRemoteRequest(daBomb);
-      Set<String> retval = dbres.getSetAnswer("found");
-      return (retval);
-    }
+		/***************************************************************************
+		 ** 
+		 ** Talk to the expert!
+		 ** 
+		 */
+
+		private Set<String> queBombForModuleSearch(SearchRequest request) {
+			RemoteRequest daBomb = new RemoteRequest("queBombFindModuleMatches");
+			if (request.tagVal != null) {
+				daBomb.setStringArg("tagVal", request.tagVal);
+			} else if (request.nvp != null) {
+				daBomb.setObjectArg("nvp", request.nvp);  
+			} else {
+				throw new IllegalArgumentException();
+			}
+			RemoteRequest.Result dbres = cfh_.routeRemoteRequest(daBomb);
+			Set<String> retval = dbres.getSetAnswer("found");
+			return (retval);
+		}
 	}
 
 	/***************************************************************************
@@ -1192,6 +1203,8 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 	 */
 
 	public static class SearchRequest implements ServerControlFlowHarness.UserInputs {
+		private boolean haveResult;
+		
 		public String search;
 		public int whichTab;
 		public SourceAndTargetSelector.Searches selectionType;
@@ -1209,7 +1222,6 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 		public NameValuePair nvp;
 		public String nameChoice;
 		public String valChoice;
-		public boolean haveResult; // not used...
 
 		public SearchRequest() {
 
@@ -1219,16 +1231,16 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			this.whichTab = whichTab;
 		}
 
-		/**
-		 * When an object is being serialized, null object members will NOT be
-		 * included, so give empty values to make sure everything is
-		 * transmitted.
+		/***************************
+		 * SearchRequest(boolean)
+		 * *************************
 		 * 
-		 * 
-		 * 
+		 * When an object is being serialized, null/uninitialized object members will NOT be
+		 * included, so set 'empty' values to make sure everything is transmitted.
 		 * 
 		 * 
 		 * @param forTransit
+		 * 
 		 */
 		public SearchRequest(boolean forTransit) {
 			this.whichTab = -1;
@@ -1246,16 +1258,31 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			this.valChoice = "";
 			this.tagVal = "";
 		}
+		
+		
+		// setters and getters for private members to satisfy serializer
+		public boolean getHaveResult() {
+			return haveResult;
+		}
+
+		public void setHaveResult(boolean haveResult) {
+			this.haveResult = haveResult;
+		}
 
 		public void clearHaveResults() {
 			haveResult = false;
 			return;
 		}
 
+		public void setHasResults() {
+			this.haveResult = true;
+			return;
+		}  
 		public boolean haveResults() {
 			return (haveResult);
 		}
 
+		// to satisfy interface; there is no 'apply' option in this dialog
 		public boolean isForApply() {
 			return (true);
 		}

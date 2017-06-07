@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,14 +20,14 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayOwnerChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.UserTreePathChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
@@ -56,8 +56,7 @@ public class RemoveOverlay extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveOverlay(BTState appState, boolean forPopup) {
-    super(appState);  
+  public RemoveOverlay(boolean forPopup) { 
     name = (forPopup) ? "netOverlayPopup.Delete" : "command.RemoveNetworkOverlay"; 
     desc = (forPopup) ? "netOverlayPopup.Delete" : "command.RemoveNetworkOverlay"; 
     icon = "FIXME24.gif";
@@ -87,8 +86,8 @@ public class RemoveOverlay extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(dacx);
      return (retval);
    }
  
@@ -105,9 +104,10 @@ public class RemoveOverlay extends AbstractControlFlow {
       StepState ans;
       // Allowing the last DAIPC to be null fixes Issues #252
       if (last == null) {
-        ans = new StepState(appState_, cfh.getDataAccessContext());
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToRemove")) {
         next = ans.stepToRemove();      
@@ -126,25 +126,27 @@ public class RemoveOverlay extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToRemove";
-      dacx_= dacx;
+    }
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepToRemove";
     }
     
     /***************************************************************************
@@ -162,9 +164,9 @@ public class RemoveOverlay extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToRemove() {  
-      UndoSupport support = new UndoSupport(appState_, "undo.removeNetworkOverlay");
-      String ovrKey = dacx_.oso.getCurrentOverlay(); // Gotta record before it goes!
-      appState_.getNetOverlayController().clearCurrentOverlay(support, dacx_);
+      UndoSupport support = uFac_.provideUndoSupport("undo.removeNetworkOverlay", dacx_);
+      String ovrKey = dacx_.getOSO().getCurrentOverlay(); // Gotta record before it goes!
+      uics_.getNetOverlayController().clearCurrentOverlay(support, dacx_);
       deleteNetworkOverlay(ovrKey, support);  
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
@@ -177,26 +179,26 @@ public class RemoveOverlay extends AbstractControlFlow {
     private void deleteNetworkOverlay(String ovrKey, UndoSupport support) {
      
       NetOverlayOwner owner = dacx_.getCurrentOverlayOwner();    
-      UserTreePathController utpc = appState_.getPathController();
-      UserTreePathChange[] chgs = utpc.dropStopsOnOverlay(dacx_.getGenomeID(), ovrKey);
+      UserTreePathController utpc = uics_.getPathController();
+      UserTreePathChange[] chgs = utpc.dropStopsOnOverlay(dacx_.getCurrentGenomeID(), ovrKey);
       for (int i = 0; i < chgs.length; i++) {
-        UserTreePathChangeCmd cmd = new UserTreePathChangeCmd(appState_, dacx_, chgs[i]);
+        UserTreePathChangeCmd cmd = new UserTreePathChangeCmd(dacx_, chgs[i]);
         support.addEdit(cmd);
       }    
      
-      Layout.PropChange pc = dacx_.getLayout().removeNetOverlayProperties(ovrKey);
+      Layout.PropChange pc = dacx_.getCurrentLayout().removeNetOverlayProperties(ovrKey);
       if (pc != null) {
-        support.addEdit(new PropChangeCmd(appState_, dacx_, pc));
+        support.addEdit(new PropChangeCmd(dacx_, pc));
       }  
         
       NetworkOverlayOwnerChange gc = owner.removeNetworkOverlay(ovrKey);
       if (gc != null) {
-        NetOverlayOwnerChangeCmd gcc = new NetOverlayOwnerChangeCmd(appState_, dacx_, gc);
+        NetOverlayOwnerChangeCmd gcc = new NetOverlayOwnerChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
   
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));      
-      support.addEvent(new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));      
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       support.finish();    
       return;
     }

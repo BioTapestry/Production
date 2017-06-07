@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,8 @@ import java.text.MessageFormat;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.ColorAssigner;
 import org.systemsbiology.biotapestry.ui.LinkRouter;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -43,7 +44,8 @@ public class LayoutStatusReporter {
   //
   //////////////////////////////////////////////////////////////////////////// 
   
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   private LinkRouter.RoutingResult layoutResult_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -57,8 +59,9 @@ public class LayoutStatusReporter {
   ** Constructor 
   */ 
   
-  public LayoutStatusReporter(BTState appState, LinkRouter.RoutingResult layoutResult) {
-    appState_ = appState;
+  public LayoutStatusReporter(UIComponentSource uics, DataAccessContext dacx, LinkRouter.RoutingResult layoutResult) {
+    uics_ = uics;
+    dacx_ = dacx;
     layoutResult_ = layoutResult;
   }
   
@@ -79,10 +82,10 @@ public class LayoutStatusReporter {
     // Make status announcements
     //
 
-    boolean isHeadless = appState_.isHeadless();
+    boolean isHeadless = uics_.isHeadless();
     
     if ((layoutResult_.linkResult & LinkRouter.COLOR_PROBLEM) != 0x00) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       if ((layoutResult_.colorResult & ColorAssigner.COLOR_COLLISION) != 0x00) {
         String src1 = ""; 
         String src2 = "";
@@ -104,7 +107,7 @@ public class LayoutStatusReporter {
           System.err.println(srcMsg);
         } else {
           srcMsg = UiUtil.convertMessageToHtml(srcMsg);
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), srcMsg,
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), srcMsg,
                                         rMan.getString("autoLayout.colorProblemTitle"),
                                         JOptionPane.WARNING_MESSAGE);
         }
@@ -113,7 +116,7 @@ public class LayoutStatusReporter {
         if (isHeadless) {
           System.err.println(rMan.getString("autoLayout.colorProblemReassign"));
         } else {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                         rMan.getString("autoLayout.colorProblemReassign"),
                                         rMan.getString("autoLayout.colorProblemTitle"),
                                         JOptionPane.WARNING_MESSAGE);
@@ -123,7 +126,7 @@ public class LayoutStatusReporter {
         if (isHeadless) {
           System.err.println(rMan.getString("autoLayout.colorProblemTooFew"));
         } else {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                         rMan.getString("autoLayout.colorProblemTooFew"),
                                         rMan.getString("autoLayout.colorProblemTitle"),
                                         JOptionPane.WARNING_MESSAGE);
@@ -134,7 +137,7 @@ public class LayoutStatusReporter {
     int allLayoutProblems = LinkRouter.LAYOUT_PROBLEM | LinkRouter.LAYOUT_COULD_NOT_PROCEED | LinkRouter.LAYOUT_OVERLAID_SUBSET;
     
     if ((layoutResult_.linkResult & allLayoutProblems) != 0x00) {
-      ResourceManager rMan = appState_.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       if (isHeadless) {
         System.err.println(rMan.getString("autoLayout.layoutProblem"));  
       } else {
@@ -147,7 +150,7 @@ public class LayoutStatusReporter {
           msg = rMan.getString("autoLayout.layoutProblemOverlaid");
         }
         msg = UiUtil.convertMessageToHtml(msg);
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), msg,                                    
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), msg,                                    
                                       rMan.getString("autoLayout.layoutProblemTitle"),
                                       JOptionPane.WARNING_MESSAGE);
       }

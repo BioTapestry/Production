@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,7 @@ import java.util.Vector;
 import org.systemsbiology.biotapestry.analysis.CenteredGridElement;
 import org.systemsbiology.biotapestry.analysis.GridElement;
 import org.systemsbiology.biotapestry.analysis.GridGrower;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
@@ -104,17 +104,17 @@ public class SpecialtyLayoutEngine {
       this.tag_ = tag;  
     }
     
-    public EnumChoiceContent<SpecialtyType> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<SpecialtyType>(appState.getRMan().getString("layoutParam." + tag_), this));
+    public EnumChoiceContent<SpecialtyType> generateCombo(DataAccessContext dacx) {
+      return (new EnumChoiceContent<SpecialtyType>(dacx.getRMan().getString("layoutParam." + tag_), this));
     }
   
-    public static Vector<EnumChoiceContent<SpecialtyType>> getChoices(BTState appState, boolean skipHalo) {
+    public static Vector<EnumChoiceContent<SpecialtyType>> getChoices(DataAccessContext dacx, boolean skipHalo) {
       Vector<EnumChoiceContent<SpecialtyType>> retval = new Vector<EnumChoiceContent<SpecialtyType>>();
       for (SpecialtyType st: values()) {
         if (skipHalo && st.equals(HALO)) {
           continue;
         }
-        retval.add(st.generateCombo(appState)); 
+        retval.add(st.generateCombo(dacx)); 
       }
       return (retval);
     }
@@ -143,8 +143,8 @@ public class SpecialtyLayoutEngine {
   private FontRenderContext fixedFrc_;
   
   private List<GenomeSubset> subsetListIn_; // List of genome subsets   
-  private DataAccessContext rcx_;
-  private DataAccessContext workingRcx_;
+  private StaticDataAccessContext rcx_;
+  private StaticDataAccessContext workingRcx_;
   private SpecialtyLayout specL_;
   private NetModuleLinkExtractor.SubsetAnalysis sa_;
   private Point2D fullGenomeCenter_;                                                 
@@ -170,7 +170,6 @@ public class SpecialtyLayoutEngine {
   private HashSet<String> ultimateFailures_;
   
   private Layout.SupplementalDataCoords sdc_;
-  private BTState appState_;
   private GlobalSLEState gss_;
  
   
@@ -199,15 +198,14 @@ public class SpecialtyLayoutEngine {
   */ 
   
   
-  public SpecialtyLayoutEngine(BTState appState, List<GenomeSubset> subsetListIn,
-                               DataAccessContext rcx, SpecialtyLayout specL,
+  public SpecialtyLayoutEngine(List<GenomeSubset> subsetListIn,
+                               StaticDataAccessContext rcx, SpecialtyLayout specL,
                                NetModuleLinkExtractor.SubsetAnalysis sa,
                                Point2D fullGenomeCenter,
                                SpecialtyLayoutEngineParams params,                               
                                boolean fromScratch,
                                boolean hideNames) {
     
-    appState_ = appState;
     fixedFrc_ = new FontRenderContext(null, true, true);
     shiftedIMP_ = new HashMap<Point2D, Point2D>();
     shiftedAmount_ = new Vector2D(0.0, 0.0);
@@ -239,16 +237,16 @@ public class SpecialtyLayoutEngine {
   ** Get layout for type
   */   
   
-  public static SpecialtyLayout getLayout(SpecialtyType st, BTState appState) {
+  public static SpecialtyLayout getLayout(SpecialtyType st, StaticDataAccessContext rcx) {
     switch (st) {
       case STACKED:
-        return (new StackedBlockLayout(appState));
+        return (new StackedBlockLayout(rcx));
       case DIAGONAL:
-        return (new WorksheetLayout(appState, true));
+        return (new WorksheetLayout(true, rcx));
       case ALTERNATING:
-        return (new WorksheetLayout(appState, false));
+        return (new WorksheetLayout(false, rcx));
       case HALO:
-        return (new HaloLayout(appState));
+        return (new HaloLayout(rcx));
       default:
         throw new IllegalArgumentException();
     }
@@ -264,7 +262,7 @@ public class SpecialtyLayoutEngine {
   }
   
   public Layout getWorkingLayout() {
-    return (workingRcx_.getLayout());
+    return (workingRcx_.getCurrentLayout());
   }
   
   public Set<String> getUltimateFailures() {
@@ -304,14 +302,14 @@ public class SpecialtyLayoutEngine {
   }
   
   public Layout getLayout() {
-    return (rcx_.getLayout());
+    return (rcx_.getCurrentLayout());
   }
   
-  public DataAccessContext getRcx() {
+  public StaticDataAccessContext getRcx() {
     return (rcx_);
   }
   
-  public DataAccessContext getWorkingRcx() {
+  public StaticDataAccessContext getWorkingRcx() {
     return (workingRcx_);
   }
   
@@ -420,13 +418,13 @@ public class SpecialtyLayoutEngine {
     // We work exclusively with a copy that is modified and installed by the add commands
     //
        
-    workingRcx_ = new DataAccessContext(rcx_);
-    workingRcx_.setLayout(new Layout(rcx_.getLayout()));
-    workingRcx_.lSrc = new LocalLayoutSource(workingRcx_.getLayout(), workingRcx_.getGenomeSource());
+    workingRcx_ = new StaticDataAccessContext(rcx_);
+    workingRcx_.setLayout(new Layout(rcx_.getCurrentLayout()));
+    workingRcx_.setLayoutSource(new LocalLayoutSource(workingRcx_.getCurrentLayout(), workingRcx_.getGenomeSource()));
     workingRcx_.setFrc(fixedFrc_);
     
-    sdc_ = workingRcx_.getLayout().getSupplementalCoords(workingRcx_, loModKeys);    
-    rememberProps_ = workingRcx_.getLayout().buildRememberProps(workingRcx_);
+    sdc_ = workingRcx_.getCurrentLayout().getSupplementalCoords(workingRcx_, loModKeys);    
+    rememberProps_ = workingRcx_.getCurrentLayout().buildRememberProps(workingRcx_);
    
     
     //
@@ -437,7 +435,7 @@ public class SpecialtyLayoutEngine {
     Set<String> nexp = sa_.needExpansion();
     if ((nexp != null) && !nexp.isEmpty()) {
       for (String netModKey : nexp) {
-        workingRcx_.getLayout().sizeCoreToRegionBounds(workingRcx_.oso.getCurrentOverlay(), netModKey, workingRcx_);
+        workingRcx_.getCurrentLayout().sizeCoreToRegionBounds(workingRcx_.getOSO().getCurrentOverlay(), netModKey, workingRcx_);
       }
     }
   
@@ -447,11 +445,11 @@ public class SpecialtyLayoutEngine {
 
     overlayOption_ = params_.getOverlayRelayoutOption();    
     if (moduleShapeRecovery_ == null) {
-      moduleShapeRecovery_ = workingRcx_.getLayout().getModuleShapeParams(workingRcx_, loModKeys, fullGenomeCenter_);
+      moduleShapeRecovery_ = workingRcx_.getCurrentLayout().getModuleShapeParams(workingRcx_, loModKeys, fullGenomeCenter_);
     }
 
     if (overlayOption_ == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) {     
-      workingRcx_.getLayout().convertAllModulesToMemberOnly(loModKeys, workingRcx_);
+      workingRcx_.getCurrentLayout().convertAllModulesToMemberOnly(loModKeys, workingRcx_);
     }
    
   
@@ -462,7 +460,7 @@ public class SpecialtyLayoutEngine {
     // calcs once, hold on to the info, and pass it around.
     //
   
-    InvertedSrcTrg ist = new InvertedSrcTrg(rcx_.getGenome());   
+    InvertedSrcTrg ist = new InvertedSrcTrg(rcx_.getCurrentGenome());   
     
     //
     // Now crank through each subset to fork and layout the nodes:
@@ -490,13 +488,13 @@ public class SpecialtyLayoutEngine {
       Iterator<String> lit = subset.getLinkageIterator();
       while (lit.hasNext()) {
         String linkID = lit.next();
-        Linkage link = rcx_.getGenome().getLinkage(linkID);
+        Linkage link = rcx_.getCurrentGenome().getLinkage(linkID);
         String src = link.getSource();
         pureTargets.remove(src);
       }
         
       
-      SpecialtyLayoutData sld = new SpecialtyLayoutData(appState_, subset, workingRcx_, params_, gss_, customOrder, pureTargets, nodeSet);     
+      SpecialtyLayoutData sld = new SpecialtyLayoutData(subset, workingRcx_, params_, gss_, customOrder, pureTargets, nodeSet);     
       gss_.addData(sld);
             
       SpecialtyLayout forked = specL_.forkForSubset(sld);
@@ -646,12 +644,12 @@ public class SpecialtyLayoutEngine {
   
     Rectangle paddedBounds = null;
     if (!firstSubset.isCompleteGenome() && (grpID != null)) {
-      GenomeInstance bgi = (GenomeInstance)rcx_.getGenome();
-      LayoutRubberStamper lrs = new LayoutRubberStamper(appState_);
+      GenomeInstance bgi = (GenomeInstance)rcx_.getCurrentGenome();
+      LayoutRubberStamper lrs = new LayoutRubberStamper();
       HashSet<String> groups = new HashSet<String>();
       groups.add(grpID);
       double expandMax = currStart + ((maxFrac - currStart) * 0.20);
-      LayoutOptions options = new LayoutOptions(appState_.getLayoutOptMgr().getLayoutOptions());
+      LayoutOptions options = new LayoutOptions(rcx_.getLayoutOptMgr().getLayoutOptions());
       options.overlayCpexOption = overlayOption_;
       
       // Original region bounds:
@@ -703,8 +701,7 @@ public class SpecialtyLayoutEngine {
       paddedBounds.x += shift.getX();
       paddedBounds.y += shift.getY();
       
-      // FIXME?? Is this still relevant with DataAccessContext overhaul?
-      appState_.pushFRC(fixedFrc_);
+      workingRcx_.pushFrc(fixedFrc_);
       // Do the region expansion layout step.  We get back the centering shift that is being applied to the modified
       // layout as a whole; we need to add that bit to our own shift of the new stuff:
       LayoutRubberStamper.RegionExpander rexp = 
@@ -724,7 +721,7 @@ public class SpecialtyLayoutEngine {
       ArrayList<Vector2D> shiftVecs = new ArrayList<Vector2D>();
       shiftVecs.add(shift);
       installShift(gss_, shiftVecs, new HashMap<Object, GridElement>(), true); // Skip nodes done above; just for everything else
-      appState_.popFRC();
+      workingRcx_.popFrc();
     }
     // DONE with block that is ONLY for region-only layouts!
     
@@ -748,7 +745,7 @@ public class SpecialtyLayoutEngine {
       Set<String> ignoreLinks = DataUtil.setFromIterator(sub.getLinkageSuperSetIterator());
       Set<String> ignoreNodes = DataUtil.setFromIterator(sub.getNodeIterator());
       HashSet<String> keepNodes = new HashSet<String>();
-      Iterator<Node> anit = rcx_.getGenome().getAllNodeIterator();
+      Iterator<Node> anit = rcx_.getCurrentGenome().getAllNodeIterator();
       while (anit.hasNext()) {
         Node nextNode = anit.next();
         keepNodes.add(nextNode.getID());       
@@ -797,7 +794,7 @@ public class SpecialtyLayoutEngine {
     // Now run the link routing FOR ALL THE SUBSETS AS A UNIT:
     //
          
-    LinkRouter.RoutingResult retval = LayoutLinkSupport.runSpecialtyLinkPlacement(appState_, this, support, monitor, currStart, maxFrac); 
+    LinkRouter.RoutingResult retval = LayoutLinkSupport.runSpecialtyLinkPlacement(this, support, monitor, currStart, maxFrac); 
     return (retval);       
   }
  
@@ -809,10 +806,10 @@ public class SpecialtyLayoutEngine {
   ** need for links on the left instead of region pad settings
   */
   
-  private void updateRegionBounds(Rectangle needBounds, String grpID, DataAccessContext rcx) { 
+  private void updateRegionBounds(Rectangle needBounds, String grpID, StaticDataAccessContext rcx) { 
    
-    GenomeInstance bgi = (GenomeInstance)rcx.getGenome();
-    GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(grpID));     
+    GenomeInstance bgi = (GenomeInstance)rcx.getCurrentGenome();
+    GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(grpID));     
     Point2D oldPos = gp.getLabelLocation();
     
     GroupFree renderer = new GroupFree();
@@ -824,7 +821,7 @@ public class SpecialtyLayoutEngine {
     double newX = UiUtil.forceToGridValueMax(needBounds.getX() + lbw, UiUtil.GRID_SIZE);
     double newY = UiUtil.forceToGridValueMax(needBounds.getY() + lbh, UiUtil.GRID_SIZE);
     
-    rcx.getLayout().moveGroup(grpID, newX - oldPos.getX(), newY - oldPos.getY());    
+    rcx.getCurrentLayout().moveGroup(grpID, newX - oldPos.getX(), newY - oldPos.getY());    
     Rectangle bounds = renderer.getBounds(bgi.getGroup(grpID),rcx, null, true);
 
     GroupProperties changedProps = new GroupProperties(gp);
@@ -845,7 +842,7 @@ public class SpecialtyLayoutEngine {
     delt = (needBounds.x + needBounds.width) - (bounds.x + bounds.width); 
     changedProps.setPadding(GroupProperties.RIGHT, (int)UiUtil.forceToGridValueMax(delt + rpad, UiUtil.GRID_SIZE));
 
-    rcx.getLayout().replaceGroupProperties(gp, changedProps); 
+    rcx.getCurrentLayout().replaceGroupProperties(gp, changedProps); 
     return;
   }
   
@@ -856,7 +853,7 @@ public class SpecialtyLayoutEngine {
   ** AddCommands class!
   */
   
-  private void linkChopping(DataAccessContext rcx, boolean choppedRegion) {
+  private void linkChopping(StaticDataAccessContext rcx, boolean choppedRegion) {
   
     //
     // Since we are now doing subset layout, we need to be able to glue
@@ -865,9 +862,9 @@ public class SpecialtyLayoutEngine {
     // context of shifted source/target nodes.   Save the geometry: 
     //
     
-    Genome baseGenome = rcx.getGenome();
-    Layout workingCopyLo = new Layout(rcx.getLayout());
-    DataAccessContext rcxCpy = new DataAccessContext(rcx);
+    Genome baseGenome = rcx.getCurrentGenome();
+    Layout workingCopyLo = new Layout(rcx.getCurrentLayout());
+    StaticDataAccessContext rcxCpy = new StaticDataAccessContext(rcx);
     rcxCpy.setLayout(workingCopyLo);
      
  
@@ -1024,12 +1021,12 @@ public class SpecialtyLayoutEngine {
   ** region layout
   */
   
-  private void chopForRegionLayout(GenomeSubset regionSubset, DataAccessContext rcxi, Rectangle chopRect, 
+  private void chopForRegionLayout(GenomeSubset regionSubset, StaticDataAccessContext rcxi, Rectangle chopRect, 
                                    Map<String, Map<String, LayoutRubberStamper.EdgeMove>> chopDepart, 
                                    Map<String, Map<String, LayoutRubberStamper.EdgeMove>> chopArrive) {
 
     Genome baseGenome = regionSubset.getBaseGenome();
-    DataAccessContext rcx = new DataAccessContext(rcxi, baseGenome, rcxi.getLayout());
+    StaticDataAccessContext rcx = new StaticDataAccessContext(rcxi, baseGenome, rcxi.getCurrentLayout());
     // GROW IT!
     chopRect = UiUtil.rectFromRect2D(UiUtil.padTheRect(chopRect, 2.0 * UiUtil.GRID_SIZE));
    
@@ -1048,10 +1045,10 @@ public class SpecialtyLayoutEngine {
     HashMap<String, BusProperties.RememberProps> fakeRememberProps = new HashMap<String, BusProperties.RememberProps>();
     while (xrit.hasNext()) {
       String linkID = xrit.next();
-      rcx.getLayout().removeLinkPropertiesAndRemember(linkID, fakeRememberProps, rcx);
-      appState_.pushFRC(fixedFrc_);
-      LayoutLinkSupport.autoAddCrudeLinkProperties(appState_, rcx, linkID, null, fakeRememberProps);
-      appState_.popFRC();
+      rcx.getCurrentLayout().removeLinkPropertiesAndRemember(linkID, fakeRememberProps, rcx);
+      rcx.pushFrc(fixedFrc_);
+      LayoutLinkSupport.autoAddCrudeLinkProperties(rcx, linkID, null, fakeRememberProps);
+      rcx.popFrc();
     }
     return;
   }
@@ -1063,12 +1060,12 @@ public class SpecialtyLayoutEngine {
   ** boundary and toss away the internal structure
   */
   
-  private void chopAndClean(GenomeSubset subset, Iterator<String> lit, DataAccessContext rcxi,
+  private void chopAndClean(GenomeSubset subset, Iterator<String> lit, StaticDataAccessContext rcxi,
                             Map<String, Map<String, LayoutRubberStamper.EdgeMove>> edgeMovesForSrc, 
                             Rectangle chopRect, boolean headingOut) {
     
     Genome baseGenome = subset.getBaseGenome();   
-    DataAccessContext rcx = new DataAccessContext(rcxi, baseGenome, rcxi.getLayout());
+    StaticDataAccessContext rcx = new StaticDataAccessContext(rcxi, baseGenome, rcxi.getCurrentLayout());
     String regionID = subset.getGroupID();
     while (lit.hasNext()) {
       String linkID = lit.next();
@@ -1079,7 +1076,7 @@ public class SpecialtyLayoutEngine {
       if (moves == null) {
         moves = new HashMap<String, LayoutRubberStamper.EdgeMove>();
         edgeMovesForSrc.put(srcID, moves);
-        BusProperties bp = rcx.getLayout().getBusForSource(srcID);
+        BusProperties bp = rcx.getCurrentLayout().getBusForSource(srcID);
         // We keep recalculating segment geometries as long as we are "working"
         boolean working = true;
         // 11/30/12: Safety valve for the imminent V6 release, for when our logic proves to not be airtight!
@@ -1376,7 +1373,7 @@ public class SpecialtyLayoutEngine {
   */  
  
   private Map<String, Map<Integer, LinkBundleSplicer.SpliceSolution>> shiftTheModules(GlobalSLEState gss, String overlayKey, 
-                                                                                      DataAccessContext rcx,
+                                                                                      StaticDataAccessContext rcx,
                                                                                       BTProgressMonitor monitor) throws AsynchExitRequestException {
 
     //
@@ -1586,6 +1583,7 @@ public class SpecialtyLayoutEngine {
   ** Generate the boundary grid elements we will need
   */  
   
+  @SuppressWarnings("unused")
   private void buildBoundaryGridElements(SpecialtyInstructions results, Rectangle grownRect, Rectangle speW, 
                                          List<GridElement> needElems, int pass) {    
     
@@ -1792,7 +1790,7 @@ public class SpecialtyLayoutEngine {
                                                                    String overlayKey, 
                                                                    Map<String, Map<Point2D, Dimension[]>> linkExpansions, 
                                                                    Map<String, List<GridElement>> spliceNeeds, 
-                                                                   DataAccessContext rcx) {
+                                                                   StaticDataAccessContext rcx) {
  
     grownResults.clear();
     paddedResults.clear();
@@ -1848,11 +1846,11 @@ public class SpecialtyLayoutEngine {
     //
     
     HashMap<String, NetModuleLinkageProperties> moduleLinkTrees = new HashMap<String, NetModuleLinkageProperties>();
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(overlayKey);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     Iterator<String> tkit = nop.getNetModuleLinkagePropertiesKeys();
     while (tkit.hasNext()) {
       String tKey = tkit.next();
-      NetModuleLinkageProperties lp = rcx.getLayout().getNetModuleLinkagePropertiesFromTreeID(tKey, overlayKey);
+      NetModuleLinkageProperties lp = rcx.getCurrentLayout().getNetModuleLinkagePropertiesFromTreeID(tKey, overlayKey);
       NetModuleLinkageProperties myCopy = lp.clone();
       myCopy.shiftPerMap(shiftedIMP, true);
       moduleLinkTrees.put(tKey, myCopy);     
@@ -2185,11 +2183,11 @@ public class SpecialtyLayoutEngine {
   ** INSTALLS MODEL CHANGES on the GENOME!
   */  
  
-  private void installNodeProps(SpecialtyInstructions props, DataAccessContext rcx, UndoSupport support,
+  private void installNodeProps(SpecialtyInstructions props, StaticDataAccessContext rcx, UndoSupport support,
                                 GenomeSubset subset, BTProgressMonitor monitor, boolean skipPads, InvertedSrcTrg ist)
                                  throws AsynchExitRequestException {
  
-    Layout working = rcx.getLayout();
+    Layout working = rcx.getCurrentLayout();
     
     //
     // Get the points down:
@@ -2263,7 +2261,7 @@ public class SpecialtyLayoutEngine {
       }
     }
 
-    LinkSupport.specialtyPadChanges(appState_, props.padChanges, rcx, support, ist);
+    LinkSupport.specialtyPadChanges(props.padChanges, rcx, support, ist);
     if ((monitor != null) && !monitor.keepGoing()) {
       throw new AsynchExitRequestException();
     }
@@ -2282,7 +2280,7 @@ public class SpecialtyLayoutEngine {
         }
       }
       
-      Node node = rcx.getGenome().getNode(nodeID);
+      Node node = rcx.getCurrentGenome().getNode(nodeID);
       int currPads = node.getPadCount();
       Integer wantPads = props.lengthChanges.get(nodeID);
       int newPads = wantPads.intValue();
@@ -2291,12 +2289,12 @@ public class SpecialtyLayoutEngine {
       }
       GenomeChange gc;
       if (node.getNodeType() == Node.GENE) {        
-         gc = rcx.getGenome().changeGeneSize(nodeID, newPads);
+         gc = rcx.getCurrentGenome().changeGeneSize(nodeID, newPads);
       } else {
-         gc = rcx.getGenome().changeNodeSize(nodeID, newPads);
+         gc = rcx.getCurrentGenome().changeNodeSize(nodeID, newPads);
       }
       if ((gc != null) && (support != null)) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
         support.addEdit(gcc);
         // FIXME! issue a model change command
       }
@@ -2531,8 +2529,8 @@ public class SpecialtyLayoutEngine {
         extraHeight = 0;
       }
       SpecialtyInstructions results = propList_.get(0);
-      InvertedSrcTrg ist = new InvertedSrcTrg(rcx.getGenome());
-      DataAccessContext rcxL = new DataAccessContext(rcx);
+      InvertedSrcTrg ist = new InvertedSrcTrg(rcx.getCurrentGenome());
+      StaticDataAccessContext rcxL = new StaticDataAccessContext(rcx);
       rcxL.setLayout(grpLo);
       installNodeProps(results, rcxL, support_, sub_, monitor, true, ist);   
       updateRegionBounds(padded_, grpID, rcxL);
@@ -2578,9 +2576,9 @@ public class SpecialtyLayoutEngine {
       if (regionID_.equals(grpID)) {
         return (newRect_);
       } else {
-        Group grp = ((GenomeInstance)rcx_.getGenome()).getGroup(grpID);
+        Group grp = ((GenomeInstance)rcx_.getCurrentGenome()).getGroup(grpID);
         grpLo = layouts.get(grpID);
-        DataAccessContext rcxL = new DataAccessContext(rcx_);
+        StaticDataAccessContext rcxL = new StaticDataAccessContext(rcx_);
         rcxL.setLayout(grpLo);
         return (grpLo.getLayoutBoundsForGroup(grp, rcxL, true, true));
       }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.util.Vector;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -78,7 +78,7 @@ public class NetModuleLinkage implements Cloneable {
   private int sign_;
   private String srcModuleID_;
   private String trgModuleID_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -92,7 +92,7 @@ public class NetModuleLinkage implements Cloneable {
   */
 
   public NetModuleLinkage(NetModuleLinkage other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.id_ = other.id_;
     this.sign_ = other.sign_;
     this.srcModuleID_ = other.srcModuleID_;
@@ -105,7 +105,7 @@ public class NetModuleLinkage implements Cloneable {
   */
 
   public NetModuleLinkage(NetModuleLinkage other, String newID) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.id_ = newID;
     this.sign_ = other.sign_;
     this.srcModuleID_ = other.srcModuleID_;
@@ -118,7 +118,7 @@ public class NetModuleLinkage implements Cloneable {
   */
 
   public NetModuleLinkage(NetModuleLinkage other, String newID, Map<String, String> moduleMap) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.id_ = newID;
     this.sign_ = other.sign_;
     this.srcModuleID_ = moduleMap.get(other.srcModuleID_);
@@ -133,8 +133,8 @@ public class NetModuleLinkage implements Cloneable {
   ** Make an new module linkage
   */
 
-  public NetModuleLinkage(BTState appState, String id, String srcModuleID, String trgModuleID, int sign) {
-    appState_ = appState;
+  public NetModuleLinkage(DataAccessContext dacx, String id, String srcModuleID, String trgModuleID, int sign) {
+    dacx_ = dacx;
     id_ = id;
     sign_ = sign;
     srcModuleID_ = srcModuleID;
@@ -257,14 +257,18 @@ public class NetModuleLinkage implements Cloneable {
       
   public static class NetModuleLinkageWorker extends AbstractFactoryClient {
      
-    private BTState appState_;
+    private DataAccessContext dacx_;
     
-    public NetModuleLinkageWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public NetModuleLinkageWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      appState_ = appState;
+      dacx_ = null;
       myKeys_.add("netModuleLink");
     }
 
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+    }
+    
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("netModuleLink")) {
@@ -286,7 +290,7 @@ public class NetModuleLinkage implements Cloneable {
       } catch (IllegalArgumentException ex) {
         throw new IOException();
       }
-      return (new NetModuleLinkage(appState_, id, src, trg, sign));
+      return (new NetModuleLinkage(dacx_, id, src, trg, sign));
     }
   } 
    
@@ -301,10 +305,10 @@ public class NetModuleLinkage implements Cloneable {
   ** Return possible sign choices values
   */
   
-  public static Vector<ChoiceContent> getLinkSigns(BTState appState) {
+  public static Vector<ChoiceContent> getLinkSigns(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = NEGATIVE; i <= POSITIVE; i++) {
-      retval.add(signForCombo(appState, i));
+      retval.add(signForCombo(dacx, i));
     }
     return (retval);
   }  
@@ -314,8 +318,8 @@ public class NetModuleLinkage implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent signForCombo(BTState appState, int sign) {
-    return (new ChoiceContent(mapSignToDisplay(appState, sign), sign));
+  public static ChoiceContent signForCombo(DataAccessContext dacx, int sign) {
+    return (new ChoiceContent(mapSignToDisplay(dacx, sign), sign));
   }  
 
   /***************************************************************************
@@ -323,9 +327,9 @@ public class NetModuleLinkage implements Cloneable {
   ** Map node types
   */
 
-  public static String mapSignToDisplay(BTState appState, int sign) {
+  public static String mapSignToDisplay(DataAccessContext dacx, int sign) {
     String signTag = mapToSignTag(sign);
-    return (appState.getRMan().getString("nModLink." + signTag));
+    return (dacx.getRMan().getString("nModLink." + signTag));
   }  
 
   /***************************************************************************

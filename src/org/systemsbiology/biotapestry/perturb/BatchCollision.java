@@ -20,6 +20,7 @@
 package org.systemsbiology.biotapestry.perturb;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /****************************************************************************
 **
@@ -30,7 +31,7 @@ public class BatchCollision  {
   public String expDesc;
   public String targetName;
   public String batchID;
-  public ArrayList<String> vals;
+  public List<String> vals;
   
   /***************************************************************************
   **

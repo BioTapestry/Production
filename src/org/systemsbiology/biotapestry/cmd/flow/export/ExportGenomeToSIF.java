@@ -21,7 +21,10 @@
 package org.systemsbiology.biotapestry.cmd.flow.export;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 
@@ -86,7 +89,8 @@ public class ExportGenomeToSIF extends AbstractSimpleExport {
 
   @Override 
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".sif", "filterName.sif"));
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    es.filts.add(new FileExtensionFilters.SimpleFilter(dacx.getRMan(), ".sif", "filterName.sif"));
     es.suffs.add("sif");
     es.direct = "GenomeToSIFDirectory";
     es.pref = "sif";
@@ -100,11 +104,12 @@ public class ExportGenomeToSIF extends AbstractSimpleExport {
   */
 
   @Override 
-  protected boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "none";
     es.fileErrTitle = "none";
-    String key = appState_.getGenome();
-    Genome genome = appState_.getDB().getGenome(key);            
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    String key = dacx.getCurrentGenomeID();
+    Genome genome = dacx.getGenomeSource().getGenome(key);            
     genome.writeSIF(es.out);     
     return (true);  
   } 

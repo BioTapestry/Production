@@ -23,7 +23,7 @@ import java.util.Vector;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JComboBox;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -56,10 +56,10 @@ public class TriStateJComboBox extends JComboBox {
   ** Constructor
   */
 
-  public TriStateJComboBox(BTState appState) {
+  public TriStateJComboBox(DataAccessContext dacx) {
     super();
     Vector<ChoiceContent> vals = new Vector<ChoiceContent>();
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     vals.add(new ChoiceContent(rMan.getString("triState.mixed"), MIXED_STATE));
     vals.add(new ChoiceContent(rMan.getString("triState.false"), FALSE));
     vals.add(new ChoiceContent(rMan.getString("triState.true"), TRUE));

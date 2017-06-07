@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2011 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,8 @@ import java.awt.Dimension;
 import java.util.List;
 import java.text.MessageFormat;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -56,12 +57,12 @@ public class PertMappingDialog extends BTStashResultsDialog {
    ** Constructor 
    */
   
-  public PertMappingDialog(BTState appState, String nodeName, List currEntries, List currSources) {
-    super(appState, "", new Dimension(700, 500), 1);
+  public PertMappingDialog(UIComponentSource uics, DataAccessContext dacx, String nodeName, List currEntries, List currSources) {
+    super(uics, dacx, "", new Dimension(700, 500), 1);
     String format = rMan_.getString("pertMapping.title");
     String desc = MessageFormat.format(format, new Object[]{nodeName});
     setTitle(desc);   
-    pmp_ = new PertMappingPanel(appState, nodeName, currEntries, currSources, false, false);
+    pmp_ = new PertMappingPanel(uics, dacx, nodeName, currEntries, currSources, false, false);
     addTable(pmp_, 6);
     finishConstruction();   
   }

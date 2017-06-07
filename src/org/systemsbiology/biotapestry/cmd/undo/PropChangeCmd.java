@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.Layout;
 
@@ -51,8 +50,8 @@ public class PropChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PropChangeCmd(BTState appState, DataAccessContext dacx, Layout.PropChange[] restore) {
-    super(appState, dacx);
+  public PropChangeCmd(DataAccessContext dacx, Layout.PropChange[] restore) {
+    super(dacx);
     restore_ = restore;
     for (int i = 0; i < restore.length; i++) {
       Layout.PropChange pc = restore[i];
@@ -71,8 +70,8 @@ public class PropChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PropChangeCmd(BTState appState, DataAccessContext dacx, Layout.PropChange restore) {
-    super(appState, dacx);
+  public PropChangeCmd(DataAccessContext dacx, Layout.PropChange restore) {
+    super(dacx);
     restore_ = new Layout.PropChange[1];
     restore_[0] = restore;
     for (int i = 0; i < restore_.length; i++) {
@@ -118,7 +117,7 @@ public class PropChangeCmd extends BTUndoCmd {
       if (pc == null) {
         continue;
       }
-      Layout layout = dacx_.lSrc.getLayout(pc.layoutKey);
+      Layout layout = dacx_.getLayoutSource().getLayout(pc.layoutKey);
       if ((pc.orig != null) || (pc.newProps != null)) {
         layout.linkChangeUndo(pc);
       } else if ((pc.nOrig != null) || (pc.nNewProps != null)) {
@@ -155,7 +154,7 @@ public class PropChangeCmd extends BTUndoCmd {
       if (pc == null) {
         continue;
       }
-      Layout layout = dacx_.lSrc.getLayout(pc.layoutKey);
+      Layout layout = dacx_.getLayoutSource().getLayout(pc.layoutKey);
       if ((pc.newProps != null) || (pc.orig != null)) {
         layout.linkChangeRedo(pc);
       } else if ((pc.nNewProps != null) || (pc.nOrig != null)) {

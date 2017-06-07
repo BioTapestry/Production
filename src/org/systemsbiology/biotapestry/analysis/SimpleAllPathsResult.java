@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,13 +27,12 @@ import java.util.TreeMap;
 import java.util.Iterator;
 import java.util.Collections;
 
-
 /****************************************************************************
 **
 ** All paths between two nodes
 */
 
-public class SimpleAllPathsResult {
+public class SimpleAllPathsResult<T extends Link> {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -56,8 +55,8 @@ public class SimpleAllPathsResult {
   private String srcID_;
   private String targID_;
   private TreeMap<String, Integer> nodes_;
-  private HashSet<SignedLink> links_;
-  private SimplePathTracker tracker_;
+  private HashSet<T> links_;
+  private SimplePathTracker<T> tracker_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -74,7 +73,7 @@ public class SimpleAllPathsResult {
     srcID_ = srcID;
     targID_ = targID;
     nodes_ = new TreeMap<String, Integer>();
-    links_ = new HashSet<SignedLink>();
+    links_ = new HashSet<T>();
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -108,7 +107,7 @@ public class SimpleAllPathsResult {
   ** Add a link
   */
     
-  public void addLink(SignedLink link) {
+  public void addLink(T link) {
     links_.add(link);
   }
     
@@ -126,7 +125,7 @@ public class SimpleAllPathsResult {
   ** Get the links
   */
   
-  public Iterator<SignedLink> getLinks() {
+  public Iterator<T> getLinks() {
     return (links_.iterator());
   }
   
@@ -144,7 +143,7 @@ public class SimpleAllPathsResult {
   ** Get the links
   */
   
-  public Set<SignedLink> getLinkSet() {
+  public Set<T> getLinkSet() {
     return (Collections.unmodifiableSet(links_));
   }  
 
@@ -180,11 +179,11 @@ public class SimpleAllPathsResult {
   ** Get a list of path descriptions
   */
   
-  public List<SimplePath> getPaths() {
-    ArrayList<SimplePath> retval = new ArrayList<SimplePath>();
-    Iterator<SimplePath> paths = tracker_.getPaths();
+  public List<SimplePath<T>> getPaths() {
+    ArrayList<SimplePath<T>> retval = new ArrayList<SimplePath<T>>();
+    Iterator<SimplePath<T>> paths = tracker_.getPaths();
     while (paths.hasNext()) {
-      SimplePath path = paths.next();
+      SimplePath<T> path = paths.next();
       retval.add(path.clone());
     }
     return (retval);
@@ -195,14 +194,14 @@ public class SimpleAllPathsResult {
   ** Set the tracker results
   */
   
-  public void setTracker(SimplePathTracker tracker) {
+  public void setTracker(SimplePathTracker<T> tracker) {
     tracker_ = tracker;
-    Iterator<SimplePath> paths = tracker.getPaths();
+    Iterator<SimplePath<T>> paths = tracker.getPaths();
     while (paths.hasNext()) {
-      SimplePath path =paths.next();
-      Iterator<SignedLink> lit = path.pathIterator();
+      SimplePath<T> path =paths.next();
+      Iterator<T> lit = path.pathIterator();
       while (lit.hasNext()) {
-        SignedLink link = lit.next();
+        T link = lit.next();
         addLink(link);
         addNode(link.getSrc());
       }
@@ -216,6 +215,7 @@ public class SimpleAllPathsResult {
   ** Standard toString
   */
   
+  @Override
   public String toString() {
     return ("SimpleAllPathsResult source = " + srcID_ +
                                            " target = " + targID_ +

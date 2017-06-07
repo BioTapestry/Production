@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,9 +30,8 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -41,7 +40,6 @@ import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
-import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -85,7 +83,7 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
   
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
       return (new DesktopDialog(cfh, dniba.name, dniba.desc, dniba.hideLinks, dniba.currType, 
-                                dniba.existingNames, dniba.typeChoices));
+                                dniba.existingNames, dniba.typeChoices, dniba.select));
     } else if (platform.getPlatform() == DialogPlatform.Plat.WEB) {
       throw new IllegalStateException();
     }
@@ -112,15 +110,15 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
     String desc;
     NetOverlayProperties.OvrType currType;
     boolean hideLinks;
+    TrueObjChoiceContent select;
     
           
-    public NetOverlayPropsArgs(BTState appState) {
+    public NetOverlayPropsArgs(DataAccessContext dacx) {
       super(null);      
-      Database db = appState.getDB();
-      Layout layout = db.getLayout(appState.getLayoutKey());
-      NetOverlayOwner owner = db.getOverlayOwnerFromGenomeKey(appState.getGenome());
-      NetworkOverlay novr = owner.getNetworkOverlay(appState.getCurrentOverlay());
-      NetOverlayProperties nop = layout.getNetOverlayProperties(appState.getCurrentOverlay());
+      Layout layout = dacx.getLayoutSource().getLayout(dacx.getCurrentLayoutID());
+      NetOverlayOwner owner = dacx.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx.getCurrentGenomeID());
+      NetworkOverlay novr = owner.getNetworkOverlay(dacx.getOSO().getCurrentOverlay());
+      NetOverlayProperties nop = layout.getNetOverlayProperties(dacx.getOSO().getCurrentOverlay());
       
       existingNames = new HashSet<String>();
       Iterator<NetworkOverlay> oit = owner.getNetworkOverlayIterator();
@@ -131,11 +129,12 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
         }
       }
  
-      typeChoices = NetOverlayProperties.getOverlayTypes(appState);
+      typeChoices = NetOverlayProperties.getOverlayTypes(dacx);
       name = novr.getName(); 
       desc = novr.getDescription();  
       hideLinks = nop.hideLinks();    
-      currType = nop.getType();  
+      currType = nop.getType();
+      select = NetOverlayProperties.typeForCombo(dacx, currType);
     } 
   }
    
@@ -178,7 +177,7 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
   
   public DesktopDialog(ServerControlFlowHarness cfh, String name, String desc, boolean hideLinks, 
                        NetOverlayProperties.OvrType currType, 
-                       Set<String> existingNames, Vector<TrueObjChoiceContent> typeChoices) {      
+                       Set<String> existingNames, Vector<TrueObjChoiceContent> typeChoices, TrueObjChoiceContent select) {      
     super(cfh, "ovrprop.title", new Dimension(900, 300), 10, new NetOverlayPropsRequest(), false);
     existingNames_ = existingNames;
     oldName_ = name;
@@ -203,7 +202,7 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
     
     JLabel tlabel = new JLabel(rMan_.getString("ovrprop.typeLabel"));
     typeCombo_ = new JComboBox(typeChoices);
-    typeCombo_.setSelectedItem(NetOverlayProperties.typeForCombo(appState_, currType));
+    typeCombo_.setSelectedItem(select);
     addLabeledWidget(tlabel, typeCombo_, false, false);
   
     //
@@ -228,6 +227,10 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
     finishConstruction();
   }
 
+  public boolean dialogIsModal() {
+    return (true);
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PROTECTED METHODS
@@ -299,9 +302,10 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
  */
 
  public static class NetOverlayPropsRequest implements ServerControlFlowHarness.UserInputs {   
-   public boolean submitModel;
+	 private boolean haveResult;	 
+	 
+	 public boolean submitModel;
    public boolean submitLayout;
-   private boolean haveResult;
    public String nameResult;
    public String descResult;
    public NetOverlayProperties.OvrType typeResult;
@@ -312,11 +316,24 @@ public class NetOverlayPropertiesDialogFactory extends DialogFactory {
      haveResult = false;
      return;
    }   
+   
    public boolean haveResults() {
      return (haveResult);
    }  
+   
    public boolean isForApply() {
      return (false);
    }
+
+	public boolean getHaveResult() {
+		return haveResult;
+	}
+	
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
+   
+   
  }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
@@ -54,8 +53,8 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TemporalInputChangeCmd(BTState appState, DataAccessContext dacx, TemporalInputChange restore, boolean doEvent) {
-    super(appState, dacx);
+  public TemporalInputChangeCmd(DataAccessContext dacx, TemporalInputChange restore, boolean doEvent) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = doEvent;
   }
@@ -65,8 +64,8 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TemporalInputChangeCmd(BTState appState, DataAccessContext dacx, TemporalInputChange restore) {
-    this(appState, dacx, restore, false);
+  public TemporalInputChangeCmd(DataAccessContext dacx, TemporalInputChange restore) {
+    this(dacx, restore, false);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -93,11 +92,11 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     tird.changeUndo(restore_);
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }  
@@ -110,11 +109,11 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     tird.changeRedo(restore_);
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }
@@ -130,10 +129,10 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
   ** Wrap changes in command array
   */ 
   
-  public static TemporalInputChangeCmd[] wrapChanges(BTState appState, DataAccessContext dacx, TemporalInputChange[] restores) {
+  public static TemporalInputChangeCmd[] wrapChanges(DataAccessContext dacx, TemporalInputChange[] restores) {
     TemporalInputChangeCmd[] retval = new TemporalInputChangeCmd[restores.length];
     for (int i = 0; i < retval.length; i++) {
-      retval[i] = new TemporalInputChangeCmd(appState, dacx, restores[i]);
+      retval[i] = new TemporalInputChangeCmd(dacx, restores[i]);
     }
     return (retval);
   }

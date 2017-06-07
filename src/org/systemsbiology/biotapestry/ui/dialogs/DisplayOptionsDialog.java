@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,22 +43,24 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.CustomEvidenceDrawStyle;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
-import org.systemsbiology.biotapestry.ui.DisplayOptionsManager;
+import org.systemsbiology.biotapestry.ui.MinimalDispOptMgr;
 import org.systemsbiology.biotapestry.util.BrightnessField;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 
@@ -100,8 +102,10 @@ public class DisplayOptionsDialog extends JDialog {
   private String currentScaleString_;
   private boolean currentInvestMode_;
   private MinMax currentNullDefaultSpan_;
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
+  private HarnessBuilder hBld_;
   
   private static final long serialVersionUID = 1L;
         
@@ -116,16 +120,16 @@ public class DisplayOptionsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public DisplayOptionsDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("displayOptions.title"), true);   
-    appState_ = appState;
+  public DisplayOptionsDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("displayOptions.title"), true);   
     
+    uics_ = uics;
     dacx_ = dacx;
-    layoutKey_ = dacx_.getLayoutID();
-    
-    ResourceManager rMan = appState.getRMan();
-    DisplayOptionsManager dopmgr = appState_.getDisplayOptMgr();
-    DisplayOptions options = dopmgr.getDisplayOptions();
+    uFac_ = uFac;
+    hBld_ = hBld;
+    layoutKey_ = dacx_.getCurrentLayoutID();
+    ResourceManager rMan = dacx_.getRMan();
+    DisplayOptions options = dacx_.getDisplayOptsSource().getDisplayOptions();
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
     options.fillCustomEvidenceMap(customEvidence_);
     
@@ -148,16 +152,16 @@ public class DisplayOptionsDialog extends JDialog {
           
     int rowNum = 0;
     
-    busBranchChoice_ = new JComboBox(DisplayOptions.branchOptions(appState_));
-    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(appState_, options.getBranchMode()));
+    busBranchChoice_ = new JComboBox(DisplayOptions.branchOptions(dacx_));
+    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(dacx_, options.getBranchMode()));
     JLabel label = new JLabel(rMan.getString("displayOptions.branchOptions"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(busBranchChoice_, gbc);
     
-    evidenceChoice_ = new JComboBox(DisplayOptions.evidenceOptions(appState_));
-    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(appState_, options.getEvidence()));
+    evidenceChoice_ = new JComboBox(DisplayOptions.evidenceOptions(dacx_));
+    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(dacx_, options.getEvidence()));
     label = new JLabel(rMan.getString("displayOptions.evidenceOptions"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
@@ -168,7 +172,7 @@ public class DisplayOptionsDialog extends JDialog {
         try {
           enableCustomEvidence();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -178,13 +182,13 @@ public class DisplayOptionsDialog extends JDialog {
     buttonCU_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          CustomEvidenceDialog dialog = new CustomEvidenceDialog(appState_, dacx_, customEvidence_);
+          CustomEvidenceDialog dialog = new CustomEvidenceDialog(uics_, dacx_, hBld_, customEvidence_);
           dialog.setVisible(true);
           if (dialog.haveResult()) {
             customEvidence_ = dialog.getNewEvidenceMap();      
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -193,32 +197,32 @@ public class DisplayOptionsDialog extends JDialog {
     cp.add(buttonCU_, gbc);
     enableCustomEvidence();  
     
-    firstZoomChoice_ = new JComboBox(DisplayOptions.getFirstZoomChoices(appState_));
-    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(appState_, options.getFirstZoomMode()));
+    firstZoomChoice_ = new JComboBox(DisplayOptions.getFirstZoomChoices(dacx_));
+    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(dacx_, options.getFirstZoomMode()));
     label = new JLabel(rMan.getString("displayOptions.firstZoom"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(firstZoomChoice_, gbc);
     
-    navZoomChoice_ = new JComboBox(DisplayOptions.getNavZoomChoices(appState_));
-    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(appState_, options.getNavZoomMode()));
+    navZoomChoice_ = new JComboBox(DisplayOptions.getNavZoomChoices(dacx_));
+    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(dacx_, options.getNavZoomMode()));
     label = new JLabel(rMan.getString("displayOptions.navZoom"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(navZoomChoice_, gbc); 
     
-    nodeActivityChoice_ = new JComboBox(DisplayOptions.getNodeActivityChoices(appState_));
-    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(appState_, options.getNodeActivity()));
+    nodeActivityChoice_ = new JComboBox(DisplayOptions.getNodeActivityChoices(dacx_));
+    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(dacx_, options.getNodeActivity()));
     label = new JLabel(rMan.getString("displayOptions.nodeActivity"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(nodeActivityChoice_, gbc);
     
-    linkActivityChoice_ = new JComboBox(DisplayOptions.getLinkActivityChoices(appState_));
-    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(appState_, options.getLinkActivity()));
+    linkActivityChoice_ = new JComboBox(DisplayOptions.getLinkActivityChoices(dacx_));
+    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(dacx_, options.getLinkActivity()));
     label = new JLabel(rMan.getString("displayOptions.linkActivity"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
@@ -230,7 +234,7 @@ public class DisplayOptionsDialog extends JDialog {
     cp.add(showTreeBox_, gbc);
     showTreeBox_.setSelected(options.showExpressionTableTree());
        
-    inactiveGray_ = new BrightnessField(appState_, "displayOptions.inactiveGray", options.getInactiveBright(), 
+    inactiveGray_ = new BrightnessField(uics_.getHandlerAndManagerSource(), "displayOptions.inactiveGray", options.getInactiveBright(), 
                                         DisplayOptions.INACTIVE_BRIGHT_MIN, DisplayOptions.INACTIVE_BRIGHT_MAX); 
     UiUtil.gbcSet(gbc, 0, rowNum++, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(inactiveGray_, gbc);
@@ -257,13 +261,14 @@ public class DisplayOptionsDialog extends JDialog {
     buttonQPCR.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          QpcrSetupDialog npd = QpcrSetupDialog.qpcrSetupDialogWrapper(appState_,
+          QpcrSetupDialog npd = QpcrSetupDialog.qpcrSetupDialogWrapper(uics_,
                                                                        dacx_,
                                                                        currentColumns_, 
                                                                        currentMeasureColors_, 
                                                                        currentScaleString_,
                                                                        currentInvestMode_, 
-                                                                       currentNullDefaultSpan_);
+                                                                       currentNullDefaultSpan_,
+                                                                       uFac_);
           if (npd == null) {
             return;
           }
@@ -277,7 +282,7 @@ public class DisplayOptionsDialog extends JDialog {
           currentScaleString_ = npd.getScaleResult(); 
           currentMeasureColors_ = npd.getColorResults();       
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -294,7 +299,7 @@ public class DisplayOptionsDialog extends JDialog {
         try {
           resetDefaults();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -308,7 +313,7 @@ public class DisplayOptionsDialog extends JDialog {
             DisplayOptionsDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });  
@@ -319,7 +324,7 @@ public class DisplayOptionsDialog extends JDialog {
           DisplayOptionsDialog.this.setVisible(false);
           DisplayOptionsDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -336,7 +341,7 @@ public class DisplayOptionsDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, rowNum, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -376,10 +381,11 @@ public class DisplayOptionsDialog extends JDialog {
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.displayOptions");     
+    ResourceManager rMan = dacx_.getRMan();
+    UndoSupport support = uFac_.provideUndoSupport("undo.displayOptions", dacx_);     
 
-    DisplayOptionsManager dopmgr = appState_.getDisplayOptMgr();
-    DisplayOptions newOpts = new DisplayOptions(appState_);
+    MinimalDispOptMgr dopmgr = dacx_.getDisplayOptsSource();
+    DisplayOptions newOpts = new DisplayOptions(dacx_);
     
     String bigFootStr = bigFootField_.getText();
     if (!bigFootStr.trim().equals("")) {
@@ -395,8 +401,8 @@ public class DisplayOptionsDialog extends JDialog {
       }
       if (badVal) {
         JOptionPane.showMessageDialog(parent_, 
-                                      dacx_.rMan.getString("displayOptions.badFoot"), 
-                                      dacx_.rMan.getString("displayOptions.badFootTitle"),
+                                      rMan.getString("displayOptions.badFoot"), 
+                                      rMan.getString("displayOptions.badFootTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         return (false);
       }
@@ -408,12 +414,12 @@ public class DisplayOptionsDialog extends JDialog {
     if (inactiveGray_.haveResults()) {
       newOpts.setInactiveBright(inactiveGray_.getResults());
     } else {
-      String msg = MessageFormat.format(dacx_.rMan.getString("displayOptions.badInactiveGray"),    
+      String msg = MessageFormat.format(rMan.getString("displayOptions.badInactiveGray"),    
                                            new Object[] {Double.valueOf(DisplayOptions.INACTIVE_BRIGHT_MIN),
                                                          Double.valueOf(DisplayOptions.INACTIVE_BRIGHT_MAX)});     
       JOptionPane.showMessageDialog(parent_, 
                                     msg,
-                                    dacx_.rMan.getString("displayOptions.badInactiveGrayTitle"),
+                                    rMan.getString("displayOptions.badInactiveGrayTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (false);     
     }
@@ -436,8 +442,8 @@ public class DisplayOptionsDialog extends JDialog {
     }
     if (badWeakVal) {
       JOptionPane.showMessageDialog(parent_, 
-                                    dacx_.rMan.getString("displayOptions.badWeakLevel"), 
-                                    dacx_.rMan.getString("displayOptions.badWeakLevelTitle"),
+                                    rMan.getString("displayOptions.badWeakLevel"), 
+                                    rMan.getString("displayOptions.badWeakLevelTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (false);
     } else {
@@ -472,7 +478,7 @@ public class DisplayOptionsDialog extends JDialog {
     PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     pd.dropCachedDisplayState();
 
-    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(appState_, dacx_, doc);
+    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx_, doc);
     support.addEdit(docc);
 
     LayoutChangeEvent lcev = new LayoutChangeEvent(layoutKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE);
@@ -498,13 +504,13 @@ public class DisplayOptionsDialog extends JDialog {
   */
   
   private void resetDefaults() {
-    DisplayOptions defOptions = new DisplayOptions(appState_);
-    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(appState_, defOptions.getBranchMode()));
-    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(appState_, defOptions.getEvidence()));
-    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(appState_, defOptions.getFirstZoomMode()));
-    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(appState_, defOptions.getNavZoomMode()));
-    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(appState_, defOptions.getNodeActivity()));
-    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(appState_, defOptions.getLinkActivity()));
+    DisplayOptions defOptions = new DisplayOptions(dacx_);
+    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(dacx_, defOptions.getBranchMode()));
+    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(dacx_, defOptions.getEvidence()));
+    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(dacx_, defOptions.getFirstZoomMode()));
+    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(dacx_, defOptions.getNavZoomMode()));
+    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(dacx_, defOptions.getNodeActivity()));
+    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(dacx_, defOptions.getLinkActivity()));
     inactiveGray_.resetValue(defOptions.getInactiveBright());
     
     bigFootField_.setText(Integer.toString(defOptions.getExtraFootSize()));   

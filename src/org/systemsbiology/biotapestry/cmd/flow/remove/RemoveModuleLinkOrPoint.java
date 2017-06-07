@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,8 +21,10 @@ package org.systemsbiology.biotapestry.cmd.flow.remove;
 
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -61,8 +63,7 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveModuleLinkOrPoint(BTState appState, boolean forPoint) {
-    super(appState);
+  public RemoveModuleLinkOrPoint(boolean forPoint) {
     forPoint_ = forPoint;  
     name = (forPoint_) ? "linkPointPopup.Delete" : "modulelinkPopup.LinkDelete";
     desc = (forPoint_) ? "linkPointPopup.Delete" : "modulelinkPopup.LinkDelete";     
@@ -82,12 +83,13 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!forPoint_) {
       return (true);
     }
     String oid = inter.getObjectID();
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(rcx.oso.getCurrentOverlay());
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(rcx.getOSO().getCurrentOverlay());
     NetModuleLinkageProperties nmp = nop.getNetModuleLinkagePropertiesFromTreeID(oid);
     LinkSegmentID segID = inter.segmentIDFromIntersect();
     if (segID.isBusNodeConnection()) {
@@ -106,8 +108,8 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, forPoint_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(forPoint_, dacx);
     return (retval);
   }
  
@@ -125,6 +127,7 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();     
         } else if (ans.getNextStep().equals("stepToRemovePoint")) {
@@ -145,26 +148,18 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean forPoint, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean forPoint, StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = (forPoint) ? "stepToRemovePoint" : "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -184,15 +179,15 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToRemove() {
         
-      String overlayKey = rcxT_.oso.getCurrentOverlay();
-      UndoSupport support = new UndoSupport(appState_, "undo.moduleLinkDelete");
+      String overlayKey = dacx_.getOSO().getCurrentOverlay();
+      UndoSupport support = uFac_.provideUndoSupport("undo.moduleLinkDelete", dacx_);
       String treeID = intersect_.getObjectID();
       LinkSegmentID segID = intersect_.segmentIDFromIntersect();
-      NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(overlayKey);
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(overlayKey);
       NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);
       Set<String> resolved = nmlp.resolveLinkagesThroughSegment(segID);
-      if (OverlaySupport.deleteNetworkModuleLinkageSet(appState_, rcxT_, overlayKey, resolved, support)) {
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
+      if (OverlaySupport.deleteNetworkModuleLinkageSet(dacx_, overlayKey, resolved, support)) {
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -204,18 +199,18 @@ public class RemoveModuleLinkOrPoint extends AbstractControlFlow {
     */ 
          
     private DialogAndInProcessCmd stepToRemovePoint() {       
-      String overlayKey = rcxT_.oso.getCurrentOverlay();
+      String overlayKey = dacx_.getOSO().getCurrentOverlay();
       String treeID = intersect_.getObjectID();
-      NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(overlayKey);
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(overlayKey);
       NetModuleLinkageProperties nmp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);
       LinkSegmentID segID = intersect_.segmentIDFromIntersect();
       Layout.PropChange[] lpc = new Layout.PropChange[1];
-      lpc[0] = rcxT_.getLayout().deleteCornerForNetModuleLinkTree(nmp, segID, overlayKey, rcxT_);          
+      lpc[0] = dacx_.getCurrentLayout().deleteCornerForNetModuleLinkTree(nmp, segID, overlayKey, dacx_);          
       if (lpc[0] != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteCorner");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteCorner", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
         support.addEdit(mov);
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

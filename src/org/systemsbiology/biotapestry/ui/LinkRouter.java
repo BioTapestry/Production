@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,6 +35,7 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -109,7 +110,7 @@ public class LinkRouter {
   public LinkPlacementGrid initGridForModules(DataAccessContext rcx, 
                                               Set<String> skipLinks, String overID,
                                               BTProgressMonitor monitor) throws AsynchExitRequestException {
-    return (rcx.getLayout().moduleFillLinkPlacementGrid(rcx, skipLinks, overID, monitor));
+    return (rcx.getCurrentLayout().moduleFillLinkPlacementGrid(rcx, skipLinks, overID, monitor));
   }   
      
   /***************************************************************************
@@ -122,7 +123,7 @@ public class LinkRouter {
   public LinkPlacementGrid initGridForModuleGuidedLinks(Map<String, Rectangle2D> moduleShapes, 
                                                         Map<String, Map<Point2D, Map<String, Point>>> multiLinkData, 
                                                         Map<String, NetModuleLinkageProperties> moduleLinkTrees, 
-                                                        DataAccessContext rcx) {
+                                                        StaticDataAccessContext rcx) {
     LinkPlacementGrid retval = new LinkPlacementGrid();
     Iterator<String> sit = moduleShapes.keySet().iterator();
     while (sit.hasNext()) {
@@ -153,7 +154,7 @@ public class LinkRouter {
                                     Set<String> skipLinks, int strictness,
                                     BTProgressMonitor monitor) throws AsynchExitRequestException {
 
-    return (irx.getLayout().fillLinkPlacementGrid(irx, skipLinks, strictness, monitor));
+    return (irx.getCurrentLayout().fillLinkPlacementGrid(irx, skipLinks, strictness, monitor));
   }
   
   /***************************************************************************
@@ -162,11 +163,11 @@ public class LinkRouter {
   ** LinkProperties assigned!
   */
   
-  public LinkPlacementGrid initLimitedGrid(DataAccessContext irx,
+  public LinkPlacementGrid initLimitedGrid(StaticDataAccessContext irx,
                                            Set<String> useNodes, Set<String> skipLinks, int strictness) {
 
     try {
-      return (irx.getLayout().limitedFillLinkPlacementGrid(irx, useNodes, skipLinks, strictness, null));
+      return (irx.getCurrentLayout().limitedFillLinkPlacementGrid(irx, useNodes, skipLinks, strictness, null));
     } catch (AsynchExitRequestException ex) {
       throw new IllegalStateException();  // Cannot happen since monitor is null
     }
@@ -178,7 +179,7 @@ public class LinkRouter {
   ** Layout the given links
   */
   
-  public RoutingResult multiPassLayout(Set<String> newLinks, DataAccessContext rcx, 
+  public RoutingResult multiPassLayout(Set<String> newLinks, StaticDataAccessContext rcx, 
                                        LayoutOptions options, 
                                        BTProgressMonitor monitor, Set<String> needColors, 
                                        double startFrac, double endFrac, 
@@ -213,7 +214,7 @@ public class LinkRouter {
                                           options.goodness, monitor, needColors, 
                                           currFrac, nextFrac, recoveryDataMap, strictOKGroups);
         LayoutFailureTracker.clearLayoutPass();
-        rcx.getLayout().dropUselessCorners(rcx, null, nextFrac, nextFrac, monitor);
+        rcx.getCurrentLayout().dropUselessCorners(rcx, null, nextFrac, nextFrac, monitor);
         currFrac = nextFrac;
         int numFailed = holdResult.failedLinks.size();
         linkSet.clear();
@@ -249,12 +250,12 @@ public class LinkRouter {
   ** Generate preexisting departures
   */
   
-  private void generatePreExistingDeparts(LinkPlacementGrid grid, DataAccessContext rcx,
+  private void generatePreExistingDeparts(LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                           Map<String, LinkPlacementGrid.RecoveryDataForSource> recoveryDataMap, 
                                           HashMap<String, LinkPlacementGrid.TerminalRegion> departurePerLink, 
                                           HashMap<LinkPlacementGrid.TerminalRegion, Set<String>> linksPerDeparture) {
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Iterator<Node> sit = genome.getAllNodeIterator();
     while (sit.hasNext()) {
       Node node = sit.next();
@@ -292,7 +293,7 @@ public class LinkRouter {
   ** Generate departures and arrivals based on node pads
   */
   
-  private void generateDepartsAndArrives(LinkPlacementGrid grid, DataAccessContext rcx,
+  private void generateDepartsAndArrives(LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                          SortedSet<DistanceRank> forSource,
                                          Map<String, LayoutRubberStamper.EdgeMove> arrChops, 
                                          Map<String, LayoutRubberStamper.EdgeMove> depChops,
@@ -307,7 +308,7 @@ public class LinkRouter {
                                            throws AsynchExitRequestException {
       
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Iterator<DistanceRank> fsit = forSource.iterator();
     while (fsit.hasNext()) {
       DistanceRank dr = fsit.next();
@@ -380,7 +381,7 @@ public class LinkRouter {
   */
   
   private Set<LinkPlacementGrid.TerminalRegion> reserveTerminalRegions(Set<String> newLinks,
-                                                                       LinkPlacementGrid grid, DataAccessContext rcx,
+                                                                       LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                                                        HashMap<String, LinkPlacementGrid.TerminalRegion> departures, 
                                                                        HashMap<LinkPlacementGrid.TerminalRegion, Set<String>> linksPerDeparture, 
                                                                        HashMap<String, LinkPlacementGrid.TerminalRegion> arrivals, 
@@ -390,7 +391,7 @@ public class LinkRouter {
                                                                          throws AsynchExitRequestException {
    
     
-    Genome genome = rcx.getGenome();   
+    Genome genome = rcx.getCurrentGenome();   
     HashSet<LinkPlacementGrid.TerminalRegion> reserved = new HashSet<LinkPlacementGrid.TerminalRegion>();
     Iterator<String> dkit = departures.keySet().iterator();
     while (dkit.hasNext()) {
@@ -454,7 +455,7 @@ public class LinkRouter {
   */
   
   private RoutingResult layout(Set<String> newLinks,
-                               LinkPlacementGrid grid, DataAccessContext rcx, 
+                               LinkPlacementGrid grid, StaticDataAccessContext rcx, 
                                LinkPlacementGrid.GoodnessParams goodness,
                                BTProgressMonitor monitor, Set<String> needColors, 
                                double startFrac, double endFrac, 
@@ -462,7 +463,7 @@ public class LinkRouter {
                                boolean strictOKGroups) 
                                throws AsynchExitRequestException {
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Set<String> targCollide = genome.hasLinkTargetPadCollisions();
     HashSet<String> needAltTargs = new HashSet<String>(targCollide);
     needAltTargs.retainAll(newLinks);
@@ -470,7 +471,7 @@ public class LinkRouter {
     // Come up with the order in which links will be laid out:
     //
     
-    SortedMap<DistanceRank, SortedSet<DistanceRank>> links = organizeLinks(newLinks, genome, rcx.getLayout(), recoveryDataMap);
+    SortedMap<DistanceRank, SortedSet<DistanceRank>> links = organizeLinks(newLinks, genome, rcx.getCurrentLayout(), recoveryDataMap);
     
     HashMap<String, LinkPlacementGrid.TerminalRegion> departurePerLink = new HashMap<String, LinkPlacementGrid.TerminalRegion>();    
     HashMap<LinkPlacementGrid.TerminalRegion, Set<String>> linksPerDeparture = new HashMap<LinkPlacementGrid.TerminalRegion, Set<String>>();
@@ -524,7 +525,7 @@ public class LinkRouter {
 
     int linkCount = links.size();    
     double currProg = startFrac;
-    double progInc = (endFrac - startFrac) / (double)linkCount;
+    double progInc = (endFrac - startFrac) / linkCount;
 
  //   GenomeInstance gi = (genome instanceof GenomeInstance) ? (GenomeInstance)genome : null;
     
@@ -607,11 +608,11 @@ public class LinkRouter {
   ** regions to allow the layout algorithm to succeed.
   */  
    
-  private Map<String, LinkPlacementGrid.TerminalRegion> generateTerminalRegionsForCollisions(DataAccessContext rcx,
+  private Map<String, LinkPlacementGrid.TerminalRegion> generateTerminalRegionsForCollisions(StaticDataAccessContext rcx,
                                                                                              LinkPlacementGrid grid, Set<String> links,
                                                                                              Set<String> needAltTargs, Map<String, Set<String>> okGroupMap) {
   
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     PadCalculatorToo pct = new PadCalculatorToo();
     HashMap<String, Set<String>> perTarg = new HashMap<String, Set<String>>();
     Iterator<String> lit = links.iterator();
@@ -671,7 +672,7 @@ public class LinkRouter {
   
   private void layoutForSource(SortedSet<DistanceRank> forSource, Set<String> workingSet, 
                                LinkPlacementGrid grid, 
-                               DataAccessContext rcx,
+                               StaticDataAccessContext rcx,
                                LinkPlacementGrid.GoodnessParams goodness,
                                Map<String, LinkPlacementGrid.TerminalRegion> departures, 
                                Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
@@ -682,7 +683,7 @@ public class LinkRouter {
                                  throws AsynchExitRequestException { 
     
     Iterator<DistanceRank> fsit = forSource.iterator();
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     while (fsit.hasNext()) {
       DistanceRank dr = fsit.next();
       if ((monitor != null) && !monitor.keepGoing()) {
@@ -693,7 +694,7 @@ public class LinkRouter {
         continue;
       }
       Linkage link = genome.getLinkage(linkID);
-      int entryPref = entryQuadrant(link, genome, rcx.getLayout());
+      int entryPref = entryQuadrant(link, genome, rcx.getCurrentLayout());
       Set<String> okGroups = okGroupMap.get(linkID);
       LinkPlacementGrid.TerminalRegion depart = departures.get(linkID);
       if (untouchedDepartures.contains(depart)) {          
@@ -726,7 +727,7 @@ public class LinkRouter {
   
   private void recoverForSource(SortedSet<DistanceRank> forSource, Set<String> workingSet,                                                              
                                 LinkPlacementGrid grid,
-                                DataAccessContext rcx, 
+                                StaticDataAccessContext rcx, 
                                 LinkPlacementGrid.GoodnessParams goodness,
                                 Map<String, LinkPlacementGrid.TerminalRegion> departures, 
                                 Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
@@ -751,9 +752,9 @@ public class LinkRouter {
         continue;
       }
      
-      Genome genome = rcx.getGenome();
+      Genome genome = rcx.getCurrentGenome();
       Linkage link = genome.getLinkage(linkID);
-      int entryPref = entryQuadrant(link, genome, rcx.getLayout());
+      int entryPref = entryQuadrant(link, genome, rcx.getCurrentLayout());
       Set<String> okGroups = okGroupMap.get(linkID);   
       LinkPlacementGrid.TerminalRegion depart = departures.get(linkID);
       //
@@ -796,7 +797,7 @@ public class LinkRouter {
                                        Map<String, SpecialtyLayoutLinkData> srcToBetween, 
                                        NetModuleLinkExtractor.SubsetAnalysis sa,
                                        Set<String> newLinks,
-                                       DataAccessContext rcx,
+                                       StaticDataAccessContext rcx,
                                        Map<String, Map<Integer, LinkBundleSplicer.SpliceSolution>> splicePlans,
                                        BTProgressMonitor monitor,
                                        double startFrac, double endFrac)
@@ -816,7 +817,7 @@ public class LinkRouter {
     
     GenomeSubset firstSubset = subsetList.get(0);
     Genome baseGenome = firstSubset.getBaseGenome();
-    DataAccessContext rcxb = new DataAccessContext(rcx, baseGenome, rcx.getLayout());
+    StaticDataAccessContext rcxb = new StaticDataAccessContext(rcx, baseGenome, rcx.getCurrentLayout());
     
     //
     // Build a single Specialty input for each source from the different
@@ -837,7 +838,7 @@ public class LinkRouter {
   
   private void glueBeforeBuilding(NetModuleLinkExtractor.SubsetAnalysis sa,
                                   Map<String, SpecialtyLayoutLinkData> srcToBetween,
-                                  DataAccessContext rcx,
+                                  StaticDataAccessContext rcx,
                                   List<SpecialtyInstructions> pointDataList,  // of pointData maps
                                   Map<String, SpecialtyLayoutLinkData> alienSources,
                                   Set<String> newLinks,
@@ -903,7 +904,7 @@ public class LinkRouter {
     
     double currProg = startFrac;
     int linkCount = newLinks.size();
-    double perLink = (endFrac - startFrac) / (double)linkCount;
+    double perLink = (endFrac - startFrac) / linkCount;
     
     // FYI: 8/20/13 placePointData still taking 17 seconds on 6.7K node 28.4K link test network!
     Iterator<SpecialtyLayoutLinkData> plit = placeList.iterator();
@@ -922,7 +923,7 @@ public class LinkRouter {
   private double placePointData(SpecialtyLayoutLinkData siPlace,
                                 SpecialtyLayoutLinkData siSrc,                             
                                 boolean isFirst,
-                                DataAccessContext rcx,
+                                StaticDataAccessContext rcx,
                                 double currProg, double perLink,
                                 BTProgressMonitor monitor) throws AsynchExitRequestException {
 
@@ -939,7 +940,7 @@ public class LinkRouter {
     }
     Map<String, Map<String, LinkBusDrop>> cache = new HashMap<String, Map<String, LinkBusDrop>>();
     
-    Genome baseGenome = rcx.getGenome();
+    Genome baseGenome = rcx.getCurrentGenome();
     int numLinks = (si == null) ? 0 : si.numLinks();
     for (int i = 0; i < numLinks; i++) {
       String linkID = si.getLink(i);
@@ -955,7 +956,7 @@ public class LinkRouter {
       }
       if (i == 0) { // first link for source in this sip
         // Remember, at a minimum, we have a crude auto-layout that has occurred already!
-        BusProperties bp = rcx.getLayout().getLinkProperties(linkID);
+        BusProperties bp = rcx.getCurrentLayout().getLinkProperties(linkID);
         if (isFirst) { // first time for source globally        
           if (isSource) { // actually are placing the root here
             positionRootSegment(linkID, rcx, pt);
@@ -964,21 +965,21 @@ public class LinkRouter {
               LinkSegment newRoot = new LinkSegment(pt, null);
               bp.addSegmentInSeries(newRoot);
             } else {
-              relocateFast(linkID, rcx.getLayout(), bp.getRootSegment().getStart(), cache);
-              addAndLocateCorner(link, rcx.getLayout(), pt);
+              relocateFast(linkID, rcx.getCurrentLayout(), bp.getRootSegment().getStart(), cache);
+              addAndLocateCorner(link, rcx.getCurrentLayout(), pt);
             }
           }
         } else {  // not first time through
-          relocateFast(linkID, rcx.getLayout(), bp.getRootSegment().getStart(), cache);
-          addAndLocateCorner(link, rcx.getLayout(), pt);          
+          relocateFast(linkID, rcx.getCurrentLayout(), bp.getRootSegment().getStart(), cache);
+          addAndLocateCorner(link, rcx.getCurrentLayout(), pt);          
         }
       } else { // following links just glue wrt the first link
-        relocateFast(linkID, rcx.getLayout(), pt, cache);
+        relocateFast(linkID, rcx.getCurrentLayout(), pt, cache);
       }
       int numPts = ptList.size();
       for (int k = 1; k < numPts; k++) {
         pt = ptList.get(k).getPoint();
-        addAndLocateCorner(link, rcx.getLayout(), pt);
+        addAndLocateCorner(link, rcx.getCurrentLayout(), pt);
       }
       currProg += perLink;
       if (monitor != null) { 
@@ -995,13 +996,13 @@ public class LinkRouter {
   ** Get the (forced) launch pad location:
   */
   
-  public void launchPadLoc(Linkage link, DataAccessContext rcx, Point2D loc, Vector2D vec) {
+  public void launchPadLoc(Linkage link, StaticDataAccessContext rcx, Point2D loc, Vector2D vec) {
     String srcID = link.getSource();
-    Node src = rcx.getGenome().getNode(srcID);
-    NodeProperties np = rcx.getLayout().getNodeProperties(srcID);    
+    Node src = rcx.getCurrentGenome().getNode(srcID);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(srcID);    
     INodeRenderer render = np.getRenderer();
     Vector2D launchOff = render.getLaunchPadOffset(link.getLaunchPad(), src, rcx);
-    Vector2D departDir = render.getDepartureDirection(link.getLaunchPad(), src, rcx.getLayout());
+    Vector2D departDir = render.getDepartureDirection(link.getLaunchPad(), src, rcx.getCurrentLayout());
     vec.setXY(departDir.getX(), departDir.getY());
     Point2D nodePoint = np.getLocation();
     Point2D start = launchOff.add(nodePoint);
@@ -1055,7 +1056,7 @@ public class LinkRouter {
   */
   
   private boolean recoverFirstForSource(String srcID, Linkage link, 
-                                        LinkPlacementGrid grid, DataAccessContext rcx,
+                                        LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                         Map<String, LinkPlacementGrid.TerminalRegion> departures, 
                                         Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
                                         LinkPlacementGrid.GoodnessParams goodness, 
@@ -1108,7 +1109,7 @@ public class LinkRouter {
       positionRootSegment(linkID, rcx, points.get(0));
     }
     for (int i = 1; i < numPoints; i++) {
-      addAndLocateCorner(link, rcx.getLayout(), points.get(i));
+      addAndLocateCorner(link, rcx.getCurrentLayout(), points.get(i));
     }
     return (true);
   } 
@@ -1119,7 +1120,7 @@ public class LinkRouter {
   */
   
   private boolean recoverAdditionalForSource(String srcID, Linkage link,
-                                             LinkPlacementGrid grid, DataAccessContext rcx,
+                                             LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                              Map<String, LinkPlacementGrid.TerminalRegion> departures,
                                              Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
                                              Set<String> unseenLinks, 
@@ -1152,9 +1153,9 @@ public class LinkRouter {
     } else {
       grid.addCornerDirection(newCorner.point, srcID, newCorner.dir);
     }
-    relocate(linkID, rcx.getLayout(), newCorner.point);
+    relocate(linkID, rcx.getCurrentLayout(), newCorner.point);
     for (int i = 0; i < numPoints; i++) {
-      addAndLocateCorner(link, rcx.getLayout(), points.get(i));
+      addAndLocateCorner(link, rcx.getCurrentLayout(), points.get(i));
     }
     LayoutFailureTracker.recordRecoveryTrack(srcID, linkID, points);
     return (true);
@@ -1166,7 +1167,7 @@ public class LinkRouter {
   */
   
   private boolean addFirstForSource(String srcID, Linkage link,
-                                    LinkPlacementGrid grid, DataAccessContext rcx,
+                                    LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                     Map<String, LinkPlacementGrid.TerminalRegion> departures,
                                     Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
                                     LinkPlacementGrid.GoodnessParams goodness, 
@@ -1188,7 +1189,7 @@ public class LinkRouter {
       positionRootSegment(linkID, rcx, points.get(0));
     }
     for (int i = 1; i < numPoints; i++) {
-      addAndLocateCorner(link, rcx.getLayout(), points.get(i));
+      addAndLocateCorner(link, rcx.getCurrentLayout(), points.get(i));
     }
     return (true);
   }
@@ -1199,7 +1200,7 @@ public class LinkRouter {
   */
   
   private boolean addAdditionalForSource(String srcID, Linkage link,
-                                         LinkPlacementGrid grid, DataAccessContext rcx,
+                                         LinkPlacementGrid grid, StaticDataAccessContext rcx,
                                          Map<String, LinkPlacementGrid.TerminalRegion> arrivals, 
                                          Set<String> unseenLinks, 
                                          LinkPlacementGrid.GoodnessParams goodness, 
@@ -1225,9 +1226,9 @@ public class LinkRouter {
     } else {
       grid.addCornerDirection(newCorner.point, srcID, newCorner.dir);
     }
-    relocate(linkID, rcx.getLayout(), newCorner.point);
+    relocate(linkID, rcx.getCurrentLayout(), newCorner.point);
     for (int i = 0; i < numPoints; i++) {
-      addAndLocateCorner(link, rcx.getLayout(), points.get(i));
+      addAndLocateCorner(link, rcx.getCurrentLayout(), points.get(i));
     }
 
     return (true);
@@ -1238,10 +1239,10 @@ public class LinkRouter {
   ** Generate a departure region
   */
   
-  private LinkPlacementGrid.TerminalRegion generateDeparture(String linkID, DataAccessContext rcx,
+  private LinkPlacementGrid.TerminalRegion generateDeparture(String linkID, StaticDataAccessContext rcx,
                                                              LinkPlacementGrid grid, Set<String> okGroups) {     
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Linkage link = genome.getLinkage(linkID);
     String srcID = link.getSource();
     if ((genome instanceof GenomeInstance) && (okGroups != null)) {
@@ -1249,10 +1250,10 @@ public class LinkRouter {
       okGroups.add(tup.getSourceGroup());
     }
     Node src = genome.getNode(srcID);
-    NodeProperties np = rcx.getLayout().getNodeProperties(srcID);    
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(srcID);    
     INodeRenderer render = np.getRenderer();
     Vector2D launchOff = render.getLaunchPadOffset(link.getLaunchPad(), src, rcx);
-    Vector2D departDir = render.getDepartureDirection(link.getLaunchPad(), src, rcx.getLayout());
+    Vector2D departDir = render.getDepartureDirection(link.getLaunchPad(), src, rcx.getCurrentLayout());
     Point2D nodePoint = np.getLocation();
     Point2D start = launchOff.add(nodePoint);
     Point2D forced = new Point2D.Double();
@@ -1292,10 +1293,10 @@ public class LinkRouter {
   ** Generate an arrival region
   */
   
-  public static LinkPlacementGrid.TerminalRegion generateArrival(String linkID, DataAccessContext rcx,
+  public static LinkPlacementGrid.TerminalRegion generateArrival(String linkID, StaticDataAccessContext rcx,
                                                                  LinkPlacementGrid grid, Integer forcePad, 
                                                                  Set<String> okGroups) {     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Linkage link = genome.getLinkage(linkID);
     int landingPad = (forcePad != null) ? forcePad.intValue() : link.getLandingPad();
     String srcID = link.getSource();
@@ -1306,11 +1307,11 @@ public class LinkRouter {
       okGroups.add(tup.getTargetGroup());
     }
     Node trg = genome.getNode(targID);
-    NodeProperties np = rcx.getLayout().getNodeProperties(targID);    
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(targID);    
     INodeRenderer render = np.getRenderer();
     Vector2D landOff = render.getLandingPadOffset(landingPad, trg, link.getSign(), rcx);
     landOff = landOff.quantizeBigger(10.0);    
-    Vector2D arriveDir = render.getArrivalDirection(landingPad, trg, rcx.getLayout());
+    Vector2D arriveDir = render.getArrivalDirection(landingPad, trg, rcx.getCurrentLayout());
     Point2D nodePoint = np.getLocation();
     Point2D end = landOff.add(nodePoint);
     Point2D forced = new Point2D.Double();
@@ -1324,10 +1325,10 @@ public class LinkRouter {
   ** Generate an arrival region for emergency conditions.  May be null if it fails
   */
   
-  public static LinkPlacementGrid.TerminalRegion generateEmergencyArrival(String linkID, DataAccessContext rcx,
+  public static LinkPlacementGrid.TerminalRegion generateEmergencyArrival(String linkID, StaticDataAccessContext rcx,
                                                                           LinkPlacementGrid grid, 
                                                                           int landingPad, int horiz, int pass, Set<String> okGroups) {     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Linkage link = genome.getLinkage(linkID);
     String srcID = link.getSource();
     String targID = link.getTarget();
@@ -1337,16 +1338,16 @@ public class LinkRouter {
       okGroups.add(tup.getTargetGroup());
     }     
     Node trg = genome.getNode(targID);
-    NodeProperties np = rcx.getLayout().getNodeProperties(targID);    
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(targID);    
     INodeRenderer render = np.getRenderer();
     
     
     Vector2D landOff = render.getLandingPadOffset(landingPad, trg, link.getSign(), rcx);
     landOff = landOff.quantizeBigger(10.0);    
-    Vector2D arriveDir = render.getArrivalDirection(landingPad, trg, rcx.getLayout());
+    Vector2D arriveDir = render.getArrivalDirection(landingPad, trg, rcx.getCurrentLayout());
     Vector2D orthDir = arriveDir.normal();
-    Vector2D offsetDir = orthDir.scaled(10.0 * (double)horiz);
-    Vector2D passDir = arriveDir.scaled(-10.0 * (double)pass);
+    Vector2D offsetDir = orthDir.scaled(10.0 * horiz);
+    Vector2D passDir = arriveDir.scaled(-10.0 * pass);
     Point2D nodePoint = np.getLocation();
     Point2D end = landOff.add(nodePoint);
     end = offsetDir.add(end);
@@ -1362,9 +1363,9 @@ public class LinkRouter {
   ** Position the root segment to the given point
   */
             
-  private void positionRootSegment(String linkID, DataAccessContext rcx, Point2D point) {
+  private void positionRootSegment(String linkID, StaticDataAccessContext rcx, Point2D point) {
                                  
-    BusProperties bp = rcx.getLayout().getLinkProperties(linkID);
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(linkID);
     LayoutFailureTracker.forceFailureReport(linkID, "FAILURE_LINK_ID", bp);
     if (bp.isDirect()) {
       bp.splitNoSegmentBus(rcx);
@@ -1378,9 +1379,9 @@ public class LinkRouter {
     
     double dx = point.getX() - start.getX();
     double dy = point.getY() - start.getY();    
-    dx = ((double)Math.round(dx / 10.0)) * 10.0;
-    dy = ((double)Math.round(dy / 10.0)) * 10.0;     
-    rcx.getLayout().moveBusLink(segIDs, dx, dy, start, bp);
+    dx = Math.round(dx / 10.0) * 10.0;
+    dy = Math.round(dy / 10.0) * 10.0;     
+    rcx.getCurrentLayout().moveBusLink(segIDs, dx, dy, start, bp);
     return;
   }
   
@@ -1405,15 +1406,15 @@ public class LinkRouter {
   ** Create a corner point where there is a run
   */
   
-  private boolean createCorner(Linkage link, Point2D split, DataAccessContext rcx,
+  private boolean createCorner(Linkage link, Point2D split, StaticDataAccessContext rcx,
                                LinkPlacementGrid grid, Set<String> omitted, int dir) {
 
-    BusProperties bp = rcx.getLayout().getLinkProperties(link.getID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(link.getID());
     LinkProperties.DistancedLinkSegID dlsegID = bp.intersectBusSegment(rcx, split, omitted, 5.0);    
     if (dlsegID == null) {  // May happen if we have serious mismatch of grid and reality!
       return (false);
     }
-    rcx.getLayout().splitBusLink(dlsegID.segID, split, bp, null, rcx);
+    rcx.getCurrentLayout().splitBusLink(dlsegID.segID, split, bp, null, rcx);
     // FIX ME!!! WHEN DOES THIS GET DONE????
     grid.convertRunToCorner(split, link.getSource(), dir);
     return (true);

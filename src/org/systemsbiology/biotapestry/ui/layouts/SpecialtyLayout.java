@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,8 @@
 
 package org.systemsbiology.biotapestry.ui.layouts;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.util.AsynchExitRequestException;
 import org.systemsbiology.biotapestry.util.BTProgressMonitor;
@@ -81,7 +82,7 @@ public interface SpecialtyLayout {
   ** Answer if the network topology can be handled by this layout
   */
   
-  public int topologyIsHandled(DataAccessContext rcx);  
+  public int topologyIsHandled(StaticDataAccessContext rcx);  
   
   /***************************************************************************
   **
@@ -123,6 +124,6 @@ public interface SpecialtyLayout {
   ** Get the parameter dialog
   */
   
-  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(Genome genome, String selectedID, boolean forSubset);  
+  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(UIComponentSource uics, Genome genome, String selectedID, boolean forSubset);  
   
 }

@@ -22,7 +22,9 @@ package org.systemsbiology.biotapestry.ui;
 import java.awt.Color;
 import java.awt.BasicStroke;
 
+import org.systemsbiology.biotapestry.db.ColorGenerator;
 import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -108,10 +110,22 @@ public class ResolvedDrawStyle implements Cloneable {
 
   /***************************************************************************
   **
-  ** Clone
+  ** Constructor: Copy in other but change color
   */
 
-  public Object clone() {
+  public ResolvedDrawStyle(ResolvedDrawStyle other, Color newColor) {
+    this.style_ = other.style_;
+    this.thickness_ = other.thickness_;
+    this.calculatedColor_ = newColor;   
+  }   
+  
+  /***************************************************************************
+  **
+  ** Clone
+  */
+  
+  @Override
+  public ResolvedDrawStyle clone() {
     try {
       ResolvedDrawStyle retval = (ResolvedDrawStyle)super.clone();
       // Don't need to clone color; it is immutable
@@ -125,7 +139,8 @@ public class ResolvedDrawStyle implements Cloneable {
   **
   ** Hashcode
   */
-  
+
+  @Override
   public int hashCode() {
     return (calculatedColor_.hashCode() + (style_ * 10) + thickness_);
   }
@@ -135,6 +150,7 @@ public class ResolvedDrawStyle implements Cloneable {
   ** Equals
   */
   
+  @Override
   public boolean equals(Object other) {
     if (this == other) {
       return (true);
@@ -151,7 +167,11 @@ public class ResolvedDrawStyle implements Cloneable {
     }
     if (this.style_ != otherDS.style_) {
       return (false);
-    }   
+    }
+    UiUtil.fixMePrintout("Kinda sketchy, but am seeing this in worksheet runs");
+    if (this.calculatedColor_ == null) {
+      return (otherDS.calculatedColor_ == null);
+    }
     return (this.calculatedColor_.equals(otherDS.calculatedColor_));
   }
 
@@ -170,23 +190,27 @@ public class ResolvedDrawStyle implements Cloneable {
   */
 
   public void modulateColor(double level, DisplayOptions dopt) {
-    float[] colHSB = new float[3];    
-    Color.RGBtoHSB(calculatedColor_.getRed(), calculatedColor_.getGreen(), calculatedColor_.getBlue(), colHSB);
-    float[] iag = dopt.getInactiveGrayHSV();
-    // Hue stays the same:
-    colHSB[1] = iag[1] + ((float)level * (colHSB[1] - iag[1])); 
-    colHSB[2] = iag[2] + ((float)level * (colHSB[2] - iag[2]));         
-    calculatedColor_ = Color.getHSBColor(colHSB[0], colHSB[1], colHSB[2]);
+    calculatedColor_ = (new ColorGenerator()).modulateColor(level, calculatedColor_, dopt);
     return;
-  }             
+  }
+  
+  /***************************************************************************
+  **
+  ** Modulate color by activity
+  */
 
+  public void deSatColor(double level) {
+    calculatedColor_ = (new ColorGenerator()).modulateColorSaturation(level, calculatedColor_);
+    return;
+  } 
+  
   /***************************************************************************
   **
   ** Modulate the line thickness by activity
   */
 
   public void modulateThickness(double level) {
-    double modThick = 1.0 + (level * ((double)thickness_ - 1.0));     
+    double modThick = 1.0 + (level * (thickness_ - 1.0));     
     thickness_ = (int)Math.round(modThick);
     return;
   }       

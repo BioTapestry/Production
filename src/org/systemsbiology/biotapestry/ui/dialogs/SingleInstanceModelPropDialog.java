@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,20 +35,24 @@ import javax.swing.JPanel;
 import javax.swing.Box;
 import javax.swing.JOptionPane;
 import javax.swing.border.EmptyBorder;
+import javax.swing.tree.TreeNode;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
+import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
+import org.systemsbiology.biotapestry.nav.NavTree;
+import org.systemsbiology.biotapestry.nav.NavTreeChange;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.ui.DataLocator;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.TimeAxisHelper;
 
@@ -78,10 +82,13 @@ public class SingleInstanceModelPropDialog extends JDialog {
   private int minChildTime_;
   private int maxChildTime_;
   private boolean lineageIsBounded_;
-  private TimeAxisHelper timeAxisHelper_; 
-  private BTState appState_;
+  private TimeAxisHelper timeAxisHelper_; ;
   private String targetID_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private NavTree nt_; 
+  private TreeNode popupNode_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -96,13 +103,17 @@ public class SingleInstanceModelPropDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public SingleInstanceModelPropDialog(BTState appState, DataAccessContext dacx, String targetID) {
-    super(appState.getTopFrame(), appState.getRMan().getString("simprop.title"), true);
-    appState_ = appState;
+  public SingleInstanceModelPropDialog(UIComponentSource uics, StaticDataAccessContext dacx, 
+                                       String targetID, NavTree nt, TreeNode popupNode, UndoFactory uFac) {
+    super(uics.getTopFrame(), dacx.getRMan().getString("simprop.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     targetID_ = targetID;
+    nt_ = nt; 
+    popupNode_ = popupNode;
         
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -150,7 +161,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
     //
     
     timeBoundsBox_ = new JCheckBox(rMan.getString("simprop.timeBounds"));
-    if (!dacx_.genomeIsRootInstance()) {
+    if (!dacx_.currentGenomeIsRootInstance()) {
       timeBoundsBox_.setEnabled(false);
     }    
 
@@ -169,7 +180,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
           maxField_.setEnabled(enabled);
           maxFieldLabel_.setEnabled(enabled);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -181,7 +192,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
     minFieldLabel_ = new JLabel("");
     maxFieldLabel_ = new JLabel(""); 
     
-    timeAxisHelper_ = new TimeAxisHelper(appState_, dacx_, this, minFieldLabel_, maxFieldLabel_);    
+    timeAxisHelper_ = new TimeAxisHelper(uics_, dacx_, this, minFieldLabel_, maxFieldLabel_, uFac_);    
     timeAxisHelper_.fixMinMaxLabels(false);
 
     minField_ = new JTextField();
@@ -211,7 +222,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
             SingleInstanceModelPropDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -222,7 +233,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
           SingleInstanceModelPropDialog.this.setVisible(false);
           SingleInstanceModelPropDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -237,7 +248,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, rowNum, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties((GenomeInstance)dacx_.getGenomeSource().getGenome(targetID_));
   }
     
@@ -379,8 +390,8 @@ public class SingleInstanceModelPropDialog extends JDialog {
     //
     boolean needBounds = timeBoundsBox_.isSelected();
     if (!needBounds && targGI.haveProxyDecendant()) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("simprop.timeBoundsRequiredByProxy"),
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("simprop.timeBoundsRequiredByProxy"),
                                     rMan.getString("simprop.ErrorTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
       return (false);            
@@ -399,8 +410,8 @@ public class SingleInstanceModelPropDialog extends JDialog {
       }
       
       if ((minResult > maxResult) || (minResult < 0)) {
-        ResourceManager rMan = appState_.getRMan(); 
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("simprop.badBounds"),
+        ResourceManager rMan = dacx_.getRMan(); 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("simprop.badBounds"),
                                       rMan.getString("simprop.ErrorTitle"), 
                                       JOptionPane.ERROR_MESSAGE);
         return (false);      
@@ -414,8 +425,8 @@ public class SingleInstanceModelPropDialog extends JDialog {
       
       if (lineageIsBounded_) {
         if ((minResult < minParentTime_) || (maxResult > maxParentTime_)) {
-          ResourceManager rMan = appState_.getRMan(); 
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("simprop.timeBoundsOutsideParent"),
+          ResourceManager rMan = dacx_.getRMan(); 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("simprop.timeBoundsOutsideParent"),
                                         rMan.getString("simprop.ErrorTitle"), 
                                         JOptionPane.ERROR_MESSAGE);
           return (false);                                
@@ -428,8 +439,8 @@ public class SingleInstanceModelPropDialog extends JDialog {
       
       if ((minChildTime_ < Integer.MAX_VALUE) || (maxChildTime_ > Integer.MIN_VALUE)) {
         if ((minResult > minChildTime_) || (maxResult < maxChildTime_)) {
-          ResourceManager rMan = appState_.getRMan(); 
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("simprop.timeBoundsInsideChild"),
+          ResourceManager rMan = dacx_.getRMan(); 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("simprop.timeBoundsInsideChild"),
                                         rMan.getString("simprop.ErrorTitle"), 
                                         JOptionPane.ERROR_MESSAGE);
           return (false);                                
@@ -443,17 +454,24 @@ public class SingleInstanceModelPropDialog extends JDialog {
     // Undo/Redo support
     //       
     
-    UndoSupport support = new UndoSupport(appState_, "undo.simprop");  
-    String longName = longNameField_.getText();
-    GenomeChange gc = targGI.setProperties((nameField_ != null) ? nameField_.getText() 
-                                                                : targGI.getName(),  
-                                                                  longName, 
-                                                                  descripField_.getText(), needBounds, minResult, maxResult);
-    GenomeChangeCmd cmd = new GenomeChangeCmd(appState_, dacx_, gc);
+    StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, targGI);
+    UndoSupport support = uFac_.provideUndoSupport("undo.simprop", rcx);  
+    String longName = longNameField_.getText().trim();
+    
+    String oldName = targGI.getName();  
+    String newName = (nameField_ != null) ? nameField_.getText().trim() : targGI.getName();  
+    
+    GenomeChange gc = targGI.setProperties(newName, longName, descripField_.getText().trim(), needBounds, minResult, maxResult);
+    GenomeChangeCmd cmd = new GenomeChangeCmd(rcx, gc);
     support.addEdit(cmd);
     
+    if ((nameField_ != null) && !oldName.equals(newName)) {
+      NavTreeChange ntc = nt_.setNodeName(popupNode_, newName);    
+      support.addEdit(new NavTreeChangeCmd(rcx, ntc));  
+    }
+    
     if (!longName.trim().equals("")) {
-      new DataLocator(appState_, dacx_).setTitleLocation(support, targGI.getID(), longName);
+      new DataLocator(uics_.getGenomePresentation(), rcx).setTitleLocation(support, targGI.getID(), longName);
     }
     
     //
@@ -478,7 +496,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
             } else {
               gc = gi.dropTimes();
             }
-            cmd = new GenomeChangeCmd(appState_, dacx_, gc);
+            cmd = new GenomeChangeCmd(rcx, gc);
             support.addEdit(cmd);
             eventList.add(gi.getID());
           }
@@ -489,9 +507,9 @@ public class SingleInstanceModelPropDialog extends JDialog {
     int numEvent = eventList.size();
     for (int i = 0; i < numEvent; i++) {
       String id = eventList.get(i);
-      ModelChangeEvent mcev = new ModelChangeEvent(id, ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), id, ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);    
-      mcev = new ModelChangeEvent(id, ModelChangeEvent.PROPERTY_CHANGE);
+      mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), id, ModelChangeEvent.PROPERTY_CHANGE);
       support.addEvent(mcev);
     }
     

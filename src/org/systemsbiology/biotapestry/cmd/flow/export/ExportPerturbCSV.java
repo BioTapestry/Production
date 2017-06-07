@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,10 @@
 package org.systemsbiology.biotapestry.cmd.flow.export;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 
@@ -75,7 +78,8 @@ public class ExportPerturbCSV extends AbstractSimpleExport {
   */
    
   public boolean isEnabled(CheckGutsCache cache) {
-    PerturbationData pd = appState_.getDB().getPertData();
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();
     return ((pd != null) && pd.haveData());
   }
   
@@ -87,7 +91,8 @@ public class ExportPerturbCSV extends AbstractSimpleExport {
   
   @Override
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv"));
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    es.filts.add(new FileExtensionFilters.SimpleFilter(dacx.getRMan(), ".csv", "filterName.csv"));
     es.suffs.add("csv");
     es.direct = "PerturbToCSVDirectory";
     es.pref = "csv";
@@ -101,10 +106,11 @@ public class ExportPerturbCSV extends AbstractSimpleExport {
   */
 
   @Override
-  protected boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "PerturbToCSV.IOError";
     es.fileErrTitle = "PerturbToCSV.IOErrorTitle";
-    return (appState_.getDB().getPertData().publishAsCSV(es.out));  
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    return (dacx.getExpDataSrc().getPertData().publishAsCSV(es.out));  
   }
   
 }

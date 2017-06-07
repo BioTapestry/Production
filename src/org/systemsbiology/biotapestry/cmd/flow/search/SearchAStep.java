@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,13 +22,12 @@ package org.systemsbiology.biotapestry.cmd.flow.search;
 
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.ui.SourceAndTargetSelector;
 import org.systemsbiology.biotapestry.ui.SourceAndTargetSelector.Searches;
@@ -66,8 +65,7 @@ public class SearchAStep extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SearchAStep(BTState appState, boolean upstream) {
-    super(appState);
+  public SearchAStep(boolean upstream) {
     goUpstream_ = upstream;
     if (upstream) {
       name = "command.SearchUpstream"; 
@@ -95,7 +93,8 @@ public class SearchAStep extends AbstractControlFlow {
   ** Answer if we are enabled
   ** 
   */
-    
+   
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.haveANodeSelection());
   }
@@ -125,7 +124,7 @@ public class SearchAStep extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepSearchState nss = new StepSearchState(appState_, goUpstream_, cfh.getDataAccessContext());
+        StepSearchState nss = new StepSearchState(goUpstream_, cfh);
         next = nss.processCommand();
       } else {
         throw new IllegalStateException();
@@ -142,23 +141,19 @@ public class SearchAStep extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class StepSearchState implements DialogAndInProcessCmd.CmdState {
+  public static class StepSearchState extends AbstractStepState {
      
     private boolean myGoUpstream;
-    private String nextStep_;
-    private DataAccessContext rcxT_;
-    //----------------- Result
     private SourceAndTargetSelector.SearchResult sres;
-    private BTState appState_;
-  
-    public String getNextStep() {
-      return (nextStep_);
-    }
      
-    StepSearchState(BTState appState, boolean goUpstream, DataAccessContext dacx) {
-      appState_ = appState;
+    /***************************************************************************
+    **
+    ** Construct
+    */
+    
+    StepSearchState(boolean goUpstream, ServerControlFlowHarness cfh) {
+      super(cfh);
       myGoUpstream = goUpstream;
-      rcxT_ = dacx;
     }   
     
     /***************************************************************************
@@ -168,11 +163,11 @@ public class SearchAStep extends AbstractControlFlow {
      
     DialogAndInProcessCmd processCommand() {
      
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
      
-      Set<String> nodesOnly = sup.getSelectedNodes();
+      Set<String> nodesOnly = sup.getSelectedNodes(dacx_);
       Searches sc = (myGoUpstream) ? Searches.SOURCE_SELECT : Searches.TARGET_SELECT;
-      SourceAndTargetSelector sats = new SourceAndTargetSelector(rcxT_); 
+      SourceAndTargetSelector sats = new SourceAndTargetSelector(dacx_); 
       // When we step back far enough, link segments that were selected start getting unselected, which is a bug. But, in general, 
       // we would not be selecting all possible paths anyway (that is why we only allow link selection in the case of direct 
       // source/targets searches as well.) Do maybe make links active, but only after we figure out how to do it right! 

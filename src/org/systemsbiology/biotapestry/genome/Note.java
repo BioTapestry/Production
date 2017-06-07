@@ -312,6 +312,7 @@ public class Note implements GenomeItem, Cloneable {
   **
   */
   
+  @SuppressWarnings("unused")
   public static Note buildFromXML(String elemName, Attributes attrs) throws IOException {
                                                  
     String id = null;

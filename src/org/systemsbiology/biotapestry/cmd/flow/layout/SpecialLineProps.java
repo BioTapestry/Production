@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.layout;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -53,8 +55,7 @@ public class SpecialLineProps extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SpecialLineProps(BTState appState) {
-    super(appState);          
+  public SpecialLineProps() {         
     name = "linkPopup.SpecialLine";
     desc = "linkPopup.SpecialLine";
     mnem = "linkPopup.SpecialLineMnem";
@@ -73,8 +74,8 @@ public class SpecialLineProps extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
 
   /***************************************************************************
@@ -85,11 +86,12 @@ public class SpecialLineProps extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     } 
-    BusProperties bp = rcx.getLayout().getLinkProperties(inter.getObjectID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(inter.getObjectID());
     return (!bp.isDirect());
   }  
     
@@ -104,10 +106,11 @@ public class SpecialLineProps extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -126,15 +129,18 @@ public class SpecialLineProps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
     private Intersection inter_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+  
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
@@ -142,9 +148,8 @@ public class SpecialLineProps extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
     }
     
@@ -170,7 +175,7 @@ public class SpecialLineProps extends AbstractControlFlow {
       }
       // FIX ME? Trap direct (better make final corner point deletion consistent though!)
       LinkSegmentSpecialPropsDialog spd = 
-        new LinkSegmentSpecialPropsDialog(appState_, rcxT_, inter_.getObjectID(), ids[0]); 
+        new LinkSegmentSpecialPropsDialog(uics_, dacx_, hBld_, inter_.getObjectID(), ids[0], uFac_); 
       spd.setVisible(true);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }

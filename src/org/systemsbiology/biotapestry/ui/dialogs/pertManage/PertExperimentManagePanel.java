@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,13 +26,16 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.SortedMap;
+
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.perturb.BatchCollision;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PertSources;
@@ -42,6 +45,7 @@ import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
@@ -74,8 +78,9 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   private String pendingKey_;
   private PertExperimentAddOrEditPanel pssaep_;
   private PertManageHelper pmh_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
  
@@ -90,20 +95,21 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertExperimentManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw,
+  public PertExperimentManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
                                    PerturbationData pd, PendingEditTracker pet, 
                                    PertFilterExpressionJumpTarget pfet, int legacyModes) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
 
     //
     // Build the tables:
     //
     
-    rtd_ = new ReadOnlyTable(appState_);   
-    rtd_.lateBinding(new PertSourcesTableModel(appState_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
+    rtd_ = new ReadOnlyTable(uics_, dacx_);   
+    rtd_.lateBinding(new PertSourcesTableModel(uics_, dacx_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
     rtd_.setButtonHandler(new ButtonHand(SOURCES_KEY));
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
@@ -129,7 +135,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     // Now do the edit panel:
     //
  
-    pssaep_ = new PertExperimentAddOrEditPanel(appState_, dacx_, parent_, pd_, this, SOURCES_KEY, legacyModes); 
+    pssaep_ = new PertExperimentAddOrEditPanel(uics_, dacx_, parent_, pd_, this, SOURCES_KEY, legacyModes); 
     addEditPanel(pssaep_, SOURCES_KEY);
   
     finishConstruction();    
@@ -141,7 +147,8 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** Let us know if we are done sliding
   ** 
   */  
-    
+   
+  @Override
    public void finished() {
      rtd_.makeCurrentSelectionVisible();
      return;
@@ -153,6 +160,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
+  @Override
   public void editIsComplete(String key, int what) {
     if (key.equals(SOURCES_KEY)) {
       if (joinKeys_ == null) {
@@ -175,14 +183,14 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   private void editAnExperiment(String key, int what) {
     String resultKey = pendingKey_;
     Experiment psi = pssaep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createExperiment" 
-                                                                        : "undo.editExperiment");
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createExperiment" 
+                                                                         : "undo.editExperiment", dacx_);
     PertDataChange pdc;
     if (pendingKey_ == null) {
       resultKey = psi.getID();
     }
     pdc = pd_.setExperiment(psi); 
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -199,10 +207,10 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   
   private void joinExperiments(String key, int what) {
     Experiment psi = pssaep_.getResult();
-    Map collisions = pd_.mergeExperimentBatchCollisions(new HashSet(joinKeys_));
-    Map batchDups = pd_.prepBatchCollisions(collisions, psi.getDisplayString(pd_));
+    Map<String, Map<String, List<String>>> collisions = pd_.mergeExperimentBatchCollisions(new HashSet<String>(joinKeys_));
+    SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups = pd_.prepBatchCollisions(collisions, psi.getDisplayString(pd_));
     if (batchDups != null) {
-      BatchDupReportDialog bdrd = new BatchDupReportDialog(appState_, parent_, batchDups, 
+      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, dacx_, parent_, batchDups, 
                                                            "batchDup.MergeDialog", "batchDup.MergeTable");
       bdrd.setVisible(true);
       if (!bdrd.keepGoing()) {
@@ -211,11 +219,11 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     }
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     
-    UndoSupport support = new UndoSupport(appState_, "undo.mergeExperiments");   
-    DependencyAnalyzer.Dependencies refs = da.getExperimentMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeExperiments", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getExperimentMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     da.mergeDependencies(refs, dacx_, support);  
     PertDataChange[] pdc = pd_.mergeExperiments(joinKeys_, pendingKey_, psi);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -285,6 +293,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** Handle duplication operations 
   */ 
   
+  @Override
   public void doADuplication(String key) {
     String useKey = ((PertSourcesTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
     pendingKey_ = null;
@@ -301,11 +310,11 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   public void doAJoin(String key) {
     if (key.equals(SOURCES_KEY)) {
       joinKeys_ = ((PertSourcesTableModel)rtd_.getModel()).getSelectedKeys(rtd_.selectedRows);
-      Iterator jkit = joinKeys_.iterator();
+      Iterator<String> jkit = joinKeys_.iterator();
       Experiment exp = null;
       boolean mismatch = false;
       while (jkit.hasNext()) {
-        String ckey = (String)jkit.next();
+        String ckey = jkit.next();
         Experiment chkExp = pd_.getExperiment(ckey);
         if (exp == null) {
           exp = chkExp;
@@ -353,7 +362,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   public void doAFilterJump(String key) {
     if (key.equals(SOURCES_KEY)) {
       String filterKey = ((PertSourcesTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
-      PertFilter srcFilter = new PertFilter(PertFilter.EXPERIMENT, PertFilter.STR_EQUALS, filterKey);
+      PertFilter srcFilter = new PertFilter(PertFilter.Cat.EXPERIMENT, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(srcFilter);
       pfet_.jumpWithNewFilter(pfe); 
     } else  {
@@ -423,18 +432,18 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   
   protected void displayProperties(boolean fireChange) {
     
-    List selKeys = (rtd_.selectedRows == null) ? null :
-                     ((PertSourcesTableModel)rtd_.getModel()).getSelectedKeys(rtd_.selectedRows);
+    List<String> selKeys = (rtd_.selectedRows == null) ? null :
+                             ((PertSourcesTableModel)rtd_.getModel()).getSelectedKeys(rtd_.selectedRows);
     rtd_.rowElements.clear();
     
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map expRefs = da.getAllExperimentReferenceCounts();
-    Integer noCount = new Integer(0);
+    Map<String, Integer> expRefs = da.getAllExperimentReferenceCounts();
+    Integer noCount = Integer.valueOf(0);
     
-    Iterator pskit = pd_.getExperimentKeys();
+    Iterator<String> pskit = pd_.getExperimentKeys();
     while (pskit.hasNext()) {
-      String key = (String)pskit.next();
-      Integer count = (Integer)expRefs.get(key);
+      String key = pskit.next();
+      Integer count = expRefs.get(key);
       if (count == null) {
         count = noCount;
       }     
@@ -464,10 +473,10 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
       return (false);
     }
 
-    UndoSupport support = new UndoSupport(appState_, "undo.deletePertSourceInfo");
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertSourceInfo", dacx_);
     da.killOffDependencies(refs, dacx_, support);  
     PertDataChange pdc = pd_.deleteExperiment(key);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -499,8 +508,8 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     private final static int NUM_HIDDEN_     = 1;
  
  
-    PertSourcesTableModel(BTState appState, List prsList) {
-      super(appState, NUM_COL_);
+    PertSourcesTableModel(UIComponentSource uics, DataAccessContext dacx, List prsList) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"pertSource.pert",
                                 "pertSource.time",
                                 "pertSource.conditions",
@@ -539,8 +548,8 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
       return ((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[0])));
     } 
     
-    List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[i])));
       }

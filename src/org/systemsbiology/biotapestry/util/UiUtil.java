@@ -301,10 +301,11 @@ public class UiUtil {
   /***************************************************************************
   **
   ** A helper to write a comma-separated list of lists
+  ** Sometimes Collection contains collections, sometimes objects. Generic typing for this is???
   */ 
  
   private static void getNestedListDisplayRec(Collection toShow, StringBuffer buf, boolean flatLeaves) {
-    Iterator rrit = toShow.iterator();
+    Iterator<Object> rrit = toShow.iterator();
     while (rrit.hasNext()) {
       Object reg = rrit.next();
       if (reg instanceof Collection) {
@@ -332,15 +333,16 @@ public class UiUtil {
     }
     return;
   }
+  
  
   /***************************************************************************
   **
   ** A helper to write a comma-separated list
   */ 
  
-  public static String getListDisplay(Collection toShow) {
+  public static <T> String getListDisplay(Collection<T> toShow) {
     StringBuffer buf = new StringBuffer();
-    Iterator rrit = toShow.iterator();
+    Iterator<T> rrit = toShow.iterator();
     while (rrit.hasNext()) {
       Object reg = rrit.next();
       buf.append(reg.toString());
@@ -356,7 +358,7 @@ public class UiUtil {
   ** A helper to write a comma-separated list of lists
   */ 
  
-  public static String getNestedDoubleListDisplay(Collection toShow, boolean flatLeaves) {
+  public static String getNestedDoubleListDisplay(List<List<Double>> toShow, boolean flatLeaves) {
     StringBuffer buf = new StringBuffer();
     getNestedListDoubleDisplayRec(toShow, buf, flatLeaves);
     return (buf.toString());
@@ -367,30 +369,17 @@ public class UiUtil {
   ** A helper to write a comma-separated list of lists
   */ 
  
-  private static void getNestedListDoubleDisplayRec(Collection toShow, StringBuffer buf, boolean flatLeaves) {
-    Iterator rrit = toShow.iterator();
+  private static void getNestedListDoubleDisplayRec(List<List<Double>> toShow, StringBuffer buf, boolean flatLeaves) {
+    Iterator<List<Double>> rrit = toShow.iterator();
     while (rrit.hasNext()) {
-      Object reg = rrit.next();
-      if (reg instanceof Collection) {
-        Collection creg = (Collection)reg;
-        if (flatLeaves && creg.size() == 1) {
-          Object freg = creg.iterator().next();
-          if (freg instanceof Collection) {
-            buf.append("(");    
-            getNestedListDoubleDisplayRec(creg, buf, flatLeaves);
-            buf.append(")");
-          } else {
-            Double dreg = (Double)freg;
-            buf.append(doubleFormat(dreg.doubleValue(), false));
-          }
-        } else {
-          buf.append("(");    
-          getNestedListDoubleDisplayRec(creg, buf, flatLeaves);
-          buf.append(")");
-        }
-      } else {
-        Double dreg = (Double)reg;
+      List<Double> reg = rrit.next();
+      if (flatLeaves && reg.size() == 1) {
+        Double dreg = reg.iterator().next();
         buf.append(doubleFormat(dreg.doubleValue(), false));
+      } else {
+        buf.append("(");    
+        buf.append(getDoubleListDisplay(reg));
+        buf.append(")");
       }
       if (rrit.hasNext()) {
         buf.append(", ");
@@ -404,11 +393,11 @@ public class UiUtil {
   ** A helper to write a comma-separated list
   */ 
  
-  public static String getDoubleListDisplay(Collection toShow) {
+  public static String getDoubleListDisplay(Collection<Double> toShow) {
     StringBuffer buf = new StringBuffer();
-    Iterator rrit = toShow.iterator();
+    Iterator<Double> rrit = toShow.iterator();
     while (rrit.hasNext()) {
-      Double reg = (Double)rrit.next();
+      Double reg = rrit.next();
       buf.append(doubleFormat(reg.doubleValue(), false));
       if (rrit.hasNext()) {
         buf.append(", ");
@@ -974,13 +963,13 @@ public class UiUtil {
   
   public static void fixMePrintout(String msg) {
     //Commented out for production releases!
-    //synchronized (seenMsg_) {
-    //  if (seenMsg_.contains(msg)) {
-    //    return;
-    //  }
-    //  System.out.println("FIXME: " + msg);
-    //  seenMsg_.add(msg);
-    //}
+    synchronized (seenMsg_) {
+      if (seenMsg_.contains(msg)) {
+        return;
+      }
+      System.out.println("FIXME: " + msg);
+      seenMsg_.add(msg);
+    }
     return;
   } 
   

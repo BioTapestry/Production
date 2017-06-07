@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2014 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -35,20 +35,23 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DataMapSource;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -74,8 +77,8 @@ public class NameChangeChoicesDialog extends JDialog {
   private String selectedID_;
   private String newName_;
   private String oldName_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   private UndoSupport support_;
   private boolean userCancelled_;
   
@@ -92,9 +95,9 @@ public class NameChangeChoicesDialog extends JDialog {
   ** Constructor 
   */
   
-  public NameChangeChoicesDialog(BTState appState, DataAccessContext dacx, String selectedID, String oldName, String newName, UndoSupport support) {
-    super(appState.getTopFrame(), appState.getRMan().getString("nameChange.title"), true);
-    appState_ = appState;
+  public NameChangeChoicesDialog(UIComponentSource uics, DataAccessContext dacx, String selectedID, String oldName, String newName, UndoSupport support) {
+    super(uics.getTopFrame(), dacx.getRMan().getString("nameChange.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
     selectedID_ = GenomeItemInstance.getBaseID(selectedID);
     newName_ = newName;
@@ -102,7 +105,7 @@ public class NameChangeChoicesDialog extends JDialog {
     support_ = support;
     userCancelled_ = false;
 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(600, 300);
     JPanel cp = (JPanel) getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -116,12 +119,13 @@ public class NameChangeChoicesDialog extends JDialog {
     String desc = MessageFormat.format(rMan.getString("nameChange.changeType"), new Object[]{oldName_, newName_});
     JLabel label = new JLabel(desc);
 
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx_.getDBGenome();
     DBGene gene = genome.getGeneWithName(oldName_);
     int numNodes = genome.getNodesWithName(oldName_).size();
     if (gene != null) {
       numNodes++;
     }
+    UiUtil.fixMePrintout("Gotta restrict if experimental data is being shared!!!");
     if (!newName.trim().equals("") && (numNodes == 1)) {
       desc = MessageFormat.format(rMan.getString("nameChange.changeDataName"), new Object[]{oldName_, newName_});
       changeDataName_ = new JRadioButton(desc, true);
@@ -167,7 +171,7 @@ public class NameChangeChoicesDialog extends JDialog {
             NameChangeChoicesDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -180,7 +184,7 @@ public class NameChangeChoicesDialog extends JDialog {
           NameChangeChoicesDialog.this.setVisible(false);
           NameChangeChoicesDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -195,7 +199,7 @@ public class NameChangeChoicesDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, rowNum, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -262,8 +266,9 @@ public class NameChangeChoicesDialog extends JDialog {
     //    
 
     PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    DataMapSource dms = dacx_.getDataMapSrc();
 
     //
     // Perturbation Data
@@ -276,9 +281,11 @@ public class NameChangeChoicesDialog extends JDialog {
     if (pd.isSourceName(oldName_)) {
       sList.add(pd.getSourceKeyFromName(oldName_));
     }
-    PertDataChange[] pdc = pd.addDataMaps(selectedID_, eList, sList);
+    
+    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps(); 
+    PertDataChange[] pdc = pdms.addDataMaps(selectedID_, eList, sList);
     for (int i = 0; i < pdc.length; i++) {
-      support_.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc[i]));
+      support_.addEdit(new PertDataChangeCmd(dacx_, pdc[i]));
     }
 
     //
@@ -295,20 +302,20 @@ public class NameChangeChoicesDialog extends JDialog {
     }
     TemporalInputChange[] tic = tird.addTemporalInputRangeMaps(selectedID_, eList, sList);
     for (int i = 0; i < tic.length; i++) {
-      support_.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic[i]));
+      support_.addEdit(new TemporalInputChangeCmd(dacx_, tic[i]));
     }
 
     //
     // Time Course
     //
 
-    ArrayList<TimeCourseData.TCMapping> nList = new ArrayList<TimeCourseData.TCMapping>();
+    ArrayList<TimeCourseDataMaps.TCMapping> nList = new ArrayList<TimeCourseDataMaps.TCMapping>();
     if (tcd.getTimeCourseData(oldName_) != null) {
-      nList.add(new TimeCourseData.TCMapping(oldName_));
+      nList.add(new TimeCourseDataMaps.TCMapping(oldName_));
     }
-    TimeCourseChange tcc = tcd.addTimeCourseTCMMap(selectedID_, nList, true);
+    TimeCourseChange tcc = dms.getTimeCourseDataMaps().addTimeCourseTCMMap(selectedID_, nList, true);
     if (tcc != null) {
-      support_.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));
+      support_.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
     }
     return (true);
   }
@@ -322,9 +329,10 @@ public class NameChangeChoicesDialog extends JDialog {
   private boolean handleDataNameChanges() {
     
     PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
 
+    UiUtil.fixMePrintout("Probably prohibit if sharing data between tabs.");
     
     if (!DataUtil.keysEqual(oldName_,  newName_)) {
       if (pd.isSourceName(newName_) ||
@@ -332,8 +340,8 @@ public class NameChangeChoicesDialog extends JDialog {
           ((tird != null) && (tird.getRange(newName_) != null)) ||
           ((tird != null) && tird.isPerturbationSourceName(newName_)) ||
           ((tcd != null) && (tcd.getTimeCourseData(newName_) != null))) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(),
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(),
                 rMan.getString("nameChange.nameCollision"),
                 rMan.getString("nameChange.nameChangeFailureTitle"),
                 JOptionPane.ERROR_MESSAGE);
@@ -341,22 +349,29 @@ public class NameChangeChoicesDialog extends JDialog {
       }
     }
 
-    PertDataChange[] changes = pd.changeName(oldName_, newName_);
+    ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
+    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+    pdmsl.add(pdms);
+    
+    PertDataChange[] changes = pd.changeName(oldName_, newName_, pdmsl);
     for (int i = 0; i < changes.length; i++) {
-      support_.addEdit(new PertDataChangeCmd(appState_, dacx_, changes[i]));
+      support_.addEdit(new PertDataChangeCmd(dacx_, changes[i]));
     }
 
     if (tird != null) {
       TemporalInputChange[] tic = tird.changeName(oldName_, newName_);
       for (int i = 0; i < tic.length; i++) {
-        support_.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic[i]));
+        support_.addEdit(new TemporalInputChangeCmd(dacx_, tic[i]));
       }
     }
 
     if (tcd != null) {
-      TimeCourseChange[] tcc = tcd.changeName(oldName_, newName_);
+      ArrayList<TimeCourseDataMaps> tcdml = new ArrayList<TimeCourseDataMaps>();
+      UiUtil.fixMePrintout("NOT ENOUGH NEED ALL MAPS FROM ALL TABS!");
+      tcdml.add(dacx_.getDataMapSrc().getTimeCourseDataMaps());
+      TimeCourseChange[] tcc = tcd.changeName(oldName_, newName_, tcdml);
       for (int i = 0; i < tcc.length; i++) {
-        support_.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc[i]));
+        support_.addEdit(new TimeCourseChangeCmd(dacx_, tcc[i]));
       }
     }
 

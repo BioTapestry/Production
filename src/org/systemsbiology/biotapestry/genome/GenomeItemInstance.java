@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,7 @@ package org.systemsbiology.biotapestry.genome;
 import java.util.Comparator;
 import java.util.HashSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 
 /****************************************************************************
@@ -47,7 +47,7 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
 
   protected String myItemID_;
   protected String instanceID_;
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   protected GenomeSource altSrc_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -61,8 +61,8 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
   ** Not Null constructor
   */
 
-  public GenomeItemInstance(BTState appState) {
-    appState_ = appState;
+  public GenomeItemInstance(DataAccessContext dacx) {
+    dacx_ = dacx;
   }
   
   /***************************************************************************
@@ -71,7 +71,7 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
   */
 
   public GenomeItemInstance(GenomeItemInstance other) {
-    appState_ = other.appState_;
+    dacx_ = other.dacx_;
     myItemID_ = other.myItemID_;
     instanceID_ = other.instanceID_;
     altSrc_ = other.altSrc_;
@@ -83,7 +83,7 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
   */
 
   public GenomeItemInstance(GenomeItemInstance other, int instance) {
-    appState_ = other.appState_;
+    dacx_ = other.dacx_;
     myItemID_ = other.myItemID_;
     instanceID_ = Integer.toString(instance);
     altSrc_ = other.altSrc_;
@@ -94,8 +94,8 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
   ** UI-based creation
   */
 
-  public GenomeItemInstance(BTState appState, DBGenomeItem backing, int instance) {
-    appState_ = appState;
+  public GenomeItemInstance(DataAccessContext dacx, DBGenomeItem backing, int instance) {
+    dacx_ = dacx;
     myItemID_ = backing.getID();
     instanceID_ = Integer.toString(instance);
     altSrc_ = null;
@@ -106,8 +106,8 @@ public abstract class GenomeItemInstance implements GenomeItem, Cloneable {
   ** XML-based creation
   */
 
-  public GenomeItemInstance(BTState appState, DBGenomeItem backing, String instance) {
-    appState_ = appState;
+  public GenomeItemInstance(DataAccessContext dacx, DBGenomeItem backing, String instance) {
+    dacx_ = dacx;
     myItemID_ = backing.getID();
     instanceID_ = instance;
     altSrc_ = null;

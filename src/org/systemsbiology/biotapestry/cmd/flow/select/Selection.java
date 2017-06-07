@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,30 +23,22 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
-import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
-import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.TextBoxManager;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -118,8 +110,7 @@ public class Selection extends AbstractControlFlow {
       return (accel_);      
     }     
  
-    public String getDesc(BTState appState, String text) {
-      ResourceManager rMan = appState.getRMan();
+    public String getDesc(ResourceManager rMan, String text) {
       String desc = MessageFormat.format(rMan.getString("command.DropNodeTypeSelections"), 
                                                          new Object[] {text});  
       return (desc);     
@@ -146,8 +137,7 @@ public class Selection extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Selection(BTState appState, SelectAction action) {
-    super(appState);
+  public Selection(SelectAction action) {
     if (action.equals(SelectAction.DROP_NODE_TYPE)) {
       throw new IllegalArgumentException();
     }
@@ -164,10 +154,9 @@ public class Selection extends AbstractControlFlow {
   ** Constructor 
   */ 
    
-  public Selection(BTState appState, SelectAction action, TypeArg args) {
-    super(appState);
-    name =  action.getDesc(appState, args.getTag());
-    desc =  action.getDesc(appState, args.getTag());
+  public Selection(UIComponentSource uics, SelectAction action, TypeArg args) {
+    name =  action.getDesc(uics.getRMan(), args.getTag());
+    desc =  action.getDesc(uics.getRMan(), args.getTag());
     icon =  null;
     mnem =  null;
     accel =  null;
@@ -232,7 +221,8 @@ public class Selection extends AbstractControlFlow {
   */
     
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }
@@ -250,8 +240,8 @@ public class Selection extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, null, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, null, dacx);
     return (retval);
   }
    
@@ -267,9 +257,10 @@ public class Selection extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, type_, cfh.getDataAccessContext());
+        ans = new StepState(action_, type_, cfh);
       } else { 
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepSelect")) {
         next = ans.stepSelect();
@@ -303,21 +294,27 @@ public class Selection extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
     private SelectAction myAction_;
-    private Integer myType_;
-    private String nextStep_;    
-    private BTState appState_;
+    private Integer myType_;  
     private Point preloadClick_;
     private boolean preloadIsShifted_; 
     private List<Intersection> preloadIntersections_; 
     private Rectangle preloadRect_;
-    private DataAccessContext rcxT_;
      
-    public String getNextStep() {
-      return (nextStep_);
+    
+     /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(SelectAction action, Integer type, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myType_ = type;
+      myAction_ = action;
+      nextStep_ = "stepSelect";
     }
     
     /***************************************************************************
@@ -325,12 +322,11 @@ public class Selection extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, SelectAction action, Integer type, DataAccessContext dacx) {
+    public StepState(SelectAction action, Integer type, StaticDataAccessContext dacx) {
+      super(dacx);
       myType_ = type;
-      appState_ = appState;
       myAction_ = action;
       nextStep_ = "stepSelect";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -340,7 +336,7 @@ public class Selection extends AbstractControlFlow {
         
     public void setPreload(Point point, double pixDiam, boolean isShifted) {
       preloadClick_ = point;
-      rcxT_.pixDiam = pixDiam;
+      dacx_.setPixDiam(pixDiam);
       preloadIsShifted_ = isShifted;
       return;
     }
@@ -384,52 +380,52 @@ public class Selection extends AbstractControlFlow {
     private DialogAndInProcessCmd stepSelect() {
       switch (myAction_) {
         case ALL:        
-          appState_.getSUPanel().selectAll(appState_.getUndoManager(), rcxT_);
+          uics_.getSUPanel().selectAll(uics_, uFac_, dacx_);
           break;
         case NONE:
-          appState_.getSUPanel().selectNone(appState_.getUndoManager(), rcxT_);
+          uics_.getSUPanel().selectNone(uics_, uFac_, dacx_);
           break;
         case DROP_NODES:
-          appState_.getSUPanel().dropNodeSelections(null, appState_.getUndoManager(), rcxT_);
+          uics_.getSUPanel().dropNodeSelections(uics_, null, uFac_, dacx_);
           break;
         case DROP_LINKS:
-          appState_.getSUPanel().dropLinkSelections(false, appState_.getUndoManager(), rcxT_);
+          uics_.getSUPanel().dropLinkSelections(uics_, false, uFac_, dacx_);
           break;
         case SELECT_NON_ORTHO:
-          List<Intersection> nonOrtho = rcxT_.getLayout().getNonOrthoIntersections(rcxT_, null);
-          appState_.getGenomePresentation().selectIntersectionList(nonOrtho, rcxT_, appState_.getUndoManager());
-          appState_.getSUPanel().drawModel(false);
-          appState_.getZoomCommandSupport().zoomToSelected();
+          List<Intersection> nonOrtho = dacx_.getCurrentLayout().getNonOrthoIntersections(dacx_, null);
+          uics_.getGenomePresentation().selectIntersectionList(uics_, nonOrtho, dacx_, uFac_);
+          uics_.getSUPanel().drawModel(false);
+          uics_.getZoomCommandSupport().zoomToSelected();
           break;
         case DROP_NODE_TYPE:
-          appState_.getSUPanel().dropNodeSelections(myType_, appState_.getUndoManager(), rcxT_);
+          uics_.getSUPanel().dropNodeSelections(uics_, myType_, uFac_, dacx_);
           break;
         case REMOTE_BATCH_SELECT:
-          appState_.getGenomePresentation().selectIntersectionList(preloadIntersections_, rcxT_, appState_.getUndoManager());
-          appState_.getSUPanel().drawModel(false);
+          uics_.getGenomePresentation().selectIntersectionList(uics_, preloadIntersections_, dacx_, uFac_);
+          uics_.getSUPanel().drawModel(false);
         case LOCAL_SINGLE_CLICK_SELECT:   
           singleClick();
           break;   
         case LOCAL_SELECTION_BY_RECT:  
-          appState_.getGenomePresentation().selectItems(preloadRect_, rcxT_, preloadIsShifted_, appState_.getUndoManager());
+          uics_.getGenomePresentation().selectItems(uics_, preloadRect_, dacx_, preloadIsShifted_, uFac_);
           break;
         case SELECT_ROOT_ONLY_NODE: 
-          Set<String> onlyRootNodes = rcxT_.fgho.findRootOnlyNodes();
+          Set<String> onlyRootNodes = dacx_.getFGHO().findRootOnlyNodes();
           List<Intersection> onlyNodes = Intersection.nodeIDsToInters(onlyRootNodes);
-          appState_.getGenomePresentation().selectIntersectionList(onlyNodes, rcxT_, appState_.getUndoManager());
+          uics_.getGenomePresentation().selectIntersectionList(uics_, onlyNodes, dacx_, uFac_);
           break;
         case SELECT_ROOT_ONLY_LINK:      
-          Set<String> onlyRootLinks = rcxT_.fgho.findRootOnlyLinks();
-          List<Intersection> onlyLinks = Intersection.linkIDsToInters(onlyRootLinks, rcxT_.getDBGenome().getID(), rcxT_);
-          appState_.getGenomePresentation().selectIntersectionList(onlyLinks, rcxT_, appState_.getUndoManager());
+          Set<String> onlyRootLinks = dacx_.getFGHO().findRootOnlyLinks();
+          List<Intersection> onlyLinks = Intersection.linkIDsToInters(onlyRootLinks, dacx_.getDBGenome().getID(), dacx_);
+          uics_.getGenomePresentation().selectIntersectionList(uics_, onlyLinks, dacx_, uFac_);
           break;
         case SELECT_FULL_LINK:
-          appState_.getGenomePresentation().selectFullItem(intersect_, rcxT_, appState_.getUndoManager());
+          uics_.getGenomePresentation().selectFullItem(uics_, intersect_, dacx_, uFac_);
           break;
         default:
           throw new IllegalStateException();
       }
-      appState_.getSUPanel().drawModel(false); // Duplicated, but some (e.g. ALL) are not getting redrawn....
+      uics_.getSUPanel().drawModel(false); // Duplicated, but some (e.g. ALL) are not getting redrawn....
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
     
@@ -439,25 +435,25 @@ public class Selection extends AbstractControlFlow {
     */ 
        
     private void singleClick() {        
-      if (rcxT_.getGenome() != null) {
+      if (dacx_.getCurrentGenome() != null) {
         Intersection intersect = null;
-        intersect = appState_.getGenomePresentation().selectItem(preloadClick_.x, preloadClick_.y, rcxT_,
-                                                                 preloadIsShifted_, false, appState_.getUndoManager());
+        intersect = uics_.getGenomePresentation().selectItem(uics_, preloadClick_.x, preloadClick_.y, dacx_,
+                                                             preloadIsShifted_, false, uFac_);
         String currNoteID = null;
         if (intersect != null) {
           String itemID = intersect.getObjectID();
-          Note note = rcxT_.getGenome().getNote(itemID);
+          Note note = dacx_.getCurrentGenome().getNote(itemID);
           if ((note != null) && note.isInteractive()) {
             currNoteID = itemID;
           }
         }
-        appState_.getGenomePresentation().setFloater(null);
+        uics_.getGenomePresentation().setFloater(null);
         if (currNoteID != null) {
-          appState_.getTextBoxMgr().setMessageSource(currNoteID, TextBoxManager.SELECTED_ITEM_MESSAGE, false);
+          uics_.getTextBoxMgr().setMessageSource(currNoteID, TextBoxManager.SELECTED_ITEM_MESSAGE, false);
         } else {
-          appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+          uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
         }
-        appState_.getSUPanel().drawModel(false);
+        uics_.getSUPanel().drawModel(false);
       }
       return;
     }

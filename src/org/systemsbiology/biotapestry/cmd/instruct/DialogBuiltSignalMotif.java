@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -95,6 +95,7 @@ public class DialogBuiltSignalMotif extends DialogBuiltMotif {
     toTargetPosLinkId_ = toTargetPosLinkId;
     toTargetNegLinkId_ = toTargetNegLinkId;
     signalMode_ = signalMode;
+    signalId_ = signalId;
   }
   
   /***************************************************************************
@@ -419,28 +420,28 @@ public class DialogBuiltSignalMotif extends DialogBuiltMotif {
     Integer[] retval = new Integer[5];
 
     if (needToPlace.contains(sourceId_) && !placed.contains(sourceId_)) {
-      retval[SOURCE_] = (Integer)columnInfo.get(sourceId_);
+      retval[SOURCE_] = columnInfo.get(sourceId_);
     }
     
     if (needToPlace.contains(signalId_) && !placed.contains(signalId_)) {
-      retval[SIGNAL_] = (Integer)columnInfo.get(signalId_);
+      retval[SIGNAL_] = columnInfo.get(signalId_);
     }
     
     if (needToPlace.contains(bubbleId_) && !placed.contains(bubbleId_)) {
-      retval[BUBBLE_] = (Integer)columnInfo.get(bubbleId_);
+      retval[BUBBLE_] = columnInfo.get(bubbleId_);
     }    
 
     if (needToPlace.contains(targetId_) && 
         !placed.contains(targetId_) &&
         !targetId_.equals(sourceId_)) {
-      retval[TARGET_] = (Integer)columnInfo.get(targetId_);
+      retval[TARGET_] = columnInfo.get(targetId_);
     }    
     
     if (needToPlace.contains(transFacId_) && 
         !placed.contains(transFacId_) &&
         !transFacId_.equals(sourceId_) &&
         !transFacId_.equals(targetId_)) {
-      retval[TRANSFAC_] = (Integer)columnInfo.get(transFacId_);
+      retval[TRANSFAC_] = columnInfo.get(transFacId_);
     }
     
     
@@ -486,7 +487,7 @@ public class DialogBuiltSignalMotif extends DialogBuiltMotif {
     for (int i = 0; i < NUM_COL_TAGS_; i++) {
       Integer column = columns[i];
       if (column != null) {
-        Integer count = (Integer)numPerCol.get(column);
+        Integer count = numPerCol.get(column);
         if (count == null) {
           numPerCol.put(column, new Integer(1));
         } else {

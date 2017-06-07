@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,11 +20,11 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.nav.ImageChange;
+import org.systemsbiology.biotapestry.nav.NavTree;
 
 /****************************************************************************
 **
@@ -53,8 +53,8 @@ public class ImageChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public ImageChangeCmd(BTState appState, DataAccessContext dacx, ImageChange restore) {
-    super(appState, dacx);
+  public ImageChangeCmd(DataAccessContext dacx, ImageChange restore) {
+    super(dacx);
     restore_ = restore;
   }  
   
@@ -84,10 +84,13 @@ public class ImageChangeCmd extends BTUndoCmd {
     super.undo();
     if (restore_.genomeKey != null) {
       Genome imgGenome = dacx_.getGenomeSource().getGenome(restore_.genomeKey);
-      imgGenome.imageChangeUndo(restore_);           
+      imgGenome.imageChangeUndo(uics_.getImageMgr(), restore_);           
     } else if (restore_.proxyKey != null) {
       DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(restore_.proxyKey);
-      dip.imageChangeUndo(restore_);
+      dip.imageChangeUndo(uics_.getImageMgr(), restore_);
+    } else if (restore_.groupNodeKey != null) {
+      NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
+      nt.undoImageChange(restore_);
     }
     return;
   }  
@@ -102,10 +105,13 @@ public class ImageChangeCmd extends BTUndoCmd {
     super.redo();
     if (restore_.genomeKey != null) {
       Genome imgGenome = dacx_.getGenomeSource().getGenome(restore_.genomeKey);
-      imgGenome.imageChangeRedo(restore_);           
+      imgGenome.imageChangeRedo(uics_.getImageMgr(), restore_);           
     } else if (restore_.proxyKey != null) {
       DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(restore_.proxyKey);
-      dip.imageChangeRedo(restore_);
+      dip.imageChangeRedo(uics_.getImageMgr(), restore_);
+    } else if (restore_.groupNodeKey != null) {
+      NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
+      nt.redoImageChange(restore_);
     }
     return;
   }

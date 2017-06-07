@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,16 +25,17 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
@@ -79,8 +80,7 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public LayoutNonOrthoLink(BTState appState, boolean wholeTree, boolean minCorners, boolean forPopup, boolean forModules) {
-    super(appState); 
+  public LayoutNonOrthoLink(boolean wholeTree, boolean minCorners, boolean forPopup, boolean forModules) {
     minCorners_ = minCorners;
     forPopup_ = forPopup;
     wholeTree_ = wholeTree;
@@ -132,7 +132,8 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!forPopup_) {
       throw new IllegalStateException();
     }
@@ -142,17 +143,17 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     String oid = inter.getObjectID();
     
     // Allow the operation on incomplete VfN-layer trees:
-    if (!forModules_ && rcx.genomeIsAnInstance() && !rcx.genomeIsRootInstance()) {
-      rcx = new DataAccessContext(rcx, rcx.getRootInstance());
+    if (!forModules_ && rcx.currentGenomeIsAnInstance() && !rcx.currentGenomeIsRootInstance()) {
+      rcx = new StaticDataAccessContext(rcx, rcx.getRootInstanceFOrCurrentInstance());
     }
     
     if (wholeTree_) {   
       LinkProperties lp;
       if (forModules_) {
-        String ovrKey = rcx.oso.getCurrentOverlay();
-        lp = rcx.getLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(oid);
+        String ovrKey = rcx.getOSO().getCurrentOverlay();
+        lp = rcx.getCurrentLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(oid);
       } else {
-        lp = rcx.getLayout().getLinkProperties(oid);
+        lp = rcx.getCurrentLayout().getLinkProperties(oid);
       }   
       Set<LinkSegmentID> nonOrtho = lp.getNonOrthoSegments(rcx);
       return (!nonOrtho.isEmpty());
@@ -160,10 +161,10 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
       LinkSegmentID segID = inter.segmentIDFromIntersect();
       LinkProperties lp;
       if (forModules_) {
-        String ovrKey = rcx.oso.getCurrentOverlay();
-        lp = rcx.getLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(oid);
+        String ovrKey = rcx.getOSO().getCurrentOverlay();
+        lp = rcx.getCurrentLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(oid);
       } else {
-        lp = rcx.getLayout().getLinkProperties(oid);
+        lp = rcx.getCurrentLayout().getLinkProperties(oid);
       }
       LinkSegment noSeg = lp.getSegmentGeometryForID(segID, rcx, false);
       return (!noSeg.isOrthogonal());
@@ -177,8 +178,8 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new StepState(appState_, wholeTree_, minCorners_, forPopup_, forModules_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new StepState(wholeTree_, minCorners_, forPopup_, forModules_, dacx));  
   }
   
   /***************************************************************************
@@ -192,10 +193,11 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, wholeTree_, minCorners_, forPopup_, forModules_, cfh.getDataAccessContext());
+        StepState ans = new StepState(wholeTree_, minCorners_, forPopup_, forModules_, cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -214,46 +216,56 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
 
     private Object[] args_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
     private boolean myMinCorners_;
     private boolean myForPopup_;
     private boolean myWholeTree_;
     private boolean myForModules_;
+    private StaticDataAccessContext rcxT_;
          
+       
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean wholeTree, boolean minCorners, boolean forPopup, boolean forModules, DataAccessContext dacx) {
-      appState_ = appState;      
+    public StepState(boolean wholeTree, boolean minCorners, boolean forPopup, boolean forModules, ServerControlFlowHarness cfh) {
+      super(cfh);
       myMinCorners_ = minCorners;
       myForPopup_ = forPopup;
       myWholeTree_ = wholeTree;
       myForModules_ = forModules;
       // Allow the operation on incomplete VfN-layer trees:
-      if (!myForModules_ && dacx.genomeIsAnInstance() && !dacx.genomeIsRootInstance()) {
-        rcxT_ = new DataAccessContext(dacx, dacx.getRootInstance());
+      if (!myForModules_ && dacx_.currentGenomeIsAnInstance() && !dacx_.currentGenomeIsRootInstance()) {
+        rcxT_ = new StaticDataAccessContext(dacx_, dacx_.getRootInstanceFOrCurrentInstance());
       } else {   
-        rcxT_ = dacx;
+        rcxT_ = dacx_;
+      }
+      nextStep_ = "stepDoIt";
+    }
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(boolean wholeTree, boolean minCorners, boolean forPopup, boolean forModules, StaticDataAccessContext dacx) {
+      super(dacx);
+      myMinCorners_ = minCorners;
+      myForPopup_ = forPopup;
+      myWholeTree_ = wholeTree;
+      myForModules_ = forModules;
+      // Allow the operation on incomplete VfN-layer trees:
+      if (!myForModules_ && dacx.currentGenomeIsAnInstance() && !dacx.currentGenomeIsRootInstance()) {
+        rcxT_ = new StaticDataAccessContext(dacx, dacx.getRootInstanceFOrCurrentInstance());
+      } else {   
+        rcxT_ = dacx_;
       }
       nextStep_ = "stepDoIt";
     }
     
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-      
     /***************************************************************************
     **
     ** for preload
@@ -267,30 +279,30 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
       if (myWholeTree_) {     
         LinkProperties lp;
         if (myForModules_) {
-          String ovrKey = rcxT_.oso.getCurrentOverlay();
-          lp = rcxT_.getLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(interID);
+          String ovrKey = rcxT_.getOSO().getCurrentOverlay();
+          lp = rcxT_.getCurrentLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(interID);
         } else {
-          lp = rcxT_.getLayout().getLinkProperties(interID);
+          lp = rcxT_.getCurrentLayout().getLinkProperties(interID);
         }
         args_ = new Object[4];
         args_[0] = new Boolean(myMinCorners_);
         args_[1] = lp;
         args_[2] = null;
-        args_[3] = (myForModules_) ? rcxT_.oso.getCurrentOverlay() : null;
+        args_[3] = (myForModules_) ? rcxT_.getOSO().getCurrentOverlay() : null;
       } else {
         LinkProperties lp;
         if (myForModules_) {
-          String ovrKey = rcxT_.oso.getCurrentOverlay();
-          lp = rcxT_.getLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(interID);
+          String ovrKey = rcxT_.getOSO().getCurrentOverlay();
+          lp = rcxT_.getCurrentLayout().getNetOverlayProperties(ovrKey).getNetModuleLinkagePropertiesFromTreeID(interID);
         } else {
-          lp = rcxT_.getLayout().getLinkProperties(interID);
+          lp = rcxT_.getCurrentLayout().getLinkProperties(interID);
         }
         LinkSegmentID id = inter.segmentIDFromIntersect();
         args_ = new Object[4];
         args_[0] = new Boolean(myMinCorners_);
         args_[1] = lp;
         args_[2] = id;
-        args_[3] = (myForModules_) ? rcxT_.oso.getCurrentOverlay() : null;    
+        args_[3] = (myForModules_) ? rcxT_.getOSO().getCurrentOverlay() : null;    
       }
       return;
     }
@@ -318,35 +330,35 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
       // installs a selection undo!
       //
       
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       if (sup.hasASelection()) {
-        sup.selectNone(appState_.getUndoManager(), rcxT_);
+        sup.selectNone(uics_, uFac_, rcxT_);
         sup.drawModel(false);
       }
 
       UndoSupport support;
       if (forOne == null) {
-        support = new UndoSupport(appState_, "undo.repairAllNonOrtho"); 
+        support = uFac_.provideUndoSupport("undo.repairAllNonOrtho", rcxT_); 
       } else if (onlyLsid == null) {
-        support = new UndoSupport(appState_, "undo.fixAllNonOrthoForTree");
+        support = uFac_.provideUndoSupport("undo.fixAllNonOrthoForTree", rcxT_);
       } else {
-        support = new UndoSupport(appState_, "undo.fixNonOrtho");
+        support = uFac_.provideUndoSupport("undo.fixNonOrtho", rcxT_);
       }
   
-      Genome genome = rcxT_.getGenome();
+      Genome genome = rcxT_.getCurrentGenome();
       RepairNonOrthoRunner runner = 
-        new RepairNonOrthoRunner(appState_, genome, useForMin, forOne, onlyLsid, overID, support, this);
+        new RepairNonOrthoRunner(rcxT_, genome, useForMin, forOne, onlyLsid, overID, support, this);
       BackgroundWorkerClient bwc;     
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, rcxT_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
       } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, support);
+        bwc = new BackgroundWorkerClient(uics_, rcxT_, this, runner, support);
       }
       runner.setClient(bwc);
       bwc.launchWorker();
             // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
-                                                                                       : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+                                                                                   : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
       return (daipc);
     }
     
@@ -359,12 +371,12 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     }
     
     public void cleanUpPostRepaint(Object result) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = rcxT_.getRMan();
       Layout.OrthoRepairInfo ori = (Layout.OrthoRepairInfo)result;
  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>   // myGenomePre_.clearSelections(genomeKey_, layout_, support);
       if (ori.failCount > 0) {
         if (ori.singleSeg) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("fixNonOrthoSeg.failWarning"), 
                                         rMan.getString("fixNonOrthoSeg.failWarningTitle"),
                                         JOptionPane.WARNING_MESSAGE);         
@@ -375,7 +387,7 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
           form = UiUtil.convertMessageToHtml(form);
           Integer failNum = new Integer(ori.failCount);
           String failMsg = MessageFormat.format(form, new Object[] {failNum});    
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString(failMsg), 
                                         rMan.getString("fixNonOrtho.failWarningTitle"),
                                         JOptionPane.WARNING_MESSAGE);
@@ -393,7 +405,7 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     ** Handle details of fixing non-ortho links:
     */
   
-    private Layout.OrthoRepairInfo fixAllNonOrtho(BTState appState, DataAccessContext rcx, 
+    private Layout.OrthoRepairInfo fixAllNonOrtho(StaticDataAccessContext rcx, 
                                                   boolean minCorners, 
                                                   String overID,
                                                   UndoSupport support,                                              
@@ -401,11 +413,11 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
                                                   double startFrac, double maxFrac)
                                                     throws AsynchExitRequestException {
       
-      List<Intersection> nonOrtho = rcx.getLayout().getNonOrthoIntersections(rcx, overID);
-      Layout.OrthoRepairInfo ori = rcx.getLayout().fixAllNonOrthoForLayout(nonOrtho, rcx, minCorners, 
+      List<Intersection> nonOrtho = rcx.getCurrentLayout().getNonOrthoIntersections(rcx, overID);
+      Layout.OrthoRepairInfo ori = rcx.getCurrentLayout().fixAllNonOrthoForLayout(nonOrtho, rcx, minCorners, 
                                                                       overID, monitor, startFrac, maxFrac); 
       if ((ori.chgs != null) && (ori.chgs.length != 0)) {
-        PropChangeCmd emptyC = new PropChangeCmd(appState, rcx, ori.chgs);
+        PropChangeCmd emptyC = new PropChangeCmd(rcx, ori.chgs);
         support.addEdit(emptyC);
       }  
       return (ori);
@@ -416,16 +428,16 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     ** Handle details of fixing non-ortho links:
     */
   
-    private Layout.OrthoRepairInfo fixAllNonOrthoForTree(BTState appState, LinkProperties lp, DataAccessContext rcx, 
+    private Layout.OrthoRepairInfo fixAllNonOrthoForTree(LinkProperties lp, StaticDataAccessContext rcx, 
                                                          boolean minCorners,
                                                          String ovrKey,
                                                          UndoSupport support, BTProgressMonitor monitor, 
                                                          double startFrac, double maxFrac)
                                                            throws AsynchExitRequestException { 
-      Layout.OrthoRepairInfo ori = rcx.getLayout().fixAllNonOrthoForTree(lp, rcx, minCorners, 
+      Layout.OrthoRepairInfo ori = rcx.getCurrentLayout().fixAllNonOrthoForTree(lp, rcx, minCorners, 
                                                                     ovrKey, monitor, startFrac, maxFrac); 
       if ((ori.chgs != null) && (ori.chgs.length != 0)) {
-        PropChangeCmd emptyC = new PropChangeCmd(appState, rcx, ori.chgs);
+        PropChangeCmd emptyC = new PropChangeCmd(rcx, ori.chgs);
         support.addEdit(emptyC);
       }  
       return (ori);
@@ -436,15 +448,15 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     ** Handle details of fixing non-ortho links:
     */
   
-    private Layout.OrthoRepairInfo fixNonOrtho(BTState appState, LinkProperties lp, LinkSegmentID lsid, DataAccessContext rcx,
+    private Layout.OrthoRepairInfo fixNonOrtho(LinkProperties lp, LinkSegmentID lsid, StaticDataAccessContext rcx,
                                                boolean minCorners, 
                                                String ovrKey,
                                                UndoSupport support, BTProgressMonitor monitor, 
                                                double startFrac, double maxFrac)
                                                  throws AsynchExitRequestException { 
-      Layout.OrthoRepairInfo ori = rcx.getLayout().fixNonOrtho(lp, lsid, rcx, minCorners, ovrKey, monitor, startFrac, maxFrac); 
+      Layout.OrthoRepairInfo ori = rcx.getCurrentLayout().fixNonOrtho(lp, lsid, rcx, minCorners, ovrKey, monitor, startFrac, maxFrac); 
       if ((ori.chgs != null) && (ori.chgs.length != 0)) {
-        PropChangeCmd emptyC = new PropChangeCmd(appState, rcx, ori.chgs);
+        PropChangeCmd emptyC = new PropChangeCmd(rcx, ori.chgs);
         support.addEdit(emptyC);
       }  
       return (ori);
@@ -458,7 +470,6 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     
   private static class RepairNonOrthoRunner extends BackgroundWorker {
     
-    private BTState myAppState_;
     private Genome genome_;    
     private UndoSupport support_;
     private String loKey_;
@@ -467,14 +478,15 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     private LinkSegmentID onlyLsid_;
     private String overID_;
     private StepState ss_;
+    private StaticDataAccessContext dacx_;
     
-    public RepairNonOrthoRunner(BTState appState, Genome genome, 
+    public RepairNonOrthoRunner(StaticDataAccessContext dacx, Genome genome, 
                                 boolean minCorners, LinkProperties forOne, 
                                 LinkSegmentID onlyLsid, 
                                 String overID, UndoSupport support, StepState ss) {
       super(new Layout.OrthoRepairInfo(0, false));
+      dacx_ = dacx;
       support_ = support;
-      myAppState_ = appState;
       genome_ = genome;
       minCorners_ = minCorners;
       forOne_ = forOne;
@@ -484,16 +496,16 @@ public class LayoutNonOrthoLink extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {      
-      loKey_ = myAppState_.getLayoutMgr().getLayout(genome_.getID());
-      Layout lo = myAppState_.getDB().getLayout(loKey_);
+      loKey_ = dacx_.getLayoutSource().mapGenomeKeyToLayoutKey(genome_.getID());
+      Layout lo = dacx_.getLayoutSource().getLayout(loKey_);
       Layout.OrthoRepairInfo ori;
-      DataAccessContext rcx = new DataAccessContext(myAppState_, genome_, lo);  
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, genome_, lo);  
       if (forOne_ == null) {       
-        ori = ss_.fixAllNonOrtho(myAppState_, rcx, minCorners_, overID_, support_, this, 0.01, 1.0); 
+        ori = ss_.fixAllNonOrtho(rcx, minCorners_, overID_, support_, this, 0.01, 1.0); 
       } else if (onlyLsid_ == null) {
-        ori = ss_.fixAllNonOrthoForTree(myAppState_, forOne_, rcx, minCorners_, overID_, support_, this, 0.01, 1.0);     
+        ori = ss_.fixAllNonOrthoForTree(forOne_, rcx, minCorners_, overID_, support_, this, 0.01, 1.0);     
       } else {       
-        ori = ss_.fixNonOrtho(myAppState_, forOne_, onlyLsid_, rcx, minCorners_, overID_, support_, this, 0.01, 1.0);
+        ori = ss_.fixNonOrtho(forOne_, onlyLsid_, rcx, minCorners_, overID_, support_, this, 0.01, 1.0);
       }
       return (ori);
     }

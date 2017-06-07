@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -41,13 +41,15 @@ import javax.swing.tree.TreePath;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.util.ModelNodeIDPair;
 import org.systemsbiology.biotapestry.util.NodeRegionModelNameTuple;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.InvalidInputException;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -122,7 +124,7 @@ public class FullHierarchyCSVFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
+  private UIComponentSource uics_;
   private DataAccessContext dacx_;
   private FullHierarchyBuilder fhb_;
   
@@ -137,10 +139,10 @@ public class FullHierarchyCSVFormatFactory {
   ** Constructor
   */
 
-  public FullHierarchyCSVFormatFactory(BTState appState, DataAccessContext dacx) {
-    appState_ = appState;
+  public FullHierarchyCSVFormatFactory(UIComponentSource uics, DataAccessContext dacx) {
+    uics_ = uics;
     dacx_ = dacx;
-    fhb_ = new FullHierarchyBuilder(appState_);
+    fhb_ = new FullHierarchyBuilder(dacx_);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -202,7 +204,9 @@ public class FullHierarchyCSVFormatFactory {
   ** Build the whole thing from a csv file. This is the stuff on the background thread.
   */
 
-  public LinkRouter.RoutingResult buildFromCSVBackground(BTState appState, DataAccessContext rcxR,
+  public LinkRouter.RoutingResult buildFromCSVBackground(UIComponentSource uics,
+                                                         UndoFactory uFac, 
+                                                         StaticDataAccessContext rcxR,
                                                          FullHierarchyBuilder.BIPData bipd,                                                         
                                                          boolean doReplacement,
                                                          UndoSupport support, boolean doOpts, 
@@ -214,16 +218,16 @@ public class FullHierarchyCSVFormatFactory {
                                                          throws AsynchExitRequestException {
   
     
-    Point2D center = appState.getCanvasCenter();
-    Dimension size = appState.getCanvasSize();
+    Point2D center = rcxR.getWorkspaceSource().getWorkspace().getCanvasCenter();
+    Dimension size = rcxR.getWorkspaceSource().getWorkspace().getCanvasSize();
     
-    LayoutOptions options = new LayoutOptions(appState.getLayoutOptMgr().getLayoutOptions());
+    LayoutOptions options = new LayoutOptions(rcxR.getLayoutOptMgr().getLayoutOptions());
     options.optimizationPasses = (doOpts) ? 1 : 0;
     options.inheritanceSquash = (doSquash) ? LayoutOptions.DO_INHERITANCE_SQUASH 
                                            : LayoutOptions.NO_INHERITANCE_SQUASH;
     options.overlayOption = overlayOption;
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(appState);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, rcxR, uFac);
     BuildInstructionProcessor.PIHData pihd = new BuildInstructionProcessor.PIHData(bipd.processOrder, bipd.buildCmds, 
                                                                                    bipd.regions, center, 
                                                                                    size, !doReplacement, 
@@ -255,6 +259,7 @@ public class FullHierarchyCSVFormatFactory {
       ri = info;
     }
     
+    @Override
     public String toString() {
       return ("RegionDef: model = " + modelName + " ri = " + ri); 
     }    
@@ -275,6 +280,7 @@ public class FullHierarchyCSVFormatFactory {
       this.bi = bi;
     }
     
+    @Override
     public String toString() {
       return ("AugmentedInstruction: modelName = " + modelName + " instr = " + bi); 
     }    
@@ -304,7 +310,7 @@ public class FullHierarchyCSVFormatFactory {
     //
     
     NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-    VirtualModelTree vmtree = appState_.getTree();
+    VirtualModelTree vmtree = uics_.getTree();
     DefaultTreeModel dtm = vmtree.getTreeModel();
     DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)dtm.getRoot();    
     
@@ -330,8 +336,8 @@ public class FullHierarchyCSVFormatFactory {
       ArrayList<String> removedNodes = new ArrayList<String>();
       if (!compareTreesForReplacement(rootName, modelDefs,  
                                       nameToId, addedNodes, removedNodes)) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(),
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                       rMan.getString("cSVHierarchy.duplicateModelNameAbort"),
                                       rMan.getString("cSVHierarchy.cannotContinue"),
                                       JOptionPane.WARNING_MESSAGE);                                        
@@ -347,8 +353,8 @@ public class FullHierarchyCSVFormatFactory {
       while (iit.hasNext()) {
         GenomeInstance gi = iit.next();
         if (gi instanceof DynamicGenomeInstance) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(),
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(),
                                         rMan.getString("cSVHierarchy.dynamicInstanceAbort"),
                                         rMan.getString("cSVHierarchy.cannotContinue"),
                                         JOptionPane.WARNING_MESSAGE);
@@ -370,19 +376,20 @@ public class FullHierarchyCSVFormatFactory {
         if (deadCollection.contains(deadOneID)) {
           continue;
         }
-        Set<String> deadOnes = DeleteGenomeInstance.deleteGenomeInstance(appState_, dacx_, deadOneID, false, support);
+        Set<String> deadOnes = DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, deadOneID, false, support);
        
         deadCollection.addAll(deadOnes);
-        nt.setSkipFlag(NavTree.SKIP_FINISH);
-        NavTreeChange ntc = nt.deleteNode(deadOneID, deadOnes);
-        nt.setSkipFlag(NavTree.NO_FLAG);
-        support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
+        TreeNode tn = nt.nodeForModel(deadOneID);
+        nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
+        NavTreeChange ntc = nt.deleteNodeAndChildren(tn, true);
+        nt.setSkipFlag(NavTree.Skips.NO_FLAG);
+        support.addEdit(new NavTreeChangeCmd(dacx_, ntc));
         ntcs.add(ntc);
       }
       if (numRem > 0) {
-        nt.setSkipFlag(NavTree.SKIP_FINISH);
+        nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
         dtm.nodeStructureChanged(rootNode);
-        nt.setSkipFlag(NavTree.NO_FLAG);
+        nt.setSkipFlag(NavTree.Skips.NO_FLAG);
       }
       
       //
@@ -411,27 +418,30 @@ public class FullHierarchyCSVFormatFactory {
       FullHierarchyBuilder.ModelDef md = modelDefs.get(addedNodes.get(i));
       String vfgID = (md.modelParent.equals(rootName)) ? null : nameToId.get(md.modelParent);
       String nextKey = dacx_.getGenomeSource().getNextKey();
-      GenomeInstance gi = new GenomeInstance(appState_, md.modelName, nextKey, vfgID);
+      GenomeInstance gi = new GenomeInstance(dacx_, md.modelName, nextKey, vfgID);
       nameToId.put(addedNodes.get(i), nextKey);
       DatabaseChange dc = dacx_.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));  
-      if (vfgID == null) {  // only for instance roots
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      NavTree.Kids nodeType = NavTree.Kids.STATIC_CHILD_INSTANCE;  
+      if (vfgID == null) {  // only for instance roots    
         String nextloKey = dacx_.getGenomeSource().getNextKey();
-        Layout lo = new Layout(appState_, nextloKey, nextKey);
-        dc = dacx_.lSrc.addLayout(nextloKey, lo);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));        
-      }
-      nt.setSkipFlag(NavTree.SKIP_FINISH);
-      NavTreeChange ntc = nt.addNode(md.modelName, vfgID, nextKey);
-      nt.setSkipFlag(NavTree.NO_FLAG);
-      support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
-      ntcs.add(ntc);
+        Layout lo = new Layout(nextloKey, nextKey);
+        dc = dacx_.getLayoutSource().addLayout(nextloKey, lo);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+        nodeType = NavTree.Kids.ROOT_INSTANCE;
+      } 
+      TreeNode parNode = nt.nodeForModel(nameToId.get(md.modelParent));     
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
+      NavTree.NodeAndChanges nac = nt.addNode(nodeType, md.modelName, parNode, new NavTree.ModelID(nextKey), null, null, dacx_);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
+      ntcs.add(nac.ntc);
     }
 
     if (numAdded > 0) {
-      nt.setSkipFlag(NavTree.SKIP_FINISH);
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
       dtm.nodeStructureChanged(rootNode);
-      nt.setSkipFlag(NavTree.NO_FLAG);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
     }
     
     //
@@ -456,7 +466,7 @@ public class FullHierarchyCSVFormatFactory {
       // Expand everybody out
       //
       
-      nt.setSkipFlag(NavTree.SKIP_FINISH);
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
       List<TreePath> nonleafPaths = nt.getAllPathsToNonLeaves();
       Iterator<TreePath> nlpit = nonleafPaths.iterator();
       while (nlpit.hasNext()) {
@@ -473,7 +483,7 @@ public class FullHierarchyCSVFormatFactory {
       TreeNode[] tn = rootChild.getPath();
       TreePath tp = new TreePath(tn);
       vmtree.setTreeSelectionPath(tp);
-      nt.setSkipFlag(NavTree.NO_FLAG);      
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);      
       
       //
       // Get tree copies from before and after change and fix the maps for expansion
@@ -905,7 +915,7 @@ public class FullHierarchyCSVFormatFactory {
         if (!regionsAreConsistent(bi, modelName, regionDefs, modelDefs)) {
           throw new InvalidInputException(INCONSISTENT_REGIONS);  
         }
-        if (!rootOnlyLinkEvidenceAssignment(bi, modelName, regionDefs, modelDefs)) {
+        if (!rootOnlyLinkEvidenceAssignment(bi, modelName, modelDefs)) {
           throw new InvalidInputException(INCONSISTENT_LINK_EVIDENCE);           
         }  
       }
@@ -931,7 +941,6 @@ public class FullHierarchyCSVFormatFactory {
   */
   
   private boolean rootOnlyLinkEvidenceAssignment(BuildInstruction bi, String modelName, 
-                                                 Map<String, List<InstanceInstructionSet.RegionInfo>> regionDefs, 
                                                  Map<String, FullHierarchyBuilder.ModelDef> modelDefs) {
     
     FullHierarchyBuilder.ModelDef md = modelDefs.get(modelName);

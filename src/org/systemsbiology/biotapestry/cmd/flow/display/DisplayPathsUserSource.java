@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,11 +23,12 @@ import java.awt.Color;
 import java.awt.Point;
 import java.util.List;
 
-
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -56,8 +57,8 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DisplayPathsUserSource(BTState appState, boolean forPopup) {
-    super(appState);
+  @SuppressWarnings("unused")
+  public DisplayPathsUserSource(boolean forPopup) {
     name = "nodePopup.FindPathsFromUserSelect";
     desc = "nodePopup.FindPathsFromUserSelect";
     mnem = "nodePopup.FindPathsFromUserSelectMnem";
@@ -76,8 +77,9 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
-    int inLinks = rcx.getGenome().getInboundLinkCount(inter.getObjectID());
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    int inLinks = rcx.getCurrentGenome().getInboundLinkCount(inter.getObjectID());
     return (inLinks > 0);
   }
 
@@ -88,8 +90,8 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -107,9 +109,7 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetToMode")) {
           next = ans.stepSetToMode();
         } else if (ans.getNextStep().equals("stepLaunchPathDisplay")) {
@@ -135,9 +135,9 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans); 
-    ans.nextStep_ = "stepLaunchPathDisplay"; 
+    ans.setNextStep("stepLaunchPathDisplay"); 
     return (retval);
   }
 
@@ -146,28 +146,19 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
-    private Intersection inter_;
-    private DataAccessContext rcxT_;
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
+    private Intersection inter_;   
     private int x;
     private int y;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepSetToMode";
     }
   
@@ -261,8 +252,8 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
       // Go and find if we intersect anything. Nodes gotta have priority!
       //
 
-      List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs); 
+      List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs); 
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
 
       //
@@ -274,13 +265,13 @@ public class DisplayPathsUserSource extends AbstractControlFlow {
       }
       
       String id = inter.getObjectID();
-      Node src = rcxT_.getGenome().getNode(id);
+      Node src = dacx_.getCurrentGenome().getNode(id);
       if (src == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
 
-      PathDisplayFrameFactory.BuildArgs ba = new PathDisplayFrameFactory.BuildArgs(rcxT_.getGenomeID(), id, inter_.getObjectID());
-      PathDisplayFrameFactory nocdf = new PathDisplayFrameFactory(cfh);
+      PathDisplayFrameFactory.BuildArgs ba = new PathDisplayFrameFactory.BuildArgs(dacx_.getCurrentGenomeID(), id, inter_.getObjectID());
+      PathDisplayFrameFactory nocdf = new PathDisplayFrameFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
       return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this, cfhd)); 
     }

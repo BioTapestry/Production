@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,21 +20,22 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.view;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GroupSettingChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.nav.GroupSettingChange;
-import org.systemsbiology.biotapestry.nav.GroupSettingManager;
+import org.systemsbiology.biotapestry.nav.GroupSettingSource;
 import org.systemsbiology.biotapestry.nav.GroupSettings;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -116,8 +117,7 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
   ** Constructor 
   */ 
   
-  public Toggle(BTState appState, ToggleAction action) {
-    super(appState);
+  public Toggle(ToggleAction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -138,8 +138,8 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
   ** 
   */
   
-  public boolean shouldCheck() {
-    BTState.SearchModifiers sm = appState_.getSearchModifiers();
+  public boolean shouldCheck(CmdSource cSrc) {
+    CmdSource.SearchModifiers sm = cSrc.getSearchModifiers();
     switch (action_) {
       case SELECT_LINKS:
          return (sm.includeLinks);
@@ -202,17 +202,18 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) { 
     switch (action_) {
       case NET_MOD_CONTENT:
-        NetOverlayController noc = appState_.getNetOverlayController();
+        NetOverlayController noc = uics.getNetOverlayController();
         return (noc.maskingIsActive());
       case GROUP_TOGGLE:
       case SELECT_QUERY_NODE:
       case APPEND_SELECT: 
         return (true);
       case SELECT_LINKS: 
-        return (!appState_.getSUPanel().linksAreHidden(rcx));
+        return (!uics.getGenomePresentation().linksAreHidden(rcx));
       case PAD_BUBBLES: 
       default:
         throw new IllegalStateException();
@@ -226,8 +227,8 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx);
     return (retval);
   }
   
@@ -243,9 +244,10 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh);
       } else { 
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToggle")) {
         next = ans.stepToggle();
@@ -264,16 +266,20 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private ToggleAction myAction_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+    private ToggleAction myAction_; 
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(ToggleAction action, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepToggle";
     }
     
     /***************************************************************************
@@ -281,13 +287,12 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
     ** Construct
     */ 
     
-    public StepState(BTState appState, ToggleAction action, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ToggleAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
       nextStep_ = "stepToggle";
-      dacx_ = dacx;
     }
-     
+
     /***************************************************************************
     **
     ** Set params
@@ -307,8 +312,8 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
       switch (myAction_) {
         case NET_MOD_CONTENT:
           String modID = intersect_.getObjectID(); 
-          NetOverlayController noc = appState_.getNetOverlayController();
-          UndoSupport support = new UndoSupport(appState_, "undo.toggleModuleViz");
+          NetOverlayController noc = uics_.getNetOverlayController();        
+          UndoSupport support = uFac_.provideUndoSupport("undo.toggleModuleViz", dacx_);
           noc.toggleModContentDisplay(modID, support, dacx_);
           support.finish();
           break;
@@ -316,22 +321,22 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
           groupToggle();
           break; 
         case SELECT_QUERY_NODE: 
-          BTState.SearchModifiers sm = appState_.getSearchModifiers();
+          CmdSource.SearchModifiers sm = cmdSrc_.getSearchModifiers();
           sm.includeQueryNode = !sm.includeQueryNode;
           break;
         case APPEND_SELECT:          
-          sm = appState_.getSearchModifiers();
+          sm = cmdSrc_.getSearchModifiers();
           sm.appendToCurrent = !sm.appendToCurrent;
           break;       
         case SELECT_LINKS:
-          sm = appState_.getSearchModifiers();
+          sm = cmdSrc_.getSearchModifiers();
           sm.includeLinks = !sm.includeLinks;
           break;
         case PAD_BUBBLES:
-          appState_.getSUPanel().toggleTargetBubbles();
+          uics_.getSUPanel().toggleTargetBubbles();
           break;
         case MOD_PARTS:
-          appState_.toggleModuleComponents();
+          cmdSrc_.toggleModuleComponents();
           break;          
         default:
           throw new IllegalStateException();
@@ -345,21 +350,20 @@ public class Toggle extends AbstractControlFlow implements ControlFlow.FlowForPo
     */ 
        
     private void groupToggle() { 
-      Genome genome = dacx_.getGenome();
-      if (!(genome instanceof GenomeInstance)) {
+      if (!dacx_.currentGenomeIsAnInstance()) {
         throw new IllegalStateException();
       }
-      Group group = ((GenomeInstance)genome).getGroup(intersect_.getObjectID());
+      Group group = dacx_.getCurrentGenomeAsInstance().getGroup(intersect_.getObjectID());
       String groupRef = group.getID();
-      GroupSettingManager gsm = (GroupSettingManager)dacx_.gsm;
-      GroupSettings.Setting groupViz = gsm.getGroupVisibility(genome.getID(), groupRef, dacx_);
+      GroupSettingSource gsm = dacx_.getGSM();
+      GroupSettings.Setting groupViz = gsm.getGroupVisibility(dacx_.getCurrentGenomeID(), groupRef, dacx_);
       GroupSettings.Setting newSetting = (groupViz == GroupSettings.Setting.ACTIVE) ? GroupSettings.Setting.INACTIVE : GroupSettings.Setting.ACTIVE;
-      GroupSettingChange gsc = gsm.setGroupVisibility(genome.getID(), groupRef, newSetting);
+      GroupSettingChange gsc = gsm.setGroupVisibility(dacx_.getCurrentGenomeID(), groupRef, newSetting);
       if (gsc != null) {
-        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(appState_, dacx_, gsc);
-        UndoSupport support = new UndoSupport(appState_, "undo.regionToggle");
+        UndoSupport support = uFac_.provideUndoSupport("undo.regionToggle", dacx_);
+        GroupSettingChangeCmd gscc = new GroupSettingChangeCmd(dacx_, gsc);
         support.addEdit(gscc);
-        support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
         support.finish();
       }       
       return;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,16 +28,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.SuperAdd;
 import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuildSupport;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.NetModule;
@@ -81,8 +81,7 @@ public class DownwardSync extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public DownwardSync(BTState appState) {
-    super(appState);  
+  public DownwardSync() {
     name = "command.SyncLayouts"; 
     desc = "command.SyncLayouts"; 
     mnem = "command.SyncLayoutsMnem"; 
@@ -118,10 +117,11 @@ public class DownwardSync extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -140,32 +140,18 @@ public class DownwardSync extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState, BackgroundWorkerOwner {
-
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-      
+  public static class StepState extends AbstractStepState implements BackgroundWorkerOwner {
+    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
-    
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-
+   
     public boolean handleRemoteException(Exception remoteEx) {
       return (false);
     }
@@ -179,7 +165,7 @@ public class DownwardSync extends AbstractControlFlow {
     }     
        
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
       return;
     }        
 
@@ -189,17 +175,17 @@ public class DownwardSync extends AbstractControlFlow {
     */ 
         
     private DialogAndInProcessCmd stepDoIt() {
-      DataAccessContext rcxR = dacx_.getContextForRoot();
+      StaticDataAccessContext rcxR = dacx_.getContextForRoot();
       
-      SyncLayoutTargetDialog sltd = new SyncLayoutTargetDialog(appState_, rcxR);
+      SyncLayoutTargetDialog sltd = new SyncLayoutTargetDialog(uics_, rcxR);
       sltd.setVisible(true);
       if (!sltd.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
       }
       List<SuperAdd.SuperAddPair> targets = sltd.getSuperAddPairs(); 
       
-      boolean offerDirect = (new LayoutRubberStamper(appState_)).directCopyOptionAllowed(rcxR);
-      SyncLayoutChoicesDialog slcd = new SyncLayoutChoicesDialog(appState_, offerDirect);
+      boolean offerDirect = (new LayoutRubberStamper()).directCopyOptionAllowed(rcxR);
+      SyncLayoutChoicesDialog slcd = new SyncLayoutChoicesDialog(uics_, offerDirect, rcxR);
       slcd.setVisible(true);
       if (!slcd.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
@@ -210,11 +196,11 @@ public class DownwardSync extends AbstractControlFlow {
       boolean swapPads = slcd.swapPads();
       int overlayOption = slcd.getOverlayOption();
       
-      UndoSupport support = new UndoSupport(appState_, "undo.syncLayouts");
+      UndoSupport support = uFac_.provideUndoSupport("undo.syncLayouts", rcxR);
       SyncLayoutRunner runner = 
-        new SyncLayoutRunner(appState_, rcxR, directCopy, doCompress, keepGroups, swapPads, overlayOption, targets, support, this);
+        new SyncLayoutRunner(rcxR, directCopy, doCompress, keepGroups, swapPads, overlayOption, targets, support, this);
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(uics_, rcxR, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       runner.setClient(bwc);
       bwc.launchWorker();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));      
@@ -235,7 +221,7 @@ public class DownwardSync extends AbstractControlFlow {
     ** Synchronize all layouts to the root layout
     */  
    
-    public LinkRouter.RoutingResult synchronizeAllLayouts(DataAccessContext rcxR,
+    public LinkRouter.RoutingResult synchronizeAllLayouts(StaticDataAccessContext rcxR,
                                                           UndoSupport support,
                                                           LayoutOptions options,
                                                           Point2D center,
@@ -246,9 +232,8 @@ public class DownwardSync extends AbstractControlFlow {
                                                           BTProgressMonitor monitor) 
                                                           throws AsynchExitRequestException {
   
-   //   FullGenomeHierarchyOracle fgho = new FullGenomeHierarchyOracle(appState_);
-      Map<String, Layout.OverlayKeySet> globalModKeys = rcxR.fgho.fullModuleKeysPerLayout();
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.fgho.getGlobalNetModuleLinkPadNeeds();
+      Map<String, Layout.OverlayKeySet> globalModKeys = rcxR.getFGHO().fullModuleKeysPerLayout();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
       
       //
       // Figure out which models and groups we are processing:
@@ -268,7 +253,7 @@ public class DownwardSync extends AbstractControlFlow {
       Set<String> doModels = grpsForModel.keySet();     
    
       if (switchPads) {
-        (new SyncSupport(appState_, dacx_)).syncAllLinkPads(support, grpsForModel);
+        (new SyncSupport(dacx_)).syncAllLinkPads(support, grpsForModel);
       }
       
       
@@ -277,10 +262,10 @@ public class DownwardSync extends AbstractControlFlow {
       // a new layout:
       //
                                            
-      LayoutRubberStamper lrs = new LayoutRubberStamper(appState_);
+      LayoutRubberStamper lrs = new LayoutRubberStamper();
       
-      Map<String, BusProperties.RememberProps> rootRemember = rcxR.getLayout().buildRememberProps(rcxR);
-      Map<String, SpecialSegmentTracker> rootSpecials = rcxR.getLayout().rememberSpecialLinks();
+      Map<String, BusProperties.RememberProps> rootRemember = rcxR.getCurrentLayout().buildRememberProps(rcxR);
+      Map<String, SpecialSegmentTracker> rootSpecials = rcxR.getCurrentLayout().rememberSpecialLinks();
   
       //
       // Get root instance count first, and use to set progress values:
@@ -322,16 +307,16 @@ public class DownwardSync extends AbstractControlFlow {
           continue;
         }
         Set<String> doGrps = grpsForModel.get(gid);
-        DataAccessContext rcxT = new DataAccessContext(rcxR, gi);  
+        StaticDataAccessContext rcxT = new StaticDataAccessContext(rcxR, gi);  
         
-        Layout origLayout = new Layout(rcxT.getLayout());
-        Layout.OverlayKeySet loModKeys = globalModKeys.get(rcxT.getLayoutID());   
+        Layout origLayout = new Layout(rcxT.getCurrentLayout());
+        Layout.OverlayKeySet loModKeys = globalModKeys.get(rcxT.getCurrentLayoutID());   
         
        
         
         Layout.SupplementalDataCoords sdc = null;
         if (!directCopy) {
-          sdc = rcxT.getLayout().getSupplementalCoords(rcxT, loModKeys);
+          sdc = rcxT.getCurrentLayout().getSupplementalCoords(rcxT, loModKeys);
         }
         
         //
@@ -339,30 +324,30 @@ public class DownwardSync extends AbstractControlFlow {
         //
         
         
-        Layout.PadNeedsForLayout padFixups = rcxT.getLayout().findAllNetModuleLinkPadRequirements(rcxT);  
+        Layout.PadNeedsForLayout padFixups = rcxT.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcxT);  
         
         //
         // Gather module recovery info:
         //
         
         Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = 
-          rcxT.getLayout().getModuleShapeParams(rcxT, loModKeys, center);
+          rcxT.getCurrentLayout().getModuleShapeParams(rcxT, loModKeys, center);
            
         //
         // If we have been asked to save region info, gather that up now:
         //
   
-        Map<String, Rectangle> savedRegionBounds = (keepGroups) ? (new BuildSupport(appState_)).saveRegionBounds(rcxT) : null;
+        Map<String, Rectangle> savedRegionBounds = (keepGroups) ? (new BuildSupport(uics_, rcxT, uFac_)).saveRegionBounds(rcxT) : null;
               
-        DatabaseChange dc = rcxT.lSrc.startLayoutUndoTransaction(rcxT.getLayoutID());
+        DatabaseChange dc = rcxT.getLayoutSource().startLayoutUndoTransaction(rcxT.getCurrentLayoutID());
         
         try {      
-          Map<String, BusProperties.RememberProps> rememberProps = rcxT.getLayout().buildInheritedRememberProps(rootRemember, gi);
-          Map<String, SpecialSegmentTracker> specials = rcxT.getLayout().buildInheritedSpecialLinks(rootSpecials, gi);      
+          Map<String, BusProperties.RememberProps> rememberProps = rcxT.getCurrentLayout().buildInheritedRememberProps(rootRemember, gi);
+          Map<String, SpecialSegmentTracker> specials = rcxT.getCurrentLayout().buildInheritedSpecialLinks(rootSpecials, gi);      
           if (directCopy || keepGroups) {
-            rcxT.getLayout().dropNodeAndLinkProperties(rcxT);
+            rcxT.getCurrentLayout().dropNodeAndLinkProperties(rcxT);
           } else {
-            rcxT.getLayout().dropProperties(rcxT);  
+            rcxT.getCurrentLayout().dropProperties(rcxT);  
           }
                    
           LayoutRubberStamper.RSData rsd = 
@@ -375,7 +360,7 @@ public class DownwardSync extends AbstractControlFlow {
           finalRes.merge(rr);
   
           if (!directCopy) {      
-            rcxT.getLayout().applySupplementalDataCoords(sdc, rcxT, loModKeys);
+            rcxT.getCurrentLayout().applySupplementalDataCoords(sdc, rcxT, loModKeys);
           }
   
           //
@@ -383,22 +368,22 @@ public class DownwardSync extends AbstractControlFlow {
           //
   
           if (specials != null) {
-            rcxT.getLayout().restoreSpecialLinks(specials);
+            rcxT.getCurrentLayout().restoreSpecialLinks(specials);
           }
           
           //
           // Handle module link pad repairs:
           //
           
-          Map<String, Boolean> orpho = rcxT.getLayout().orphansOnlyForAll(false);
-          rcxT.getLayout().repairAllNetModuleLinkPadRequirements(rcxT, padFixups, orpho);
+          Map<String, Boolean> orpho = rcxT.getCurrentLayout().orphansOnlyForAll(false);
+          rcxT.getCurrentLayout().repairAllNetModuleLinkPadRequirements(rcxT, padFixups, orpho);
    
-          dc = rcxT.lSrc.finishLayoutUndoTransaction(dc);
-          support.addEdit(new DatabaseChangeCmd(appState_, rcxT, dc));
+          dc = rcxT.getLayoutSource().finishLayoutUndoTransaction(dc);
+          support.addEdit(new DatabaseChangeCmd(rcxT, dc));
           currStart = currFinal;
           currFinal = currStart + perInstance;
         } catch (AsynchExitRequestException ex) {
-          rcxT.lSrc.rollbackLayoutUndoTransaction(dc);
+          rcxT.getLayoutSource().rollbackLayoutUndoTransaction(dc);
           throw ex;
         }
       } 
@@ -414,8 +399,7 @@ public class DownwardSync extends AbstractControlFlow {
     
   private static class SyncLayoutRunner extends BackgroundWorker {
     
-    private BTState myAppState_;
-    private DataAccessContext rcxR_;    
+    private StaticDataAccessContext rcxR_;    
     private UndoSupport support_;
     private boolean doCompress_;
     private boolean keepGroups_;
@@ -425,12 +409,11 @@ public class DownwardSync extends AbstractControlFlow {
     private List<SuperAdd.SuperAddPair> targets_;
     private StepState ss_;
     
-    public SyncLayoutRunner(BTState appState, DataAccessContext rcxR,
+    public SyncLayoutRunner(StaticDataAccessContext rcxR,
                             boolean directCopy,
                             boolean doCompress, boolean keepGroups, boolean swapPads,
                             int overlayOption, List<SuperAdd.SuperAddPair> targets, UndoSupport support, StepState ss) {
       super(new LinkRouter.RoutingResult()); 
-      myAppState_ = appState;
       rcxR_ = rcxR;
       doCompress_ = doCompress;
       keepGroups_ = keepGroups;
@@ -443,17 +426,17 @@ public class DownwardSync extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      LayoutOptions lopt = new LayoutOptions(myAppState_.getLayoutOptMgr().getLayoutOptions());
+      LayoutOptions lopt = new LayoutOptions(rcxR_.getLayoutOptMgr().getLayoutOptions());
       lopt.inheritanceSquash = doCompress_;
       lopt.overlayOption = overlayOption_;
       LinkRouter.RoutingResult res = ss_.synchronizeAllLayouts(rcxR_,
-                                                               support_, lopt, myAppState_.getZoomTarget().getRawCenterPoint(), directCopy_, 
+                                                               support_, lopt, rcxR_.getZoomTarget().getRawCenterPoint(), directCopy_, 
                                                                keepGroups_, swapPads_, targets_, this);
       return (res);
     }
     
     public Object postRunCore() {
-      Iterator<Layout> lit = rcxR_.lSrc.getLayoutIterator();
+      Iterator<Layout> lit = rcxR_.getLayoutSource().getLayoutIterator();
       String rootID = rcxR_.getDBGenome().getID();
       while (lit.hasNext()) {
         Layout lo = lit.next();

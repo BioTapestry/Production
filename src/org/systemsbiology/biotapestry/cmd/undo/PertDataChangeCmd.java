@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,11 +20,11 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 
 /****************************************************************************
 **
@@ -54,8 +54,8 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PertDataChangeCmd(BTState appState, DataAccessContext dacx, PertDataChange restore) {
-    super(appState, dacx);
+  public PertDataChangeCmd( DataAccessContext dacx, PertDataChange restore) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = false;
   }  
@@ -65,8 +65,8 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PertDataChangeCmd(BTState appState, DataAccessContext dacx, PertDataChange restore, boolean doEvent) {
-    super(appState, dacx);
+  public PertDataChangeCmd(DataAccessContext dacx, PertDataChange restore, boolean doEvent) {
+    super(dacx);
     restore_ = restore;
     doEvent_ = doEvent;
   }  
@@ -94,12 +94,17 @@ public class PertDataChangeCmd extends BTUndoCmd {
   
   @Override
   public void undo() {
-    super.undo();
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    pd.changeUndo(restore_);
+    super.undo();    
+    if (restore_.mode == PertDataChange.Mode.NAME_MAPPER) {
+      PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+      pdms.changeUndo(restore_);
+    } else {
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+      pd.changeUndo(restore_);
+    }
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }  
@@ -112,11 +117,17 @@ public class PertDataChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    pd.changeRedo(restore_);
+    
+    if (restore_.mode == PertDataChange.Mode.NAME_MAPPER) {
+      PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+      pdms.changeRedo(restore_);
+    } else {
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+      pd.changeRedo(restore_);
+    }
     if (doEvent_) {
       GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
-      appState_.getEventMgr().sendGeneralChangeEvent(ev); 
+      uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
   }
@@ -132,10 +143,10 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Wrap changes in command array
   */ 
   
-  public static PertDataChangeCmd[] wrapChanges(BTState appState, DataAccessContext dacx, PertDataChange[] restores) {
+  public static PertDataChangeCmd[] wrapChanges(DataAccessContext dacx, PertDataChange[] restores) {
     PertDataChangeCmd[] retval = new PertDataChangeCmd[restores.length];
     for (int i = 0; i < retval.length; i++) {
-      retval[i] = new PertDataChangeCmd(appState, dacx, restores[i]);
+      retval[i] = new PertDataChangeCmd(dacx, restores[i]);
     }
     return (retval);
   }  

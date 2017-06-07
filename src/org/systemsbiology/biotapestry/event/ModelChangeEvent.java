@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2009 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,8 @@ public class ModelChangeEvent implements ChangeEvent {
   public final static int MODEL_DROPPED       = 2;
   public final static int PROPERTY_CHANGE     = 3;
   public final static int MODEL_ADDED         = 4;  
-  public final static int DYNAMIC_MODEL_ADDED = 5;    
+  public final static int DYNAMIC_MODEL_ADDED = 5;
+  public final static int MODEL_TABBED        = 6; 
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -46,6 +47,7 @@ public class ModelChangeEvent implements ChangeEvent {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
+  private String tabKey_;
   private String key_;
   private int changeType_;
   private boolean isProxy_;
@@ -63,7 +65,8 @@ public class ModelChangeEvent implements ChangeEvent {
   ** Build the event
   */ 
   
-  public ModelChangeEvent(String genomeKey, int changeType) {
+  public ModelChangeEvent(String tabKey, String genomeKey, int changeType) {
+    tabKey_ = tabKey;
     key_ = genomeKey;
     changeType_ = changeType;
     isProxy_ = false;
@@ -74,7 +77,8 @@ public class ModelChangeEvent implements ChangeEvent {
   ** Build the event
   */ 
   
-  public ModelChangeEvent(String key, int changeType, boolean isProxy) {
+  public ModelChangeEvent(String tabKey, String key, int changeType, boolean isProxy) {
+    tabKey_ = tabKey;
     key_ = key;
     changeType_ = changeType;
     isProxy_ = isProxy;
@@ -85,8 +89,9 @@ public class ModelChangeEvent implements ChangeEvent {
   ** Build the event
   */ 
   
-  public ModelChangeEvent(String key, int changeType, boolean isProxy, 
+  public ModelChangeEvent(String tabKey, String key, int changeType, boolean isProxy, 
                           String oldKey, boolean oldKeyIsProxy) {
+    tabKey_ = tabKey;
     key_ = key;
     changeType_ = changeType;
     isProxy_ = isProxy;
@@ -100,6 +105,15 @@ public class ModelChangeEvent implements ChangeEvent {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Get the tab key
+  */ 
+  
+  public String getTabKey() {
+    return (tabKey_);
+  }
+
   /***************************************************************************
   **
   ** Get the genome key
@@ -165,6 +179,7 @@ public class ModelChangeEvent implements ChangeEvent {
   ** Standard equals
   */     
   
+  @Override
   public boolean equals(Object other) {
     if (this == other) {
       return (true);
@@ -185,6 +200,10 @@ public class ModelChangeEvent implements ChangeEvent {
       return (false);
     }
     
+    if (!this.tabKey_.equals(otherMCE.tabKey_)) {
+      return (false);
+    }
+
     if (!this.key_.equals(otherMCE.key_)) {
       return (false);
     }

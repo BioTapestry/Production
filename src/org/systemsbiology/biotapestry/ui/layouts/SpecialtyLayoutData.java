@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.SortedMap;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -44,21 +43,20 @@ public class SpecialtyLayoutData {
   public SpecialtyLayoutEngineParams param;
   public SpecialtyInstructions results;
   public List<GeneAndSatelliteCluster> gASCs;
-  public BTState appState;
+
   public SpecialtyLayoutEngine.NodePlaceSupport nps;
   public SortedMap<Integer, String> existingOrder;
   public Set<String> pureTargets;
   public Set<String> nodeSet;
-  public DataAccessContext rcx;
+  public StaticDataAccessContext rcx;
 
-  public SpecialtyLayoutData(BTState appState, GenomeSubset subset, DataAccessContext rcx,
+  public SpecialtyLayoutData(GenomeSubset subset, StaticDataAccessContext rcx,
                              SpecialtyLayoutEngineParams param, SpecialtyLayoutEngine.GlobalSLEState gss, 
                              SortedMap<Integer, String> customOrder, 
                              Set<String> pureTargets, Set<String> nodeSet) {
-    this.appState = appState;
     this.subset = subset;
     genome = subset.getBaseGenome();
-    this.lo = rcx.getLayout();
+    this.lo = rcx.getCurrentLayout();
     this.param = param;
     existingOrder = customOrder;
     results = new SpecialtyInstructions(gss.getGlobalPadChanges());
@@ -69,11 +67,10 @@ public class SpecialtyLayoutData {
     this.rcx = rcx;
   }
   
-  public SpecialtyLayoutData(BTState appState, GenomeSubset subset, DataAccessContext rcx, SpecialtyLayoutEngineParams param, InvertedSrcTrg ist) {
-    this.appState = appState;
+  public SpecialtyLayoutData( GenomeSubset subset, StaticDataAccessContext rcx, SpecialtyLayoutEngineParams param, InvertedSrcTrg ist) {
     this.subset = subset;
     genome = subset.getBaseGenome();
-    this.lo = rcx.getLayout();
+    this.lo = rcx.getCurrentLayout();
     this.param = param;
     existingOrder = null;
     results = null;

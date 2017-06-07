@@ -23,9 +23,10 @@ package org.systemsbiology.biotapestry.cmd.flow.undo;
 import javax.swing.JOptionPane;
 import javax.swing.undo.UndoManager;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -101,8 +102,7 @@ public class UndoRedoOps extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public UndoRedoOps(BTState appState, UndoAction action) {
-    super(appState);
+  public UndoRedoOps(UndoAction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -158,9 +158,10 @@ public class UndoRedoOps extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_);
+        ans = new StepState(action_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -179,14 +180,19 @@ public class UndoRedoOps extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
     private UndoAction myAction_;
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(UndoAction action, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -194,12 +200,12 @@ public class UndoRedoOps extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, UndoAction action) {
+    public StepState(UndoAction action, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
     }
-     
+
     /***************************************************************************
     **
     ** Do the step
@@ -207,34 +213,35 @@ public class UndoRedoOps extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToProcess() {
       
-      if (appState_.getCommonView().havePerturbationEditsInProgress()) {
-        ResourceManager rMan = appState_.getRMan(); 
-        int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      if (uics_.getCommonView().havePerturbationEditsInProgress()) {
+        ResourceManager rMan = dacx_.getRMan(); 
+        int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                rMan.getString("undo.droppingPendingEdits"), 
                                                rMan.getString("undo.droppingPendingEditsTitle"),
                                                JOptionPane.YES_NO_OPTION);
         if (ok != JOptionPane.YES_OPTION) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
         }
-        appState_.getCommonView().dropAllPendingPerturbationEdits();
-      }     
-      UndoManager undo = appState_.getUndoManager();
+        uics_.getCommonView().dropAllPendingPerturbationEdits();
+      } 
+      UndoManager uMan = cmdSrc_.getUndoManager();
+      
              
       switch (myAction_) {
         case UNDO:      
-          if (undo.canUndo()) {
-            undo.undo();
+          if (uMan.canUndo()) {
+            uMan.undo();
           }         
           break;   
         case REDO:         
-          if (undo.canRedo()) {
-            undo.redo();  
+          if (uMan.canRedo()) {
+            uMan.redo();  
           }         
           break;           
         default:
           throw new IllegalStateException();
       }     
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
@@ -49,6 +49,7 @@ public class UserTreePathFactory extends AbstractFactoryClient {
   ////////////////////////////////////////////////////////////////////////////
 
   private Set<String> mgrKeys_;
+  private MyGlue mGlue_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -61,12 +62,12 @@ public class UserTreePathFactory extends AbstractFactoryClient {
   ** Constructor for a user path factory
   */
 
-  public UserTreePathFactory(BTState appState) {
+  public UserTreePathFactory() {
     super(new FactoryWhiteboard());
     mgrKeys_ = UserTreePathManager.keywordsOfInterest();
-        
     FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
-    installWorker(new UserTreePath.UserTreePathWorker(whiteboard), new MyGlue(appState));
+    mGlue_ = new MyGlue();
+    installWorker(new UserTreePath.UserTreePathWorker(whiteboard), mGlue_);
     myKeys_.addAll(mgrKeys_);
   }
 
@@ -76,6 +77,17 @@ public class UserTreePathFactory extends AbstractFactoryClient {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Set context
+  **
+  */  
+  
+  public void setContext(UIComponentSource uics) {
+    mGlue_.setContext(uics);
+    return;
+  }
+
   /***************************************************************************
   **
   ** Handle the attributes for the keyword
@@ -94,16 +106,20 @@ public class UserTreePathFactory extends AbstractFactoryClient {
   
   public static class MyGlue implements GlueStick {
     
-    private BTState appState_;
+    private UIComponentSource uics_;
     
-    public MyGlue(BTState appState) {
-      appState_ = appState;
+    public MyGlue() {
     } 
+    
+    public void setContext(UIComponentSource uics) {
+      uics_ = uics;
+      return;
+    }
     
     public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
                                   Object optionalArgs) throws IOException {
       FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
-      UserTreePathManager mgr = appState_.getPathMgr();
+      UserTreePathManager mgr = uics_.getPathMgr();
       UserTreePath path = board.userTreePath;
       mgr.addPreexistingPath(path);
       return (null);

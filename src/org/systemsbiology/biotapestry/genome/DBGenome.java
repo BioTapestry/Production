@@ -36,7 +36,7 @@ import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.analysis.SignedTaggedLink;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DataUtil;
 
 /****************************************************************************
@@ -59,8 +59,8 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   ** Basic constructor
   */
 
-  public DBGenome(BTState appState, String name, String id) {
-    super(appState, name, id, NetworkOverlay.DB_GENOME, true);
+  public DBGenome(DataAccessContext dacx, String name, String id) {
+    super(dacx, name, id, NetworkOverlay.DB_GENOME, true);
     uniqueNameSuffix_ = 1;
   }
 
@@ -439,7 +439,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   
     Node existing = getNode(nodeID);
     int oldType = existing.getNodeType();
-    int newPads = DBNode.mapPadCount(oldType, type, existing.getPadCount());    
+    int newPads = DBNode.mapPadCount(type, existing.getPadCount());    
       
     if (type == Node.GENE) {
       if (oldType == Node.GENE) { // gene->gene A NO-OP, but implement anyway
@@ -679,7 +679,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   
   @Override
   public Genome getStrippedGenomeCopy() {
-    DBGenome retval = new DBGenome(this.appState_, this.name_, this.id_);
+    DBGenome retval = new DBGenome(this.dacx_, this.name_, this.id_);
     retval.notes_ = this.notes_;  // Note this is shared, not copied!
     retval.longName_ = this.longName_;
     retval.description_ = this.description_;
@@ -702,7 +702,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
 
   public String getUniqueGeneName() {
-    String format = appState_.getRMan().getString("gene.defaultNameFormat");
+    String format = dacx_.getRMan().getString("gene.defaultNameFormat");
     while (true) {
       Integer suffix = new Integer(uniqueNameSuffix_++);
       String tryName = MessageFormat.format(format, new Object[] {suffix});
@@ -721,7 +721,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
 
   public String getUniqueNodeName() {
-    String format = appState_.getRMan().getString("node.defaultNameFormat");
+    String format = dacx_.getRMan().getString("node.defaultNameFormat");
     while (true) {
       Integer suffix = new Integer(uniqueNameSuffix_++);
       String tryName = MessageFormat.format(format, new Object[] {suffix});
@@ -843,7 +843,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public Set<String> requiredGeneParameters(Gene gene) {  
-    SbmlSupport sbmls = new SbmlSupport(appState_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_);
     return (sbmls.requiredGeneParameters(gene, this));
   } 
   
@@ -853,7 +853,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public Set<String> requiredNonGeneParameters(Node node) {  
-    SbmlSupport sbmls = new SbmlSupport(appState_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_);
     return (sbmls.requiredNonGeneParameters(node, this));
   }
   
@@ -937,7 +937,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public void writeSBML(PrintWriter out, Indenter ind) {
-    SbmlSupport sbmls = new SbmlSupport(appState_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_);
     StringBuffer buf = new StringBuffer();
     Indenter bufIndent = new Indenter(buf, ind.getIndent());
     bufIndent.setCurrLevel(ind.getCurrLevel());
@@ -953,7 +953,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public void writeSBML(StringBuffer buf, Indenter ind) {
-    SbmlSupport sbmls = new SbmlSupport(appState_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_);
     sbmls.writeSBML(buf, ind, this);
     return;
   }
@@ -1187,7 +1187,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   ** Build from XML
   */
   
-  public static DBGenome buildFromXML(BTState appState, String elemName, Attributes attrs) 
+  public static DBGenome buildFromXML(DataAccessContext dacx, String elemName, Attributes attrs) 
                                       throws IOException {
     if (!elemName.equals("genome")) {
       return (null);
@@ -1218,7 +1218,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
       throw new IOException();
     }
     
-    DBGenome retval = new DBGenome(appState, name, id);
+    DBGenome retval = new DBGenome(dacx, name, id);
     if (imgKey != null) {
       retval.imgKey_ = imgKey;
     }

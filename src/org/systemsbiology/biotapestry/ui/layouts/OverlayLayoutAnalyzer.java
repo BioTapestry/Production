@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -89,12 +89,12 @@ public class OverlayLayoutAnalyzer {
   ** 
   */
   
-  public OverlayReport canSupport(DataAccessContext icx, String overlayKey) {
+  public OverlayReport canSupport(StaticDataAccessContext icx, String overlayKey) {
     
-    String genomeKey = icx.getGenomeID();
+    String genomeKey = icx.getCurrentGenomeID();
     NetOverlayOwner owner = icx.getGenomeSource().getOverlayOwnerFromGenomeKey(genomeKey);
     NetworkOverlay nov = owner.getNetworkOverlay(overlayKey);
-    NetOverlayProperties noProps = icx.getLayout().getNetOverlayProperties(overlayKey);
+    NetOverlayProperties noProps = icx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     
     //
     // Every module needs to be of the one-rectangle type:
@@ -128,7 +128,7 @@ public class OverlayLayoutAnalyzer {
     // Modules must not overlap.
     //
     
-    Map<String, Rectangle> boundsPerMod = icx.getLayout().getLayoutBoundsForEachNetModule(owner, overlayKey, icx);
+    Map<String, Rectangle> boundsPerMod = icx.getCurrentLayout().getLayoutBoundsForEachNetModule(owner, overlayKey, icx);
     HashSet<String> seenOuter = new HashSet<String>();
     Iterator<String> bit = boundsPerMod.keySet().iterator();
     while (bit.hasNext()) {
@@ -152,7 +152,7 @@ public class OverlayLayoutAnalyzer {
     // Nodes can only belong to at most one module.  At the moment, 
     // all nodes must be in one module!
     //
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     HashSet<String> allNodes = new HashSet<String>();
     Iterator<Node> nit = genome.getAllNodeIterator();
@@ -239,7 +239,7 @@ public class OverlayLayoutAnalyzer {
     // We cannot continue if multiple links use the same module link pad:
     //
         
-    if (icx.getLayout().netModuleLinksPadCollisions(overlayKey)) {
+    if (icx.getCurrentLayout().netModuleLinksPadCollisions(overlayKey)) {
       return (new OverlayReport(OverlayReport.SHARED_MODULE_LINK_PADS));
     }  
  
@@ -259,9 +259,9 @@ public class OverlayLayoutAnalyzer {
   ** to layout.
   */
   
-  public Set<String> mustExpandGeometry(DataAccessContext icx, String overlayKey) {
+  public Set<String> mustExpandGeometry(StaticDataAccessContext icx, String overlayKey) {
     
-    NetOverlayProperties noProps = icx.getLayout().getNetOverlayProperties(overlayKey);
+    NetOverlayProperties noProps = icx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     
     //
     // Every module needs to be of the one-rectangle type:
@@ -278,7 +278,7 @@ public class OverlayLayoutAnalyzer {
       if (nmpType != NetModuleProperties.CONTIG_RECT) {
         throw new IllegalStateException();
       }
-      if (icx.getLayout().coreDefDoesNotMatchVisible(overlayKey, propID, icx)) {
+      if (icx.getCurrentLayout().coreDefDoesNotMatchVisible(overlayKey, propID, icx)) {
         retval.add(propID);
       }
     }
@@ -337,7 +337,7 @@ public class OverlayLayoutAnalyzer {
     }
     
        
-    public String getResultMessage(BTState appState) {
+    public String getResultMessage(DataAccessContext dacx) {
       String suffix = "badNews";
       switch (result_) {
         case NO_PROBLEMS:
@@ -373,7 +373,7 @@ public class OverlayLayoutAnalyzer {
         default:
           throw new IllegalArgumentException();
       }
-      return (appState.getRMan().getString("overlayAnalyzer." + suffix));
+      return (dacx.getRMan().getString("overlayAnalyzer." + suffix));
     }
   }
 } 

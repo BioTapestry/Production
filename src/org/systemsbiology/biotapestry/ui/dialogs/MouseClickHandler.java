@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,7 @@ import java.awt.Point;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 
 /***************************************************************************
 ** 
@@ -37,27 +37,30 @@ public class MouseClickHandler extends MouseAdapter {
 
   private Point lastPress_;
   private MouseClickHandlerTarget target_; 
-  private BTState appState_;
+  private UIComponentSource uics_;
 
-  public MouseClickHandler(BTState appState, MouseClickHandlerTarget target) {
-    appState_ = appState;
+  public MouseClickHandler(UIComponentSource uics, MouseClickHandlerTarget target) {
+    uics_ = uics;
     target_ = target;
     lastPress_ = null;
   }
   
+  @Override
   public void mousePressed(MouseEvent me) {
     try {
       lastPress_ = new Point(me.getX(), me.getY());
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
 
+  @Override
   public void mouseClicked(MouseEvent me) {
     return;
   }    
 
+  @Override
   public void mouseReleased(MouseEvent me) {
     try {
       int currX = me.getX();
@@ -77,7 +80,7 @@ public class MouseClickHandler extends MouseAdapter {
         target_.dragResult(lastX, lastY);
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }

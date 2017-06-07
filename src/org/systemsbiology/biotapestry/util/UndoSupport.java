@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,9 @@ package org.systemsbiology.biotapestry.util;
 import java.util.ArrayList;
 import javax.swing.undo.CompoundEdit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.BTUndoCmd;
 import org.systemsbiology.biotapestry.cmd.undo.CompoundPostEventCmd2;
 import org.systemsbiology.biotapestry.cmd.undo.CompoundPreEventCmd;
@@ -47,7 +49,9 @@ public class UndoSupport {
   private CompoundPostEventCmd2 post_;
   private ArrayList<ChangeEvent> preList_;
   private ArrayList<ChangeEvent> postList_;
-  private BTState appState_;
+  private CmdSource cSrc_;
+  private UIComponentSource uics_;
+  private TabSource tSrc_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -57,28 +61,19 @@ public class UndoSupport {
 
   /***************************************************************************
   **
-  ** Constructor
-  ** Keep as-is for version 7, as it is late in the game for a big change. But move to the new one that
-  ** provides the DataAccessContext. That will allow operations to occur against different GenomeSources!
-  ** @deprecated  Replaced by {@link #UndoSupport(BTState appState, String presentation, DataAccessContext dacx)}
-  */
-
-  @Deprecated
-  public UndoSupport(BTState appState, String presentation) {
-    this(appState, presentation, new DataAccessContext(appState, appState.getGenome()));
-  }  
-
-  /***************************************************************************
-  **
   ** Constructor.
   **
   */
 
-  public UndoSupport(BTState appState, String presentation, DataAccessContext dacx) {
-    appState_ = appState;
+  public UndoSupport(String presentation, DataAccessContext dacx, TabSource tSrc, CmdSource cSrc, UIComponentSource uics) {
+    tSrc_= tSrc;
+    cSrc_ = cSrc;
+    uics_ = uics;
     edit_ = new CompoundEdit();
-    pre_ = new CompoundPreEventCmd(appState, dacx);
-    post_ = new CompoundPostEventCmd2(appState, dacx, appState.getRMan().getString(presentation));
+    pre_ = new CompoundPreEventCmd(dacx);
+    pre_.setAppState(tSrc_, cSrc_, uics_);
+    post_ = new CompoundPostEventCmd2(dacx, dacx.getRMan().getString(presentation));
+    post_.setAppState(tSrc_, cSrc_, uics_);
     preList_ = new ArrayList<ChangeEvent>();
     postList_ = new ArrayList<ChangeEvent>();
     edit_.addEdit(pre_);
@@ -110,8 +105,9 @@ public class UndoSupport {
   
   public void addEdit(BTUndoCmd edit) {
     if (edit.changesModel()) {
-      appState_.bumpUndoCount();
+      cSrc_.bumpUndoCount();
     }
+    edit.setAppState(tSrc_, cSrc_, uics_);
     edit_.addEdit(edit);
     return;
   }
@@ -178,7 +174,7 @@ public class UndoSupport {
     post_.addChangeEvents(postList_);
     post_.execute();        
     edit_.end();
-    appState_.getUndoManager().addEdit(edit_);
+    cSrc_.getUndoManager().addEdit(edit_);
     return;
   }
   

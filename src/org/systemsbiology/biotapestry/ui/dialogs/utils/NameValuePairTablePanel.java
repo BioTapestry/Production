@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,7 +35,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.EnumCell;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -52,10 +53,11 @@ public class NameValuePairTablePanel extends JPanel {
 
   private EditableTable est_;
   private JFrame parent_;
-  private List namesList_; 
-  private List valuesList_;
+  private List<EnumCell> namesList_; 
+  private List<EnumCell> valuesList_;
   private NameValuePairList nvpList_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -65,9 +67,11 @@ public class NameValuePairTablePanel extends JPanel {
   //
   ////////////////////////////////////////////////////////////////////////////      
 
-  public NameValuePairTablePanel(BTState appState, JFrame parent, NameValuePairList currList, Set allKeys, Set allValues, 
+  public NameValuePairTablePanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, NameValuePairList currList, 
+                                 Set<String> allKeys, Set<String> allValues, 
                                  Map allMappedValues, boolean buttonsOnSide) {
-    appState_ = appState;
+    uics_ = uics;
+    dacx_ = dacx;
     parent_ = parent;
     nvpList_ = currList;
     
@@ -77,15 +81,15 @@ public class NameValuePairTablePanel extends JPanel {
     namesList_ = buildEnumList(allKeys);
     valuesList_ = buildEnumList(allValues);
     
-    est_ = new EditableTable(appState_, new NameValuePairTable(appState_), parent_);
+    est_ = new EditableTable(uics, dacx, new NameValuePairTable(uics, dacx), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
     etp.singleSelectOnly = true;
-    etp.perColumnEnums = new HashMap();
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
     etp.buttonsOnSide = buttonsOnSide;
-    etp.perColumnEnums.put(new Integer(NameValuePairTable.NAME), new EditableTable.EnumCellInfo(true, namesList_));
-    etp.perColumnEnums.put(new Integer(NameValuePairTable.VALUE), new EditableTable.EnumCellInfo(true, valuesList_));  
+    etp.perColumnEnums.put(new Integer(NameValuePairTable.NAME), new EditableTable.EnumCellInfo(true, namesList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(NameValuePairTable.VALUE), new EditableTable.EnumCellInfo(true, valuesList_, EnumCell.class));  
     JPanel tablePan = est_.buildEditableTable(etp);
 
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
@@ -127,7 +131,7 @@ public class NameValuePairTablePanel extends JPanel {
   */
   
   public void displayProperties() {
-    List tableList = buildTableList();
+    List<NameValuePairTable.TableRow> tableList = buildTableList();
     NameValuePairTable nvt = ((NameValuePairTable)est_.getModel());
     nvt.extractValues(tableList);
     nvt.fireTableDataChanged();
@@ -195,8 +199,8 @@ public class NameValuePairTablePanel extends JPanel {
       }
     }
   
-    NameValuePairTable(BTState appState) {
-      super(appState, NUM_COL_);
+    NameValuePairTable(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"nvpEntry.name",    
                                 "nvpEntry.value"};
       colClasses_ = new Class[] {EnumCell.class,
@@ -244,15 +248,15 @@ public class NameValuePairTablePanel extends JPanel {
   ** Build list of names
   */
    
-  private List buildEnumList(Set allNames) {
-    ArrayList retval = new ArrayList();
-    TreeSet sortedNames = new TreeSet(String.CASE_INSENSITIVE_ORDER);
+  private List<EnumCell> buildEnumList(Set<String> allNames) {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    TreeSet<String> sortedNames = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
     sortedNames.addAll(allNames);
     retval.add(new EnumCell("", null, 0, 0));
-    Iterator sit = sortedNames.iterator();
+    Iterator<String> sit = sortedNames.iterator();
     int count = 1;
     while (sit.hasNext()) {
-      String desc = (String)sit.next();
+      String desc = sit.next();
       retval.add(new EnumCell(desc, desc, count, count));
       count++;
     }
@@ -264,22 +268,22 @@ public class NameValuePairTablePanel extends JPanel {
   ** Build the table entries
   */
   
-  private List buildTableList() {
-    ArrayList retval = new ArrayList();
+  private List<NameValuePairTable.TableRow> buildTableList() {
+    ArrayList<NameValuePairTable.TableRow> retval = new ArrayList<NameValuePairTable.TableRow>();
     if (nvpList_ == null) {
       return (retval);
     }
     
     NameValuePairTable nvpt = (NameValuePairTable)est_.getModel();  
  
-    Iterator pit = nvpList_.getIterator();
+    Iterator<NameValuePair> pit = nvpList_.getIterator();
     while (pit.hasNext()) {
-      NameValuePair nvp = (NameValuePair)pit.next();
+      NameValuePair nvp = pit.next();
       NameValuePairTable.TableRow tr = nvpt.new TableRow(); 
       String name = nvp.getName();
       int rsize = namesList_.size();
       for (int i = 1; i < rsize; i++) {
-        EnumCell ecn = (EnumCell)namesList_.get(i);
+        EnumCell ecn = namesList_.get(i);
         if (ecn.internal.equals(name)) {
           tr.name = new EnumCell(ecn);
           break;
@@ -288,7 +292,7 @@ public class NameValuePairTablePanel extends JPanel {
       String value = nvp.getValue();
       int vsize = valuesList_.size();
       for (int i = 1; i < vsize; i++) {
-        EnumCell ecv = (EnumCell)valuesList_.get(i);
+        EnumCell ecv = valuesList_.get(i);
         if (ecv.internal.equals(value)) {
           tr.value = new EnumCell(ecv);
           break;
@@ -304,16 +308,16 @@ public class NameValuePairTablePanel extends JPanel {
   ** Check the table entries
   */
  
-  private boolean checkValues(List vals) {
+  private boolean checkValues(List<NameValuePairTable.TableRow> vals) {
     //
     // There may not be any blank names.  There may be blank values.  There
     // may not be duplicate names.
 
-    ResourceManager rMan = appState_.getRMan();
-    HashSet otherNames = new HashSet();
+    ResourceManager rMan = dacx_.getRMan();
+    HashSet<String> otherNames = new HashSet<String>();
     int numRow = vals.size();  
     for (int i = 0; i < numRow; i++) {
-      NameValuePairTable.TableRow tr = (NameValuePairTable.TableRow)vals.get(i);     
+      NameValuePairTable.TableRow tr = vals.get(i);     
       EnumCell ecn = tr.name;
       String checkName = ecn.display.trim();
       if (checkName.equals("")) {
@@ -343,11 +347,11 @@ public class NameValuePairTablePanel extends JPanel {
   ** Convert the table entries to the final result
   */ 
     
-  private NameValuePairList getResult(List vals) {
+  private NameValuePairList getResult(List<NameValuePairTable.TableRow> vals) {
     NameValuePairList retval = new NameValuePairList();
     int numRow = vals.size();  
     for (int i = 0; i < numRow; i++) {
-      NameValuePairTable.TableRow tr = (NameValuePairTable.TableRow)vals.get(i);           
+      NameValuePairTable.TableRow tr = vals.get(i);           
       NameValuePair nvp = new NameValuePair(tr.name.display.trim(), tr.value.display.trim());
       retval.addNameValuePair(nvp);
     }

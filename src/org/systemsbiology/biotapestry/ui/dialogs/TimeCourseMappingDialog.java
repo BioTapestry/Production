@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,8 +26,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.text.MessageFormat;
 
-import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -57,8 +58,8 @@ public class TimeCourseMappingDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public TimeCourseMappingDialog(BTState appState, String nodeName, String nodeID) {     
-    super(appState, "", new Dimension(700, 500), 1);
+  public TimeCourseMappingDialog(UIComponentSource uics, DataAccessContext dacx, String nodeName, String nodeID) {     
+    super(uics, dacx, "", new Dimension(700, 500), 1);
     String format = rMan_.getString("tcmd.title");
     String desc = MessageFormat.format(format, new Object[]{nodeName});
     setTitle(desc); 
@@ -67,10 +68,10 @@ public class TimeCourseMappingDialog extends BTStashResultsDialog {
     // Create a list of the target genes available:
     //
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();
-    List<TimeCourseData.TCMapping> mapped = tcd.getCustomTCMTimeCourseDataKeys(nodeID);
-    mapped = (mapped == null) ? new ArrayList<TimeCourseData.TCMapping>() : TimeCourseData.TCMapping.cloneAList(mapped);
-    tcmp_ = new TimeCourseMappingPanel(appState, nodeName, mapped, false, false);
+    TimeCourseDataMaps tcdm = dacx.getDataMapSrc().getTimeCourseDataMaps();
+    List<TimeCourseDataMaps.TCMapping> mapped = tcdm.getCustomTCMTimeCourseDataKeys(nodeID);
+    mapped = (mapped == null) ? new ArrayList<TimeCourseDataMaps.TCMapping>() : TimeCourseDataMaps.TCMapping.cloneAList(mapped);
+    tcmp_ = new TimeCourseMappingPanel(uics, dacx, nodeName, mapped, false, false);
     addTable(tcmp_, 6);
     finishConstruction();   
   }
@@ -80,13 +81,13 @@ public class TimeCourseMappingDialog extends BTStashResultsDialog {
   ** Get the target list
   */
   
-  public List<TimeCourseData.TCMapping> getEntryList() {
+  public List<TimeCourseDataMaps.TCMapping> getEntryList() {
     // FIXME!  TimeCourseMappingPanel returns a list of Objects.  Need to cast....
-    List<TimeCourseData.TCMapping> castRetval = new ArrayList<TimeCourseData.TCMapping>();
+    List<TimeCourseDataMaps.TCMapping> castRetval = new ArrayList<TimeCourseDataMaps.TCMapping>();
     List<Object> retval = tcmp_.getEntryList();
     Iterator<Object> oit = retval.iterator();
     while (oit.hasNext()) {
-      TimeCourseData.TCMapping cval = (TimeCourseData.TCMapping)oit.next();
+      TimeCourseDataMaps.TCMapping cval = (TimeCourseDataMaps.TCMapping)oit.next();
       castRetval.add(cval);
     }
     return (castRetval);

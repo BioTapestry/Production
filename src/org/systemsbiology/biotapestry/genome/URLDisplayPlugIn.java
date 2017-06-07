@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,8 @@ package org.systemsbiology.biotapestry.genome;
 
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
 import org.systemsbiology.biotapestry.plugin.PluginCallbackWorker;
 import org.systemsbiology.biotapestry.plugin.PluginCallbackWorkerClient;
@@ -35,7 +36,7 @@ import org.systemsbiology.biotapestry.util.UrlRetrievalWorkerClient;
 
 public abstract class URLDisplayPlugIn {
   
-  protected BTState appState_;
+  protected DynamicDataAccessContext ddacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -59,11 +60,11 @@ public abstract class URLDisplayPlugIn {
 
   /***************************************************************************
   **
-  ** Internal plugins need to have access to internal state
+  ** Internal plugins need to have access to data state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
   
@@ -82,8 +83,8 @@ public abstract class URLDisplayPlugIn {
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
-    return (isUrlListPerInstance(genomeID, itemID));
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
+    return (isUrlListPerInstance(dbID, genomeID, itemID));
   }
   
   /***************************************************************************
@@ -101,9 +102,9 @@ public abstract class URLDisplayPlugIn {
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String itemID) {
-    List<String> urls = getUrlListFromArgs(genomeID, itemID);
-    return (new URLDisplayWorker(urls, appState_));
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String itemID) {
+    List<String> urls = getUrlListFromArgs(dbID, genomeID, itemID);
+    return (new URLDisplayWorker(urls, ddacx_));
   }
  
   /***************************************************************************
@@ -111,12 +112,12 @@ public abstract class URLDisplayPlugIn {
   ** Get a string of valid HTML to display as experimental data for the desired item.
   */
   
-  public String getDataAsHTML(String genomeID, String itemID) {
-    List<String> urls = getUrlListFromArgs(genomeID, itemID);
+  public String getDataAsHTML(String dbID, String genomeID, String itemID) {
+    List<String> urls = getUrlListFromArgs(dbID, genomeID, itemID);
     if (urls.isEmpty()) {
       return (" ");
     }
-    return (appState_.getRMan().getString("dataWindow.waitingForResponse"));
+    return (ddacx_.getRMan().getString("dataWindow.waitingForResponse"));
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -130,14 +131,14 @@ public abstract class URLDisplayPlugIn {
   ** Get URL list
   */
   
-  protected abstract List<String> getUrlListFromArgs(String genomeID, String itemId);
+  protected abstract List<String> getUrlListFromArgs(String dbID, String genomeID, String itemId);
   
   /***************************************************************************
   **
   ** Answer if we are per-instance:
   */
   
-  protected abstract boolean isUrlListPerInstance(String genomeID, String itemId); 
+  protected abstract boolean isUrlListPerInstance(String dbID, String genomeID, String itemId); 
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -151,8 +152,8 @@ public abstract class URLDisplayPlugIn {
     private PluginCallbackWorkerClient myClient_;
     private String myID_;
     
-    public URLDisplayWorker(List<String> urls, BTState appState) {
-      murw_ = new MultiUrlRetrievalWorker(urls, this, appState.getRMan());
+    public URLDisplayWorker(List<String> urls, DynamicDataAccessContext ddacx) {
+      murw_ = new MultiUrlRetrievalWorker(urls, this, ddacx.getRMan());
     }
   
     public void run() {

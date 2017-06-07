@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,9 +25,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -154,7 +155,7 @@ public class RegionInheritDialogFactory extends DialogFactory {
       workingRegions_ = workingRegions;
       parentRegions_ = parentRegions;
       
-      est_ = new EditableTable(appState_, new RegionInheritTableModel(appState_), parent_);
+      est_ = new EditableTable(uics_, dacx_, new RegionInheritTableModel(uics_, dacx_), parent_);
       EditableTable.TableParams etp = new EditableTable.TableParams();
       etp.addAlwaysAtEnd = true;
       etp.singleSelectOnly = true;
@@ -164,6 +165,10 @@ public class RegionInheritDialogFactory extends DialogFactory {
       displayProperties();
     } 
      
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -295,8 +300,8 @@ public class RegionInheritDialogFactory extends DialogFactory {
       
       private static final long serialVersionUID = 1L;
     
-      RegionInheritTableModel(BTState appState) {
-        super(appState, NUM_COL_);
+      RegionInheritTableModel(UIComponentSource uics, DataAccessContext dacx) {
+        super(uics, dacx, NUM_COL_);
         colNames_ = new String[] {"reinherit.region",
                                   "reinherit.include"};
         colClasses_ = new Class[] {String.class,
@@ -365,7 +370,10 @@ public class RegionInheritDialogFactory extends DialogFactory {
       haveResult = false;
       return;
     }
-    
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }

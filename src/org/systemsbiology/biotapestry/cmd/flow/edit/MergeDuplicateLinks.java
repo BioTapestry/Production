@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,11 +24,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -45,6 +46,7 @@ import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -71,8 +73,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public MergeDuplicateLinks(BTState appState) {
-    super(appState);
+  public MergeDuplicateLinks() {
     name = "linkPopup.MergeLinks";
     desc = "linkPopup.MergeLinks";
     mnem = "linkPopup.MergeLinksMnem";             
@@ -91,12 +92,12 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }
-    Genome genome = rcx.getGenome();
-    return (genome instanceof DBGenome);
+    return (rcx.currentGenomeIsRootDBGenome());
   } 
 
   /***************************************************************************
@@ -106,8 +107,8 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new StepState(appState_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new StepState(dacx));  
   }
   
   /***************************************************************************
@@ -124,9 +125,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
         throw new IllegalArgumentException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("mergeDups")) {
           next = ans.mergeDups();      
         } else {
@@ -145,34 +144,20 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupPointCmdState {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupPointCmdState {
+
     private Intersection inter_;
-    private DataAccessContext rcxT_;
      
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "mergeDups";
     }
     
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-      
     /***************************************************************************
     **
     ** for preload
@@ -199,7 +184,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
       
     private DialogAndInProcessCmd mergeDups() {
     
-      LinkProperties lp = rcxT_.getLayout().getLinkProperties(inter_.getObjectID());
+      LinkProperties lp = dacx_.getCurrentLayout().getLinkProperties(inter_.getObjectID());
       LinkSegmentID lsid = inter_.segmentIDFromIntersect();
       Set<String> resolved = lp.resolveLinkagesThroughSegment(lsid);
       String linkID = null;
@@ -208,7 +193,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
       } else {
         linkID = resolved.iterator().next();
       }
-      mergeDuplicateLinks(appState_, linkID, rcxT_, null);     
+      mergeDuplicateLinks(linkID, dacx_, null, uFac_);     
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }
@@ -218,15 +203,15 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
   ** Generate the list
   */
     
-  public static Set<String> mergeDuplicateLinks(BTState appState, String linkID, DataAccessContext rcx, UndoSupport support) {
+  public static Set<String> mergeDuplicateLinks(String linkID, DataAccessContext rcx, UndoSupport support, UndoFactory uFac) {
     
-    if (!rcx.genomeIsRootGenome()) {
+    if (!rcx.currentGenomeIsRootDBGenome()) {
       throw new IllegalArgumentException();
     }
   
     HashSet<String> retval = new HashSet<String>();
-    Set<String> mergie = rcx.getGenomeAsDBGenome().mergeableLinks(linkID);
-    boolean canMerge = rcx.fgho.noInstanceOverlap(linkID, mergie);
+    Set<String> mergie = rcx.getCurrentGenomeAsDBGenome().mergeableLinks(linkID);
+    boolean canMerge = rcx.getFGHO().noInstanceOverlap(linkID, mergie);
     
     if (!canMerge) {
       return (retval);
@@ -238,12 +223,12 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
     // Going top-down, one root instance with its kids at a time:
     //
     
-    List<String> ordered = rcx.fgho.orderedModels();
+    List<String> ordered = rcx.getFGHO().orderedModels();
     Iterator<String> iit = ordered.iterator();
     
     boolean gottaFinish = false;
     if (support == null) {
-      support = new UndoSupport(appState, "undo.mergeDupLinks");
+      support = uFac.provideUndoSupport("undo.mergeDupLinks", rcx);
       gottaFinish = true;
     }
     
@@ -258,20 +243,20 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
       Layout currLayout = null;
       if (gi.isRootInstance()) {
         oldToNew.clear();
-        currLayout = rcx.lSrc.getLayoutForGenomeKey(gi.getID());
+        currLayout = rcx.getLayoutSource().getLayoutForGenomeKey(gi.getID());
       }
       GenomeChange[] gcm = gi.mergeComplementaryLinks(linkID, mergie, oldToNew);
       for (int i = 0; i < gcm.length; i++) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gcm[i]);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gcm[i]);
         support.addEdit(gcc); 
       } 
-      support.addEvent(new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       
       if (gi.isRootInstance()) {
-        DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(currLayout.getID());
+        DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(currLayout.getID());
         currLayout.mergeLinkProperties(oldToNew);
-        dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+        dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(rcx, dc));
         support.addEvent(new LayoutChangeEvent(currLayout.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));              
       }
     }
@@ -284,22 +269,22 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
    Iterator<String> dsit = mergie.iterator();
     while (dsit.hasNext()) {
       String key = dsit.next();
-      GenomeChange gc = rcx.getGenome().removeLinkage(key);
+      GenomeChange gc = rcx.getCurrentGenome().removeLinkage(key);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
         support.addEdit(gcc);
-        support.addEvent(new ModelChangeEvent(rcx.getGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }
     }
 
-    Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+    Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
     while (layit.hasNext()) {
       Layout layout = layit.next();
-      if (layout.getTarget().equals(rcx.getGenomeID())) {
-        DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(layout.getID());       
+      if (layout.getTarget().equals(rcx.getCurrentGenomeID())) {
+        DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(layout.getID());       
         layout.removeMultiLinkProperties(mergie);          
-        dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+        dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(rcx, dc));
         support.addEvent(new LayoutChangeEvent(layout.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
       }
     }

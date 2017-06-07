@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -95,10 +95,10 @@ public class NoteFree extends ItemRenderBase {
   ** Render the bare node using the provided layout
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -108,11 +108,11 @@ public class NoteFree extends ItemRenderBase {
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	
-    NoteProperties np = rcx.getLayout().getNoteProperties(item.getID());
+    NoteProperties np = rcx.getCurrentLayout().getNoteProperties(item.getID());
     Point2D origin = np.getLocation();
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
     Color col = (rcx.isGhosted()) ? dop.getInactiveGray() : np.getColor();
-    AnnotatedFont bFont = rcx.fmgr.getOverrideFont(FontManager.NOTES, np.getFontOverride());
+    AnnotatedFont bFont = rcx.getFontManager().getOverrideFont(FontManager.NOTES, np.getFontOverride());
 
     String name = item.getName();
     
@@ -140,7 +140,7 @@ public class NoteFree extends ItemRenderBase {
       multiLineRender(group, name, bFont, origin, (selected != null), np.getJustification(), col, rcx.getFrc(), textFactory);
     }
     
-    setGroupBounds(group, rcx.getGenome(), item, rcx, miscInfo);
+    setGroupBounds(group, rcx.getCurrentGenome(), item, rcx, miscInfo);
 
     cache.addGroup(group);
     
@@ -178,10 +178,10 @@ public class NoteFree extends ItemRenderBase {
   
   public Rectangle getBounds(GenomeItem item, DataAccessContext rcx, Object miscInfo) {
     
-    NoteProperties np = rcx.getLayout().getNoteProperties(item.getID());
+    NoteProperties np = rcx.getCurrentLayout().getNoteProperties(item.getID());
     Point2D origin = np.getLocation();
     String name = item.getName();
-    AnnotatedFont abFont = rcx.fmgr.getOverrideFont(FontManager.NOTES, np.getFontOverride());
+    AnnotatedFont abFont = rcx.getFontManager().getOverrideFont(FontManager.NOTES, np.getFontOverride());
     
     if (name.indexOf('\n') == -1) {
       Rectangle2D bounds = abFont.getFont().getStringBounds(name, rcx.getFrc());

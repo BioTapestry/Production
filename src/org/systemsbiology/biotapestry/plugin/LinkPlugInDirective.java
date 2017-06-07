@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -103,9 +103,8 @@ public class LinkPlugInDirective extends AbstractPlugInDirective {
   **
   */
     
-  public int compareTo(Object o) {
-    LinkPlugInDirective other = (LinkPlugInDirective)o;
-    return (super.compareTo(o));
+  public int compareTo(AbstractPlugInDirective other) {
+    return (super.compareTo(other));
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -148,7 +147,7 @@ public class LinkPlugInDirective extends AbstractPlugInDirective {
   ** Map types
   */
 
-  public String mapToTypeTag(int val) {   
+  public String mapToTypeTag(DirType val) {   
     switch (val) {
       case INTERNAL_DATA_DISPLAY:
         return (INTERNAL_LINK_DATA_DISPLAY_TAG); 
@@ -164,11 +163,11 @@ public class LinkPlugInDirective extends AbstractPlugInDirective {
   ** Map types to values
   */
 
-  public int mapFromTypeTag(String tag) {
+  public DirType mapFromTypeTag(String tag) {
     if (tag.equalsIgnoreCase(INTERNAL_LINK_DATA_DISPLAY_TAG)) {
-      return (INTERNAL_DATA_DISPLAY); 
+      return (DirType.INTERNAL_DATA_DISPLAY); 
     } else if (tag.equalsIgnoreCase(EXTERNAL_LINK_DATA_DISPLAY_TAG)) {
-      return (EXTERNAL_DATA_DISPLAY); 
+      return (DirType.EXTERNAL_DATA_DISPLAY); 
     } else {
       throw new IllegalArgumentException();
     }

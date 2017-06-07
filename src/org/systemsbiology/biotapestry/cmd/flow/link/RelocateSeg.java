@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,10 +26,12 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -50,6 +52,7 @@ import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.NetModuleLinkageProperties;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -81,8 +84,7 @@ public class RelocateSeg extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RelocateSeg(BTState appState, boolean isForModules) {
-    super(appState);
+  public RelocateSeg(boolean isForModules) {
     isForModules_ = isForModules;
     name = (isForModules) ? "linkPopup.SegReloc" : "linkPopup.SegReloc";
     desc = (isForModules) ? "linkPopup.SegReloc" : "linkPopup.SegReloc";
@@ -102,7 +104,8 @@ public class RelocateSeg extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }  
@@ -114,8 +117,8 @@ public class RelocateSeg extends AbstractControlFlow {
  
     LinkProperties lp;
     if (isForModules_) {
-      String ovrKey = rcx.oso.getCurrentOverlay();
-      NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrKey);
+      String ovrKey = rcx.getOSO().getCurrentOverlay();
+      NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrKey);
       lp = nop.getNetModuleLinkagePropertiesFromTreeID(oid);
       Set<String> throughSeg = lp.resolveLinkagesThroughSegment(ids[0]);
       if (!LinkSupport.haveModLinkDOFs(rcx, throughSeg, ovrKey)) {
@@ -129,14 +132,14 @@ public class RelocateSeg extends AbstractControlFlow {
         return (false);
       }
     } else {
-      if (rcx.getGenome() instanceof GenomeInstance) {
-        if (rcx.getGenomeAsInstance().getVfgParent() != null) {
+      if (rcx.currentGenomeIsAnInstance()) {
+        if (rcx.getCurrentGenomeAsInstance().getVfgParent() != null) {
           return (false);
         }
       }        
-      lp = rcx.getLayout().getLinkProperties(oid);
+      lp = rcx.getCurrentLayout().getLinkProperties(oid);
     }  
-    return (rcx.getLayout().canRelocateSegmentOnTree(lp, ids[0]));
+    return (rcx.getCurrentLayout().canRelocateSegmentOnTree(lp, ids[0]));
   }
  
   /***************************************************************************
@@ -146,8 +149,8 @@ public class RelocateSeg extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, isForModules_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(isForModules_, dacx);
     return (retval);
   }
   
@@ -165,6 +168,7 @@ public class RelocateSeg extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetToMode")) {
           next = ans.stepSetToMode();      
         } else if (ans.getNextStep().equals("stepRelocate")) {   
@@ -194,9 +198,9 @@ public class RelocateSeg extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = (ans.isForModule) ? "stepRelocateModule" : "stepRelocate"; 
+    ans.setNextStep((ans.isForModule) ? "stepRelocateModule" : "stepRelocate"); 
     return (retval);
   }
   
@@ -205,39 +209,37 @@ public class RelocateSeg extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
     private Intersection intersect;
-    private DataAccessContext rcxT_;
     private boolean isForModule;
     private Intersection parentInter_;
     private BusProperties parentBp_;
     private int x;
     private int y;
-    private String nextStep_;   
-    private BTState appState_;
 
     /***************************************************************************
     **
     ** Constructor
     */
      
-    private StepState(BTState appState, boolean isForModule, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    private StepState(boolean isForModule, StaticDataAccessContext dacx) {
+      super(dacx);
       this.isForModule = isForModule;
       nextStep_ = "stepSetToMode";
     }
     
     /***************************************************************************
     **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
+    ** Constructor
+    */
      
+    private StepState(boolean isForModule, ServerControlFlowHarness cfh) {
+      super(cfh);
+      this.isForModule = isForModule;
+      nextStep_ = "stepSetToMode";
+    }
+    
     /***************************************************************************
     **
     ** mouse masking
@@ -326,8 +328,8 @@ public class RelocateSeg extends AbstractControlFlow {
       //
       // Go and find if we intersect anything.
       //
-      List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, false, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+      List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, false, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       parentInter_ = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       //
       // If we don't intersect anything, we need to bag it.
@@ -342,17 +344,19 @@ public class RelocateSeg extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
 
+      ResourceManager rMan = dacx_.getRMan();
       SimpleUserFeedback suf = null;
       boolean keepGoing = true;
       String id = parentInter_.getObjectID();
-      if (rcxT_.getGenome().getLinkage(id) == null) {
-        Node node = rcxT_.getGenome().getNode(id);
+      if (dacx_.getCurrentGenome().getLinkage(id) == null) {
+        Node node = dacx_.getCurrentGenome().getNode(id);
         if (node != null) {
-          LinkProperties lp = rcxT_.getLayout().getLinkProperties(intersect.getObjectID());
+          LinkProperties lp = dacx_.getCurrentLayout().getLinkProperties(intersect.getObjectID());
           String src = ((BusProperties)lp).getSourceTag();      
           if (!id.equals(src)) {
-            String message = rcxT_.rMan.getString("linkSrcChange.useNodeSwitch");
-            String title = rcxT_.rMan.getString("linkSrcChange.useNodeSwitchTitle");
+            
+            String message = rMan.getString("linkSrcChange.useNodeSwitch");
+            String title = rMan.getString("linkSrcChange.useNodeSwitchTitle");
             suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
           }
         }
@@ -364,10 +368,10 @@ public class RelocateSeg extends AbstractControlFlow {
       // link we are trying to relocate.
       //
 
-      parentBp_ = rcxT_.getLayout().getLinkProperties(id);
-      if (parentBp_ != rcxT_.getLayout().getLinkProperties(intersect.getObjectID())) {
-        String message = rcxT_.rMan.getString("linkSrcChange.useNodeSwitch");
-        String title = rcxT_.rMan.getString("linkSrcChange.useNodeSwitchTitle");
+      parentBp_ = dacx_.getCurrentLayout().getLinkProperties(id);
+      if (parentBp_ != dacx_.getCurrentLayout().getLinkProperties(intersect.getObjectID())) {
+        String message = rMan.getString("linkSrcChange.useNodeSwitch");
+        String title = rMan.getString("linkSrcChange.useNodeSwitchTitle");
         suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
         keepGoing = false;
       }
@@ -401,13 +405,13 @@ public class RelocateSeg extends AbstractControlFlow {
       }
       
       LinkSegmentID[] moveIDs = intersect.segmentIDsFromIntersect();
-      Layout.PropChange lpc = rcxT_.getLayout().relocateSegmentOnTree(parentBp_, segIDs[0], moveIDs[0], null, null);
+      Layout.PropChange lpc = dacx_.getCurrentLayout().relocateSegmentOnTree(parentBp_, segIDs[0], moveIDs[0], null, null);
       if (lpc != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.linkrelocate");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, new Layout.PropChange[] {lpc});
+        UndoSupport support = uFac_.provideUndoSupport("undo.linkrelocate", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, new Layout.PropChange[] {lpc});
         support.addEdit(mov);
-        support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       }
@@ -422,18 +426,18 @@ public class RelocateSeg extends AbstractControlFlow {
         
     private DialogAndInProcessCmd stepRelocateModule() {
  
-      String currentOverlay = rcxT_.oso.getCurrentOverlay();
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
 
       //
       // Go and find if we intersect anything.
       //
           
       boolean gotAModule = true;
-      Intersection intersected = appState_.getGenomePresentation().intersectANetModuleElement(x, y, rcxT_,
-                                                                                              GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
+      Intersection intersected = uics_.getGenomePresentation().intersectANetModuleElement(x, y, dacx_,
+                                                                                          GenomePresentation.NetModuleIntersect.NET_MODULE_LINK_PAD);
       if (intersected == null) {
         gotAModule = false;
-        intersected = appState_.getGenomePresentation().intersectNetModuleLinks(x, y, rcxT_);
+        intersected = uics_.getGenomePresentation().intersectNetModuleLinks(x, y, dacx_);
       }
  
       // Still nothing, we are done:
@@ -442,7 +446,7 @@ public class RelocateSeg extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }    
       
-      NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(currentOverlay); 
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay); 
       
       //
       // Link segment to move has to have same source as wherever we are going.
@@ -510,7 +514,7 @@ public class RelocateSeg extends AbstractControlFlow {
       // link cannot end on the same pad as it starts (avoids zero-length links!)
       //
         
-      NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+      NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
       NetworkOverlay novr = owner.getNetworkOverlay(currentOverlay); 
       NetModuleLinkageProperties nmlp = (NetModuleLinkageProperties)movLp;
       Iterator<String> tsit = resolved.iterator();
@@ -531,13 +535,13 @@ public class RelocateSeg extends AbstractControlFlow {
       
       Layout.PropChange[] lpcm = null;
       if (gotAModule) {        
-        lpcm = rcxT_.getLayout().supportModuleLinkTreeSwitch(moveIDs[0], resolved, currentOverlay,
-                                                        movingTreeID, null, null, padPt, toSide, rcxT_);       
+        lpcm = dacx_.getCurrentLayout().supportModuleLinkTreeSwitch(moveIDs[0], resolved, currentOverlay,
+                                                        movingTreeID, null, null, padPt, toSide, dacx_);       
       } else if (jumpingTrees) {       
-        lpcm = rcxT_.getLayout().supportModuleLinkTreeSwitch(moveIDs[0], resolved, currentOverlay,
-                                                        movingTreeID, targetID, segID, null, null, rcxT_);        
+        lpcm = dacx_.getCurrentLayout().supportModuleLinkTreeSwitch(moveIDs[0], resolved, currentOverlay,
+                                                        movingTreeID, targetID, segID, null, null, dacx_);        
       } else {       
-        Layout.PropChange lpc = rcxT_.getLayout().relocateSegmentOnTree(movLp, segID, moveIDs[0], currentOverlay, rcxT_);
+        Layout.PropChange lpc = dacx_.getCurrentLayout().relocateSegmentOnTree(movLp, segID, moveIDs[0], currentOverlay, dacx_);
         if (lpc != null) {
           lpcm = new Layout.PropChange[1];
           lpcm[0] = lpc;
@@ -545,10 +549,10 @@ public class RelocateSeg extends AbstractControlFlow {
       }
       
       if ((lpcm != null) && (lpcm.length != 0)) {
-        UndoSupport support = new UndoSupport(appState_, "undo.linkrelocate");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpcm);
+        UndoSupport support = uFac_.provideUndoSupport("undo.linkrelocate", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpcm);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
         support.finish();
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,14 +37,15 @@ import java.util.Set;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.nav.ZoomChangeTracker;
 import org.systemsbiology.biotapestry.nav.ZoomCommandSupport;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.GenomePresentation;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.IntersectionChooser;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -74,8 +75,8 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   protected Rectangle backRect_;
   protected Color backCol_;
   protected TipGenerator tipGen_;
-  protected BTState appState_;
-  protected DataAccessContext rcx_;
+  protected StaticDataAccessContext rcx_;
+  protected UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -96,12 +97,13 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   ** Constructor
   */
   
-  public ModelViewPanel(BTState appState, DataAccessContext rcx) {
-    appState_ = appState;
+  public ModelViewPanel(UIComponentSource uics, StaticDataAccessContext rcx) {
+    uics_ = uics;
     rcx_ = rcx;
-    myGenomePre_ = new GenomePresentation(appState, false, 1.0, false, rcx_);
-    zoomer_ = new ZoomTargetSupport(appState, myGenomePre_, this, rcx_);
-    zcs_ = new ZoomCommandSupport(this, appState_);
+    myGenomePre_ = new GenomePresentation(uics_, false, 1.0, false, rcx_);
+    zoomer_ = new ZoomTargetSupport(myGenomePre_, this, rcx_);
+    zcs_ = new ZoomCommandSupport(this, uics, null, -1);
+    rcx_.setZoomTargetSupport(zoomer_);
     setBackground(Color.white);
     backRect_ = null;
     backCol_ = null;
@@ -194,15 +196,15 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
     }
     Point tipPoint = event.getPoint();
     zoomer_.transformPoint(tipPoint);
-    DataAccessContext rcxC = new DataAccessContext(rcx_);
-    rcxC.pixDiam = zoomer_.currentPixelDiameter(); 
-    rcxC.oso = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
+    StaticDataAccessContext rcxC = new StaticDataAccessContext(rcx_);
+    rcxC.setPixDiam(zoomer_.currentPixelDiameter()); 
+    rcxC.setOSO(new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null));
     List<Intersection.AugmentedIntersection> augs = myGenomePre_.intersectItem(tipPoint.x, tipPoint.y, rcxC, false, false);
     Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxC)).selectionRanker(augs);    
     if ((ai == null) || (ai.intersect == null)) {
       return (null);
     }
-    String tipVal = tipGen_.generateTip(rcx_.getGenome(), rcx_.getLayout(), ai.intersect);
+    String tipVal = tipGen_.generateTip(rcx_.getCurrentGenome(), rcx_.getCurrentLayout(), ai.intersect);
     return (tipVal);
   }
   
@@ -227,7 +229,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
       super.paintComponent(g);
       drawingGuts(g);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayPaintException(ex);
+      uics_.getExceptionHandler().displayPaintException(ex);
     }
     return;
   }
@@ -261,7 +263,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   */
   
   public void showFullModel() {
-    if (rcx_.getGenome() == null) {
+    if (rcx_.getCurrentGenome() == null) {
       return;
     }
     zcs_.zoomToModel();
@@ -274,7 +276,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   */
   
   public void selectNodesAndLinks(Set<String> nodeIDs, List<Intersection> selections) {
-    myGenomePre_.selectNodesAndLinks(nodeIDs, rcx_, selections, true, null);
+    myGenomePre_.selectNodesAndLinks(uics_, nodeIDs, rcx_, selections, true, null);
     return;
   }
   
@@ -284,7 +286,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   */
   
   public void selectNodes(Set<String> nodeIDs) {
-    myGenomePre_.selectNodesAndLinks(nodeIDs, rcx_, null, true, null);
+    myGenomePre_.selectNodesAndLinks(uics_, nodeIDs, rcx_, null, true, null);
     zcs_.zoomToSelected();
     // Kinda bogus hack:
     zcs_.bumpZoomWrapper('-');
@@ -298,7 +300,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   */
   
   public void selectLinks(List<Intersection> selections) {
-    myGenomePre_.selectNodesAndLinks(new HashSet<String>(), rcx_, selections, true, null);
+    myGenomePre_.selectNodesAndLinks(uics_, new HashSet<String>(), rcx_, selections, true, null);
     zcs_.zoomToSelected();
     // Kinda bogus hack:
     zcs_.bumpZoomWrapper('-');
@@ -430,17 +432,17 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
   */
   
   protected void drawingGuts(Graphics g) {
-    if (rcx_.getGenome() != null) {
+    if (rcx_.getCurrentGenome() != null) {
       Graphics2D g2 = (Graphics2D)g;   
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
       AffineTransform saveTrans = g2.getTransform();
       zoomer_.installTransform(g2, null);
-      DataAccessContext rcxC = new DataAccessContext(rcx_);
-      rcxC.pixDiam = zoomer_.currentPixelDiameter();
-      rcxC.showBubbles = false;
+      StaticDataAccessContext rcxC = new StaticDataAccessContext(rcx_);
+      rcxC.setPixDiam(zoomer_.currentPixelDiameter());
+      rcxC.setShowBubbles(false);
       rcxC.pushGhosted(false);
-      rcxC.oso = null;
+      rcxC.setOSO(null);
       
       if (backRect_ != null) {
         g2.setPaint(backCol_);
@@ -448,7 +450,7 @@ public class ModelViewPanel extends JPanel implements ZoomTarget, ZoomChangeTrac
       }
       
       ConcreteGraphicsCache cgc = new ConcreteGraphicsCache();
-      myGenomePre_.presentGenome(cgc, rcxC, false);
+      myGenomePre_.presentGenome(cgc, rcxC, false, IRenderer.Mode.NORMAL);
 
       cgc.renderAllGroupsInDrawLayer(g2, DrawLayer.BACKGROUND_REGIONS);
       cgc.renderAllGroupsInDrawLayer(g2, DrawLayer.UNDERLAY);

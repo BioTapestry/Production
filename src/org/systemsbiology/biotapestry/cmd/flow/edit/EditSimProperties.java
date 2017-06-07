@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,12 +19,13 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.SimulationPropertiesDialog;
 
@@ -52,8 +53,7 @@ public class EditSimProperties extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditSimProperties(BTState appState) {
-    super(appState);          
+  public EditSimProperties() {       
     name = "nodePopup.SimProperties";
     desc = "nodePopup.SimProperties";
     mnem = "nodePopup.SimPropertiesMnem";
@@ -72,8 +72,8 @@ public class EditSimProperties extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
 
   /***************************************************************************
@@ -83,8 +83,9 @@ public class EditSimProperties extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    return (rcx.getGenome() instanceof DBGenome);
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    return (rcx.currentGenomeIsRootDBGenome());
   }  
     
   /***************************************************************************
@@ -98,10 +99,11 @@ public class EditSimProperties extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -120,15 +122,18 @@ public class EditSimProperties extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState { 
+
     private String interID_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
@@ -136,12 +141,11 @@ public class EditSimProperties extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
-    
+ 
     /***************************************************************************
     **
     ** for preload
@@ -158,8 +162,8 @@ public class EditSimProperties extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepDoIt() {    
-      if (dacx_.genomeIsRootGenome()) {
-        SimulationPropertiesDialog spd = new SimulationPropertiesDialog(appState_, dacx_, interID_);
+      if (dacx_.currentGenomeIsRootDBGenome()) {
+        SimulationPropertiesDialog spd = new SimulationPropertiesDialog(uics_, dacx_, interID_, uFac_);
         spd.setVisible(true);
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

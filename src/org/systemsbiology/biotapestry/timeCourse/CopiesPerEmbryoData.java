@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,7 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -44,7 +44,7 @@ import org.systemsbiology.biotapestry.util.DataUtil;
 ** This holds Copies Per Embryo Data
 */
 
-public class CopiesPerEmbryoData {
+public class CopiesPerEmbryoData implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -61,7 +61,6 @@ public class CopiesPerEmbryoData {
   private ArrayList<CopiesPerEmbryoGene> genes_;
   private HashMap<String, List<String>> gpeMap_;
   private TreeSet<Integer> defaultTimes_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -74,8 +73,7 @@ public class CopiesPerEmbryoData {
   ** Constructor
   */
 
-  public CopiesPerEmbryoData(BTState appState) {
-    appState_ = appState;
+  public CopiesPerEmbryoData() {
     genes_ = new ArrayList<CopiesPerEmbryoGene>();
     gpeMap_ = new HashMap<String, List<String>>();
     defaultTimes_ = new TreeSet<Integer>();
@@ -87,6 +85,38 @@ public class CopiesPerEmbryoData {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  **
+  ** Clone
+  */
+  
+  @Override
+  public CopiesPerEmbryoData clone() {
+    try {
+      CopiesPerEmbryoData retval = (CopiesPerEmbryoData)super.clone();
+
+      int size = this.genes_.size();
+      retval.genes_ = new ArrayList<CopiesPerEmbryoGene>();
+      for (int i = 0; i < size; i++) {
+        CopiesPerEmbryoGene tcg = this.genes_.get(i);
+        retval.genes_.add(tcg.clone());
+      }
+      
+      retval.gpeMap_ = new HashMap<String, List<String>>();
+      Iterator<String> gpkit = this.gpeMap_.keySet().iterator();
+      while (gpkit.hasNext()) {
+        String key = gpkit.next();
+        // String contents, shallow list copy ok:
+        retval.gpeMap_.put(key, new ArrayList<String>(this.gpeMap_.get(key)));
+      }
+      // Set of Integers, shallow is OK:
+      retval.defaultTimes_ = new TreeSet<Integer>(this.defaultTimes_);
+      return (retval);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  }
+  
   /***************************************************************************
   **
   ** Answer if we have data
@@ -128,11 +158,11 @@ public class CopiesPerEmbryoData {
   **
   */
   
-  public boolean haveDataForNode(String nodeID) {
+  public boolean haveDataForNode(String nodeID, DataAccessContext dacx) {
     if (!haveData()) {
       return (false);
     }
-    List<String> mapped = getPerEmbryoCountDataKeysWithDefault(nodeID);
+    List<String> mapped = getPerEmbryoCountDataKeysWithDefault(nodeID, dacx);
     if (mapped == null) {
       return (false);
     }
@@ -491,7 +521,7 @@ public class CopiesPerEmbryoData {
   ** Get an HTML expression table suitable for display.
   */
   
-  public String getCountTable(String targetName, BTState appState) {
+  public String getCountTable(String targetName, DataAccessContext dacx) {
     StringWriter sw = new StringWriter();
     PrintWriter out = new PrintWriter(sw);
     
@@ -500,7 +530,7 @@ public class CopiesPerEmbryoData {
       CopiesPerEmbryoGene trg = trgit.next();
       String name = trg.getName();
       if (DataUtil.keysEqual(name, targetName)) {
-        trg.getCountTable(out, appState);
+        trg.getCountTable(out, dacx);
       }
     }
     return (sw.toString());
@@ -601,11 +631,11 @@ public class CopiesPerEmbryoData {
   ** Get the list of targets names for the node ID.  May be empty.
   */
   
-  public List<String> getPerEmbryoCountDataKeysWithDefault(String nodeId) {
+  public List<String> getPerEmbryoCountDataKeysWithDefault(String nodeId, DataAccessContext dacx) {
     List<String> retval = gpeMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<String>();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);      
+      Node node = dacx.getCurrentGenome().getNode(nodeId);      
       if (node == null) { // for when node has been already deleted...
         throw new IllegalStateException();
       }      
@@ -649,7 +679,7 @@ public class CopiesPerEmbryoData {
   ** Get the set of nodeIDs that target the given name. May be empty, not null.
   */
   
-  public Set<String> getPerEmbryoCountDataKeyInverses(String name) {
+  public Set<String> getPerEmbryoCountDataKeyInverses(String name, DataAccessContext dacx) {
     name = name.toUpperCase().replaceAll(" ", "");
     HashSet<String> retval = new HashSet<String>();
     //
@@ -657,7 +687,7 @@ public class CopiesPerEmbryoData {
     // will map by default:
     //
     
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx.getCurrentGenomeAsDBGenome();
     Node node = genome.getGeneWithName(name);
     if (node != null) {
       if (!haveCustomMapForNode(node.getID())) {
@@ -725,6 +755,7 @@ public class CopiesPerEmbryoData {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("CopiesPerEmbryoData: " + " genes = " + genes_);
   }
@@ -777,13 +808,13 @@ public class CopiesPerEmbryoData {
   */
 
   @SuppressWarnings("unused")
-  public static CopiesPerEmbryoData buildFromXML(BTState appState, String elemName, 
+  public static CopiesPerEmbryoData buildFromXML(DataAccessContext dacx, String elemName, 
                                                  Attributes attrs) throws IOException {
     if (!elemName.equals("CopiesPerEmbryoData")) {
       return (null);
     }
     
-    return (new CopiesPerEmbryoData(appState));
+    return (new CopiesPerEmbryoData());
   }
 
   /***************************************************************************

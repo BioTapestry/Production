@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,14 +19,14 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
@@ -57,8 +57,7 @@ public class EditNetOverlay extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditNetOverlay(BTState appState, boolean forPopup) {
-    super(appState);
+  public EditNetOverlay(boolean forPopup) {
     name =  (forPopup) ? "netOverlayPopup.Edit" : "command.EditNetworkOverlay";
     desc = (forPopup) ? "netOverlayPopup.Edit" : "command.EditNetworkOverlay";
     mnem =  (forPopup) ? "netOverlayPopup.EditMnem" : "command.EditNetworkOverlayMnem";
@@ -87,8 +86,8 @@ public class EditNetOverlay extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new EditOverlayState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new EditOverlayState(dacx));
   }
   
   /***************************************************************************
@@ -101,14 +100,11 @@ public class EditNetOverlay extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        EditOverlayState ans = new EditOverlayState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        EditOverlayState ans = new EditOverlayState(cfh);    
         next = ans.stepGetPropsEditDialog();
       } else {
         EditOverlayState ans = (EditOverlayState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGetPropsEditDialog")) {
           next = ans.stepGetPropsEditDialog();      
         } else if (ans.getNextStep().equals("stepExtractAndInstallPropsData")) {
@@ -129,22 +125,26 @@ public class EditNetOverlay extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class EditOverlayState implements DialogAndInProcessCmd.PopupCmdState {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
+  public static class EditOverlayState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
        
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public EditOverlayState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public EditOverlayState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepGetPropsEditDialog";
-      rcxT_ = dacx;
+    }
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public EditOverlayState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepGetPropsEditDialog";
     }
     
     /***************************************************************************
@@ -158,21 +158,12 @@ public class EditNetOverlay extends AbstractControlFlow {
     
     /***************************************************************************
     **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-       
-    /***************************************************************************
-    **
     ** Get the dialog launched
     */ 
       
     private DialogAndInProcessCmd stepGetPropsEditDialog() { 
-      NetOverlayPropertiesDialogFactory.NetOverlayPropsArgs ba = new NetOverlayPropertiesDialogFactory.NetOverlayPropsArgs(appState_);
-      NetOverlayPropertiesDialogFactory nopd = new NetOverlayPropertiesDialogFactory(cfh);
+      NetOverlayPropertiesDialogFactory.NetOverlayPropsArgs ba = new NetOverlayPropertiesDialogFactory.NetOverlayPropsArgs(dacx_);
+      NetOverlayPropertiesDialogFactory nopd = new NetOverlayPropertiesDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractAndInstallPropsData";
@@ -192,18 +183,18 @@ public class EditNetOverlay extends AbstractControlFlow {
         return (retval);
       }  
       
-      NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
-      NetworkOverlay novr = owner.getNetworkOverlay(appState_.getCurrentOverlay());
-      NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(appState_.getCurrentOverlay());
+      NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
+      NetworkOverlay novr = owner.getNetworkOverlay(dacx_.getOSO().getCurrentOverlay());
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(dacx_.getOSO().getCurrentOverlay());
       
-      UndoSupport support = new UndoSupport(appState_, "undo.overlayProp");
+      UndoSupport support = uFac_.provideUndoSupport("undo.overlayProp", dacx_);
       boolean submit = false;
         
       if (crq.submitModel) {
         int ownerMode = owner.overlayModeForOwner();
         NetworkOverlayChange noc = novr.changeNameAndDescription(crq.nameResult, crq.descResult, owner.getID(), ownerMode);
-        support.addEdit(new NetOverlayChangeCmd(appState_, rcxT_, noc));
-        support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEdit(new NetOverlayChangeCmd(dacx_, noc));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         submit = true;
       }
      
@@ -211,11 +202,11 @@ public class EditNetOverlay extends AbstractControlFlow {
         NetOverlayProperties changedProps = nop.clone();
         changedProps.setType(crq.typeResult);
         changedProps.setHideLinks(crq.hideLinksResult);
-        Layout.PropChange lpc = rcxT_.getLayout().replaceNetOverlayProperties(appState_.getCurrentOverlay(), changedProps);     
+        Layout.PropChange lpc = dacx_.getCurrentLayout().replaceNetOverlayProperties(dacx_.getOSO().getCurrentOverlay(), changedProps);     
         if (lpc != null) {
-          PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+          PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
           support.addEdit(mov);
-          support.addEvent(new LayoutChangeEvent(appState_.getLayoutKey(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+          support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
           support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.OVERLAY_TYPE_CHANGE));
           submit = true;
         }     
@@ -226,7 +217,7 @@ public class EditNetOverlay extends AbstractControlFlow {
       //
       
       if (crq.startHiding) {
-        SelectionChangeCmd.Bundle bundle = appState_.getSUPanel().dropLinkSelections(true, null, rcxT_);
+        SelectionChangeCmd.Bundle bundle = uics_.getSUPanel().dropLinkSelections(uics_, true, uFac_, dacx_);
         if ((bundle != null) && (bundle.cmd != null)) {
           support.addEdit(bundle.cmd);
           support.addEvent(bundle.event);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,8 @@ import javax.swing.JLabel;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -60,23 +61,27 @@ public class BackgroundWorkerClient {
   private JLabel cancellingMessage_;
   private FixedJButton cancelButton_;
   private boolean isHeadless_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private ResourceManager rMan_;
 
   //
   // For alternate top Frames
   //
   
-  public BackgroundWorkerClient(BTState appState, JFrame topFrame, BackgroundWorkerOwner owner, 
+  public BackgroundWorkerClient(UIComponentSource uics, JFrame topFrame, 
+                                DataAccessContext dacx, BackgroundWorkerOwner owner, 
                                 BackgroundWorker worker, String waitTitle, 
                                 String waitMsg, UndoSupport support, boolean allowCancels) {
      
-    appState_ = appState;
+    
     done_ = false;
+    uics_ = uics;
+    rMan_ = dacx.getRMan();
     worker_ = worker;
     owner_ = owner;
     waitTitle_ = waitTitle;
     waitMsg_ = waitMsg;
-    suw_ = appState_.getCommonView();
+    suw_ = uics_.getCommonView();
     topWindow_ = topFrame;
     support_ = support;
     allowCancels_ = allowCancels;
@@ -89,18 +94,20 @@ public class BackgroundWorkerClient {
   // For alternate background control
   //
   
-  public BackgroundWorkerClient(BTState appState, BackgroundWorkerControlManager bwcm, BackgroundWorkerOwner owner, 
+  public BackgroundWorkerClient(UIComponentSource uics, DataAccessContext dacx, 
+                                BackgroundWorkerControlManager bwcm, BackgroundWorkerOwner owner, 
                                 BackgroundWorker worker, String waitTitle, 
                                 String waitMsg, UndoSupport support, boolean allowCancels) {
      
-    appState_ = appState;
+    uics_ = uics;
+    rMan_ = dacx.getRMan();
     done_ = false;
     worker_ = worker;
     owner_ = owner;
     waitTitle_ = waitTitle;
     waitMsg_ = waitMsg;
     suw_ = bwcm;
-    topWindow_ = appState.getTopFrame();
+    topWindow_ = uics_.getTopFrame();
     support_ = support;
     allowCancels_ = allowCancels;
     cancelRequested_ = false;
@@ -112,10 +119,10 @@ public class BackgroundWorkerClient {
   // The usual version
   //
   
-  public BackgroundWorkerClient(BTState appState, BackgroundWorkerOwner owner, 
+  public BackgroundWorkerClient(UIComponentSource uics, DataAccessContext dacx, BackgroundWorkerOwner owner, 
                                 BackgroundWorker worker, String waitTitle, 
                                 String waitMsg, UndoSupport support, boolean allowCancels) {
-    this(appState, appState.getTopFrame(), owner, worker, waitTitle, waitMsg, support, allowCancels);
+    this(uics, uics.getTopFrame(), dacx, owner, worker, waitTitle, waitMsg, support, allowCancels);
   }
   
   public void makeSuperChart() {
@@ -126,10 +133,11 @@ public class BackgroundWorkerClient {
   // For headless operation ON THE CALLING THREAD
   //
   
-  public BackgroundWorkerClient(BTState appState, BackgroundWorkerOwner owner, BackgroundWorker worker, UndoSupport support) {
+  public BackgroundWorkerClient(UIComponentSource uics, DataAccessContext dacx, BackgroundWorkerOwner owner, BackgroundWorker worker, UndoSupport support) {
     
- 
     done_ = false;
+    uics_ = uics;
+    rMan_ = dacx.getRMan();
     worker_ = worker;
     owner_ = owner;
     waitTitle_ = null;
@@ -141,7 +149,6 @@ public class BackgroundWorkerClient {
     cancelRequested_ = false;
     isHeadless_ = true;
     chart_ = null;
-    appState_ = appState;
   }
  
   public void launchWorker(boolean doDisable) {
@@ -160,7 +167,7 @@ public class BackgroundWorkerClient {
         worker_.run();
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }      
     return;
   }
@@ -174,14 +181,13 @@ public class BackgroundWorkerClient {
     if (done_) {
       return;
     }
-    ResourceManager rMan = appState_.getRMan();      
-    progressDialog_ = new JDialog(topWindow_, rMan.getString(waitTitle_), true);
+    progressDialog_ = new JDialog(topWindow_, rMan_.getString(waitTitle_), true);
     if (chart_ == null) {
       progressDialog_.setSize(350, 200);
     } else {
       progressDialog_.setSize(600, 500);
     }
-    JLabel label = new JLabel(rMan.getString(waitMsg_), JLabel.CENTER);
+    JLabel label = new JLabel(rMan_.getString(waitMsg_), JLabel.CENTER);
     Container cp = progressDialog_.getContentPane();
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
@@ -197,10 +203,9 @@ public class BackgroundWorkerClient {
           try {
             boolean cancelPending = cancelRequested_;
             if (!cancelPending) {
-              ResourceManager rMan = appState_.getRMan();
               int ok = JOptionPane.showConfirmDialog(progressDialog_,
-                                                     rMan.getString("dialogs.cancelWarning"), 
-                                                     rMan.getString("dialogs.cancelWarningTitle"),
+                                                     rMan_.getString("dialogs.cancelWarning"), 
+                                                     rMan_.getString("dialogs.cancelWarningTitle"),
                                                      JOptionPane.YES_NO_OPTION);
               if (ok != JOptionPane.YES_OPTION) {
                 return;
@@ -212,18 +217,18 @@ public class BackgroundWorkerClient {
               progressDialog_.dispose();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
       
-      cancelButton_ = new FixedJButton(rMan.getString("dialogs.cancel"));
+      cancelButton_ = new FixedJButton(rMan_.getString("dialogs.cancel"));
       cancelButton_.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
             dialogCancelAndDisplay();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -287,11 +292,11 @@ public class BackgroundWorkerClient {
   public void finishedWork(Object result, Exception remoteEx, OutOfMemoryError memErr) {
     done_ = true;
     if (memErr != null) {
-      appState_.getExceptionHandler().displayOutOfMemory(memErr);
+      uics_.getExceptionHandler().displayOutOfMemory(memErr);
     }
     if (remoteEx != null) {
       if (!owner_.handleRemoteException(remoteEx)) {
-        appState_.getExceptionHandler().displayException(remoteEx);
+        uics_.getExceptionHandler().displayException(remoteEx);
       }
     }      
     try {
@@ -309,7 +314,7 @@ public class BackgroundWorkerClient {
       }
       owner_.cleanUpPostRepaint(result);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -334,14 +339,14 @@ public class BackgroundWorkerClient {
         suw_.redraw();
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
    return;
   }
   
   public void dialogCancelAndDisplay() {  
     cancelButton_.setEnabled(false);
-    cancellingMessage_.setText(appState_.getRMan().getString("dialogs.waitForCancel"));
+    cancellingMessage_.setText(rMan_.getString("dialogs.waitForCancel"));
     cancellingMessage_.invalidate();
     progressDialog_.validate();
     cancelRequested_ = true;

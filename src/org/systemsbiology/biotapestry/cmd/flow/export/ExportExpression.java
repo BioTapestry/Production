@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,15 +21,18 @@
 package org.systemsbiology.biotapestry.cmd.flow.export;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseCSVExportOptionsDialogFactory;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 
 /****************************************************************************
 **
-** Export perturb data to CSV file
+** Export expression data to CSV file
 */
 
 public class ExportExpression extends AbstractSimpleExport {
@@ -76,7 +79,8 @@ public class ExportExpression extends AbstractSimpleExport {
   ** Answer if we are enabled
   ** 
   */
-   
+  
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.haveTimeCourseData());
   }
@@ -101,7 +105,8 @@ public class ExportExpression extends AbstractSimpleExport {
   
   @Override
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".csv", "filterName.csv"));
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    es.filts.add(new FileExtensionFilters.SimpleFilter(dacx.getRMan(), ".csv", "filterName.csv"));
     es.suffs.add("csv");
     es.direct = "ExpressToCSVDirectory";
     es.pref = "csv";
@@ -115,11 +120,12 @@ public class ExportExpression extends AbstractSimpleExport {
   */
   
   @Override
-  protected  boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "none";
     es.fileErrTitle = "none";
     TimeCourseExportSettings tces = (TimeCourseExportSettings)es.preFileSet;
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
     tcd.exportCSV(es.out, !tces.ordByReg, tces.embedConf, !tces.skipInt);             
     return (true);  
   }
@@ -149,6 +155,10 @@ public class ExportExpression extends AbstractSimpleExport {
     public boolean haveResults() {
       return (haveResult);
     }     
+  	public void setHasResults() {
+  		this.haveResult = true;
+  		return;
+  	}  
     public boolean isForApply() {
       return (false);
     } 

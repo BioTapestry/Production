@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -51,9 +51,8 @@ import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
 import org.systemsbiology.biotapestry.cmd.instruct.DialogBuiltGeneralMotif;
 import org.systemsbiology.biotapestry.cmd.instruct.DialogBuiltMotif;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.analysis.Link;      
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.ui.RectangularTreeEngine;
@@ -163,7 +162,6 @@ public class GeneAndSatelliteCluster implements Cloneable {
   private boolean isTarget_;
   private HashMap<String, Integer> multiInCoreEstimates_;
   private boolean textToo_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -176,10 +174,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Constructor
   */
         
-  public GeneAndSatelliteCluster(BTState appState, String coreID, boolean isStacked, 
+  public GeneAndSatelliteCluster(String coreID, boolean isStacked, 
                                  double traceOffset, boolean isTarget, boolean textToo) {
     
-    appState_ = appState;
     coreID_ = coreID;
     penultimate_ = new HashMap<String, Set<String>>();
     toCoreFromPen_ = new HashMap<String, Set<String>>();
@@ -369,7 +366,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Get the bounds of JUST the nodes:
   */
   
-  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
    
     Rectangle2D useRect = TrackedGrid.layoutBounds(nps, irx, coreID_, textToo_);   
     Rectangle retval = UiUtil.rectFromRect2D(useRect);
@@ -391,7 +388,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Aggregates node bounds in the given rectangle
   */
 
-  private void collectFanBounds(Iterator<String> foit, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, Rectangle retval) {  
+  private void collectFanBounds(Iterator<String> foit, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, Rectangle retval) {  
     while (foit.hasNext()) {
       String key = foit.next();
       Rectangle2D useRect = TrackedGrid.layoutBounds(nps, irx, key, textToo_);
@@ -539,7 +536,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** This places the nodes, based on previously calculated ClusterDims. No link routing is done here.
   */
   
-  public void locateAsTarget(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, Double maxHeight) {   
+  public void locateAsTarget(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, Double maxHeight) {   
 
     //
     // Any fan-ins not placed are located now:
@@ -629,7 +626,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Does the node location calculations for a single node in a simple fan-in.
   */
   
-  private Point2D simpleFanPosCalc(int orderNum, String penID, Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  private Point2D simpleFanPosCalc(int orderNum, String penID, Point2D basePos,
+                                   SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     int padNum = penIDToPadnum(nps, penID);
     Vector2D offset = landingPadToOffset(padNum, nps, irx, coreID_); 
     Point2D padPoint = offset.add(basePos);
@@ -835,7 +833,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
 
   public void finalLinkRouting(String srcID, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                               DataAccessContext irx, 
+                               StaticDataAccessContext irx, 
                                MetaClusterPointSource mcps, SpecialtyLayoutLinkData specIn, LinkPlacementState lps) {
     
     List<String> linksPerClust = linkIDsPerClusterOldStyle(srcID, nps);
@@ -913,7 +911,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Fix me - get this formalized
   */
 
-  public Map<String, SpecialtyLayoutLinkData> internalLinkRoutingForTarget(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {      
+  public Map<String, SpecialtyLayoutLinkData> internalLinkRoutingForTarget(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {      
     if (fanInType_ == COMPLEX_FAN_IN_) { 
       Point2D upperLeftFanInPt = getClusterDims(nps, irx).getFanInCorner(nps);
       return (fanInGlr_.convertInternalLinks(fanInLinkPlans_, upperLeftFanInPt, nps, irx, coreID_));
@@ -928,7 +926,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   public void inboundLinkRouting(String srcID, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                 DataAccessContext irx, 
+                                 StaticDataAccessContext irx, 
                                  SpecialtyLayoutLinkData sin, 
                                  MetaClusterPointSource lps, boolean topGASC) {
 
@@ -1139,7 +1137,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** get the height, width, and offsets
   */
 
-  public ClusterDims getClusterDims(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public ClusterDims getClusterDims(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     if (clusterDims_ != null) {
       return (clusterDims_);
     }
@@ -1730,6 +1728,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Build up the cluster from remainders
   */
 
+  @SuppressWarnings("unused")
   public void prepFromRemaindersPhaseOne(GenomeSubset subset, String node) {
 
     //
@@ -1788,7 +1787,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** "routed" i.e. actually assembled with specific geometry 
   */
 
-  public void prepPhaseTwo(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, GeneAndSatelliteCluster.DropDirectionOracle ddo) {
+  public void prepPhaseTwo(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, 
+                           GeneAndSatelliteCluster.DropDirectionOracle ddo) {
     
     fanOutTrackedGrid_ = new TrackedGrid(gridFanOuts(nps), nps, irx, coreID_, textToo_, true);    
     fanInTrackedGrid_ = new TrackedGrid(gridFanIns(nps), nps, irx, coreID_, textToo_);
@@ -1836,9 +1836,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     fanInTraceOrder_ = new ArrayList<GridLinkRouter.RCRowCompare>();
 
     if (fanInType_ == COMPLEX_FAN_IN_) { 
-     
-      
-      fanInGlr_ = new GridLinkRouter(appState_, fanInTrackedGrid_, this);
+
+      fanInGlr_ = new GridLinkRouter(this, fanInTrackedGrid_);
       // Note this is where fan-in to core links get handled:
       fanInLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
       fanInGlr_.layoutInternalLinks(internalsWithFanInSrcs, nps, fanInPadPlans_, fanInPointSources, fanInTraceOrder_, null, 0, fanInLinkPlans_);
@@ -1895,7 +1894,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       int numCJ = cjSet.size() - bottomJumpers.size();
     
       HashMap<String, GridRouterPointSource> pointSources = new HashMap<String, GridRouterPointSource>();
-      fanOutGlr_ = new GridLinkRouter(appState_, fanOutTrackedGrid_, this);
+      fanOutGlr_ = new GridLinkRouter(this, fanOutTrackedGrid_);
       fanOutLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
       coreLinkIsFanned_ = fanOutGlr_.layoutInternalLinks(internalsWithFanOutSrcs, nps, fanOutPadPlans_, pointSources, 
                                                          new ArrayList<GridLinkRouter.RCRowCompare>(), coreID_, numCJ, 
@@ -1923,7 +1922,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Locate the cluster
   */
   
-  public void locateAsSource(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public void locateAsSource(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
    
     locateAsTarget(basePos, nps, irx, null);      
     Point2D upperLeft = getClusterDims(nps, irx).getFanOutCorner(nps, true);
@@ -1938,7 +1937,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Get the link tree root
   */
   
-  public Point2D linkTreeRoot(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public Point2D linkTreeRoot(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
 
     int launch = 0;
     Iterator<String> olit = outboundLinks_.iterator();
@@ -1966,7 +1965,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   public void routeOutboundLinks(SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                 DataAccessContext rcx,
+                                 StaticDataAccessContext rcx,
                                  Map<String, Double> internalTraces, Map<String, Double> outboundTraces, 
                                  Map<String, SuperSrcRouterPointSource> traceDefs,
                                  boolean baseAtTop, Map<String, Integer> srcToTrack, 
@@ -1996,7 +1995,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** to place.
   */
   
-  public Map<String, SpecialtyLayoutLinkData> routeInternalLinks(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public Map<String, SpecialtyLayoutLinkData> routeInternalLinks(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     //
     // First off, let's find out what links need to be laid out for
     // each source
@@ -2041,7 +2040,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   public List<SpecialtyLayoutLinkData.TrackPos> convertDeparturePath(List<SpecialtyLayoutLinkData.TrackPos> pointList, 
                                                                      SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                                     DataAccessContext irx) {
+                                                                     StaticDataAccessContext irx) {
     //
     // Issue #254: getFanOutCorner() says we want a false for the last argument for doing final link conversion:
     // REPLACE Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
@@ -2056,7 +2055,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   public Point2D convertDeparturePoint(TrackedGrid.TrackPosRC tprc, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                       DataAccessContext irx) {
+                                       StaticDataAccessContext irx) {
     //
     // Issue #254: getFanOutCorner() says we want a false for the last argument for doing final link conversion:
     // REPLACE Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
@@ -2070,7 +2069,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Get terminal targets. 
   */
   
-  public static List<GeneAndSatelliteCluster> findTerminalTargets(BTState appState, GenomeSubset subset, boolean omitNonGenesWithInputs, 
+  public static List<GeneAndSatelliteCluster> findTerminalTargets(GenomeSubset subset, boolean omitNonGenesWithInputs, 
                                                                   double traceOffset, boolean textToo) {
     ArrayList<GeneAndSatelliteCluster> retval = new ArrayList<GeneAndSatelliteCluster>();
     //Iterator nit = subset.getNodeSuperSetIterator();
@@ -2085,7 +2084,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
             continue;
           }
         }
-        retval.add(new GeneAndSatelliteCluster(appState, nodeID, false, traceOffset, true, textToo));
+        retval.add(new GeneAndSatelliteCluster(nodeID, false, traceOffset, true, textToo));
       }
     }
 
@@ -2104,7 +2103,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   public static void fillTargetClusters(List<GeneAndSatelliteCluster> clusters, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                        DataAccessContext irx) {
+                                        StaticDataAccessContext irx) {
     
     //
     // For each terminal target, find inputs that only hit
@@ -2127,10 +2126,10 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Fill out target clusters
   */
   
-  public static List<GeneAndSatelliteCluster> fillTargetClustersByGroups(BTState appState, List<String> clusters, 
+  public static List<GeneAndSatelliteCluster> fillTargetClustersByGroups(List<String> clusters, 
                                                                          Map<String, NodeGrouper.GroupElement> groups, 
                                                                          SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                                                         DataAccessContext irx, 
+                                                                         StaticDataAccessContext irx, 
                                                                          double traceOffset, 
                                                                          boolean doPhaseTwo, boolean textToo, boolean isStacked) {
       
@@ -2143,7 +2142,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     ArrayList<GeneAndSatelliteCluster> retval = new ArrayList<GeneAndSatelliteCluster>();
     int num = clusters.size();
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = new GeneAndSatelliteCluster(appState, clusters.get(i), isStacked, traceOffset, true, textToo);
+      GeneAndSatelliteCluster clust = new GeneAndSatelliteCluster(clusters.get(i), isStacked, traceOffset, true, textToo);
       retval.add(clust);     
       clust.prepFromGroupsPhaseOne(nps, groups, nps.pureCoreNetwork);
     }
@@ -2289,7 +2288,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
                                                        MetaClusterPointSource lps,
                                                        SortedMap<Double, List<String>> sortByCoord, Map<String, List<Point2D>> holdDrops, 
                                                        String srcID, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                                       DataAccessContext rcx, boolean noFan) {
+                                                       StaticDataAccessContext rcx, boolean noFan) {
 
     boolean entryFromTop = (ddo_ == null) ? true : ddo_.comingFromTop(srcID, this);
     
@@ -2487,7 +2486,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   private List<Point2D> directLinkDropPoints(String linkID, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                             DataAccessContext irx, MetaClusterPointSource lps) {
+                                             StaticDataAccessContext irx, MetaClusterPointSource lps) {
 
     //
     // If we have no fan-in we drop down directly.
@@ -2557,7 +2556,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   private List<Point2D> doLinkToDropPoints(String linkID, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                           DataAccessContext irx, MetaClusterPointSource lps) {
+                                           StaticDataAccessContext irx, MetaClusterPointSource lps) {
 
     Linkage link = nps.getLinkage(linkID);    
     int landing = getCurrentLandingPad(link, nps.getPadChanges(), false);    
@@ -2790,7 +2789,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   private List<Point2D> linkToTopDropPoints(int order, MetaClusterPointSource lps, SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                            DataAccessContext irx, Point2D penLoc, Point2D targLoc) {
+                                            StaticDataAccessContext irx, Point2D penLoc, Point2D targLoc) {
     ArrayList<Point2D> retval = new ArrayList<Point2D>();
     //
     // The first case handles pure target routing (drops from an overhead horizontal bus) or
@@ -2823,7 +2822,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   private List<Point2D> linkToSideDropPoints(int order, MetaClusterPointSource lps, 
                                              SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                             DataAccessContext irx, Point2D penLoc, Point2D targLoc) {
+                                             StaticDataAccessContext irx, Point2D penLoc, Point2D targLoc) {
     ArrayList<Point2D> retval = new ArrayList<Point2D>();
     //
     // The first case handles pure target routing (drops from an overhead horizontal bus) or
@@ -3041,7 +3040,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** A function
   */
   
-  private Vector2D launchPadToOffset(int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String nodeID) {
+  private Vector2D launchPadToOffset(int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String nodeID) {
     return (TrackedGrid.launchPadToOffset(nps, irx, padNum, nodeID));
   }  
    
@@ -3050,62 +3049,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** A function
   */
   
-  private Vector2D landingPadToOffset(int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String nodeID) { 
-    return (TrackedGrid.landingPadToOffset(appState_, padNum, nps, irx, nodeID, Linkage.POSITIVE)); // sign dontCare
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Figure out any extra gene length needed to handle pad requirements
- 
-  
-  private double calcExtraGeneLength(Genome genome) {
-    
-    Node node = genome.getNode(coreID_);    
-    if (node.getNodeType() != Node.GENE) {
-      return (0.0);
-    }
-
-    ArrayList<Linkage> linksToOrder = new ArrayList<Linkage>();
-    ArrayList<Linkage> feedbacks = new ArrayList<Linkage>();
-    Iterator<Linkage> lit = genome.getLinkageIterator();
-    while (lit.hasNext()) {
-      Linkage link = lit.next();
-      String lsource = link.getSource();
-      String ltrg = link.getTarget();        
-      if (ltrg.equals(coreID_)) {
-        if (lsource.equals(coreID_)) {
-          feedbacks.add(link);
-        } else {
-          linksToOrder.add(link);
-        }
-      }      
-    }
-    
-    int numLinks = linksToOrder.size();
-    // Simple fan-ins triple the spacing:
-    if (fanInType_ == SIMPLE_FAN_IN_) {
-      numLinks += (2 * fanInNodes_.size());
-    }
-    int numFeeds = feedbacks.size();
-    
-    int currFeed = DBGene.DEFAULT_PAD_COUNT - 2 - numFeeds;          
-    int currPad = (numLinks < currFeed) ? numLinks - 1 : currFeed;
-    int minPad = currPad - numLinks + 1;
-    
-    //
-    // If gene is already big, we do not shrink it, but use that size:
-    //
-      
-    Gene gene = (Gene)node;
-    int currPads = gene.getPadCount();
-    int minExistingPad = DBGene.DEFAULT_PAD_COUNT - currPads;
-    if (minExistingPad > 0) {
-      minExistingPad = 0;
-    }
-    
-    int retpad = (minPad < minExistingPad) ? minPad : minExistingPad;
-    return (GeneFree.EXTRA_WIDTH_PER_PAD * -(double)retpad);
+  private Vector2D landingPadToOffset(int padNum, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx, String nodeID) { 
+    return (TrackedGrid.landingPadToOffset(padNum, nps, irx, nodeID, Linkage.POSITIVE)); // sign dontCare
   }
   
   /***************************************************************************
@@ -3114,7 +3059,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** hit the target, even if it is by way of other bubbles.
   */
   
-  private void fillTargetClusterGreedy(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  private void fillTargetClusterGreedy(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     
     FanBuilder builder = new FanBuilder();
     HashMap<String, Set<String>> sources = new HashMap<String, Set<String>>();
@@ -3356,7 +3301,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Set the node locations of the nodes in a simple fan-in.
   */
   
-  private void locateSimpleFanIns(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  private void locateSimpleFanIns(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
 
     Iterator<Integer> poit = penOrder_.keySet().iterator();
     while (poit.hasNext()) {
@@ -3618,7 +3563,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
        
     int launch;
     int landing;
-    GridLinkRouter checker = new GridLinkRouter(appState_, grid, this);
+    GridLinkRouter checker = new GridLinkRouter(this, grid);
 
     if (coreTrg) {
       return (false);
@@ -3888,7 +3833,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     if (!grid.contains(targID)) {
       return;
     }
-    GridLinkRouter checker = new GridLinkRouter(appState_, grid, this);
+    GridLinkRouter checker = new GridLinkRouter(this, grid);
     boolean isFirst = grid.firstOnLeft(targID, null);
     
     Set<Integer> usedPads = padMap_.get(targID);
@@ -4080,7 +4025,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   private void simpleFanInInboundLinkRouting(List<String>linksPerClust, String srcID,  
                                              SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                             DataAccessContext irx, 
+                                             StaticDataAccessContext irx, 
                                              SpecialtyLayoutLinkData sin, 
                                              MetaClusterPointSource lps,
                                              boolean linkFromTop, boolean topGASC) {  
@@ -4153,7 +4098,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   private void complexFanInInboundLinkRouting(String srcID,
                                               SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                              DataAccessContext irx,
+                                              StaticDataAccessContext irx,
                                               SpecialtyLayoutLinkData sin, 
                                               MetaClusterPointSource lps,
                                               boolean closeOut) {
@@ -4467,7 +4412,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
 
   private Map<String, SpecialtyLayoutLinkData> fanOutConvertCoreJumpers(SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                                                        DataAccessContext irx) {
+                                                                        StaticDataAccessContext irx) {
 
     HashMap<String, SpecialtyLayoutLinkData> retval = new HashMap<String, SpecialtyLayoutLinkData>();
     if (coreJumpers_ == null) {
@@ -4490,7 +4435,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
 
   private void fanOutConvertAJumper(String srcID, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                    DataAccessContext irx, SpecialtyLayoutLinkData sin) {
+                                    StaticDataAccessContext irx, SpecialtyLayoutLinkData sin) {
     
     Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, false);
     if (upperLeftFanOutPt == null) {
@@ -4542,7 +4487,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   private void fanOutInboundLinkRouting(String srcID,
                                         SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                        DataAccessContext irx, 
+                                        StaticDataAccessContext irx, 
                                         SpecialtyLayoutLinkData sin, 
                                         MetaClusterPointSource lps, boolean topGASC) {
 
@@ -5093,7 +5038,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
   
   private double inboundTraceY(String srcID, boolean toFanout, Map<String, Integer> inboundOrder, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                               DataAccessContext irx) {
+                               StaticDataAccessContext irx) {
     
     Point2D targLoc = nps.getPosition(coreID_);
     if (targLoc == null) {
@@ -5445,7 +5390,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Handle simple core feedbacks
   */
 
-  private void simpleFeedbackRouting(SpecialtyLayoutLinkData sin, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  private void simpleFeedbackRouting(SpecialtyLayoutLinkData sin, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     
     Point2D srcLoc = nps.getPosition(coreID_);
     Point2D rootPt = linkTreeRoot(nps, irx); 
@@ -5457,7 +5402,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     
     boolean isFirst = true;
     Point2D lastPoint = null;
-    Iterator<List<String>> psit = (new GridLinkRouter(appState_, null, this)).orderedByPads(feedbacks_, nps, irx, nps.getPadChanges(), true);
+    Iterator<List<String>> psit = (new GridLinkRouter(this, null)).orderedByPads(feedbacks_, nps, irx, nps.getPadChanges(), true);
     while (psit.hasNext()) {
       List<String> perPad = psit.next();
       int numPP = perPad.size();

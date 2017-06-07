@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,8 +31,10 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
@@ -42,7 +44,6 @@ import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Gene;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.ui.Intersection;
@@ -75,8 +76,7 @@ public class EditCisRegModule extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditCisRegModule(BTState appState) {
-    super(appState);  
+  public EditCisRegModule() {
     name = "genePopup.CisModuleEdit" ;
     desc = "genePopup.CisModuleEdit";
     mnem = "genePopup.CisModuleEditMnem";
@@ -95,13 +95,13 @@ public class EditCisRegModule extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    Genome genome = rcx.getGenome();
-    if (!(genome instanceof DBGenome)) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    if (!rcx.currentGenomeIsRootDBGenome()) {
       return (false);
     }
     String geneID = inter.getObjectID();
-    Gene gene = rcx.getGenome().getGene(geneID);
+    Gene gene = rcx.getCurrentGenome().getGene(geneID);
     return ((gene != null) && (gene.getNumRegions() > 0));
   }
   
@@ -113,8 +113,8 @@ public class EditCisRegModule extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -134,10 +134,7 @@ public class EditCisRegModule extends AbstractControlFlow {
       } else { 
         ans = (StepState)last.currStateX;
       }
-      if (ans.cfh == null) {
-         ans.cfh = cfh;
-      }
-      
+      ans.stockCfhIfNeeded(cfh);
       if (ans.getNextStep().equals("stepState")) {
         next = ans.stepState();
       } else if (ans.getNextStep().equals("stepDataExtract")) {
@@ -157,31 +154,22 @@ public class EditCisRegModule extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
-    private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-    private ServerControlFlowHarness cfh;
+    private Intersection intersect_;  
     private String geneID_;
     private List<DBGeneRegion> origList_;
     private Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla_;
     private Map<DBGeneRegion.DBRegKey, SortedSet<Integer>> lhr_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepState";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -201,14 +189,14 @@ public class EditCisRegModule extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepState() {
       geneID_ = intersect_.getObjectID();
-      Gene gene = dacx_.getGenome().getGene(geneID_);
+      Gene gene = dacx_.getCurrentGenome().getGene(geneID_);
       if (gene == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
 
       origList_ = DBGeneRegion.initTheList(gene); 
      
-      FullGenomeHierarchyOracle fgo = new FullGenomeHierarchyOracle(appState_);
+      FullGenomeHierarchyOracle fgo = dacx_.getFGHO();
       
       gla_ = fgo.analyzeLinksIntoModules(geneID_);   
       if (FullGenomeHierarchyOracle.hasModuleProblems(gla_)) {
@@ -233,10 +221,10 @@ public class EditCisRegModule extends AbstractControlFlow {
         }
       }
     
-      appState_.getSUPanel().pushBubblesAndShow();
+      uics_.getSUPanel().pushBubblesAndShow();
       CisModuleEditDialogFactory.CisModBuildArgs ba = 
-        new CisModuleEditDialogFactory.CisModBuildArgs(geneID_, gene, glist, appState_.getRMan(), gla_, lhr_);
-      CisModuleEditDialogFactory dgcdf = new CisModuleEditDialogFactory(cfh);
+        new CisModuleEditDialogFactory.CisModBuildArgs(geneID_, gene, glist, dacx_.getRMan(), gla_, lhr_);
+      CisModuleEditDialogFactory dgcdf = new CisModuleEditDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepDataExtract";
@@ -279,7 +267,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         throw new IllegalArgumentException();
       }
 
-      UndoSupport support = new UndoSupport(appState_, "undo.changeCisReg");  
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeCisReg", dacx_);  
        
       //
       // Deal with links in a deletion region:
@@ -318,12 +306,12 @@ public class EditCisRegModule extends AbstractControlFlow {
 
       GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(geneID_, newRegs);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
   
       if (!noLinksToMove) {
-        LinkSupport.moveCisRegModLinks(support, newRegs, oldToNew, gla_, lhr_, appState_, dacx_, geneID_, delLinks);
+        LinkSupport.moveCisRegModLinks(support, newRegs, oldToNew, gla_, lhr_, dacx_, geneID_, delLinks);
       }
       
       //
@@ -356,15 +344,15 @@ public class EditCisRegModule extends AbstractControlFlow {
           List<DBGeneRegion> empty = new ArrayList<DBGeneRegion>();
           gc = dacx_.getDBGenome().changeGeneRegions(geneID_, empty);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
             support.addEdit(gcc);
           }
         }
       }
  
       support.finish();
-      appState_.getSUPanel().popBubbles();
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().popBubbles();
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));     
     }
  
@@ -430,7 +418,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         int usePad = padsToUse.get(count++);
         List<String> linksToPad = delLinkMap.get(pad);
         for (String linkID : linksToPad) {         
-          LinkSupport.switchLinkRegion(appState_, support, linkID, usePad, dacx_);
+          LinkSupport.switchLinkRegion(support, linkID, usePad, dacx_);
         }
       }
       return;
@@ -459,7 +447,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         List<String> linksToPad = delLinkMap.get(pad);
         for (String linkID : linksToPad) {         
           int newPad = freePads.get(index).intValue();
-          LinkSupport.switchLinkRegion(appState_, support, linkID, newPad, dacx_);
+          LinkSupport.switchLinkRegion(support, linkID, newPad, dacx_);
         }
       }
       return;
@@ -624,7 +612,7 @@ public class EditCisRegModule extends AbstractControlFlow {
       // Might have introduced contiguous runs of holders:
       //
       
-      Gene gene = dacx_.getGenome().getGene(geneID_);    
+      Gene gene = dacx_.getCurrentGenome().getGene(geneID_);    
       newRegs = DBGeneRegion.fillGapsWithHolders(newRegs, gene);
       newRegs = DBGeneRegion.mergeHolders(newRegs, oldToNew);
      
@@ -779,7 +767,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         newRegs.add(nreg);
       }     
  
-      Gene gene = dacx_.getGenome().getGene(geneID_);    
+      Gene gene = dacx_.getCurrentGenome().getGene(geneID_);    
       newRegs = DBGeneRegion.fillGapsWithHolders(newRegs, gene);
       newRegs = DBGeneRegion.mergeHolders(newRegs, oldToNew);
 
@@ -985,7 +973,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         }
       }
       
-      Gene gene = dacx_.getGenome().getGene(geneID_);    
+      Gene gene = dacx_.getCurrentGenome().getGene(geneID_);    
       newRegs = DBGeneRegion.fillGapsWithHolders(newRegs, gene);
       newRegs = DBGeneRegion.mergeHolders(newRegs, oldToNew);
 
@@ -1140,7 +1128,7 @@ public class EditCisRegModule extends AbstractControlFlow {
         }
       }
       
-      Gene gene = dacx_.getGenome().getGene(geneID_);    
+      Gene gene = dacx_.getCurrentGenome().getGene(geneID_);    
       newRegs = DBGeneRegion.fillGapsWithHolders(newRegs, gene);
       newRegs = DBGeneRegion.mergeHolders(newRegs, oldToNew);
       return (newRegs);

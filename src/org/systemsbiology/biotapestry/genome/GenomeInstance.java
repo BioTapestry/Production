@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,9 +35,10 @@ import java.util.TreeSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.nav.ImageChange;
+import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -76,8 +77,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** Constructor
   */
 
-  public GenomeInstance(BTState appState, String name, String id, String vfgParentID) {
-    this(appState, name, id, vfgParentID, false, -1, -1);    
+  public GenomeInstance(DataAccessContext dacx, String name, String id, String vfgParentID) {
+    this(dacx, name, id, vfgParentID, false, -1, -1);    
   }
  
   /***************************************************************************
@@ -85,8 +86,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** Constructor
   */
 
-  public GenomeInstance(BTState appState, String name, String id, String vfgParentID, boolean timed, int minTime, int maxTime) {
-    super(appState, name, id, NetworkOverlay.GENOME_INSTANCE, false);
+  public GenomeInstance(DataAccessContext dacx, String name, String id, String vfgParentID, boolean timed, int minTime, int maxTime) {
+    super(dacx, name, id, NetworkOverlay.GENOME_INSTANCE, false);
     vfgParentID_ = vfgParentID;
     groups_ = new TreeMap<String, Group>();
     uniqueGroupSuffix_ = 1;
@@ -105,7 +106,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   public GenomeInstance(GenomeInstance other, String newName, String newParent, 
                         String newID, Map<String, String> groupIDMap, Map<String, String> noteIDMap, 
                         Map<String, String> ovrIDMap, Map<String, String> modIDMap, 
-                        Map<String, String> modLinkIDMap, List<ImageChange> imageChanges) {
+                        Map<String, String> modLinkIDMap, List<ImageChange> imageChanges, ImageManager imgr) {
     super(other, false);
     this.name_ = newName;
     this.id_ = newID;
@@ -113,7 +114,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     this.ovrops_.resetOwner(this.id_);
     this.vfgParentID_ = newParent;   
     if (this.imgKey_ != null) {
-      ImageChange ichange = appState_.getImageMgr().registerImageUsage(this.imgKey_);
+      ImageChange ichange = imgr.registerImageUsage(this.imgKey_);
       if (ichange != null) {
         ichange.genomeKey = newID;
         imageChanges.add(ichange);
@@ -124,8 +125,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     // Groups require wierdo, two-pass handling:
     //
 
-    GenomeSource gSrc = (this.mySource_ == null) ? appState_.getDB() : this.mySource_;
-    DBGenome rootGenome = (DBGenome)gSrc.getGenome();
+    GenomeSource gSrc = (this.mySource_ == null) ? dacx_.getGenomeSource() : this.mySource_;
+    DBGenome rootGenome = (DBGenome)gSrc.getRootDBGenome();
     twoPGroupCopy(rootGenome, other, groupIDMap);
     
     //
@@ -177,8 +178,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   public GenomeInstance getBasicGenomeCopy(Map<String, String> groupIDMap) {    
     GenomeInstance retval = new GenomeInstance(this, false);
-    GenomeSource gSrc = (this.mySource_ == null) ? appState_.getDB() : this.mySource_;
-    DBGenome rootGenome = (DBGenome)gSrc.getGenome();
+    GenomeSource gSrc = (this.mySource_ == null) ? dacx_.getGenomeSource() : this.mySource_;
+    DBGenome rootGenome = (DBGenome)gSrc.getRootDBGenome();
     retval.twoPGroupCopy(rootGenome, this, groupIDMap);
     return (retval);
   }
@@ -262,7 +263,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     GenomeInstance parentInstance = getVfgParent();
     int genCount = parentInstance.getGeneration();        
     String startID = Group.buildInheritedID(subKey, genCount);
-    Group newGroup = new Group(appState_.getRMan(), startID, true, null);
+    Group newGroup = new Group(dacx_.getRMan(), startID, true, null);
     Group parentGroup = groups_.get(parentKey);
     
     //
@@ -289,14 +290,14 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public GenomeChange addGroup(Group group) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     String id = group.getID();
     if (groups_.get(id) != null) {
       System.err.println("Already have a group: " + id);
       throw new IllegalArgumentException();
     }
     if (vfgParentID_ == null) { 
-      ((DBGenome)gSrc.getGenome()).addKey(id);
+      ((DBGenome)gSrc.getRootDBGenome()).addKey(id);
     }
     GenomeChange retval = new GenomeChange();
     groups_.put(id, group);
@@ -344,8 +345,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public GenomeChange changeGeneEvidence(String geneID, int evidence) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
-    return (((DBGenome)gSrc.getGenome()).changeGeneEvidence(GenomeItemInstance.getBaseID(geneID), evidence));  
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
+    return (((DBGenome)gSrc.getRootDBGenome()).changeGeneEvidence(GenomeItemInstance.getBaseID(geneID), evidence));  
   } 
   
   /***************************************************************************
@@ -356,12 +357,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
 
   @Override
   public GenomeChange changeGeneName(String geneID, String name) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // We are actually messing with the backing item, so the change
     // is in the root model:
     // 
-    return (((DBGenome)gSrc.getGenome()).changeGeneName(GenomeItemInstance.getBaseID(geneID), name));
+    return (((DBGenome)gSrc.getRootDBGenome()).changeGeneName(GenomeItemInstance.getBaseID(geneID), name));
   }
   
   /***************************************************************************
@@ -372,12 +373,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
 
   @Override
   public GenomeChange changeGeneRegions(String geneID, List<DBGeneRegion> newRegions) { 
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // We are actually messing with the backing item, so the change
     // is in the root model:
     // 
-    return (((DBGenome)gSrc.getGenome()).changeGeneRegions(GenomeItemInstance.getBaseID(geneID), newRegions));
+    return (((DBGenome)gSrc.getRootDBGenome()).changeGeneRegions(GenomeItemInstance.getBaseID(geneID), newRegions));
   }
 
   /***************************************************************************
@@ -388,8 +389,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public GenomeChange changeGeneSize(String geneID, int pads) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
-    return (((DBGenome)gSrc.getGenome()).changeGeneSize(GenomeItemInstance.getBaseID(geneID), pads));  
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
+    return (((DBGenome)gSrc.getRootDBGenome()).changeGeneSize(GenomeItemInstance.getBaseID(geneID), pads));  
   }
 
   /***************************************************************************
@@ -442,12 +443,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public GenomeChange changeNodeName(String nodeID, String name) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // We are actually messing with the backing item, so the change
     // is in the root model:
     // 
-    return (((DBGenome)gSrc.getGenome()).changeNodeName(GenomeItemInstance.getBaseID(nodeID), name));
+    return (((DBGenome)gSrc.getRootDBGenome()).changeNodeName(GenomeItemInstance.getBaseID(nodeID), name));
   } 
   
   /***************************************************************************
@@ -458,8 +459,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public GenomeChange changeNodeSize(String nodeID, int pads) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
-    return (((DBGenome)gSrc.getGenome()).changeNodeSize(GenomeItemInstance.getBaseID(nodeID), pads));  
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
+    return (((DBGenome)gSrc.getRootDBGenome()).changeNodeSize(GenomeItemInstance.getBaseID(nodeID), pads));  
   }
   
   /***************************************************************************
@@ -471,11 +472,11 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public GenomeChange changeNodeType(String nodeID, int type) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     GenomeChange retval = new GenomeChange();
     retval.genomeKey = getID();
 
-    if (((DBGenome)gSrc.getGenome()).getNode(GenomeItemInstance.getBaseID(nodeID)).getNodeType() != type) {
+    if (((DBGenome)gSrc.getRootDBGenome()).getNode(GenomeItemInstance.getBaseID(nodeID)).getNodeType() != type) {
       throw new IllegalArgumentException();
     }
     
@@ -605,6 +606,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** Clone
   */
 
+  @Override
   public GenomeInstance clone() {
     GenomeInstance retval = (GenomeInstance)super.clone();
       
@@ -698,7 +700,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     
     // dynamic children:
     
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Iterator<DynamicInstanceProxy> pit = gSrc.getDynamicProxyIterator();
     while (pit.hasNext()) {
       DynamicInstanceProxy dip = pit.next();
@@ -1135,8 +1137,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       parent = parent.getVfgParent();
     }
 
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
-    Genome top = gSrc.getGenome();
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
+    Genome top = gSrc.getRootDBGenome();
     retval.add(top.getName());   
     Collections.reverse(retval);
     return (retval); 
@@ -1153,9 +1155,9 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   public Set<GroupTuple> getNewConnectionTuples(String backingKey) {
     
     HashSet<GroupTuple> retval = new HashSet<GroupTuple>();
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     
-    DBLinkage link = (DBLinkage)((DBGenome)gSrc.getGenome()).getLinkage(backingKey);
+    DBLinkage link = (DBLinkage)((DBGenome)gSrc.getRootDBGenome()).getLinkage(backingKey);
     String backingID = link.getID();
     String sourceID = link.getSource();
     String targID = link.getTarget();
@@ -1325,7 +1327,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   @Override
   public Genome getStrippedGenomeCopy() {
-    GenomeInstance retval = new GenomeInstance(this.appState_, this.name_, this.id_, this.vfgParentID_);
+    GenomeInstance retval = new GenomeInstance(this.dacx_, this.name_, this.id_, this.vfgParentID_);
     retval.notes_ = this.notes_;
     retval.longName_ = this.longName_;
     retval.description_ = this.description_;
@@ -1382,7 +1384,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
 
   public String getUniqueGroupName() {
-    String format = appState_.getRMan().getString("group.defaultNameFormat");
+    String format = dacx_.getRMan().getString("group.defaultNameFormat");
     while (true) {
       Integer suffix = new Integer(uniqueGroupSuffix_++);
       String tryName = MessageFormat.format(format, new Object[] {suffix});
@@ -1402,7 +1404,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public GenomeInstance getVfgParent() {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     return ((vfgParentID_ == null) ? null : (GenomeInstance)gSrc.getGenome(vfgParentID_));
   }
  
@@ -1610,7 +1612,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public boolean haveProxyDecendant() {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Iterator<DynamicInstanceProxy> pit = gSrc.getDynamicProxyIterator();
     while (pit.hasNext()) {
       DynamicInstanceProxy dip = pit.next();
@@ -1723,7 +1725,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** with given source and target regions (second region can be null)
   */  
  
-  public boolean linkInstanceExists(BTState appState, String baseID, String groupKey1, String groupKey2) {
+  public boolean linkInstanceExists(String baseID, String groupKey1, String groupKey2) {
    
     //
     // Get groups resolved:
@@ -1766,7 +1768,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public GenomeChange[] removeEmptyGroup(String key) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Group group = groups_.get(key);
     if (!group.isInherited() && (group.getMemberCount() != 0)) {
       throw new IllegalStateException();
@@ -1783,7 +1785,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       chng.grOrig = groups_.get(subID);
       groups_.remove(subID);
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).removeKey(subID);
+        ((DBGenome)gSrc.getRootDBGenome()).removeKey(subID);
       }
       chng.grNew = null;
       chng.genomeKey = getID();
@@ -1793,7 +1795,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     retval[count] = chng;    
     groups_.remove(key);
     if (vfgParentID_ == null) {
-      ((DBGenome)gSrc.getGenome()).removeKey(key);  
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(key);  
     }
     chng.grOrig = group;
     chng.grNew = null;
@@ -1809,12 +1811,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
  
   public GenomeChange removeGroupNoChecks(String key) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     GenomeChange chng = new GenomeChange();
     Group group = groups_.get(key);
     groups_.remove(key);
     if (vfgParentID_ == null) {
-      ((DBGenome)gSrc.getGenome()).removeKey(key);  
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(key);  
     }
     chng.grOrig = group;
     chng.grNew = null;
@@ -1828,7 +1830,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   **
   */  
   public GenomeChange[] removeStrippedGroup(String key) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Group group = groups_.get(key);
     if (!group.isInherited() && (group.getMemberCount() != 0)) {
       throw new IllegalStateException();
@@ -1845,7 +1847,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       chng.grOrig = groups_.get(subID);
       groups_.remove(subID);
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).removeKey(subID);
+        ((DBGenome)gSrc.getRootDBGenome()).removeKey(subID);
       }
       chng.grNew = null;
       chng.genomeKey = getID();
@@ -1855,7 +1857,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     retval[count] = chng;    
     groups_.remove(key);
     if (vfgParentID_ == null) {
-      ((DBGenome)gSrc.getGenome()).removeKey(key);  
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(key);  
     }
     chng.grOrig = group;
     chng.grNew = null;
@@ -1870,7 +1872,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public GenomeChange[] removeSubGroup(String key) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Group group = groups_.get(key);
     if (!group.isASubset(this)) {
       throw new IllegalArgumentException();
@@ -1903,7 +1905,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     retval[retval.length - 1] = chng;    
     groups_.remove(key);
     if (vfgParentID_ == null) {
-      ((DBGenome)gSrc.getGenome()).removeKey(key);
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(key);
     }
     chng.grOrig = group;
     chng.grNew = null;
@@ -1937,12 +1939,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   public GenomeChange replaceLinkageProperties(String linkID, String name, int sign, int targetLevel) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // We are actually messing with the backing item, so the change
     // is in the root model:
     // 
-    return (((DBGenome)gSrc.getGenome()).replaceLinkageProperties(GenomeItemInstance.getBaseID(linkID), 
+    return (((DBGenome)gSrc.getRootDBGenome()).replaceLinkageProperties(GenomeItemInstance.getBaseID(linkID), 
                                                                   name, sign, targetLevel));
   }
   
@@ -1974,9 +1976,9 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   
   public GenomeChange[] revertPadsToRoot(String nodeID) {
 
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     ArrayList<GenomeChange> retList = new ArrayList<GenomeChange>();
-    DBGenome genome = (DBGenome)gSrc.getGenome();   
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();   
     
     Iterator<Linkage> lit = getLinkageIterator();
     while (lit.hasNext()) {
@@ -2068,8 +2070,8 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     // and matches in our instance among multiple instances
     // need to be ignored. We also need to ignore name overrides!
     //
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
-    return (((DBGenome)gSrc.getGenome()).rootDisplayNameIsUnique(nodeID));
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
+    return (((DBGenome)gSrc.getRootDBGenome()).rootDisplayNameIsUnique(nodeID));
   }  
   
   /***************************************************************************
@@ -2283,9 +2285,9 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** Answer if we are in a module attached to our group IN THE CURRENT MODEL
   */  
  
-  public boolean inModuleAttachedToGroup(BTState appState, String nodeID) {
+  public boolean inModuleAttachedToGroup(String nodeID) {
     
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     Group currGrp = getGroupForNode(nodeID, GenomeInstance.ALWAYS_MAIN_GROUP);
     if (currGrp == null) { // should not happen
       return (false);
@@ -2335,7 +2337,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   protected void groupChangeRedo(GenomeChange undo) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // If both orig and new are present, we are simply redoing a property change.
     // If orig is absent, we are redoing an add.
@@ -2347,12 +2349,12 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       String id = undo.grNew.getID();
       groups_.put(id, undo.grNew);
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).addKey(id);
+        ((DBGenome)gSrc.getRootDBGenome()).addKey(id);
       }
     } else {
       groups_.remove(undo.grOrig.getID());
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).removeKey(undo.grOrig.getID());
+        ((DBGenome)gSrc.getRootDBGenome()).removeKey(undo.grOrig.getID());
       }
     }
     return;
@@ -2364,7 +2366,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   */
   
   protected void groupChangeUndo(GenomeChange undo) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     //
     // If both orig and new are present, we are simply undoing a property change.
     // If orig is absent, we are undoing an add.
@@ -2375,13 +2377,13 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     } else if (undo.grOrig == null) {
       groups_.remove(undo.grNew.getID());
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).removeKey(undo.grNew.getID());
+        ((DBGenome)gSrc.getRootDBGenome()).removeKey(undo.grNew.getID());
       }
     } else {
       String id = undo.grOrig.getID();
       groups_.put(id, undo.grOrig);
       if (vfgParentID_ == null) {
-        ((DBGenome)gSrc.getGenome()).addKey(id);
+        ((DBGenome)gSrc.getRootDBGenome()).addKey(id);
       }
     }
     return;
@@ -2615,7 +2617,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   **
   */
   
-  public static GenomeInstance buildFromXML(BTState appState, String elemName, 
+  public static GenomeInstance buildFromXML(DataAccessContext dacx, String elemName, 
                                             Attributes attrs) throws IOException {
     if (!elemName.equals("genomeInstance")) {
       return (null);
@@ -2673,7 +2675,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       isTimed = true;
     }
 
-    GenomeInstance retval = new GenomeInstance(appState, name, id, parentVfg, isTimed, minTime, maxTime);
+    GenomeInstance retval = new GenomeInstance(dacx, name, id, parentVfg, isTimed, minTime, maxTime);
     if (imgKey != null) {
       retval.imgKey_ = imgKey;
     }

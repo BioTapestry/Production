@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,14 +22,14 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -54,8 +54,7 @@ public class Align extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Align(BTState appState) {
-    super(appState);
+  public Align() {
     name =  "command.CenterAllLayouts";
     desc = "command.CenterAllLayouts";
     mnem =  "command.CenterAllLayoutsMnem";
@@ -73,6 +72,7 @@ public class Align extends AbstractControlFlow {
   ** 
   */
    
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.moreThanOneModel());
   }
@@ -88,7 +88,7 @@ public class Align extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();    
       } else {
         throw new IllegalStateException();
@@ -105,25 +105,16 @@ public class Align extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-    DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
+  public static class StepState extends AbstractStepState {
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
  
     /***************************************************************************
@@ -132,7 +123,7 @@ public class Align extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepDoIt() {
-      boolean trackOverlays = dacx_.fgho.overlayExists();
+      boolean trackOverlays = dacx_.getFGHO().overlayExists();
       boolean emptyRoot = dacx_.getDBGenome().isEmpty();
       
       //
@@ -149,7 +140,7 @@ public class Align extends AbstractControlFlow {
         doCentering = true;
         ignoreOverlays = true;
       } else {
-        LayoutCenteringDialog dialog = new LayoutCenteringDialog(appState_, emptyRoot, trackOverlays);
+        LayoutCenteringDialog dialog = new LayoutCenteringDialog(uics_, dacx_, emptyRoot, trackOverlays);
         dialog.setVisible(true);
         if (!dialog.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
@@ -160,9 +151,9 @@ public class Align extends AbstractControlFlow {
         ignoreOverlays = dialog.ignoreOverlays();
       }
       
-      boolean done = alignAllLayouts(appState_, doMatchups, doCentering, ignoreOverlays);
+      boolean done = alignAllLayouts(doMatchups, doCentering, ignoreOverlays);
       if (done) {
-        appState_.getZoomCommandSupport().zoomToFullWorksheet();
+        uics_.getZoomCommandSupport().zoomToFullWorksheet();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -173,17 +164,17 @@ public class Align extends AbstractControlFlow {
     ** Align all layouts to the root
     */  
    
-    private boolean alignAllLayouts(BTState appState, boolean doMatchups, boolean doCentering, boolean skipOverlays) {
+    private boolean alignAllLayouts(boolean doMatchups, boolean doCentering, boolean skipOverlays) {
     
-      Map<String, Layout.OverlayKeySet> allKeys = (skipOverlays) ? null : dacx_.fgho.fullModuleKeysPerLayout();
+      Map<String, Layout.OverlayKeySet> allKeys = (skipOverlays) ? null : dacx_.getFGHO().fullModuleKeysPerLayout();
       
-      UndoSupport support = new UndoSupport(appState, "undo.alignAllLayouts");
+      UndoSupport support = uFac_.provideUndoSupport("undo.alignAllLayouts", dacx_);
   
       //
       // Iterate through all root instances and line them all up
       //
                                            
-      Layout lor = dacx_.lSrc.getRootLayout();
+      Layout lor = dacx_.getLayoutSource().getRootLayout();
       Layout.OverlayKeySet lorModKeys = (skipOverlays) ? null : allKeys.get(lor.getID());
    
       //
@@ -196,20 +187,20 @@ public class Align extends AbstractControlFlow {
         if (gi.getVfgParent() != null) {
           continue;
         }
-        Layout lo = dacx_.lSrc.getLayoutForGenomeKey(gi.getID());
+        Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(gi.getID());
       
-        DatabaseChange dc = dacx_.lSrc.startLayoutUndoTransaction(lo.getID());
+        DatabaseChange dc = dacx_.getLayoutSource().startLayoutUndoTransaction(lo.getID());
         Layout.OverlayKeySet loModKeys = (skipOverlays) ? null : allKeys.get(lo.getID());
-        DataAccessContext rcx = new DataAccessContext(dacx_, gi, lo);
+        StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, gi, lo);
         lo.alignToLayout(lor, rcx, doMatchups, loModKeys, lorModKeys, null);
-        dc = dacx_.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, dacx_, dc));
+        dc = dacx_.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));
         LayoutChangeEvent lcev = new LayoutChangeEvent(lo.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(lcev);
       }
       
       if (doCentering) {
-        appState.getZoomTarget().fixCenterPoint(true, support, false);
+        dacx_.getZoomTarget().fixCenterPoint(true, support, false);
       }
       support.finish();  
       return (true);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,16 +27,18 @@ import java.awt.geom.AffineTransform;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.IntersectionChooser;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ConcreteGraphicsCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache.DrawLayer;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /***************************************************************************
 ** 
@@ -74,11 +76,11 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
   ** Constructor
   */
   
-  public ClickableModelViewPanel(BTState appState, ClickableClient client, DataAccessContext rcx) {
-    super(appState, rcx);
+  public ClickableModelViewPanel(UIComponentSource uics, ClickableClient client, StaticDataAccessContext rcx) {
+    super(uics, rcx);
     client_ = client;
     allGhosted_ = false;
-    addMouseListener(new MouseClickHandler(appState_, this));
+    addMouseListener(new MouseClickHandler(uics_, this));
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -87,7 +89,7 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
   //
   //////////////////////////////////////////////////////////////////////////// 
 
-  public void setTargets(Set targetSet, String linkTargetKey) {
+  public void setTargets(Set<String> targetSet, String linkTargetKey) {
     if (targetSet.isEmpty() && (linkTargetKey == null)) {
       allGhosted_ = true;
       myGenomePre_.clearTargets();
@@ -110,9 +112,9 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
     zoomer_.transformClick(x, y, pt);
     x = (int)(Math.round(pt.x / 10.0) * 10.0);
     y = (int)(Math.round(pt.y / 10.0) * 10.0);
-    DataAccessContext rcxC = new DataAccessContext(rcx_);
-    rcxC.pixDiam = zoomer_.currentPixelDiameter(); 
-    rcxC.oso = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
+    StaticDataAccessContext rcxC = new StaticDataAccessContext(rcx_);
+    rcxC.setPixDiam(zoomer_.currentPixelDiameter()); 
+    rcxC.setOSO(new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null));
     
     List<Intersection.AugmentedIntersection>  augs = myGenomePre_.intersectItem(x, y, rcxC, false, false);
     Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxC)).selectionRanker(augs); 
@@ -121,12 +123,12 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
       return;
     }
     String startID = inter.getObjectID();
-    Node node = rcx_.getGenome().getNode(startID);
+    Node node = rcx_.getCurrentGenome().getNode(startID);
     if (node != null) {
       client_.nodeIntersected(inter);
       return;
     }    
-    Linkage link = rcx_.getGenome().getLinkage(startID);
+    Linkage link = rcx_.getCurrentGenome().getLinkage(startID);
     if (link != null) {
       client_.linkIntersected(inter);
       return;
@@ -148,7 +150,7 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
   */
   
   protected void drawingGuts(Graphics g) {
-    if (rcx_.getGenome() != null) {
+    if (rcx_.getCurrentGenome() != null) {
       Graphics2D g2 = (Graphics2D)g;   
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
       g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
@@ -167,31 +169,32 @@ public class ClickableModelViewPanel extends ModelViewPanel implements MouseClic
         	// GenomePresentation.presentGenomeWithOverlay, in which draw layers are always set.
         	
         	cgc.setDrawLayer(DrawLayer.VFN_GHOSTED);
-        	DataAccessContext rcxR = new DataAccessContext(rcx_, rcx_.getDBGenome());
+        	StaticDataAccessContext rcxR = new StaticDataAccessContext(rcx_, rcx_.getDBGenome());
         	rcxR.pushGhosted(true);
-        	rcxR.pixDiam = zoomer_.currentPixelDiameter();
+        	rcxR.setPixDiam(zoomer_.currentPixelDiameter());
           myGenomePre_.presentRootGenome(cgc, rcxR);
 
           // show bub, show root, oso, pixdiam
-          DataAccessContext rcxT = new DataAccessContext(rcx_, rcx_.getGenomeSource().getGenome(linkTargetKey_), rcx_.getLayout());
-          rcxT.pixDiam = zoomer_.currentPixelDiameter();
-          rcxT.showBubbles = false;
-          rcxT.oso = null;
+          StaticDataAccessContext rcxT = new StaticDataAccessContext(rcx_, rcx_.getGenomeSource().getGenome(linkTargetKey_), rcx_.getCurrentLayout());
+          rcxT.setPixDiam(zoomer_.currentPixelDiameter());
+          rcxT.setShowBubbles(false);
+          rcxT.setOSO(null);
+          UiUtil.fixMePrintout("Handing in null because we have no business messing with global UI components");
           
-          myGenomePre_.presentGenome(cgc, rcxT, false);
+          myGenomePre_.presentGenome(cgc, rcxT, false, IRenderer.Mode.NORMAL);
         } else {
-          DataAccessContext rcxT = new DataAccessContext(rcx_);
-          rcxT.pixDiam = zoomer_.currentPixelDiameter();
-          rcxT.showBubbles = false;
-          rcxT.oso = null;
+          StaticDataAccessContext rcxT = new StaticDataAccessContext(rcx_);
+          rcxT.setPixDiam(zoomer_.currentPixelDiameter());
+          rcxT.setShowBubbles(false);
+          rcxT.setOSO(null);
           
-          myGenomePre_.presentGenome(cgc, rcxT, false);
+          myGenomePre_.presentGenome(cgc, rcxT, false, IRenderer.Mode.NORMAL);
         }
       } else {
       	cgc.setDrawLayer(DrawLayer.VFN_GHOSTED);
-      	DataAccessContext rcxR = new DataAccessContext(rcx_, rcx_.getDBGenome());
+      	StaticDataAccessContext rcxR = new StaticDataAccessContext(rcx_, rcx_.getDBGenome());
         rcxR.pushGhosted(true);
-        rcxR.pixDiam = zoomer_.currentPixelDiameter();
+        rcxR.setPixDiam(zoomer_.currentPixelDiameter());
         myGenomePre_.presentRootGenome(cgc, rcxR);
       }
       

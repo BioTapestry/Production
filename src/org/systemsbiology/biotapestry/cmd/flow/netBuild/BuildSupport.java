@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,8 +40,9 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.OldPadMapper;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
@@ -62,8 +63,8 @@ import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
@@ -92,6 +93,7 @@ import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.DataLocator;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
@@ -113,7 +115,7 @@ import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ModelNodeIDPair;
 import org.systemsbiology.biotapestry.util.NodeRegionModelNameTuple;
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -129,7 +131,9 @@ public class BuildSupport {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   private BSData bsd_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -143,8 +147,10 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(BTState appState) {
-    appState_ = appState;
+  public BuildSupport(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+    uics_ = uics;
+    dacx_ = dacx;
+    uFac_ = uFac;
   }
   
   /***************************************************************************
@@ -152,9 +158,11 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(BTState appState, BSData bsd) {
-    appState_ = appState;
+  public BuildSupport(UIComponentSource uics, DataAccessContext dacx, BSData bsd, UndoFactory uFac) {
+    uics_ = uics;
+    dacx_ = dacx;
     bsd_ = bsd;
+    uFac_ = uFac;
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -178,7 +186,7 @@ public class BuildSupport {
   */  
  
   public int getSliceMode(JFrame topWindow) {  
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     Vector<ChoiceContent> choices = new Vector<ChoiceContent>(); 
     ChoiceContent defaultSlice = 
       new ChoiceContent(rMan.getString("sliceMode." + TimeCourseData.SLICE_BY_REGIONS_TAG),
@@ -206,7 +214,7 @@ public class BuildSupport {
   ** Build out a full model tree for interaction worksheet network builds 
   */  
  
-  public boolean buildOutModelTreeForNetworkBuild(DataAccessContext dacx, boolean doSums, int sliceMode, 
+  public boolean buildOutModelTreeForNetworkBuild(StaticDataAccessContext dacx, boolean doSums, int sliceMode, 
                                                   Map<String, Set<String>> neighbors, 
                                                   Map<String, TimeCourseData.RootInstanceSuggestions> modelToSuggestion, 
                                                   UndoSupport support) {
@@ -216,7 +224,7 @@ public class BuildSupport {
       return (false);
     }
     
-    DataAccessContext rcxR = dacx.getContextForRoot();
+    StaticDataAccessContext rcxR = dacx.getContextForRoot();
                 
     //
     // Figure out the regions and times for importing:
@@ -230,15 +238,16 @@ public class BuildSupport {
     //
     
     NavTree nt = dacx.getGenomeSource().getModelHierarchy();
-    DefaultTreeModel dtm = appState_.getTree().getTreeModel();
+    DefaultTreeModel dtm = uics_.getTree().getTreeModel();
     DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)dtm.getRoot();
     ArrayList<NavTreeChange> ntcs = new ArrayList<NavTreeChange>();
-    ExpansionChange ec = appState_.getTree().doUndoExpansionChange(support, dacx, true); 
+    ExpansionChange ec = uics_.getTree().doUndoExpansionChange(support, dacx, true); 
+    
 
     //
     // Crank through the additions:
     //
-       
+
     Iterator<TimeCourseData.RootInstanceSuggestions> sit = sugg.iterator();
     while (sit.hasNext()) {
       TimeCourseData.RootInstanceSuggestions ris = sit.next();
@@ -246,31 +255,33 @@ public class BuildSupport {
       // Create genome root instance, add to database, add a layout for it:
       //
       String nextKey = rcxR.getNextKey();
-      GenomeInstance gi = new GenomeInstance(appState_, ris.heavyToString(), nextKey, null);
+      GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
       modelToSuggestion.put(nextKey, ris);
       gi.setTimes(ris.minTime, ris.maxTime);
       DatabaseChange dc = rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
-      support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));  
+      support.addEdit(new DatabaseChangeCmd(rcxR, dc));  
       String nextloKey = rcxR.getNextKey();
-      Layout lo = new Layout(appState_, nextloKey, nextKey);
-      dc = rcxR.lSrc.addLayout(nextloKey, lo);
-      support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));
+      Layout lo = new Layout(nextloKey, nextKey);
+      dc = rcxR.getLayoutSource().addLayout(nextloKey, lo);
+      support.addEdit(new DatabaseChangeCmd(rcxR, dc));
       
       //
       // Add the node to the nav tree for it:
       //
-      nt.setSkipFlag(NavTree.SKIP_FINISH);
-      NavTreeChange ntc = nt.addNode(ris.heavyToString(), null, nextKey);
-      nt.setSkipFlag(NavTree.NO_FLAG);
-      support.addEdit(new NavTreeChangeCmd(appState_, rcxR, ntc));
-      ntcs.add(ntc); 
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
+
+      TreeNode parNode = nt.nodeForModel(dacx.getGenomeSource().getRootDBGenome().getID());
+      NavTree.NodeAndChanges nac = nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
+      support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
+      ntcs.add(nac.ntc); 
       //
       // Create the regions needed inside each root instance:
       //
       int count = 0;
       Iterator<String> rit = ris.regions.iterator();
       ArrayList<String> addedRegions = new ArrayList<String>();
-      DataAccessContext rcxI = new DataAccessContext(rcxR, gi, lo);
+      StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi, lo);
       while (rit.hasNext()) {
         String region = rit.next();
         count++;
@@ -290,21 +301,24 @@ public class BuildSupport {
       
       if (doSums) {
         nextKey = rcxR.getGenomeSource().getNextKey();
-        String sumFormat = rcxR.rMan.getString("toolCmd.summedFormat");
+        String sumFormat = rcxR.getRMan().getString("toolCmd.summedFormat");
         dipName = MessageFormat.format(sumFormat, new Object[] {ris.heavyToString()});     
-        dipS = new DynamicInstanceProxy(appState_, dipName, nextKey, gi, true, ris.minTime, ris.maxTime); 
+        dipS = new DynamicInstanceProxy(rcxR, dipName, nextKey, gi, true, ris.minTime, ris.maxTime, false, null); 
         dc = rcxR.getGenomeSource().addDynamicProxyExistingLabel(nextKey, dipS);
-        support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));
-        new DataLocator(appState_, rcxR).setTitleLocation(support, gi.getID(), dipName);
+        support.addEdit(new DatabaseChangeCmd(rcxR, dc));
+        new DataLocator(uics_.getGenomePresentation(), rcxR).setTitleLocation(support, gi.getID(), dipName);
         List<String> newNodes = dipS.getProxiedKeys();
         if (newNodes.size() != 1) {
           throw new IllegalStateException();
         }
         String key = newNodes.iterator().next();
-        ntc = nt.addNode(dipS.getProxiedInstanceName(key), gi.getID(), key);
-        support.addEdit(new NavTreeChangeCmd(appState_, rcxR, ntc));
-        ntcs.add(ntc);
-        DataAccessContext rcxD = new DataAccessContext(rcxR, key);
+        parNode = nt.nodeForModel(gi.getID());
+        nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipS.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, rcxR);
+        nt.setSkipFlag(NavTree.Skips.NO_FLAG);
+        support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
+        ntcs.add(nac.ntc);
+        StaticDataAccessContext rcxD = new StaticDataAccessContext(rcxR, key);
         
         Iterator<String> arit = addedRegions.iterator();
         while (arit.hasNext()) {
@@ -318,22 +332,25 @@ public class BuildSupport {
       nextKey = rcxR.getGenomeSource().getNextKey();
       TimeAxisDefinition tad = rcxR.getExpDataSrc().getTimeAxisDefinition();
       String displayUnits = tad.unitDisplayString();
-      String perTimeFormat = rcxR.rMan.getString("toolCmd.perTimeFormat");
+      String perTimeFormat = rcxR.getRMan().getString("toolCmd.perTimeFormat");
       dipName = MessageFormat.format(perTimeFormat, new Object[] {ris.heavyToString(), displayUnits});
       GenomeInstance par = (dipS == null) ? gi : dipS.getAnInstance();      
       DynamicInstanceProxy dipH = 
-        new DynamicInstanceProxy(appState_, dipName, nextKey, par, false, ris.minTime, ris.maxTime); 
+        new DynamicInstanceProxy(rcxR, dipName, nextKey, par, false, ris.minTime, ris.maxTime, false, null); 
       dc = rcxR.getGenomeSource().addDynamicProxyExistingLabel(nextKey, dipH);
-      support.addEdit(new DatabaseChangeCmd(appState_, rcxR, dc));
-      new DataLocator(appState_, rcxR).setTitleLocation(support, gi.getID(), dipName);
+      support.addEdit(new DatabaseChangeCmd(rcxR, dc));
+      new DataLocator(uics_.getGenomePresentation(), rcxR).setTitleLocation(support, gi.getID(), dipName);
       GenomeInstance parent = dipH.getVfgParent();
-      String parentID = parent.getID();     
-      ntc = nt.addProxyNode(dipName, parentID, nextKey); 
-      support.addEdit(new NavTreeChangeCmd(appState_, rcxR, ntc));
-      ntcs.add(ntc);
+      String parentID = parent.getID();
+      parNode = nt.nodeForModel(parentID);
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
+      nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipName, parNode, null, nextKey, null, rcxR);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
+      support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
+      ntcs.add(nac.ntc);
       
       DynamicGenomeInstance anInstance = dipH.getAnInstance();
-      DataAccessContext rcxP = new DataAccessContext(rcxR, anInstance);
+      StaticDataAccessContext rcxP = new StaticDataAccessContext(rcxR, anInstance);
       Iterator<String> arit = addedRegions.iterator();
       while (arit.hasNext()) {
         String regionKey = arit.next();
@@ -348,21 +365,21 @@ public class BuildSupport {
     //
        
     if (sugg.size() > 0) {
-      nt.setSkipFlag(NavTree.SKIP_FINISH);
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
       dtm.nodeStructureChanged(rootNode);
-      nt.setSkipFlag(NavTree.NO_FLAG);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
     }
    
     //
     // Expand everybody out
     //
       
-    nt.setSkipFlag(NavTree.SKIP_FINISH);
+    nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
     List<TreePath> nonleafPaths = nt.getAllPathsToNonLeaves();
     Iterator<TreePath> nlpit = nonleafPaths.iterator();
     while (nlpit.hasNext()) {
       TreePath tp = nlpit.next();
-      appState_.getTree().expandTreePath(tp);
+      uics_.getTree().expandTreePath(tp);
     } 
 
     //
@@ -373,8 +390,8 @@ public class BuildSupport {
     DefaultMutableTreeNode rootChild = (DefaultMutableTreeNode)rootNode.getChildAt(0);
     TreeNode[] tn = rootChild.getPath();
     TreePath tp = new TreePath(tn);
-    appState_.getTree().setTreeSelectionPath(tp);
-    nt.setSkipFlag(NavTree.NO_FLAG);      
+    uics_.getTree().setTreeSelectionPath(tp);
+    nt.setSkipFlag(NavTree.Skips.NO_FLAG);      
 
     //
     // Get tree copies from before and after change and fix the maps for expansion
@@ -387,7 +404,7 @@ public class BuildSupport {
       ec.selected = nt.mapAPath(ec.selected, ntc, true);
 
       ntc = ntcs.get(ntcSize - 1);
-      appState_.getTree().doRedoExpansionChange(support, rcxR, ntc, true);
+      uics_.getTree().doRedoExpansionChange(support, rcxR, ntc, true);
     }
         
      // FIX ME??? Use events instead of direct calls.
@@ -401,13 +418,13 @@ public class BuildSupport {
   ** Add group to dynamic instance
   */  
  
-  private void autoAddGroupToDynamicInstance(DataAccessContext rcxI, String startID, UndoSupport support) { 
-    GenomeInstance parent = rcxI.getGenomeAsInstance().getVfgParent();
+  private void autoAddGroupToDynamicInstance(StaticDataAccessContext rcxI, String startID, UndoSupport support) { 
+    GenomeInstance parent = rcxI.getCurrentGenomeAsInstance().getVfgParent();
     int genCount = parent.getGeneration();    
     String inherit = Group.buildInheritedID(startID, genCount);
     Group subsetGroup = parent.getGroup(inherit);
     // Do we really need both the undom AND the support args??
-    GroupCreationSupport handler = new GroupCreationSupport(appState_);
+    GroupCreationSupport handler = new GroupCreationSupport(uics_, uFac_);
     handler.addNewGroupToSubsetInstance(rcxI, subsetGroup, support);
     return;
   }
@@ -417,14 +434,14 @@ public class BuildSupport {
   ** Propagate a root down using instructions
   */  
  
-  public boolean propagateRootUsingInstructions(DataAccessContext rcxR, DataAccessContext rcxO) throws AsynchExitRequestException {
+  public boolean propagateRootUsingInstructions(StaticDataAccessContext rcxR, StaticDataAccessContext rcxO) throws AsynchExitRequestException {
                                                                                        
-    if (rcxO.getGenome().isEmpty()) {
+    if (rcxO.getCurrentGenome().isEmpty()) {
       bsd_.keepLayout = false;
     }
 
-    Map<String, Layout.OverlayKeySet> allKeys = rcxO.fgho.fullModuleKeysPerLayout();    
-    Layout.OverlayKeySet loModKeys = allKeys.get(rcxO.getLayoutID());
+    Map<String, Layout.OverlayKeySet> allKeys = rcxO.getFGHO().fullModuleKeysPerLayout();    
+    Layout.OverlayKeySet loModKeys = allKeys.get(rcxO.getCurrentLayoutID());
       
     //
     // Gather info needed to reorganize the overlays:
@@ -432,28 +449,28 @@ public class BuildSupport {
     
     
     Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = 
-      rcxO.getLayout().getModuleShapeParams(rcxO, loModKeys, bsd_.center);
+      rcxO.getCurrentLayout().getModuleShapeParams(rcxO, loModKeys, bsd_.center);
     
     //
     // Get the set:
     //
       
-    InstanceInstructionSet iis = rcxO.getInstructSrc().getInstanceInstructionSet(rcxO.getGenomeID());
+    InstanceInstructionSet iis = rcxO.getInstructSrc().getInstanceInstructionSet(rcxO.getCurrentGenomeID());
         
     //
     // Save important legacy info:
     //
     
     HashMap<String, String> legacyGroups = new HashMap<String, String>();
-    Iterator<Group> git = rcxO.getGenomeAsInstance().getGroupIterator();
+    Iterator<Group> git = rcxO.getCurrentGenomeAsInstance().getGroupIterator();
     while (git.hasNext()) {
       Group grp = git.next();
       legacyGroups.put(grp.getName(), grp.getID());
     }
 
-    Set<String> crossRegion = rcxO.getGenomeAsInstance().getCrossRegionLinks(null);
+    Set<String> crossRegion = rcxO.getCurrentGenomeAsInstance().getCrossRegionLinks(null);
     
-    bsd_.liidm.recordLegacyInstancesForRegions(rcxO.getDBGenome(), rcxO.getGenomeAsInstance());
+    bsd_.liidm.recordLegacyInstancesForRegions(rcxO.getCurrentGenomeAsInstance());
     
     Map<String, Rectangle> savedRegionBounds = (bsd_.keepLayout) ? saveRegionBounds(rcxO) : null;
         
@@ -461,26 +478,26 @@ public class BuildSupport {
     // Get a copy of the Layout:
     //
 
-    Layout copiedLo = new Layout(rcxO.getLayout());
+    Layout copiedLo = new Layout(rcxO.getCurrentLayout());
     
     //
     // Completely kill off the existing genome (after making a local copy)
     //
     
-    GenomeInstance oldGi = rcxO.getGenomeAsInstance().clone();
+    GenomeInstance oldGi = rcxO.getCurrentGenomeAsInstance().clone();
 
-    DataAccessContext rcxFrozen = new DataAccessContext(rcxO, oldGi, copiedLo);
+    StaticDataAccessContext rcxFrozen = new StaticDataAccessContext(rcxO, oldGi, copiedLo);
     
-    String gID = rcxO.getGenomeID();
+    String gID = rcxO.getCurrentGenomeID();
   //  String lID = rcxO.getLayoutID();
     // This creates EMPTY copies of BOTH the GenomeInstance AND the layout!
-    bsd_.support.addEdit(new DatabaseChangeCmd(appState_, rcxO, rcxO.getGenomeSource().dropInstanceNetworkOnly(gID)));
+    bsd_.support.addEdit(new DatabaseChangeCmd(rcxO, rcxO.getGenomeSource().dropInstanceNetworkOnly(gID)));
       
     //
     // The gutting of the above means that we need to create a new RenderingContext with the gutted copies!
     //
     
-    DataAccessContext rcxI = new DataAccessContext(rcxO, gID);
+    StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxO, gID);
 
     //
     // Extract regions and create them 
@@ -497,7 +514,7 @@ public class BuildSupport {
     }
     
     HashMap<String, String> regionMap = new HashMap<String, String>();
-    bsd_.subsetRegionCache.put(rcxI.getGenomeID(), regionMap);
+    bsd_.subsetRegionCache.put(rcxI.getCurrentGenomeID(), regionMap);
 
     //
     // Add groups as needed.
@@ -512,7 +529,7 @@ public class BuildSupport {
       InstanceInstructionSet.RegionInfo ri = iis.getRegionForAbbreviation(region);
       String gid = legacyGroups.get(ri.name);
       String regionKey = (gid == null) ? rcxR.getNextKey() : gid;
-      Group newGroup = new Group(rcxI.rMan, regionKey, ri.name);
+      Group newGroup = new Group(rcxI.getRMan(), regionKey, ri.name);
       regionMap.put(region, regionKey);
       if (gid != null) {
         newToOldRegionMap.put(regionKey, gid);
@@ -528,17 +545,17 @@ public class BuildSupport {
       // the model before we re-populate it. Correct??
       //
       
-      if (rcxI.getGenomeAsInstance().getGroup(newGroup.getID()) == null) {
-        GenomeChange gc = rcxI.getGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
+      if (rcxI.getCurrentGenomeAsInstance().getGroup(newGroup.getID()) == null) {
+        GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxR, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
           bsd_.support.addEdit(gcc);
         }
       }
       if (!bsd_.keepLayout || (gid == null)) {
         // FIX ME! Color is going to be wrong
-        int groupCount = rcxI.getGenomeAsInstance().groupCount();
-        stashGrpProp.put(regionKey, new GroupProperties(groupCount, regionKey, bsd_.center, 0, rcxI.cRes));
+        int groupCount = rcxI.getCurrentGenomeAsInstance().groupCount();
+        stashGrpProp.put(regionKey, new GroupProperties(groupCount, regionKey, bsd_.center, 0, rcxI.getColorResolver()));
       }
     }
     
@@ -563,7 +580,7 @@ public class BuildSupport {
     //
 
     Map<String, Map<GenomeInstance.GroupTuple, SubsetCacheValues>> instructionCache = new HashMap<String, Map<GenomeInstance.GroupTuple, SubsetCacheValues>>();
-    bsd_.subsetCache.put(rcxI.getGenomeID(), instructionCache);
+    bsd_.subsetCache.put(rcxI.getCurrentGenomeID(), instructionCache);
     HashMap<String, List<RegionInstance>> instanceMap = new HashMap<String, List<RegionInstance>>();
     HashMap<String, List<RegionTupleInstance>> linkInstanceMap = new HashMap<String, List<RegionTupleInstance>>();
 
@@ -608,17 +625,17 @@ public class BuildSupport {
     HashMap<String, String> modIDMap = new HashMap<String, String>(); 
     HashMap<String, String> modLinkIDMap = new HashMap<String, String>(); 
     
-    Map<String, Layout.OverlayKeySet> allKeysWithEmpties = rcxI.fgho.fullModuleKeysPerLayout(true);
-    Layout.OverlayKeySet loModKeysWithEmpties = allKeysWithEmpties.get(rcxI.getLayoutID());
-    rcxI.getLayout().fillOverlayIdentityMaps(loModKeysWithEmpties, keyMap, modIDMap, modLinkIDMap);
+    Map<String, Layout.OverlayKeySet> allKeysWithEmpties = rcxI.getFGHO().fullModuleKeysPerLayout(true);
+    Layout.OverlayKeySet loModKeysWithEmpties = allKeysWithEmpties.get(rcxI.getCurrentLayoutID());
+    rcxI.getCurrentLayout().fillOverlayIdentityMaps(loModKeysWithEmpties, keyMap, modIDMap, modLinkIDMap);
 
     //
     // Fixup overlay members and group refs
     //
     
-    recoverMappedOverlaysForInstance(rcxI.getGenomeAsInstance(), oldGi, bsd_.liidm.getInstanceNodeMapping(), newToOldRegionMap);
+    recoverMappedOverlaysForInstance(rcxI.getCurrentGenomeAsInstance(), oldGi, bsd_.liidm.getInstanceNodeMapping(), newToOldRegionMap);
 
-    DatabaseChange dc = rcxI.lSrc.startLayoutUndoTransaction(rcxI.getLayoutID());
+    DatabaseChange dc = rcxI.getLayoutSource().startLayoutUndoTransaction(rcxI.getCurrentLayoutID());
  
     try {
     
@@ -639,7 +656,7 @@ public class BuildSupport {
       Map<String, SpecialSegmentTracker> specials = (bsd_.keepLayout) ? copiedLo.rememberSpecialLinks() : null;
       HashMap<String, BusProperties.RememberProps> rememberProps = new HashMap<String, BusProperties.RememberProps>();
             
-      rcxI.getLayout().transferLayoutFromLegacy(bsd_.liidm.getInstanceNodeMapping(), 
+      rcxI.getCurrentLayout().transferLayoutFromLegacy(bsd_.liidm.getInstanceNodeMapping(), 
                                            ilm, newToOldRegionMap, keyMap, modLinkIDMap, null,
                                            !bsd_.keepLayout, rememberProps, rcxI, rcxFrozen);
 
@@ -656,16 +673,16 @@ public class BuildSupport {
         if (gp.getLayer() != 0) {
           throw new IllegalStateException();
         }
-        int order = rcxI.getLayout().getTopGroupOrder() + 1;
+        int order = rcxI.getCurrentLayout().getTopGroupOrder() + 1;
         gp.setOrder(order);
-        rcxI.getLayout().setGroupProperties(regionKey, gp);
+        rcxI.getCurrentLayout().setGroupProperties(regionKey, gp);
       }
 
       LayoutRubberStamper.RSData rsd = 
         new LayoutRubberStamper.RSData(rcxR, rcxI, bsd_.options,
                                        loModKeys, moduleShapeRecovery, bsd_.monitor, savedRegionBounds, copiedLo, bsd_.keepLayout, 
                                        bsd_.startFrac, bsd_.maxFrac, rememberProps, bsd_.globalPadNeeds);        
-      LayoutRubberStamper lrs = new LayoutRubberStamper(appState_);
+      LayoutRubberStamper lrs = new LayoutRubberStamper();
       lrs.setRSD(rsd);
       lrs.rubberStampLayout();
            
@@ -674,7 +691,7 @@ public class BuildSupport {
       //
 
       if (specials != null) {
-        rcxI.getLayout().restoreSpecialLinks(specials);
+        rcxI.getCurrentLayout().restoreSpecialLinks(specials);
       }
       
       //
@@ -682,11 +699,11 @@ public class BuildSupport {
       //
       
       if (bsd_.hideNames) {
-        rcxI.getLayout().hideAllMinorNodeNames(rcxI);
+        rcxI.getCurrentLayout().hideAllMinorNodeNames(rcxI);
       }
      
-      dc = rcxI.lSrc.finishLayoutUndoTransaction(dc);
-      bsd_.support.addEdit(new DatabaseChangeCmd(appState_, rcxI, dc));
+      dc = rcxI.getLayoutSource().finishLayoutUndoTransaction(dc);
+      bsd_.support.addEdit(new DatabaseChangeCmd(rcxI, dc));
       
       //
       // Make sure nodes are long enough:
@@ -699,14 +716,14 @@ public class BuildSupport {
       //
 
       if (bsd_.nodeIDMap != null) {
-        Iterator<Node> anit = rcxI.getGenome().getAllNodeIterator();
-        String modelID = rcxI.getGenomeID();
-        String modelName = DataUtil.normKey(rcxI.getGenome().getName());
+        Iterator<Node> anit = rcxI.getCurrentGenome().getAllNodeIterator();
+        String modelID = rcxI.getCurrentGenomeID();
+        String modelName = DataUtil.normKey(rcxI.getCurrentGenome().getName());
         while (anit.hasNext()) {
           Node node = anit.next();
           String nodeID = node.getID();
-          Group grp = rcxI.getGenomeAsInstance().getGroupForNode(nodeID, GenomeInstance.ALWAYS_MAIN_GROUP);
-          String grpName = grp.getInheritedTrueName(rcxI.getGenomeAsInstance());
+          Group grp = rcxI.getCurrentGenomeAsInstance().getGroupForNode(nodeID, GenomeInstance.ALWAYS_MAIN_GROUP);
+          String grpName = grp.getInheritedTrueName(rcxI.getCurrentGenomeAsInstance());
           NodeRegionModelNameTuple tup = new NodeRegionModelNameTuple(node.getName(), grpName, modelName);
           ModelNodeIDPair pair = new ModelNodeIDPair(modelID, nodeID);
           bsd_.nodeIDMap.put(tup, pair);
@@ -715,7 +732,7 @@ public class BuildSupport {
 
       return (true);
     } catch (AsynchExitRequestException ex) {
-      rcxI.lSrc.rollbackLayoutUndoTransaction(dc);
+      rcxI.getLayoutSource().rollbackLayoutUndoTransaction(dc);
       throw ex;
     }
   } 
@@ -736,9 +753,9 @@ public class BuildSupport {
       GenomeInstance gi = iit.next();
       if (gi.isRootInstance()) {
         String genomeID = gi.getID();
-        Layout lo = dacx.lSrc.getLayoutForGenomeKey(genomeID);
+        Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(genomeID);
         Layout.OverlayKeySet loModKeys = globalKeys.get(lo.getID());
-        DataAccessContext rcx2 = new DataAccessContext(appState_, gi, lo);
+        StaticDataAccessContext rcx2 = new StaticDataAccessContext(dacx, gi, lo);
         Layout.SupplementalDataCoords sdc = lo.getSupplementalCoords(rcx2, loModKeys);
         retval.put(genomeID, sdc);       
       }
@@ -752,18 +769,18 @@ public class BuildSupport {
   */  
  
   public void processSdcCache(Map<String, Layout.SupplementalDataCoords> sdcCache, 
-                              Map<String, Layout.OverlayKeySet> globalKeys, DataAccessContext dacx,  UndoSupport support) {
+                              Map<String, Layout.OverlayKeySet> globalKeys, StaticDataAccessContext dacx, UndoSupport support) {
     
     Iterator<String> sdit = sdcCache.keySet().iterator();
     while (sdit.hasNext()) {
       String genomeID = sdit.next();
       Layout.SupplementalDataCoords sdc = sdcCache.get(genomeID);
-      Layout lo = dacx.lSrc.getLayoutForGenomeKey(genomeID);
-      DatabaseChange dc = dacx.lSrc.startLayoutUndoTransaction(lo.getID());    
+      Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(genomeID);
+      DatabaseChange dc = dacx.getLayoutSource().startLayoutUndoTransaction(lo.getID());    
       Layout.OverlayKeySet loModKeys = globalKeys.get(lo.getID());
       lo.applySupplementalDataCoords(sdc, dacx, loModKeys);
-      dc = dacx.lSrc.finishLayoutUndoTransaction(dc);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+      dc = dacx.getLayoutSource().finishLayoutUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(dacx, dc));
     }
     return;
   }
@@ -773,8 +790,7 @@ public class BuildSupport {
   ** Populate a subset using instructions
   */  
  
-  public boolean populateSubsetUsingInstructions(DataAccessContext rcxO,
-                                                 List<DialogBuiltMotifPair> createdPairs, 
+  public boolean populateSubsetUsingInstructions(StaticDataAccessContext rcxO,
                                                  UndoSupport support, LegacyInstanceIdMapper liidm, 
                                                  Map<NodeRegionModelNameTuple, ModelNodeIDPair> nodeIDMap,
                                                  Map<String, Map<String, Map<GenomeInstance.GroupTuple, SubsetCacheValues>>> subsetCache, 
@@ -784,27 +800,27 @@ public class BuildSupport {
     // Get the set:
     //                                       
                                                  
-    InstanceInstructionSet iis = rcxO.getInstructSrc().getInstanceInstructionSet(rcxO.getGenomeID());
+    InstanceInstructionSet iis = rcxO.getInstructSrc().getInstanceInstructionSet(rcxO.getCurrentGenomeID());
     if (iis == null) {
       return (true);
     }
     
-    GenomeInstance rootInstance = rcxO.getGenomeAsInstance().getVfgParentRoot();
-    GenomeInstance parent = rcxO.getGenomeAsInstance().getVfgParent();
+    GenomeInstance rootInstance = rcxO.getCurrentGenomeAsInstance().getVfgParentRoot();
+    GenomeInstance parent = rcxO.getCurrentGenomeAsInstance().getVfgParent();
     
-    String gID = rcxO.getGenomeID();
+    String gID = rcxO.getCurrentGenomeID();
   
     //
     // Completely kill off the existing genome guts AND the layout that goes with it!
     //
     
-    GenomeInstance oldGi = rcxO.getGenomeAsInstance().clone();
-    support.addEdit(new DatabaseChangeCmd(appState_, rcxO, rcxO.getGenomeSource().dropInstanceNetworkOnly(gID)));
+    GenomeInstance oldGi = rcxO.getCurrentGenomeAsInstance().clone();
+    support.addEdit(new DatabaseChangeCmd(rcxO, rcxO.getGenomeSource().dropInstanceNetworkOnly(gID)));
     
     //
     // The gutting of the above means that we need to create a new RenderingContext with the gutted copies!
     //
-    DataAccessContext rcxI = new DataAccessContext(rcxO, gID);
+    StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxO, gID);
 
     //
     // Extract regions and inherit them
@@ -825,9 +841,9 @@ public class BuildSupport {
     while (rit.hasNext()) {
       String region = rit.next();
       String useGroup = regionMap.get(region);
-      int generation = rcxI.getGenomeAsInstance().getGeneration() - 1;
+      int generation = rcxI.getCurrentGenomeAsInstance().getGeneration() - 1;
       Group parentGroup = parent.getGroup(Group.buildInheritedID(useGroup, generation));
-      GroupCreationSupport handler = new GroupCreationSupport(appState_);
+      GroupCreationSupport handler = new GroupCreationSupport(uics_, uFac_);
       handler.addNewGroupToSubsetInstance(rcxI, parentGroup, support);
     }
    
@@ -835,7 +851,7 @@ public class BuildSupport {
     // Fixup overlay members and group refs
     //
     
-    recoverMappedOverlaysForInstance(rcxI.getGenomeAsInstance(), oldGi, liidm.getInstanceNodeMapping(), liidm.getRegionMapping());
+    recoverMappedOverlaysForInstance(rcxI.getCurrentGenomeAsInstance(), oldGi, liidm.getInstanceNodeMapping(), liidm.getRegionMapping());
     
     //
     // Process each instruction
@@ -853,14 +869,14 @@ public class BuildSupport {
     //
       
     if (nodeIDMap != null) {
-      Iterator<Node> anit = rcxI.getGenome().getAllNodeIterator();
-      String modelID = rcxI.getGenomeID();
-      String modelName = DataUtil.normKey(rcxI.getGenome().getName());
+      Iterator<Node> anit = rcxI.getCurrentGenome().getAllNodeIterator();
+      String modelID = rcxI.getCurrentGenomeID();
+      String modelName = DataUtil.normKey(rcxI.getCurrentGenome().getName());
       while (anit.hasNext()) {
         Node node = anit.next();
         String nodeID = node.getID();
-        Group grp = rcxI.getGenomeAsInstance().getGroupForNode(nodeID, GenomeInstance.ALWAYS_MAIN_GROUP);
-        String grpName = grp.getInheritedTrueName(rcxI.getGenomeAsInstance());
+        Group grp = rcxI.getCurrentGenomeAsInstance().getGroupForNode(nodeID, GenomeInstance.ALWAYS_MAIN_GROUP);
+        String grpName = grp.getInheritedTrueName(rcxI.getCurrentGenomeAsInstance());
         NodeRegionModelNameTuple tup = new NodeRegionModelNameTuple(node.getName(), grpName, modelName);
         ModelNodeIDPair pair = new ModelNodeIDPair(modelID, nodeID);
         nodeIDMap.put(tup, pair);
@@ -896,9 +912,8 @@ public class BuildSupport {
     Iterator<DialogBuiltMotifPair> ldit = ldbmp.iterator();
     while (ldit.hasNext()) {
       DialogBuiltMotifPair dbmp = ldit.next(); 
-      String dbmpID = dbmp.instructionID;
       pIGuts(bii, pid, tupleMap, srcRegionNodes, targRegionNodes, 
-             linkTupleMap, dbmp, dbmpID, topLinkInstanceNums, 
+             linkTupleMap, dbmp, topLinkInstanceNums, 
              topNodeInstanceNums, padCache, instanceForGroup);
     }
     return;
@@ -957,7 +972,7 @@ public class BuildSupport {
                              HashSet<String> srcRegionNodes, 
                              HashSet<String> targRegionNodes, 
                              HashMap<String, Integer> linkTupleMap, 
-                             DialogBuiltMotifPair dbmp, String dbmpID, 
+                             DialogBuiltMotifPair dbmp,
                              Map<String, Integer> topLinkInstanceNums, 
                              Map<String, Integer> topNodeInstanceNums,
                              PadCalculatorToo.PadCache padCache,
@@ -1040,9 +1055,9 @@ public class BuildSupport {
     String instanceID = getInstanceForRegion(regKey, nodeID, pid.instanceMap);
     // only add it if it hasn't already been added by previous instructions
     if (instanceID == null) {
-      Node node = pid.rcxR.getGenome().getNode(nodeID);
-      Group region = pid.rcxI.getGenomeAsInstance().getGroup(regKey);
-      NodeInstance ni = PropagateSupport.propagateOldOrNewNodeNoLayout(appState_, (node.getNodeType() == Node.GENE), 
+      Node node = pid.rcxR.getCurrentGenome().getNode(nodeID);
+      Group region = pid.rcxI.getCurrentGenomeAsInstance().getGroup(regKey);
+      NodeInstance ni = PropagateSupport.propagateOldOrNewNodeNoLayout((node.getNodeType() == Node.GENE), 
                                                                        pid.rcxI, pid.oldGi, (DBNode)node, region, 
                                                                        pid.support, legacyInstance, topNodeInstanceNums);
       if (node.getNodeType() == Node.GENE) {
@@ -1054,7 +1069,7 @@ public class BuildSupport {
       pid.liidm.recordInstanceForRegion(regKey, nodeID, ni.getInstance());
     // If it has already been added, only add it to the subset cache values
     } else {
-      NodeInstance ni = (NodeInstance)pid.rcxI.getGenome().getNode(GenomeItemInstance.getCombinedID(nodeID, instanceID));
+      NodeInstance ni = (NodeInstance)pid.rcxI.getCurrentGenome().getNode(GenomeItemInstance.getCombinedID(nodeID, instanceID));
       if (ni.getNodeType() == Node.GENE) {
         scv.genes.add(ni.getID());
       } else {
@@ -1112,8 +1127,8 @@ public class BuildSupport {
       String linkInstanceID = getLinkInstanceForRegionTuple(grpTup, linkID, pid.linkInstanceMap);
       // only add it if it hasn't already been added by previous instructions
       if (linkInstanceID == null) {
-        Linkage link = pid.rcxR.getGenome().getLinkage(linkID);
-        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(appState_, pid.rcxI, pid.oldGi, (DBLinkage)link, 
+        Linkage link = pid.rcxR.getCurrentGenome().getLinkage(linkID);
+        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(pid.rcxI, pid.oldGi, (DBLinkage)link, 
                                                                                     pid.rcxR, grpTup, pid.support, legacyInstance, 
                                                                                     topInstanceNums, padCache, instanceForGroup);
         scv.links.add(newLink.getID());
@@ -1121,7 +1136,7 @@ public class BuildSupport {
         pid.liidm.recordInstanceForRegionTuple(srcRegKey, trgRegKey, linkID, newLink.getInstance());
       // If it has already been added, only add it to the subset cache values
       } else {
-        LinkageInstance newLink = (LinkageInstance)pid.rcxI.getGenome().getLinkage(GenomeItemInstance.getCombinedID(linkID, linkInstanceID));
+        LinkageInstance newLink = (LinkageInstance)pid.rcxI.getCurrentGenome().getLinkage(GenomeItemInstance.getCombinedID(linkID, linkInstanceID));
         scv.links.add(newLink.getID());
       }
     }
@@ -1134,7 +1149,7 @@ public class BuildSupport {
   */  
  
   private void processInstructionForSubset(BuildInstructionInstance bii,
-                                           DataAccessContext rcxT,
+                                           StaticDataAccessContext rcxT,
                                            GenomeInstance parent,
                                            UndoSupport support, 
                                            Map<String, Map<GenomeInstance.GroupTuple, SubsetCacheValues>> instructionCache) {  
@@ -1160,19 +1175,19 @@ public class BuildSupport {
     for (int i = 0; i < size; i++) {
       String nodeID = scv.nodes.get(i);
       NodeInstance ni = (NodeInstance)parent.getNode(nodeID);
-      PropagateSupport.addNewNodeToSubsetInstance(appState_, rcxT, ni, support);
+      PropagateSupport.addNewNodeToSubsetInstance(rcxT, ni, support);
     }
     size = scv.genes.size();
     for (int i = 0; i < size; i++) {
       String geneID = scv.genes.get(i);
       GeneInstance gene = (GeneInstance)parent.getNode(geneID);
-      PropagateSupport.addNewNodeToSubsetInstance(appState_, rcxT, gene, support);
+      PropagateSupport.addNewNodeToSubsetInstance(rcxT, gene, support);
     }
     size = scv.links.size();
     for (int i = 0; i < size; i++) {
       String linkID = scv.links.get(i);
       LinkageInstance li = (LinkageInstance)parent.getLinkage(linkID);      
-      PropagateSupport.addNewLinkToSubsetInstance(appState_, rcxT, li, support); 
+      PropagateSupport.addNewLinkToSubsetInstance(rcxT, li, support); 
     }
     return;
   }
@@ -1182,10 +1197,10 @@ public class BuildSupport {
   ** Create the root model from instructions.  Caller must finish the support call.
   */  
  
-  public LinkRouter.RoutingResult buildRootFromInstructions(DataAccessContext dacx) throws AsynchExitRequestException {
+  public LinkRouter.RoutingResult buildRootFromInstructions(StaticDataAccessContext dacx) throws AsynchExitRequestException {
 
     DatabaseChange dc = dacx.getInstructSrc().setBuildInstructions(bsd_.instructions);
-    bsd_.support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+    bsd_.support.addEdit(new DatabaseChangeCmd(dacx, dc));
     
     return (buildRootFromInstructionsNoRootInstall(dacx));
   }
@@ -1195,7 +1210,7 @@ public class BuildSupport {
   ** Create the root model from instructions.  Caller must finish the support call.
   */  
  
-  public LinkRouter.RoutingResult buildRootFromInstructionsNoRootInstall(DataAccessContext dacx) throws AsynchExitRequestException {
+  public LinkRouter.RoutingResult buildRootFromInstructionsNoRootInstall(StaticDataAccessContext dacx) throws AsynchExitRequestException {
      
     //ModelChangeEvent mcev = null;
 
@@ -1216,15 +1231,15 @@ public class BuildSupport {
       
     int iSize = bsd_.instructions.size();
    
-    boolean wasEmpty = dacx.getGenome().isEmpty();
+    boolean wasEmpty = dacx.getCurrentGenome().isEmpty();
     
-    Map<String, Layout.OverlayKeySet> globalKeys = dacx.fgho.fullModuleKeysPerLayout();    
-    Layout.OverlayKeySet loModKeys = globalKeys.get(dacx.getLayoutID());
-    Layout.PadNeedsForLayout localPadNeeds = bsd_.globalPadNeeds.get(dacx.getLayoutID());
+    Map<String, Layout.OverlayKeySet> globalKeys = dacx.getFGHO().fullModuleKeysPerLayout();    
+    Layout.OverlayKeySet loModKeys = globalKeys.get(dacx.getCurrentLayoutID());
+    Layout.PadNeedsForLayout localPadNeeds = bsd_.globalPadNeeds.get(dacx.getCurrentLayoutID());
     
-    Layout.SupplementalDataCoords sdc = dacx.getLayout().getSupplementalCoords(dacx, loModKeys);   
+    Layout.SupplementalDataCoords sdc = dacx.getCurrentLayout().getSupplementalCoords(dacx, loModKeys);   
     Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = 
-      dacx.getLayout().getModuleShapeParams(dacx, loModKeys, bsd_.center); 
+      dacx.getCurrentLayout().getModuleShapeParams(dacx, loModKeys, bsd_.center); 
     //
     // Go through the instructions and make list of pseudo motifs to generate
     //
@@ -1255,7 +1270,7 @@ public class BuildSupport {
     
     // Is the old pad mapper no longer needed since we just copy old links now?
     OldPadMapper oldPads = (bsd_.keepLayout) ? new OldPadMapper() : null;
-    extractDialogBuiltMotifs((DBGenome)dacx.getGenome(), protoPairs, oldPads);
+    extractDialogBuiltMotifs((DBGenome)dacx.getCurrentGenome(), protoPairs, oldPads);
     
     if (bsd_.monitor != null) {
       if (!bsd_.monitor.updateProgress((int)(end1 * 100.0))) {
@@ -1268,7 +1283,7 @@ public class BuildSupport {
     // until the BuildInstruction infrastructure supports them.
     //
     
-    DBGenome root = (DBGenome)dacx.getGenome();
+    DBGenome root = (DBGenome)dacx.getCurrentGenome();
     List<DBGeneRegion> emptyRegions = new ArrayList<DBGeneRegion>();
     Iterator<Gene> git = root.getGeneIterator();
     while (git.hasNext()) {
@@ -1276,7 +1291,7 @@ public class BuildSupport {
       if (gene.getNumRegions() != 0) {
         GenomeChange gc = root.changeGeneRegions(gene.getID(), emptyRegions);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx, gc);
           bsd_.support.addEdit(gcc);        
         }
       }
@@ -1289,25 +1304,25 @@ public class BuildSupport {
   
     HashSet<String> deadNodes = new HashSet<String>();
     HashSet<String> deadLinks = new HashSet<String>();
-    collectUnusedItems(dacx.getGenome(), protoPairs, deadNodes, deadLinks); 
-    RemoveSupport.deleteNodesAndLinksFromModel(appState_, deadNodes, deadLinks, dacx, bsd_.support, null, true);
+    collectUnusedItems(dacx.getCurrentGenome(), protoPairs, deadNodes, deadLinks); 
+    RemoveSupport.deleteNodesAndLinksFromModel(uics_, deadNodes, deadLinks, dacx, bsd_.support, null, true, uFac_);
       
     //
     // Get a copy of the Layout:
     //
     
-    Layout copiedLo = new Layout(dacx.getLayout());
+    Layout copiedLo = new Layout(dacx.getCurrentLayout());
  
     //
     // Completely kill off the existing genome, while holding a copy of the existing genome:
     //
 
-    DBGenome oldGenome = ((DBGenome)dacx.getGenome()).clone();
-    DataAccessContext rcxFrozen = new DataAccessContext(dacx, oldGenome, copiedLo);
+    DBGenome oldGenome = ((DBGenome)dacx.getCurrentGenome()).clone();
+    StaticDataAccessContext rcxFrozen = new StaticDataAccessContext(dacx, oldGenome, copiedLo);
     
-    Map<String, Integer> oldTypes = (bsd_.keepLayout) ? null : rememberTypes((DBGenome)dacx.getGenome());
+    Map<String, Integer> oldTypes = (bsd_.keepLayout) ? null : rememberTypes((DBGenome)dacx.getCurrentGenome());
     // This is dropping the old layout from the database, but we copied it above.
-    bsd_.support.addEdit(new DatabaseChangeCmd(appState_, dacx, dacx.dropRootNetworkOnly()));
+    bsd_.support.addEdit(new DatabaseChangeCmd(dacx, dacx.dropRootNetworkOnly()));
     
     //
     // Make all the new nodes by cranking though pseudo-motifs.
@@ -1326,9 +1341,9 @@ public class BuildSupport {
       bsd_.createdPairs = new ArrayList<DialogBuiltMotifPair>();
     }
     
-    InvertedSrcTrg ist = new InvertedSrcTrg(dacx.getGenome());
+    InvertedSrcTrg ist = new InvertedSrcTrg(dacx.getCurrentGenome());
     
-    buildItemsFromMotifs((DBGenome)dacx.getGenome(), oldGenome, dacx, protoPairs, bsd_.createdPairs,
+    buildItemsFromMotifs((DBGenome)dacx.getCurrentGenome(), oldGenome, dacx, protoPairs, bsd_.createdPairs,
                          bsd_.newNodeToOldNode, bsd_.newLinksToOldLinks, 
                          newTypesByID, newMotifs, oldPads, 
                          padConstraints, ist, bsd_.support);
@@ -1345,15 +1360,15 @@ public class BuildSupport {
     HashMap<NetModule.FullModuleKey, NetModule.FullModuleKey> keyMap = new HashMap<NetModule.FullModuleKey, NetModule.FullModuleKey>(); 
     HashMap<String, String> modIDMap = new HashMap<String, String>(); 
     HashMap<String, String> modLinkIDMap = new HashMap<String, String>(); 
-    Map<String, Layout.OverlayKeySet>  allKeysWithEmpties = dacx.fgho.fullModuleKeysPerLayout(true);
-    Layout.OverlayKeySet loModKeysWithEmpties = allKeysWithEmpties.get(dacx.getLayoutID());
+    Map<String, Layout.OverlayKeySet>  allKeysWithEmpties = dacx.getFGHO().fullModuleKeysPerLayout(true);
+    Layout.OverlayKeySet loModKeysWithEmpties = allKeysWithEmpties.get(dacx.getCurrentLayoutID());
     copiedLo.fillOverlayIdentityMaps(loModKeysWithEmpties, keyMap, modIDMap, modLinkIDMap);
     
     //
     // Recover overlays based on maps of surviving members
     //  
  
-    recoverMappedOverlays((DBGenome)dacx.getGenome(), oldGenome, bsd_.newNodeToOldNode);
+    recoverMappedOverlays((DBGenome)dacx.getCurrentGenome(), oldGenome, bsd_.newNodeToOldNode);
 
     if (bsd_.monitor != null) {
       if (!bsd_.monitor.updateProgress((int)(end3 * 100.0))) {
@@ -1367,14 +1382,14 @@ public class BuildSupport {
     
     HashMap<String, BusProperties.RememberProps> rememberLinkProps = new HashMap<String, BusProperties.RememberProps>();
       
-    DatabaseChange dc = dacx.lSrc.startLayoutUndoTransaction(dacx.getLayoutID());
+    DatabaseChange dc = dacx.getLayoutSource().startLayoutUndoTransaction(dacx.getCurrentLayoutID());
     
-    dacx.getLayout().transferLayoutFromLegacy(bsd_.newNodeToOldNode, bsd_.newLinksToOldLinks, null, 
+    dacx.getCurrentLayout().transferLayoutFromLegacy(bsd_.newNodeToOldNode, bsd_.newLinksToOldLinks, null, 
                                               keyMap, modLinkIDMap, null, !bsd_.keepLayout, rememberLinkProps, dacx, rcxFrozen);
     
     
-    dc = dacx.lSrc.finishLayoutUndoTransaction(dc);
-    bsd_.support.addEdit(new DatabaseChangeCmd(appState_, dacx, dc));
+    dc = dacx.getLayoutSource().finishLayoutUndoTransaction(dc);
+    bsd_.support.addEdit(new DatabaseChangeCmd(dacx, dc));
  
     if (bsd_.monitor != null) {
       if (!bsd_.monitor.updateProgress((int)(end4 * 100.0))) {
@@ -1430,7 +1445,7 @@ public class BuildSupport {
     if (bsd_.keepLayout && !wasEmpty) {
       // No new stuff? Nothing to do!
       if (!newTypesByID.isEmpty() || !nonLegacyLinks.isEmpty()) {
-        layoutResult = LayoutLinkSupport.autoLayoutHierarchical(appState_, dacx, bsd_.center, newTypesByID, 
+        layoutResult = LayoutLinkSupport.autoLayoutHierarchical(dacx, bsd_.center, newTypesByID, 
                                                                 nonLegacyLinks, bsd_.size, 
                                                                 bsd_.support,
                                                                 newMotifs, true,
@@ -1447,27 +1462,27 @@ public class BuildSupport {
       // Specialty layout assumes we are working off an existing layout, so create a junk one:
       //
 
-      AddCommands.junkLayout(appState_, dacx, bsd_.support); 
+      AddCommands.junkLayout(dacx, bsd_.support); 
        
-      GenomeSubset subset = new GenomeSubset(appState_, dacx.getGenomeID(), bsd_.center);
+      GenomeSubset subset = new GenomeSubset(dacx, bsd_.center);
       ArrayList<GenomeSubset> sList = new ArrayList<GenomeSubset>();
       sList.add(subset);
   
       NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null, null);
-      SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(appState_, sList, dacx, bsd_.specLayout, sa, bsd_.center, bsd_.params, true, bsd_.hideNames);
+      SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(sList, dacx, bsd_.specLayout, sa, bsd_.center, bsd_.params, true, bsd_.hideNames);
       sle.setModuleRecoveryData(localPadNeeds, moduleShapeRecovery);
       layoutResult = sle.specialtyLayout(bsd_.support, bsd_.monitor, end4, end5);
     }
-    bsd_.support.addEvent(new ModelChangeEvent(dacx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
-    bsd_.support.addEvent(new LayoutChangeEvent(dacx.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+    bsd_.support.addEvent(new ModelChangeEvent(dacx.getGenomeSource().getID(), dacx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+    bsd_.support.addEvent(new LayoutChangeEvent(dacx.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
  
     //
     // Fill out the node maps:
     //
       
     if (bsd_.nodeIDMap != null) {
-      Iterator<Node> anit = dacx.getGenome().getAllNodeIterator();
-      String modelID = dacx.getGenomeID();
+      Iterator<Node> anit = dacx.getCurrentGenome().getAllNodeIterator();
+      String modelID = dacx.getCurrentGenomeID();
       String modelName = bsd_.dbGenomeCSVName;
       while (anit.hasNext()) {
         Node node = anit.next();
@@ -1544,10 +1559,10 @@ public class BuildSupport {
   ** Get nodes to the correct size for all incoming links
   */  
  
-  private void fixNodeLengths(DataAccessContext dacx, UndoSupport support) {
-    Genome genome = dacx.getGenome();
+  private void fixNodeLengths(StaticDataAccessContext dacx, UndoSupport support) {
+    Genome genome = dacx.getCurrentGenome();
     Iterator<Node> nit = genome.getAllNodeIterator();
-    Layout lo = dacx.getLayout();
+    Layout lo = dacx.getCurrentLayout();
     while (nit.hasNext()) {
       Node node = nit.next();
       String nodeID = node.getID();
@@ -1561,7 +1576,7 @@ public class BuildSupport {
            gc = genome.changeNodeSize(nodeID, padreq.landing);
         }
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx, gc);
           support.addEdit(gcc);
         }
       }
@@ -1574,35 +1589,35 @@ public class BuildSupport {
   ** Build a region
   */  
  
-  public String buildRegion(DataAccessContext rcxI,
+  public String buildRegion(StaticDataAccessContext rcxI,
                             String region, Point2D groupCenter, UndoSupport support) {  
       
     // want key to be unique in parent address space!                             
     String groupKey = rcxI.getNextKey();
     
-    Group newGroup = new Group(rcxI.rMan, groupKey, region);
-    GenomeChange gc = rcxI.getGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
+    Group newGroup = new Group(rcxI.getRMan(), groupKey, region);
+    GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxI, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
       support.addEdit(gcc);
     }
     
-    int groupCount = rcxI.getGenomeAsInstance().groupCount();
-    int order = rcxI.getLayout().getTopGroupOrder() + 1;
+    int groupCount = rcxI.getCurrentGenomeAsInstance().groupCount();
+    int order = rcxI.getCurrentLayout().getTopGroupOrder() + 1;
     Layout.PropChange lpc = 
-      rcxI.getLayout().setGroupProperties(groupKey, new GroupProperties(groupCount, groupKey, rcxI.getLayout(), groupCenter, order, rcxI.cRes));
+      rcxI.getCurrentLayout().setGroupProperties(groupKey, new GroupProperties(groupCount, groupKey, groupCenter, order, rcxI.getColorResolver()));
     if (lpc != null) {
-      PropChangeCmd pcc = new PropChangeCmd(appState_, rcxI,  new Layout.PropChange[] {lpc});
+      PropChangeCmd pcc = new PropChangeCmd(rcxI,  new Layout.PropChange[] {lpc});
       support.addEdit(pcc);
     }
     
     
-    TimeCourseData tcd = rcxI.getExpDataSrc().getTimeCourseData();
+    TimeCourseDataMaps tcdm = rcxI.getDataMapSrc().getTimeCourseDataMaps();
     ArrayList<GroupUsage> mapped = new ArrayList<GroupUsage>();
     mapped.add(new GroupUsage(region, null));
-    TimeCourseChange tcc = tcd.setTimeCourseGroupMap(groupKey, mapped, true);      
+    TimeCourseChange tcc = tcdm.setTimeCourseGroupMap(groupKey, mapped, true);      
     if (tcc != null) {
-      support.addEdit(new TimeCourseChangeCmd(appState_, rcxI, tcc, false));
+      support.addEdit(new TimeCourseChangeCmd(rcxI, tcc, false));
     }    
 
     return (groupKey);
@@ -1614,7 +1629,7 @@ public class BuildSupport {
   ** 
   */  
  
-  private void buildItemsFromMotifs(DBGenome genome, DBGenome oldGenome, DataAccessContext dacx,
+  private void buildItemsFromMotifs(DBGenome genome, DBGenome oldGenome, StaticDataAccessContext dacx,
                                      List<DialogBuiltMotifPair> pairList, List<DialogBuiltMotifPair> createdPairs, 
                                      Map<String, String> newNodeToOldNode, Map<String, String> newLinksToOldLinks, 
                                      Map<String, Integer> newTypesByID, List<DialogBuiltMotif> newMotifs,
@@ -1643,7 +1658,7 @@ public class BuildSupport {
     }
    
     DialogBuiltProtoMotif.BuildData bd = 
-      new DialogBuiltProtoMotif.BuildData(appState_, dacx, genome, oldGenome,
+      new DialogBuiltProtoMotif.BuildData(dacx, genome, oldGenome,
                                           createdPairs, pairList, newNodeToOldNode, 
                                           newLinksToOldLinks, 
                                           newTypesByID, opm, 
@@ -1865,18 +1880,18 @@ public class BuildSupport {
   ** Record region bounds for saved layouts
   */  
  
-  public Map<String, Rectangle> saveRegionBounds(DataAccessContext rcx) { //GenomeInstance gi, Layout lo) {
+  public Map<String, Rectangle> saveRegionBounds(StaticDataAccessContext rcx) {
   
     HashMap<String, Rectangle> retval = new HashMap<String, Rectangle>();
-    Iterator<Group> git = rcx.getGenomeAsInstance().getGroupIterator();
+    Iterator<Group> git = rcx.getCurrentGenomeAsInstance().getGroupIterator();
     while (git.hasNext()) {
       Group group = git.next();
       String groupRef = group.getID();
-      GroupProperties gp = rcx.getLayout().getGroupProperties(groupRef);
+      GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(groupRef);
       if (gp.getLayer() != 0) {
         continue;
       }
-      Rectangle bounds = rcx.getLayout().getLayoutBoundsForGroup(group, rcx, true, false);
+      Rectangle bounds = rcx.getCurrentLayout().getLayoutBoundsForGroup(group, rcx, true, false);
       retval.put(groupRef, bounds);
     }
     return (retval);
@@ -1897,8 +1912,8 @@ public class BuildSupport {
   public static class PIData {
   
     List<DialogBuiltMotifPair> createdPairs;
-    DataAccessContext rcxR; 
-    DataAccessContext rcxI;
+    StaticDataAccessContext rcxR; 
+    StaticDataAccessContext rcxI;
     //DBGenome dbg; 
     //GenomeInstance gi; 
     GenomeInstance oldGi;
@@ -1912,25 +1927,20 @@ public class BuildSupport {
     boolean existingOnly;
   
     public PIData(List<DialogBuiltMotifPair> createdPairs,
-                  DataAccessContext rcxR, DataAccessContext rcxI,
-                //  DBGenome dbg, GenomeInstance gi, 
+                  StaticDataAccessContext rcxR, StaticDataAccessContext rcxI,
                   GenomeInstance oldGi,
                   Map<String, String> regionMap, Map<String, List<RegionInstance>> instanceMap, 
                   Map<String, List<RegionTupleInstance>> linkInstanceMap, 
-                  //Layout lor,
                   UndoSupport support, Map<String, Map<GenomeInstance.GroupTuple, SubsetCacheValues>> instructionCache, 
                   LegacyInstanceIdMapper liidm, boolean existingOnly) { 
      
       this.createdPairs = createdPairs;
       this.rcxR = rcxR;
       this.rcxI = rcxI;
-     // this.dbg = dbg;
-    //  this.gi = gi;
       this.oldGi = oldGi;
       this.regionMap = regionMap;
       this.instanceMap = instanceMap;
       this.linkInstanceMap = linkInstanceMap;
-    //  this.lor = lor;
       this.support = support;
       this.instructionCache = instructionCache;
       this.liidm = liidm;
@@ -2149,7 +2159,7 @@ public class BuildSupport {
     ** Used for preserving incremental layout for root instances
     */  
 
-    void recordLegacyInstancesForRegions(DBGenome dbg, GenomeInstance gi) {  
+    void recordLegacyInstancesForRegions(GenomeInstance gi) {  
 
       //
       // Record the instance id for each node 

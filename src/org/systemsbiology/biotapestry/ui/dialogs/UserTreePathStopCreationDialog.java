@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,8 @@ import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.UserTreePath;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.nav.UserTreePathManager;
@@ -58,7 +59,6 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   private String pathKey_;
   private JLabel addInstructionsLabel_;
   private String lastPathKey_;
-  private BTState appState_;
   
   private static final long serialVersionUID = 1L;
   
@@ -73,17 +73,16 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public UserTreePathStopCreationDialog(BTState appState) {     
-    super(appState, "pathStopCreate.title", new Dimension(600, 300), 3);
-    appState_ = appState;
-    lastPathKey_ = appState.getPathController().getLastPath();        
+  public UserTreePathStopCreationDialog(UIComponentSource uics, DataAccessContext dacx) {     
+    super(uics, dacx, "pathStopCreate.title", new Dimension(600, 300), 3);
+    lastPathKey_ = uics_.getPathController().getLastPath();        
    
     //
     // Build the path selection
     //
     
     JLabel label = new JLabel(rMan_.getString("pathStopCreate.paths"));
-    UserTreePathManager mgr = appState_.getPathMgr();
+    UserTreePathManager mgr = uics_.getPathMgr();
     Vector<ObjChoiceContent> pathChoices = mgr.getPathChoices();
     pathCombo_ = new JComboBox<ObjChoiceContent>(pathChoices);
     if (lastPathKey_ != null) {
@@ -95,7 +94,7 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
         try {
           setInstructions();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -109,15 +108,15 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
     //
     
     label = new JLabel(rMan_.getString("pathStopCreate.insertStop"));
-    Vector<ObjChoiceContent> modeChoices = UserTreePathController.insertionOptions(appState_);
+    Vector<ObjChoiceContent> modeChoices = UserTreePathController.insertionOptions(dacx_);
     modeCombo_ = new JComboBox<ObjChoiceContent>(modeChoices);
-    modeCombo_.setSelectedItem(UserTreePathController.choiceForOption(appState_, UserTreePathController.INSERT_END));
+    modeCombo_.setSelectedItem(UserTreePathController.choiceForOption(dacx_, UserTreePathController.INSERT_END));
     modeCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
           setInstructions();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -173,17 +172,17 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private void setInstructions() { 
+  private void setInstructions() {
     ObjChoiceContent ocMode = (ObjChoiceContent)modeCombo_.getSelectedItem();   
     String instruct;
     if (ocMode.val.equals(UserTreePathController.INSERT_AFTER_CURRENT)) {
       ObjChoiceContent ocPath = (ObjChoiceContent)pathCombo_.getSelectedItem();
-      UserTreePathManager mgr = appState_.getPathMgr();
+      UserTreePathManager mgr = uics_.getPathMgr();
       UserTreePath path = mgr.getPath(ocPath.val);
       int numStops = path.getStopCount();
-      Integer lsObj = appState_.getPathController().getLastStop(ocPath.val);
+      Integer lsObj = uics_.getPathController().getLastStop(ocPath.val);
       int newIndexVal = (lsObj == null) ? numStops : lsObj.intValue() + 2; 
-      String format = appState_.getRMan().getString("pathStopCreate.insertStopAdvisory");
+      String format = dacx_.getRMan().getString("pathStopCreate.insertStopAdvisory");
       instruct = MessageFormat.format(format, new Object[] {new Integer(newIndexVal), new Integer(numStops)});
     } else {
       instruct = "";
@@ -199,18 +198,18 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   ** 
   */
   
-  protected boolean stashForOK() {  
+  protected boolean stashForOK() { 
     ObjChoiceContent occ = (ObjChoiceContent)pathCombo_.getSelectedItem();
-    UserTreePathManager mgr = appState_.getPathMgr();
+    UserTreePathManager mgr = uics_.getPathMgr();
     UserTreePath path = mgr.getPath(occ.val);
-    String genomeID = appState_.getGenome();
-    String ovrKey = appState_.getCurrentOverlay();
-    TaggedSet mods = appState_.getCurrentNetModules();
-    TaggedSet revs = appState_.getRevealedModules();     
+    String genomeID = dacx_.getCurrentGenomeID();
+    String ovrKey = dacx_.getOSO().getCurrentOverlay();
+    TaggedSet mods = dacx_.getOSO().getCurrentNetModules();
+    TaggedSet revs = dacx_.getOSO().getRevealedModules();     
     UserTreePathStop newStop = new UserTreePathStop(genomeID, ovrKey, mods, revs);
     if (path.containsStop(newStop)) {
-      ResourceManager rMan = appState_.getRMan();
-      int cont = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      int cont = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                rMan.getString("pathStopCreate.insertDuplicateStop"), 
                                                rMan.getString("pathStopCreate.insertDuplicateStopTitle"),
                                                JOptionPane.YES_NO_OPTION);

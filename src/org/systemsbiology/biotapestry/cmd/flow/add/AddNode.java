@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,20 +30,21 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GroupChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -97,8 +98,7 @@ public class AddNode extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNode(BTState appState, boolean doGene) {
-    super(appState);
+  public AddNode(boolean doGene) {
     doGene_ = doGene;
     name = (doGene) ? "command.Add" : "command.AddNode";
     desc = (doGene) ? "command.Add" : "command.AddNode";
@@ -154,8 +154,8 @@ public class AddNode extends AbstractControlFlow {
   */ 
   
   @Override      
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    AddNodeState retval = new AddNodeState(appState_, doGene_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    AddNodeState retval = new AddNodeState(doGene_, dacx);
     return (retval);  
   }
   
@@ -168,25 +168,26 @@ public class AddNode extends AbstractControlFlow {
   public DialogAndInProcessCmd processNextStep(ServerControlFlowHarness cfh, DialogAndInProcessCmd last) {
     DialogAndInProcessCmd next;
     // Last test is to insure this only executes once:
-    if ((last != null) && (((AddNodeState)last.currStateX).rcxT_ == null)) {
+    if ((last != null) && (((AddNodeState)last.currStateX).getDACX() == null)) {
       AddNodeState ans = (AddNodeState)last.currStateX;
+      ans.stockCfhIfNeeded(cfh);
       ans.doGene = doGene_;
-      ans.currentOverlay = appState_.getCurrentOverlay();
-      ans.rcxT_ = cfh.getDataAccessContext();
-      ans.rcxR_ = ans.rcxT_.getContextForRoot();
-      ans.cfh = cfh;
-      next = ans.stepBiWarning(cfh);
+      ans.rcxR_ = ans.getDACX().getContextForRoot();
+      ans.currentOverlay = ans.getDACX().getOSO().getCurrentOverlay();
+      ans.setNextStep("stepBiWarning");
+      next = ans.stepBiWarning();
     }
   
     while (true) {
       if (last == null) {
-        AddNodeState ans = new AddNodeState(appState_, doGene_, cfh.getDataAccessContext());
+        AddNodeState ans = new AddNodeState(cfh, doGene_);
         ans.doGene = doGene_;
-        ans.currentOverlay = appState_.getCurrentOverlay();
-        ans.cfh = cfh;       
-        next = ans.stepBiWarning(cfh);
+        ans.currentOverlay = ans.getDACX().getOSO().getCurrentOverlay();
+        ans.setNextStep("stepBiWarning");
+        next = ans.stepBiWarning();
       } else {
         AddNodeState ans = (AddNodeState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGenNodeInfoDialog")) {
           next = ans.stepGenNodeInfoDialog(cfh);
         } else if (ans.getNextStep().equals("stepBuildNodeCreationInfo")) {
@@ -228,24 +229,24 @@ public class AddNode extends AbstractControlFlow {
     AddNodeState ans = (AddNodeState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     ans.changeViz = false;
     DialogAndInProcessCmd retval;
-    if (ans.rcxT_.getGenome() instanceof GenomeInstance) {
-      retval = ans.nodeAddForGenomeInstance(ans.cfh);
+    if (ans.getDACX().currentGenomeIsAnInstance()) {
+      retval = ans.nodeAddForGenomeInstance();
     } else {
       AddNodeSupport.BlackHoleResults bhr = ans.droppingIntoABlackHole();
       ans.modCandidates = bhr.modCandidates;
       if (bhr.intoABlackHole) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = ans.getDACX().getRMan();
         String message = UiUtil.convertMessageToHtml(rMan.getString("intoBlackHole.resetViz"));
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, message, rMan.getString("intoBlackHole.resetVizTitle"));
         retval = new DialogAndInProcessCmd(suf, ans);      
-        ans.nextStep_ = "stepProcessBlackHoleAnswer";
+        ans.setNextStep("stepProcessBlackHoleAnswer");
         ans.nextNextStep = "stepNodeAddForDBGenome";
       } else {
         retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-        ans.nextStep_ = "stepNodeAddForDBGenome"; 
+        ans.setNextStep("stepNodeAddForDBGenome"); 
       }
     }
     return (retval);
@@ -256,21 +257,13 @@ public class AddNode extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class AddNodeState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class AddNodeState extends AbstractStepState implements DialogAndInProcessCmd.MouseClickCmdState {
      
-  //  private Genome genome; 
     private String currentOverlay;
- //  private String genomeKey;
-  //  private String layoutKey;
     private boolean doGene;
-    private ServerControlFlowHarness cfh;
     private AddNodeSupport ansu_; 
-    private DataAccessContext rcxT_;
-    private DataAccessContext rcxR_;
-     //--------------------
-     
-     
-    private String nextStep_;
+    private StaticDataAccessContext rcxR_;
+
     private String nextNextStep;
 
     private Node newRootNode;
@@ -298,11 +291,17 @@ public class AddNode extends AbstractControlFlow {
     private NodeReuse reuse;
 
     private Group intersectGroup;
-     
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    
+    /***************************************************************************
+    **
+    ** Constructor
+    */
+       
+    public AddNodeState(boolean doGene, StaticDataAccessContext dacx) {
+      super(dacx);
+      ansu_ = new AddNodeSupport(doGene, uics_, dacx_);
+      rcxR_ = dacx_.getContextForRoot();
     }
     
     /***************************************************************************
@@ -310,13 +309,12 @@ public class AddNode extends AbstractControlFlow {
     ** Constructor
     */
        
-    public AddNodeState(BTState appState, boolean doGene, DataAccessContext dacx) {
-      appState_ = appState;
-      ansu_ = new AddNodeSupport(appState, doGene, dacx);
-      rcxT_ = dacx;
-      rcxR_ = rcxT_.getContextForRoot();
+    public AddNodeState(ServerControlFlowHarness cfh, boolean doGene) {
+      super(cfh);
+      ansu_ = new AddNodeSupport(doGene, uics_, dacx_);
+      rcxR_ = dacx_.getContextForRoot();
     }
-     
+  
     /***************************************************************************
     **
     ** mouse masking
@@ -363,7 +361,7 @@ public class AddNode extends AbstractControlFlow {
     }
     
     public void setFloaterPropsInLayout(Layout flay) {
-      NodeProperties nprop = new NodeProperties(rcxT_.cRes, flay, ansu_.getNewNode().getNodeType(), ansu_.getNewNode().getID(), 0.0, 0.0, false);
+      NodeProperties nprop = new NodeProperties(dacx_.getColorResolver(), ansu_.getNewNode().getNodeType(), ansu_.getNewNode().getID(), 0.0, 0.0, false);
       flay.setNodeProperties(ansu_.getNewNode().getID(), nprop); 
       return;
     }
@@ -410,7 +408,7 @@ public class AddNode extends AbstractControlFlow {
       // Further analysis of existing gene:
       //
       
-      GenomeInstance rgi = rcxT_.getGenomeAsInstance().getVfgParentRoot();
+      GenomeInstance rgi = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
       boolean doingSubsetModel = (rgi != null);
       String prefix = (doGene) ? "drawNewGene" : "drawNewNode";
   
@@ -421,17 +419,17 @@ public class AddNode extends AbstractControlFlow {
         if (!doingSubsetModel) {
           throw new IllegalStateException();
         }
-        if (!haveRequiredGroup(idResult, rcxT_.getGenomeAsInstance(), rgi) || (rcxT_.getGenome().getNode(idResult) != null)) { 
-          String message = UiUtil.convertMessageToHtml(rcxT_.rMan.getString(prefix + ".noTargsSubsetModel"));
-          String title = rcxT_.rMan.getString(prefix + ".noTargsTitle");
+        if (!haveRequiredGroup(idResult, dacx_.getCurrentGenomeAsInstance(), rgi) || (dacx_.getCurrentGenome().getNode(idResult) != null)) { 
+          String message = UiUtil.convertMessageToHtml(dacx_.getRMan().getString(prefix + ".noTargsSubsetModel"));
+          String title = dacx_.getRMan().getString(prefix + ".noTargsTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);
           result.setBooleanAnswer("haveResult", false);
           result.setSimpleUserFeedback(suf);
           result.setDirection(RemoteRequest.Progress.STOP);
           return (result);   
         } else {
-          String message = rcxT_.rMan.getString(prefix + ".immediateAdd");
-          String title = rcxT_.rMan.getString(prefix + ".immediateAddTitle");
+          String message = dacx_.getRMan().getString(prefix + ".immediateAdd");
+          String title = dacx_.getRMan().getString(prefix + ".immediateAddTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.PLAIN, message, title);
           result.setBooleanAnswer("haveResult", true);
           result.setBooleanAnswer("immediateAdd", true);
@@ -460,14 +458,14 @@ public class AddNode extends AbstractControlFlow {
       // able to draw where they want it:
       //
        
-      GenomeInstance rgi = rcxT_.getGenomeAsInstance().getVfgParentRoot();
+      GenomeInstance rgi = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
       boolean doingSubsetModel = (rgi != null);
       String prefix = (doGene) ? "drawNewGene" : "drawNewNode";
   
       if (!doingSubsetModel) {
-        if (getTargetGroups(idResult, rcxT_.getGenomeAsInstance(), doGene).size() == 0) {
-          String message = UiUtil.convertMessageToHtml(rcxT_.rMan.getString(prefix + ".noTargs"));
-          String title = rcxT_.rMan.getString(prefix + ".noTargsTitle");
+        if (getTargetGroups(idResult, dacx_.getCurrentGenomeAsInstance(), doGene).size() == 0) {
+          String message = UiUtil.convertMessageToHtml(dacx_.getRMan().getString(prefix + ".noTargs"));
+          String title = dacx_.getRMan().getString(prefix + ".noTargsTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title); 
           result.setBooleanAnswer("haveResult", false);
           result.setSimpleUserFeedback(suf);
@@ -499,11 +497,11 @@ public class AddNode extends AbstractControlFlow {
       // a copy already.  If not, the user still needs to draw where they want the gene to go:
       //
   
-      ResourceManager rMan = appState_.getRMan();
-      GenomeInstance rgi = rcxT_.getGenomeAsInstance().getVfgParentRoot();
+      ResourceManager rMan = dacx_.getRMan();
+      GenomeInstance rgi = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
       String prefix = (doGene) ? "drawNewGene" : "drawNewNode";
         
-      Set<String> targGroups = getTargetGroups(idResult, rcxT_.getGenomeAsInstance(), doGene);
+      Set<String> targGroups = getTargetGroups(idResult, dacx_.getCurrentGenomeAsInstance(), doGene);
       int numTarg = targGroups.size();
       if (numTarg == 0) {
         String message = UiUtil.convertMessageToHtml(rMan.getString(prefix + ".noTargs"));
@@ -595,10 +593,10 @@ public class AddNode extends AbstractControlFlow {
     ** Warn of build instructions
     */
       
-    private DialogAndInProcessCmd stepBiWarning(ServerControlFlowHarness cfh) {
+    private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -617,13 +615,13 @@ public class AddNode extends AbstractControlFlow {
          
     private DialogAndInProcessCmd stepGenNodeInfoDialog(ServerControlFlowHarness cfh) {
     
-      TaggedSet currentNetMods = appState_.getCurrentNetModules();  
+      TaggedSet currentNetMods = dacx_.getOSO().getCurrentNetModules();  
  
       DialogAndInProcessCmd daipc;
-      if (rcxT_.getGenome() instanceof GenomeInstance) {
-        daipc = ansu_.getInstanceCreationDialog(cfh, rcxT_.getGenomeAsInstance(), rcxT_.getDBGenome(), currentNetMods.set, this);     
+      if (dacx_.currentGenomeIsAnInstance()) {
+        daipc = ansu_.getInstanceCreationDialog(cfh, dacx_, currentNetMods.set, this);     
       } else {    
-        daipc = ansu_.getRootCreationDialog(cfh, (DBGenome)rcxT_.getGenome(), currentNetMods.set, this);      
+        daipc = ansu_.getRootCreationDialog(cfh, dacx_, currentNetMods.set, this);      
       }
       nextStep_ = "stepBuildNodeCreationInfo";
       return (daipc);
@@ -638,15 +636,15 @@ public class AddNode extends AbstractControlFlow {
 
       DialogAndInProcessCmd retval;
          
-      if (rcxT_.getGenome() instanceof GenomeInstance) {
-        AddNodeSupport.NetModuleIntersector nmi = new AddNodeSupport.NetModuleIntersector(appState_, rcxT_);
+      if (dacx_.currentGenomeIsAnInstance()) {
+        AddNodeSupport.NetModuleIntersector nmi = new AddNodeSupport.NetModuleIntersector(uics_, dacx_);
         ansu_.extractNewInstanceNodeInfo(lastDaipc);         
         if (ansu_.getNci() == null) {
           ansu_.clearCandidate();
           retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going 
           nextStep_ = "stepSetToMode";
         } else {
-          retval = drawNewNodeToInstanceStart(nmi, rcxT_, rcxR_);
+          retval = drawNewNodeToInstanceStart(nmi, dacx_, rcxR_);
           // Heads us off on a more roundabout route.... 
         }
       } else {  // We are NOT an instance!  
@@ -682,7 +680,8 @@ public class AddNode extends AbstractControlFlow {
     ** Add a gene to an instance model via drawing
     */  
    
-    private DialogAndInProcessCmd drawNewNodeToInstanceStart(AddNodeSupport.NetModuleIntersector intersector, DataAccessContext rcxT, DataAccessContext rcxR) {
+    private DialogAndInProcessCmd drawNewNodeToInstanceStart(AddNodeSupport.NetModuleIntersector intersector, 
+                                                             StaticDataAccessContext rcxT, StaticDataAccessContext rcxR) {
    
       //
       // Add it
@@ -694,13 +693,15 @@ public class AddNode extends AbstractControlFlow {
         }
         nodeID = rcxT.getNextKey();
         if (doGene) {
-          newRootNode = new DBGene(appState_, ansu_.getNci().newName, nodeID);
+          newRootNode = new DBGene(rcxT, ansu_.getNci().newName, nodeID);
         } else {
-          newRootNode = new DBNode(appState_, ansu_.getNci().newType, ansu_.getNci().newName, nodeID);
+          newRootNode = new DBNode(rcxT, ansu_.getNci().newType, ansu_.getNci().newName, nodeID);
         }      
         existingRootNode = null;
-        DBGenome holdingGenome = new DBGenome(appState_, "fake", "_BT_FAKE_HOLDING_GENOME_");
-        lgs = new LocalGenomeSource(holdingGenome, holdingGenome);
+        lgs = new LocalGenomeSource();
+        DataAccessContext dacx = new StaticDataAccessContext(rcxT, lgs, rcxT.getCurrentGenome(), rcxT.getCurrentLayout());
+        DBGenome holdingGenome = new DBGenome(dacx, "fake", "_BT_FAKE_HOLDING_GENOME_");
+        lgs.install(holdingGenome, holdingGenome);
         if (doGene) {
           holdingGenome.addGene((Gene)newRootNode);
         } else {
@@ -711,17 +712,17 @@ public class AddNode extends AbstractControlFlow {
       } else {
         nodeID = ansu_.getNci().oldID;
         newRootNode = null;
-        existingRootNode = rcxR.getGenome().getNode(GenomeItemInstance.getBaseID(ansu_.getNci().oldID));
+        existingRootNode = rcxR.getCurrentGenome().getNode(GenomeItemInstance.getBaseID(ansu_.getNci().oldID));
         rootNode = existingRootNode;
         rootType = existingRootNode.getNodeType();
       }
       
       DialogAndInProcessCmd retval;
       if (ansu_.getNci().immediateAdd) {
-        ansu_.setNewNode(rcxT.getGenomeAsInstance().getVfgParentRoot().getNode(nodeID));  // can work with original; only need ID
+        ansu_.setNewNode(rcxT.getCurrentGenomeAsInstance().getVfgParentRoot().getNode(nodeID));  // can work with original; only need ID
         modCandidates = null;
         if (ansu_.getNci().addToModule) {
-          NodeProperties np = rcxT.getLayout().getNodeProperties(nodeID);
+          NodeProperties np = rcxT.getCurrentLayout().getNodeProperties(nodeID);
           Point2D nodeLoc = np.getLocation();
           modCandidates = intersector.netModuleIntersections((int)nodeLoc.getX(), (int)nodeLoc.getY(), 0.0);
         }
@@ -743,7 +744,7 @@ public class AddNode extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepCreateNewInstanceNode() {
-      ansu_.createNewNodeForInstance(rcxT_.getGenomeAsInstance(), nodeID, rootNode, rootType, lgs);
+      ansu_.createNewNodeForInstance(dacx_, nodeID, rootNode, rootType, lgs);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
       nextStep_ = "stepSetToMode";   
       return (retval); 
@@ -757,7 +758,8 @@ public class AddNode extends AbstractControlFlow {
    
     private enum AddLevel {ADDING_ONLY_TO_ROOT_, ADD_ALL_LEVELS_, ADD_BELOW_ROOT_};
   
-    private DialogAndInProcessCmd calculateLevelAdds(Group group, boolean intoBlackHole, DataAccessContext rcxT, DataAccessContext rcxR) {   
+    private DialogAndInProcessCmd calculateLevelAdds(Group group, boolean intoBlackHole, 
+                                                     StaticDataAccessContext rcxT, StaticDataAccessContext rcxR) {   
       //
       // If we are working at the root instance level, then we need to 
       // check and see if we are adding the node to a group that does
@@ -773,7 +775,7 @@ public class AddNode extends AbstractControlFlow {
       inGrpID = null;
       rootNodeInstance = null;
       
-      if (rcxT.getGenomeAsInstance().getVfgParent() == null) {
+      if (rcxT.getCurrentGenomeAsInstance().getVfgParent() == null) {
         // instanceIsInGroup gotta be called for VfAroots only!
         if (group.instanceIsInGroup(GenomeItemInstance.getBaseID(ansu_.getNewNode().getID()))) {
           DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this);
@@ -783,7 +785,7 @@ public class AddNode extends AbstractControlFlow {
         mode = AddLevel.ADDING_ONLY_TO_ROOT_;
         rootGroup = group;
       } else if (group != null) {
-        GenomeInstance rootVfg = rcxT.getGenomeAsInstance().getVfgParentRoot();
+        GenomeInstance rootVfg = rcxT.getCurrentGenomeAsInstance().getVfgParentRoot();
         String baseGrpID = Group.getBaseID(group.getID());   
         int genCount = rootVfg.getGeneration();
         String inherit = Group.buildInheritedID(baseGrpID, genCount);
@@ -795,7 +797,7 @@ public class AddNode extends AbstractControlFlow {
           mode = AddLevel.ADD_ALL_LEVELS_;
         } else {
           inGrpID = rootNodeInstance.getID();
-          Node inSub = rcxT.getGenome().getNode(inGrpID);
+          Node inSub = rcxT.getCurrentGenome().getNode(inGrpID);
           if (inSub == null) {
             // case 2
             mode = AddLevel.ADD_BELOW_ROOT_;
@@ -809,7 +811,7 @@ public class AddNode extends AbstractControlFlow {
       } else { //immediate mode (this method called before user draws)
         mode = AddLevel.ADD_BELOW_ROOT_; 
         rootGroup = null; // don't need it
-        GenomeInstance rootVfg = rcxT.getGenomeAsInstance().getVfgParentRoot();
+        GenomeInstance rootVfg = rcxT.getCurrentGenomeAsInstance().getVfgParentRoot();
         rootNodeInstance = (NodeInstance)rootVfg.getNode(ansu_.getNewNode().getID());
       }
    
@@ -817,8 +819,8 @@ public class AddNode extends AbstractControlFlow {
       // Adding in a node may mess up existing net module linkages.  Record existing
       // state before changing anything:
       //      
-      rootFixups = (newRootNode != null) ? rcxR_.getLayout().findAllNetModuleLinkPadRequirements(rcxR_) : null;
-      padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
+      rootFixups = (newRootNode != null) ? rcxR.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcxR) : null;
+      padFixups = rcxT.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcxT);
   
       //
       // Give user the chance to change the viz if they are falling into a black hole:
@@ -826,7 +828,7 @@ public class AddNode extends AbstractControlFlow {
       DialogAndInProcessCmd retval;
       changeViz = false;
       if (intoBlackHole) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = rcxR.getRMan();
         String message = UiUtil.convertMessageToHtml(rMan.getString("intoBlackHole.resetViz")); 
         String title = rMan.getString("intoBlackHole.resetVizTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, message, title);     
@@ -865,11 +867,11 @@ public class AddNode extends AbstractControlFlow {
   
     private DialogAndInProcessCmd stepDoTheInstanceInstall() {   
      
-      UndoSupport support = new UndoSupport(appState_, (doGene) ? "undo.addGeneToInstance" : "undo.addNodeToInstance");
+      UndoSupport support = uFac_.provideUndoSupport((doGene) ? "undo.addGeneToInstance" : "undo.addNodeToInstance", dacx_);
       
       ArrayList<GenomeInstance> ancestry = new ArrayList<GenomeInstance>();
-      ancestry.add(rcxT_.getGenomeAsInstance());
-      GenomeInstance parent = rcxT_.getGenomeAsInstance().getVfgParent();
+      ancestry.add(dacx_.getCurrentGenomeAsInstance());
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       while (parent != null) {
         ancestry.add(parent);
         parent = parent.getVfgParent();
@@ -880,16 +882,16 @@ public class AddNode extends AbstractControlFlow {
       int aNum = ancestry.size();
       for (int i = 0; i < aNum; i++) {
         GenomeInstance gi = ancestry.get(i);
-        DataAccessContext rcxA = new DataAccessContext(rcxT_, gi);
+        StaticDataAccessContext rcxA = new StaticDataAccessContext(dacx_, gi);
         if (i == 0) {
           if (mode != AddLevel.ADD_BELOW_ROOT_) {
-            drawNewNodeAddForRootInstance(rootGroup, gi, support, rcxT_, rcxR_);
+            drawNewNodeAddForRootInstance(rootGroup, gi, support);
             if (mode == AddLevel.ADDING_ONLY_TO_ROOT_) {
-              AddCommands.drawIntoNetModuleSupport(appState_, ansu_.getNewNode(), modCandidates, rcxA, currentOverlay, support);
-              AddCommands.finishNetModPadFixups(appState_, rcxR_, rootFixups, rcxA, padFixups, support);
+              AddCommands.drawIntoNetModuleSupport(ansu_.getNewNode(), modCandidates, rcxA, currentOverlay, support);
+              AddCommands.finishNetModPadFixups(rcxR_, rootFixups, rcxA, padFixups, support);
               support.finish();
               if (changeViz) {
-                NetOverlayController noc = appState_.getNetOverlayController();
+                NetOverlayController noc = uics_.getNetOverlayController();
                 noc.setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
               }
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this));         
@@ -903,10 +905,10 @@ public class AddNode extends AbstractControlFlow {
         } else {
           Node inSub = gi.getNode(inGrpID);
           if (inSub == null) {
-            PropagateSupport.addNewNodeToSubsetInstance(appState_, rcxA, pInst, support);
+            PropagateSupport.addNewNodeToSubsetInstance(rcxA, pInst, support);
             inSub = gi.getNode(inGrpID);
             if (i == (aNum - 1)) {
-              AddCommands.drawIntoNetModuleSupport(appState_, inSub, modCandidates, rcxA, currentOverlay, support);
+              AddCommands.drawIntoNetModuleSupport(inSub, modCandidates, rcxA, currentOverlay, support);
             }
           }
           pInst = (NodeInstance)inSub;
@@ -917,11 +919,11 @@ public class AddNode extends AbstractControlFlow {
       // Repair net module pads, if needed:
       //
        
-      AddCommands.finishNetModPadFixups(appState_, rcxR_, rootFixups, rcxT_, padFixups, support); 
+      AddCommands.finishNetModPadFixups(rcxR_, rootFixups, dacx_, padFixups, support); 
       support.finish(); 
    
       if (changeViz) {
-        NetOverlayController noc = appState_.getNetOverlayController();
+        NetOverlayController noc = uics_.getNetOverlayController();
         noc.setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
       }
       
@@ -946,23 +948,23 @@ public class AddNode extends AbstractControlFlow {
       // NOTE: Was getting a crash here with null targetLayout on root gene add on web client. Is this still
       // the case??
       
-      Layout.PadNeedsForLayout padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);
+      Layout.PadNeedsForLayout padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);
    
       //
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, doGene ? "undo.addGene" : "undo.addNode");     
+      UndoSupport support = uFac_.provideUndoSupport(doGene ? "undo.addGene" : "undo.addNode", dacx_);     
       
       GenomeChange gc;
       if (doGene) {
-        gc = ((DBGenome)rcxT_.getGenome()).addGeneWithExistingLabel((Gene)ansu_.getNewNode());
+        gc = dacx_.getCurrentGenomeAsDBGenome().addGeneWithExistingLabel((Gene)ansu_.getNewNode());
       } else {
-        gc = ((DBGenome)rcxT_.getGenome()).addNodeWithExistingLabel(ansu_.getNewNode());
+        gc = dacx_.getCurrentGenomeAsDBGenome().addNodeWithExistingLabel(ansu_.getNewNode());
       }    
       
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
       
@@ -970,18 +972,18 @@ public class AddNode extends AbstractControlFlow {
       // If instructed to add to current net module, do so here:
       //
       
-      AddCommands.drawIntoNetModuleSupport(appState_, ansu_.getNewNode(), modCandidates, rcxT_, currentOverlay, support);
+      AddCommands.drawIntoNetModuleSupport(ansu_.getNewNode(), modCandidates, dacx_, currentOverlay, support);
       
       //
       // Install node properties 
       //
       
-      NodeProperties np = new NodeProperties(rcxT_.cRes, rcxT_.getLayout(), ansu_.getNewNode().getNodeType(), 
+      NodeProperties np = new NodeProperties(dacx_.getColorResolver(), ansu_.getNewNode().getNodeType(), 
                                              ansu_.getNewNode().getID(), x, y, false);
       Layout.PropChange[] lpc = new Layout.PropChange[1]; 
-      lpc[0] = rcxT_.getLayout().setNodeProperties(ansu_.getNewNode().getID(), np);
+      lpc[0] = dacx_.getCurrentLayout().setNodeProperties(ansu_.getNewNode().getID(), np);
       if (lpc != null) {
-        PropChangeCmd pcc = new PropChangeCmd(appState_, rcxT_, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(dacx_, lpc);
         support.addEdit(pcc);
       }     
        
@@ -989,13 +991,13 @@ public class AddNode extends AbstractControlFlow {
       // Module link pad fixups:
       //
       
-      AddCommands.finishNetModPadFixups(appState_, null, null, rcxT_, padFixups, support);
+      AddCommands.finishNetModPadFixups(null, null, dacx_, padFixups, support);
       
-      support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
       support.finish();
       
       if (changeViz) {
-        NetOverlayController noc = appState_.getNetOverlayController();
+        NetOverlayController noc = uics_.getNetOverlayController();
         noc.setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
       }
       return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this)); 
@@ -1006,23 +1008,23 @@ public class AddNode extends AbstractControlFlow {
     ** Locate a new node in an instance, and get it into the root too if needed.
     */  
       
-    private boolean drawNewNodeAddForRootInstance(Group group, GenomeInstance rootVfg, UndoSupport support, DataAccessContext rcxT, DataAccessContext rcxR) {
+    private boolean drawNewNodeAddForRootInstance(Group group, GenomeInstance rootVfg, UndoSupport support) {
       //
       // If the gene does not exist already at the top, put it there:
       //     
       if (newRootNode != null) {
         GenomeChange gc;
         if (doGene) {
-          gc = ((DBGenome)rcxR.getGenome()).addGeneWithExistingLabel((Gene)newRootNode);
+          gc = dacx_.getDBGenome().addGeneWithExistingLabel((Gene)newRootNode);
         } else {
-          gc = ((DBGenome)rcxR.getGenome()).addNodeWithExistingLabel(newRootNode);
+          gc = dacx_.getDBGenome().addNodeWithExistingLabel(newRootNode);
         }
         
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
           support.addEdit(gcc);
         }
-        support.addEvent(new ModelChangeEvent(rcxR.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rcxR_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
         //    appState_.getDB().clearHoldingGenome(); NO More! Do this instead:
         ((NodeInstance)ansu_.getNewNode()).setGenomeSource(null);
         lgs = null;
@@ -1031,15 +1033,15 @@ public class AddNode extends AbstractControlFlow {
         // Propagate node properties to all interested layouts
         //
        
-        NodeProperties np = new NodeProperties(rcxR.cRes, rcxR.getLayout(), newRootNode.getNodeType(), 
+        NodeProperties np = new NodeProperties(rcxR_.getColorResolver(), newRootNode.getNodeType(), 
                                                newRootNode.getID(), x, y, false);
         Layout.PropChange[] lpc = new Layout.PropChange[1]; 
-        lpc[0] = rcxR.getLayout().setNodeProperties(newRootNode.getID(), np);
+        lpc[0] = rcxR_.getCurrentLayout().setNodeProperties(newRootNode.getID(), np);
         if (lpc != null) {
-          PropChangeCmd pcc = new PropChangeCmd(appState_, rcxT_, lpc);
+          PropChangeCmd pcc = new PropChangeCmd(dacx_, lpc);
           support.addEdit(pcc);
         }   
-        handleLayoutDerivation(appState_, rcxT_, rootVfg, group, support); 
+        handleLayoutDerivation(dacx_, rootVfg, group, support); 
       }
        
       //
@@ -1053,23 +1055,23 @@ public class AddNode extends AbstractControlFlow {
         gc = rootVfg.addNode(ansu_.getNewNode());
       }    
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
   
       GroupChange grc = group.addMember(new GroupMember(ansu_.getNewNode().getID()), rootVfg.getID());
       if (grc != null) {
-        GroupChangeCmd grcc = new GroupChangeCmd(appState_, rcxT_, grc);
+        GroupChangeCmd grcc = new GroupChangeCmd(dacx_, grc);
         support.addEdit(grcc);
       }
-      support.addEvent(new ModelChangeEvent(rootVfg.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rootVfg.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
        
-      NodeProperties newProp = new NodeProperties(rcxT.cRes, rcxT.getLayout(), ansu_.getNewNode().getNodeType(), 
+      NodeProperties newProp = new NodeProperties(dacx_.getColorResolver(), ansu_.getNewNode().getNodeType(), 
                                                   ansu_.getNewNode().getID(), x, y, false);
       Layout.PropChange[] lpc = new Layout.PropChange[1]; 
-      lpc[0] = rcxT.getLayout().setNodeProperties(ansu_.getNewNode().getID(), newProp);
+      lpc[0] = dacx_.getCurrentLayout().setNodeProperties(ansu_.getNewNode().getID(), newProp);
       if (lpc != null) {
-        PropChangeCmd pcc = new PropChangeCmd(appState_, rcxT_, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(dacx_, lpc);
         support.addEdit(pcc);
       }   
       return (true); 
@@ -1080,22 +1082,22 @@ public class AddNode extends AbstractControlFlow {
     ** Add node step
     */  
     
-    public DialogAndInProcessCmd nodeAddForGenomeInstance(ServerControlFlowHarness cfh) {
-      GenomeInstance parent = rcxT_.getGenomeAsInstance().getVfgParent();
+    public DialogAndInProcessCmd nodeAddForGenomeInstance() {
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       Intersection inter;
       if (parent != null) {    
-        inter = appState_.getGenomePresentation().selectGroupFromParent(x, y, rcxT_);
+        inter = uics_.getGenomePresentation().selectGroupFromParent(x, y, dacx_);
       } else {
-        inter = appState_.getGenomePresentation().selectGroupForRootInstance(x, y, rcxT_);
+        inter = uics_.getGenomePresentation().selectGroupForRootInstance(x, y, dacx_);
       }
       if (inter == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.UNSELECTED, this)); 
       }
       String groupID = inter.getObjectID();
       String baseGrpID = Group.getBaseID(groupID);   
-      int genCount = rcxT_.getGenomeAsInstance().getGeneration();        
+      int genCount = dacx_.getCurrentGenomeAsInstance().getGeneration();        
       String inherit = Group.buildInheritedID(baseGrpID, genCount);
-      intersectGroup = rcxT_.getGenomeAsInstance().getGroup(inherit);
+      intersectGroup = dacx_.getCurrentGenomeAsInstance().getGroup(inherit);
       if (intersectGroup == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ERROR, this));
       }
@@ -1106,15 +1108,15 @@ public class AddNode extends AbstractControlFlow {
       // user to reuse one or create a new one.
       //
       DialogAndInProcessCmd retval;
-      GenomeInstance tgi = rcxT_.getGenomeAsInstance();
+      GenomeInstance tgi = dacx_.getCurrentGenomeAsInstance();
       if (existingRootNodeOptions == null) {
         reuse = NodeReuse.DO_REGULAR_MODE;
         retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
         nextStep_ = "stepAfterWeSetReUse"; 
       } else if (tgi.getVfgParent() == null) {
-        retval = setNodeReuseInGroupForVfA(cfh); 
+        retval = setNodeReuseInGroupForVfA(); 
       } else {        
-        retval = setNodeReuseInGroupForVfN(cfh); 
+        retval = setNodeReuseInGroupForVfN(); 
       }
       return (retval);
     }
@@ -1134,7 +1136,7 @@ public class AddNode extends AbstractControlFlow {
         
       AddNodeSupport.BlackHoleResults bhr = ansu_.droppingIntoABlackHole(x, y);
       modCandidates = bhr.modCandidates;
-      return (calculateLevelAdds(intersectGroup, bhr.intoABlackHole, rcxT_, rcxR_));
+      return (calculateLevelAdds(intersectGroup, bhr.intoABlackHole, dacx_, rcxR_));
     }
     
     /***************************************************************************
@@ -1147,13 +1149,12 @@ public class AddNode extends AbstractControlFlow {
   
     private enum NodeReuse {CANCEL_REQUEST, DO_IMMEDIATE_MODE, DO_REGULAR_MODE};
     
-    private DialogAndInProcessCmd setNodeReuseInGroupForVfA(ServerControlFlowHarness cfh) {     
+    private DialogAndInProcessCmd setNodeReuseInGroupForVfA() {     
       //
       // If we are in the VfA, and all the existing node options already have been added
       // to the specified group, we must create a new one.  Otherwise, prompt the
       // user to reuse one or create a new one.
       //
-      GenomeInstance tgi = rcxT_.getGenomeAsInstance();
       HashSet<String> remainingOptions = new HashSet<String>();
       Iterator<String> ernoit = existingRootNodeOptions.iterator();
       while (ernoit.hasNext()) {
@@ -1166,8 +1167,8 @@ public class AddNode extends AbstractControlFlow {
       DialogAndInProcessCmd retval;
       if (remainingOptions.size() > 0) { 
         DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs ba = 
-            new DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs(rcxT_.getDBGenome(), tgi, remainingOptions, new HashSet<String>());
-        DrawNodeInstanceExistingOptionsDialogFactory ncd = new DrawNodeInstanceExistingOptionsDialogFactory(cfh);
+            new DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs(dacx_, remainingOptions, new HashSet<String>());
+        DrawNodeInstanceExistingOptionsDialogFactory ncd = new DrawNodeInstanceExistingOptionsDialogFactory(cfh_);
         ServerControlFlowHarness.Dialog cfhd = ncd.getDialog(ba);
         retval = new DialogAndInProcessCmd(cfhd, this);
         nextStep_ = "stepCheckForNodeReuseProcessAnswer";
@@ -1196,9 +1197,9 @@ public class AddNode extends AbstractControlFlow {
       } else {
         if (!drq.doDraw) {
           newRootNode = null;
-          existingRootNode = rcxT_.getDBGenome().getNode(drq.idResult);
-          int instanceCount = rcxT_.getGenomeAsInstance().getNextNodeInstanceNumber(drq.idResult);
-          ansu_.setNewNode(new NodeInstance(appState_, (DBNode)existingRootNode, existingRootNode.getNodeType(), instanceCount, null, NodeInstance.ACTIVE));
+          existingRootNode = dacx_.getDBGenome().getNode(drq.idResult);
+          int instanceCount = dacx_.getCurrentGenomeAsInstance().getNextNodeInstanceNumber(drq.idResult);
+          ansu_.setNewNode(new NodeInstance(dacx_, (DBNode)existingRootNode, existingRootNode.getNodeType(), instanceCount, null, NodeInstance.ACTIVE));
         }
         retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
         reuse = NodeReuse.DO_REGULAR_MODE;
@@ -1212,7 +1213,7 @@ public class AddNode extends AbstractControlFlow {
     ** Node reuse for VfN
     */  
    
-    private DialogAndInProcessCmd setNodeReuseInGroupForVfN(ServerControlFlowHarness cfh) {     
+    private DialogAndInProcessCmd setNodeReuseInGroupForVfN() {     
 
       //
       // If in a VFN, we may have options already added to a parent group but not pulled
@@ -1221,7 +1222,7 @@ public class AddNode extends AbstractControlFlow {
       HashSet<String> remainingOptions = new HashSet<String>();
       HashSet<String> remainingInstanceOptions = new HashSet<String>();
       
-      GenomeInstance rootVfg = rcxT_.getGenomeAsInstance().getVfgParentRoot();
+      GenomeInstance rootVfg = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot();
       if (rootVfg == null) {
         throw new IllegalStateException();
       }
@@ -1237,7 +1238,7 @@ public class AddNode extends AbstractControlFlow {
           remainingOptions.add(existingID);
         } else {
           String inGrpID = checkNodeInstance.getID();
-          Node inSub = rcxT_.getGenome().getNode(inGrpID);
+          Node inSub = dacx_.getCurrentGenome().getNode(inGrpID);
           if (inSub == null) {
             remainingInstanceOptions.add(inGrpID);
           }     
@@ -1246,8 +1247,8 @@ public class AddNode extends AbstractControlFlow {
       DialogAndInProcessCmd retval;
       if ((remainingOptions.size() > 0) || (remainingInstanceOptions.size() > 0)) {  
         DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs ba = 
-            new DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs(rcxT_.getDBGenome(), rcxT_.getGenomeAsInstance(), remainingOptions, remainingInstanceOptions);
-        DrawNodeInstanceExistingOptionsDialogFactory ncd = new DrawNodeInstanceExistingOptionsDialogFactory(cfh);
+            new DrawNodeInstanceExistingOptionsDialogFactory.BuildArgs(dacx_, remainingOptions, remainingInstanceOptions);
+        DrawNodeInstanceExistingOptionsDialogFactory ncd = new DrawNodeInstanceExistingOptionsDialogFactory(cfh_);
         ServerControlFlowHarness.Dialog cfhd = ncd.getDialog(ba);
         retval = new DialogAndInProcessCmd(cfhd, this);
         nextStep_ = "stepCheckForVfNNodeReuseProcessAnswer";
@@ -1275,18 +1276,18 @@ public class AddNode extends AbstractControlFlow {
         reuse = NodeReuse.DO_REGULAR_MODE;
         if (!drq.doDraw) {
           newRootNode = null;
-          existingRootNode = rcxT_.getDBGenome().getNode(drq.idResult);
+          existingRootNode = dacx_.getDBGenome().getNode(drq.idResult);
           // First case: we are reusing a node in a parent group.  Just use the
           // immediate add path from here on out
           if (!GenomeItemInstance.getBaseID(drq.idResult).equals(drq.idResult)) {
-            ansu_.setNewNode(rcxT_.getGenomeAsInstance().getVfgParentRoot().getNode(drq.idResult));  // can work with original; only need ID
+            ansu_.setNewNode(dacx_.getCurrentGenomeAsInstance().getVfgParentRoot().getNode(drq.idResult));  // can work with original; only need ID
             reuse = NodeReuse.DO_IMMEDIATE_MODE;  // NOTE OVERRIDE REGULAR!
           //
           // Second case: we are reusing a root node.  Previous new instance
           // referenced a now defunct new root node.
           } else {
-            int instanceCount = rcxT_.getGenomeAsInstance().getVfgParentRoot().getNextNodeInstanceNumber(drq.idResult);
-            ansu_.setNewNode(new NodeInstance(appState_, (DBNode)existingRootNode, existingRootNode.getNodeType(), instanceCount, null, NodeInstance.ACTIVE));
+            int instanceCount = dacx_.getCurrentGenomeAsInstance().getVfgParentRoot().getNextNodeInstanceNumber(drq.idResult);
+            ansu_.setNewNode(new NodeInstance(dacx_, (DBNode)existingRootNode, existingRootNode.getNodeType(), instanceCount, null, NodeInstance.ACTIVE));
           }
         }
       }
@@ -1310,7 +1311,8 @@ public class AddNode extends AbstractControlFlow {
   **
   */  
  
-  public static void handleLayoutDerivation(BTState appState, DataAccessContext dacx, GenomeInstance gi, Group group, UndoSupport support) { 
+  public static void handleLayoutDerivation(StaticDataAccessContext dacx, GenomeInstance gi, 
+                                            Group group, UndoSupport support) { 
     
     GenomeInstance tgi;
     Group rootGroup;
@@ -1336,7 +1338,7 @@ public class AddNode extends AbstractControlFlow {
     if (!ld.containsDirectiveModuloTransforms(lds)) {
       ld.addDirective(lds);
       Layout.PropChange lpc = rootLo.setDerivation(ld);
-      PropChangeCmd pcc = new PropChangeCmd(appState, dacx, lpc);
+      PropChangeCmd pcc = new PropChangeCmd(dacx, lpc);
       support.addEdit(pcc);   
     }
     return;

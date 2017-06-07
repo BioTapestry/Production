@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2013 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -33,8 +33,10 @@ import java.util.TreeSet;
 import java.util.Vector;
 import javax.swing.JScrollPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.timeCourse.ExpressionEntry;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseGene;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BuildListUtil;
@@ -58,12 +60,14 @@ public class TimeCourseMappingPanel extends JPanel {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private BTState appState_;
   private CheckBoxList lw_;
   private BuildListUtil.BuildListResult targResult_; 
   private DialogSupport ds_;
   private BuildListUtil tblu_;
   private ArrayList<BuildListUtil.BuildListResult> allTabs_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
+  
   private static final long serialVersionUID = 1L;
    
   ////////////////////////////////////////////////////////////////////////////
@@ -77,19 +81,20 @@ public class TimeCourseMappingPanel extends JPanel {
   ** Constructor 
   */
   
-  public TimeCourseMappingPanel(BTState appState, String nodeName, List<TimeCourseData.TCMapping> currEntries, boolean msgSeparate, boolean forceDrops) {
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();    
+  public TimeCourseMappingPanel(UIComponentSource uics, DataAccessContext dacx, String nodeName, List<TimeCourseDataMaps.TCMapping> currEntries, boolean msgSeparate, boolean forceDrops) {
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     setLayout(new GridBagLayout());
-    ds_ = new DialogSupport(appState_, gbc);
+    ds_ = new DialogSupport(uics_, dacx_, gbc);
     int rowNum = 0;
     int columns = 6;
      
     //
     // Create a list of the target genes available:
     //
-    TimeCourseData tcd = appState.getDB().getTimeCourseData();
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
     Iterator<TimeCourseGene> genes = tcd.getGenes();
     TreeSet<TrueObjChoiceContent> toccMapped = new TreeSet<TrueObjChoiceContent>();
     while (genes.hasNext()) {
@@ -97,25 +102,25 @@ public class TimeCourseMappingPanel extends JPanel {
       //
       // Always provide non-channel option:
       //
-      TrueObjChoiceContent tocc = new TrueObjChoiceContent(node.getName(), new TimeCourseData.TCMapping(node.getName()));
+      TrueObjChoiceContent tocc = new TrueObjChoiceContent(node.getName(), new TimeCourseDataMaps.TCMapping(node.getName()));
       toccMapped.add(tocc);
       
       //
       // If it has either, provide option for both, since we want a gene to be able to ignore maternal data:
       //
-      Set<Integer> sourceOptions = node.getSourceOptions();
+      Set<ExpressionEntry.Source> sourceOptions = node.getSourceOptions();
       if (ExpressionEntry.hasMaternalChannel(sourceOptions) || ExpressionEntry.hasZygoticChannel(sourceOptions)) {
-        String matName = ExpressionEntry.buildMaternalDisplayName(appState_, node.getName());
+        String matName = ExpressionEntry.buildMaternalDisplayName(dacx_, node.getName());
         tocc = new TrueObjChoiceContent(matName, 
-                                        new TimeCourseData.TCMapping(node.getName(), ExpressionEntry.MATERNAL_SOURCE));
+                                        new TimeCourseDataMaps.TCMapping(node.getName(), ExpressionEntry.Source.MATERNAL_SOURCE));
         toccMapped.add(tocc);
-        String zygName = ExpressionEntry.buildZygoticDisplayName(appState_, node.getName());
-        tocc = new TrueObjChoiceContent(zygName, new TimeCourseData.TCMapping(node.getName(), ExpressionEntry.ZYGOTIC_SOURCE));
+        String zygName = ExpressionEntry.buildZygoticDisplayName(dacx_, node.getName());
+        tocc = new TrueObjChoiceContent(zygName, new TimeCourseDataMaps.TCMapping(node.getName(), ExpressionEntry.Source.ZYGOTIC_SOURCE));
         toccMapped.add(tocc);
       } 
     }
-    List<TimeCourseData.TCMapping> clonedCurr = TimeCourseData.TCMapping.cloneAList(currEntries);
-    tblu_ = new BuildListUtil(appState_, appState.getTopFrame(), nodeName, clonedCurr, new Vector(toccMapped), forceDrops);
+    List<TimeCourseDataMaps.TCMapping> clonedCurr = TimeCourseDataMaps.TCMapping.cloneAList(currEntries);
+    tblu_ = new BuildListUtil(uics_, dacx_, uics_.getTopFrame(), nodeName, clonedCurr, new Vector<TrueObjChoiceContent>(toccMapped), forceDrops);
     targResult_ = tblu_.getBuildListResult();
         
     //
@@ -138,7 +143,7 @@ public class TimeCourseMappingPanel extends JPanel {
     allTabs_.add(targResult_);
     
     if (!msgSeparate) {
-      JPanel messagePanel = BuildListUtil.buildMessagePanel(appState_, allTabs_);
+      JPanel messagePanel = BuildListUtil.buildMessagePanel(dacx_, allTabs_);
       rowNum = ds_.addTable(this, messagePanel, 5, rowNum, columns);
     }
   }
@@ -174,7 +179,7 @@ public class TimeCourseMappingPanel extends JPanel {
   */
   
   public boolean stashForOKSupport() {
-    tblu_.stashForOKSupport(appState_.getRMan().getString("tcdExprMap.forTargets"));
+    tblu_.stashForOKSupport(dacx_.getRMan().getString("tcdExprMap.forTargets"));
     return (true);
   }
 }

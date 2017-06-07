@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,10 +32,12 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.PropagateSupport;
@@ -43,12 +45,10 @@ import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveLinkage;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
@@ -103,8 +103,7 @@ public class ChangeNode extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ChangeNode(BTState appState, boolean isForTarget) {
-    super(appState);
+  public ChangeNode(boolean isForTarget) {
     isForTarget_ = isForTarget;
     name =  (isForTarget) ? "linkPopup.TargNodeChange" : "linkPopup.SrcNodeChange";
     desc = (isForTarget) ? "linkPopup.TargNodeChange" : "linkPopup.SrcNodeChange";
@@ -124,18 +123,18 @@ public class ChangeNode extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
-    }   
-    Genome genome = rcx.getGenome();
-    if (!(genome instanceof DBGenome)) {
+    }
+    if (!rcx.currentGenomeIsRootDBGenome()) {
       return (false);
     }
     if (!isForTarget_) {
       return (true);
     }
-    Layout layout = rcx.getLayout();
+    Layout layout = rcx.getCurrentLayout();
     
     LinkSegmentID[] ids = inter.segmentIDsFromIntersect();
     if (ids == null) {
@@ -158,8 +157,8 @@ public class ChangeNode extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, isForTarget_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(isForTarget_, dacx);
     return (retval);
   }
   
@@ -177,6 +176,7 @@ public class ChangeNode extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetToMode")) {
           next = ans.stepSetToMode();      
         } else if (ans.getNextStep().equals("stepBiWarning")) {   
@@ -206,9 +206,9 @@ public class ChangeNode extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxR_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = (ans.isForTarget) ? "stepChangeLinkTargetNode" : "stepChangeLinkSourceNode"; 
+    ans.setNextStep((ans.isForTarget) ? "stepChangeLinkTargetNode" : "stepChangeLinkSourceNode"); 
     return (retval);
   }
   
@@ -217,25 +217,22 @@ public class ChangeNode extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
     private Intersection intersect;
-    private DataAccessContext rcxR_;
     private boolean isForTarget; 
     private int x;
     private int y;
-    private String nextStep_;   
-    private BTState appState_;
 
     /***************************************************************************
     **
     ** Constructor
     */
      
-    private StepState(BTState appState, boolean isForTarget, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxR_ = dacx; // Gotta be for root genome only!
-      if (!rcxR_.genomeIsRootGenome()) {
+    private StepState(boolean isForTarget, StaticDataAccessContext dacx) {
+      super(dacx);
+      // Gotta be for root genome only!
+      if (!dacx_.currentGenomeIsRootDBGenome()) {
         throw new IllegalArgumentException();
       }
       nextStep_ = "stepBiWarning";
@@ -244,13 +241,19 @@ public class ChangeNode extends AbstractControlFlow {
     
     /***************************************************************************
     **
-    ** Next step...
-    */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
-    }
+    ** Constructor
+    */
      
+    private StepState(boolean isForTarget, ServerControlFlowHarness cfh) {
+      super(cfh);
+      // Gotta be for root genome only!
+      if (!dacx_.currentGenomeIsRootDBGenome()) {
+        throw new IllegalArgumentException();
+      }
+      nextStep_ = "stepBiWarning";
+      this.isForTarget = isForTarget;
+    }
+
     /***************************************************************************
     **
     ** mouse masking
@@ -259,6 +262,7 @@ public class ChangeNode extends AbstractControlFlow {
     public int getMask() {
       return (MainCommands.ALLOW_NAV_PUSH);
     }
+    
     public boolean pushDisplay() {
       return (false);
     }
@@ -324,9 +328,9 @@ public class ChangeNode extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        String message = rcxR_.rMan.getString("instructWarning.message");
-        String title = rcxR_.rMan.getString("instructWarning.title");
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        String message = dacx_.getRMan().getString("instructWarning.message");
+        String title = dacx_.getRMan().getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
         daipc = new DialogAndInProcessCmd(suf, this);      
        } else {
@@ -359,8 +363,8 @@ public class ChangeNode extends AbstractControlFlow {
       //
 
       List<Intersection.AugmentedIntersection> augs = 
-        appState_.getGenomePresentation().intersectItem(x, y, rcxR_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxR_)).selectionRanker(augs); 
+        uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs); 
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
 
       //
@@ -382,11 +386,11 @@ public class ChangeNode extends AbstractControlFlow {
       //
 
       String lid = intersect.getObjectID();
-      Linkage currentLinkage = rcxR_.getGenome().getLinkage(lid);
+      Linkage currentLinkage = dacx_.getCurrentGenome().getLinkage(lid);
       String currentSource = currentLinkage.getSource();
 
       LinkSegmentID[] linkIDs = intersect.segmentIDsFromIntersect();
-      BusProperties bp = rcxR_.getLayout().getLinkProperties(lid);
+      BusProperties bp = dacx_.getCurrentLayout().getLinkProperties(lid);
       Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
 
       //
@@ -397,8 +401,8 @@ public class ChangeNode extends AbstractControlFlow {
       String sourceID;
       LinkSegmentID segID = null;
       String id = inter.getObjectID();
-      Linkage link = rcxR_.getGenome().getLinkage(id);
-      Node node = rcxR_.getGenome().getNode(id);
+      Linkage link = dacx_.getCurrentGenome().getLinkage(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       // If we have a link, we had better make sure we have an endpoint, and we had
       // better make sure the link source is different from us:
       if (link != null) {
@@ -421,11 +425,11 @@ public class ChangeNode extends AbstractControlFlow {
         if (!(sub instanceof Intersection.PadVal)) {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         } 
-        INodeRenderer render = rcxR_.getLayout().getNodeProperties(sourceID).getRenderer();
+        INodeRenderer render = dacx_.getCurrentLayout().getNodeProperties(sourceID).getRenderer();
         List<Intersection.PadVal> pads = inter.getPadCand();
         int numCand = pads.size();
         Intersection.PadVal winner = null;
-        if (!(rcxR_.getGenome() instanceof DBGenome)) { // SourcePadIsClear needs special treatment in subset GI's
+        if (!dacx_.currentGenomeIsRootDBGenome()) { // SourcePadIsClear needs special treatment in subset GI's
           throw new IllegalArgumentException();
         }
         for (int i = 0; i < numCand; i++) {
@@ -433,7 +437,7 @@ public class ChangeNode extends AbstractControlFlow {
           if (!pad.okStart) {
             continue;
           }
-          if (!LinkSupport.sourcePadIsClear(appState_, rcxR_.getGenome(), sourceID, pad.padNum, render.sharedPadNamespaces())) {
+          if (!LinkSupport.sourcePadIsClear(uics_, dacx_, dacx_.getCurrentGenome(), sourceID, pad.padNum, render.sharedPadNamespaces())) {
             continue;
           }
           if ((winner == null) || (winner.distance > pad.distance)) {
@@ -448,7 +452,7 @@ public class ChangeNode extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
 
-      if (changeLinkSourceNode(throughSeg, linkIDs[0], inter, padNum, segID, sourceID, rcxR_, appState_)) {
+      if (changeLinkSourceNode(throughSeg, linkIDs[0], padNum, segID, sourceID)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT_DELAYED, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.CANCELLED, this));
@@ -467,8 +471,8 @@ public class ChangeNode extends AbstractControlFlow {
       //
 
       List<Intersection.AugmentedIntersection> augs = 
-        appState_.getGenomePresentation().intersectItem(x, y, rcxR_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxR_)).selectionRanker(augs);
+        uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
 
       if (inter == null) {
@@ -486,7 +490,7 @@ public class ChangeNode extends AbstractControlFlow {
       // 
       String lid = intersect.getObjectID();   
       LinkSegmentID[] linkIDs = intersect.segmentIDsFromIntersect();
-      BusProperties bp = rcxR_.getLayout().getLinkProperties(lid);
+      BusProperties bp = dacx_.getCurrentLayout().getLinkProperties(lid);
       Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
 
       //
@@ -499,7 +503,7 @@ public class ChangeNode extends AbstractControlFlow {
       }
 
       lid = throughSeg.iterator().next();
-      Linkage currentLinkage = rcxR_.getGenome().getLinkage(lid);
+      Linkage currentLinkage = dacx_.getCurrentGenome().getLinkage(lid);
       String currentTarget = currentLinkage.getTarget();
 
       //
@@ -509,7 +513,7 @@ public class ChangeNode extends AbstractControlFlow {
       int padNum;
 
       String id = inter.getObjectID();
-      Node node = rcxR_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       if (node == null) {
          return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }            
@@ -521,11 +525,11 @@ public class ChangeNode extends AbstractControlFlow {
       if (!(sub instanceof Intersection.PadVal)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       } 
-      INodeRenderer render = rcxR_.getLayout().getNodeProperties(targetID).getRenderer();
+      INodeRenderer render = dacx_.getCurrentLayout().getNodeProperties(targetID).getRenderer();
       List<Intersection.PadVal> pads = inter.getPadCand();
       int numCand = pads.size();
       Intersection.PadVal winner = null;
-      if (!rcxR_.genomeIsRootGenome()) { // SourcePadIsClear needs special treatment in subset GI's
+      if (!dacx_.currentGenomeIsRootDBGenome()) { // SourcePadIsClear needs special treatment in subset GI's
         throw new IllegalArgumentException();
       }
       for (int i = 0; i < numCand; i++) {
@@ -533,7 +537,7 @@ public class ChangeNode extends AbstractControlFlow {
         if (!pad.okEnd) {
           continue;
         }
-        if (!LinkSupport.targPadIsClear(rcxR_.getGenome(), targetID, pad.padNum, render.sharedPadNamespaces())) {
+        if (!LinkSupport.targPadIsClear(dacx_.getCurrentGenome(), targetID, pad.padNum, render.sharedPadNamespaces())) {
           continue;
         }
         if ((winner == null) || (winner.distance > pad.distance)) {
@@ -545,7 +549,7 @@ public class ChangeNode extends AbstractControlFlow {
       }
       padNum = winner.padNum;
       
-      if (changeLinkTargetNode(appState_, currentLinkage, targetID, padNum, rcxR_)) {
+      if (changeLinkTargetNode(currentLinkage, targetID, padNum)) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
       } else {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.CANCELLED, this));
@@ -557,21 +561,21 @@ public class ChangeNode extends AbstractControlFlow {
     ** Change the link target node
     */  
    
-    private boolean changeLinkTargetNode(BTState appState, Linkage link, String targetID, int padNum, DataAccessContext rcxR) {
+    private boolean changeLinkTargetNode(Linkage link, String targetID, int padNum) {
     
       HashSet<String> linkSet = new HashSet<String>();
       linkSet.add(link.getID());
-      NodeChange ambiguity = linkNodeChangeIsAmbiguous(appState, linkSet, targetID, false);
+      NodeChange ambiguity = linkNodeChangeIsAmbiguous(linkSet, targetID, false);
       Map<String, Map<String, String>> quickKillMap = null;
       
-      ResourceManager rMan = appState.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       switch (ambiguity) {
         case AMBIGUOUS:
           quickKillMap = new HashMap<String, Map<String, String>>();
-          QuickKillResult isQuick = ambiguousLinkNodeChangeIsQuickKill(appState, linkSet, targetID, quickKillMap, false);
+          QuickKillResult isQuick = ambiguousLinkNodeChangeIsQuickKill(linkSet, targetID, quickKillMap, false);
           
           if (isQuick.mustDeleteLinks) {
-            int resultMDL = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.GottaDeleteMsg")),
+            int resultMDL = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.GottaDeleteMsg")),
                                                           rMan.getString("trgChange.GottaDeleteTitle"),
                                                           JOptionPane.YES_NO_OPTION);
             if (resultMDL == 1) {
@@ -581,7 +585,7 @@ public class ChangeNode extends AbstractControlFlow {
           
           boolean showReview = false;
           if (isQuick.isQuickKill) {
-            int result = JOptionPane.showOptionDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.doQuickKill")),
+            int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.doQuickKill")),
                                                                   rMan.getString("trgChange.messageTitle"),
                                                                   JOptionPane.DEFAULT_OPTION, 
                                                                   JOptionPane.QUESTION_MESSAGE, 
@@ -599,7 +603,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           
           if (!isQuick.isQuickKill || showReview) {
-            ChangeSourceOrTargetNodeReviewDialog csnrd = new ChangeSourceOrTargetNodeReviewDialog(appState, rcxR_, targetID, linkSet, quickKillMap, false);
+            ChangeSourceOrTargetNodeReviewDialog csnrd = new ChangeSourceOrTargetNodeReviewDialog(uics_, dacx_, targetID, linkSet, quickKillMap, false);
             csnrd.setVisible(true);
             if (!csnrd.haveResult()) {
               return (false); 
@@ -608,7 +612,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           break;
         case UNAMBIGUOUS_COLLAPSE:
-          int resultUC = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.unambiguousCollapseMsg")),
+          int resultUC = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.unambiguousCollapseMsg")),
                                                        rMan.getString("trgChange.unambiguousCollapseTitle"),
                                                        JOptionPane.YES_NO_OPTION);
           if (resultUC == 1) {
@@ -616,7 +620,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           break;
         case UNAMBIGUOUS_REGION_CHANGE:
-          int resultURC = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.unambiguousRegionChgMsg")),
+          int resultURC = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("trgChange.unambiguousRegionChgMsg")),
                                                         rMan.getString("trgChange.unambiguousRegionChgTitle"),
                                                         JOptionPane.YES_NO_OPTION);
           if (resultURC == 1) {
@@ -629,9 +633,9 @@ public class ChangeNode extends AbstractControlFlow {
           throw new IllegalStateException();
       }
       
-      UndoSupport support = new UndoSupport(appState, "undo.changeLinkTargetNode");
-      changeLinkTargetNodeComplete(appState, link, targetID, rcxR, padNum, quickKillMap, ambiguity, support);   
-      appState.getDB().clearAllDynamicProxyCaches();
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeLinkTargetNode", dacx_);
+      changeLinkTargetNodeComplete(link, targetID, padNum, quickKillMap, ambiguity, support);   
+      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
       support.finish();
       return (true); 
     }
@@ -641,8 +645,7 @@ public class ChangeNode extends AbstractControlFlow {
     ** Change the link target node
     */  
    
-    private void changeLinkTargetNodeComplete(BTState appState, Linkage link, String targetID,
-                                              DataAccessContext rcxR,
+    private void changeLinkTargetNodeComplete(Linkage link, String targetID,
                                               int padNum, Map<String, Map<String, String>> quickKillMap, 
                                               NodeChange ambiguity,
                                               UndoSupport support) {
@@ -660,35 +663,35 @@ public class ChangeNode extends AbstractControlFlow {
       // Root model first:
       //
         
-      GenomeChange undo = rcxR.getGenome().changeLinkageTargetNode(link, targetID, padNum);
-      support.addEdit(new GenomeChangeCmd(appState, rcxR, undo));
-      changedModels.add(rcxR.getGenomeID());
+      GenomeChange undo = dacx_.getCurrentGenome().changeLinkageTargetNode(link, targetID, padNum);
+      support.addEdit(new GenomeChangeCmd(dacx_, undo));
+      changedModels.add(dacx_.getCurrentGenomeID());
          
       //
       // Do the top-level instances first:
       //
   
       HashMap<String, Set<String>> changeMap = new HashMap<String, Set<String>>();
-      Iterator<GenomeInstance> giit = rcxR.getGenomeSource().getInstanceIterator();
+      Iterator<GenomeInstance> giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         if (gi.getVfgParent() != null) {
           continue;
         }
-        DataAccessContext rcxI = new DataAccessContext(rcxR, gi.getID());
+        StaticDataAccessContext rcxI = new StaticDataAccessContext(dacx_, gi.getID());
         Set<String> nodeInst = gi.getNodeInstances(targetID);
-        Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxI.getGenomeID());
+        Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxI.getCurrentGenomeID());
 
           
         //
         // Track for use in VFN kids:
         //
         HashSet<String> changeSet = new HashSet<String>();
-        changeMap.put(rcxI.getGenomeID(), changeSet);
-        Set<String> totalChangeSet = totalChangeMap.get(rcxI.getGenomeID());
+        changeMap.put(rcxI.getCurrentGenomeID(), changeSet);
+        Set<String> totalChangeSet = totalChangeMap.get(rcxI.getCurrentGenomeID());
         if (totalChangeSet == null) {
           totalChangeSet = new HashSet<String>();
-          totalChangeMap.put(rcxI.getGenomeID(), totalChangeSet);
+          totalChangeMap.put(rcxI.getCurrentGenomeID(), totalChangeSet);
         }
           
         //
@@ -726,17 +729,17 @@ public class ChangeNode extends AbstractControlFlow {
             HashSet<String> killSet = new HashSet<String>();
             killSet.add(clid);
             // THIS HANDLES DELETING LAYOUT INFO!
-            RemoveLinkage.deleteLinkSetFromModel(appState, killSet, rcxI, support);
+            RemoveLinkage.deleteLinkSetFromModel(killSet, rcxI, support);
           } else {
             //
             // Get the landing pad figured out, then change the target
             //
-            int currPadNum = PropagateSupport.findLandingPad(newNodeID, padNum, rcxI, rcxR, null);
+            int currPadNum = PropagateSupport.findLandingPad(newNodeID, padNum, rcxI, dacx_, null);
             undo = gi.changeLinkageTargetNode(childLink, newNodeID, currPadNum);
-            support.addEdit(new GenomeChangeCmd(appState, rcxI, undo));    
+            support.addEdit(new GenomeChangeCmd(rcxI, undo));    
           }
           changeSet.add(clid);
-          changedModels.add(rcxI.getGenomeID());
+          changedModels.add(rcxI.getCurrentGenomeID());
         }
         totalChangeSet.addAll(changeSet);
       } 
@@ -745,7 +748,7 @@ public class ChangeNode extends AbstractControlFlow {
       // Now do all the VFN kids:
       //
   
-      giit = rcxR.getGenomeSource().getInstanceIterator();
+      giit = dacx_.getGenomeSource().getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         if (gi.getVfgParent() == null) {
@@ -780,7 +783,7 @@ public class ChangeNode extends AbstractControlFlow {
             }
           }
           if (undo != null) {
-            support.addEdit(new GenomeChangeCmd(appState, rcxR, undo));
+            support.addEdit(new GenomeChangeCmd(dacx_, undo));
             changedModels.add(giid);
           }
         }
@@ -792,7 +795,7 @@ public class ChangeNode extends AbstractControlFlow {
       Iterator<String> cmit = changedModels.iterator();
       while (cmit.hasNext()) {
         String modelID = cmit.next();
-        ModelChangeEvent mcev = new ModelChangeEvent(modelID, ModelChangeEvent.UNSPECIFIED_CHANGE);
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), modelID, ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }   
   
@@ -804,11 +807,8 @@ public class ChangeNode extends AbstractControlFlow {
     ** Change the link source node
     */  
    
-    private boolean changeLinkSourceNode(Set<String> throughSeg, LinkSegmentID breakSegID, 
-                                         Intersection inter, int padNum, 
-                                         LinkSegmentID segID, String sourceID,
-                                         DataAccessContext rcxR, //Layout layout, DBGenome genome, 
-                                         BTState appState) {
+    private boolean changeLinkSourceNode(Set<String> throughSeg, LinkSegmentID breakSegID, int padNum, 
+                                         LinkSegmentID segID, String sourceID) {
       
   
       //
@@ -822,17 +822,17 @@ public class ChangeNode extends AbstractControlFlow {
       // in child root instances.
       //
       
-      NodeChange ambiguity = linkNodeChangeIsAmbiguous(appState, throughSeg, sourceID, true);
+      NodeChange ambiguity = linkNodeChangeIsAmbiguous(throughSeg, sourceID, true);
       Map<String, Map<String, String>> quickKillMap = null;
       
-      ResourceManager rMan = appState.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       switch (ambiguity) {
         case AMBIGUOUS:
           quickKillMap = new HashMap<String, Map<String, String>>();
-          QuickKillResult isQuick = ambiguousLinkNodeChangeIsQuickKill(appState, throughSeg, sourceID, quickKillMap, true);
+          QuickKillResult isQuick = ambiguousLinkNodeChangeIsQuickKill(throughSeg, sourceID, quickKillMap, true);
           
           if (isQuick.mustDeleteLinks) {
-            int resultMDL = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.GottaDeleteMsg")),
+            int resultMDL = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.GottaDeleteMsg")),
                                                           rMan.getString("srcChange.GottaDeleteTitle"),
                                                           JOptionPane.YES_NO_OPTION);
             if (resultMDL == 1) {
@@ -842,7 +842,7 @@ public class ChangeNode extends AbstractControlFlow {
           
           boolean showReview = false;
           if (isQuick.isQuickKill) {
-            int result = JOptionPane.showOptionDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.doQuickKill")),
+            int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.doQuickKill")),
                                                                   rMan.getString("srcChange.messageTitle"),
                                                                   JOptionPane.DEFAULT_OPTION, 
                                                                   JOptionPane.QUESTION_MESSAGE, 
@@ -860,7 +860,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           
           if (!isQuick.isQuickKill || showReview) {
-            ChangeSourceOrTargetNodeReviewDialog csnrd = new ChangeSourceOrTargetNodeReviewDialog(appState, rcxR_, sourceID, throughSeg, quickKillMap, true);
+            ChangeSourceOrTargetNodeReviewDialog csnrd = new ChangeSourceOrTargetNodeReviewDialog(uics_, dacx_, sourceID, throughSeg, quickKillMap, true);
             csnrd.setVisible(true);
             if (!csnrd.haveResult()) {
               return (false); 
@@ -869,7 +869,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           break;
         case UNAMBIGUOUS_COLLAPSE:
-          int resultUC = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.unambiguousCollapseMsg")),
+          int resultUC = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.unambiguousCollapseMsg")),
                                                        rMan.getString("srcChange.unambiguousCollapseTitle"),
                                                        JOptionPane.YES_NO_OPTION);
           if (resultUC == 1) {
@@ -877,7 +877,7 @@ public class ChangeNode extends AbstractControlFlow {
           }
           break;
         case UNAMBIGUOUS_REGION_CHANGE:
-          int resultURC = JOptionPane.showConfirmDialog(appState.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.unambiguousRegionChgMsg")),
+          int resultURC = JOptionPane.showConfirmDialog(uics_.getTopFrame(), UiUtil.convertMessageToHtml(rMan.getString("srcChange.unambiguousRegionChgMsg")),
                                                         rMan.getString("srcChange.unambiguousRegionChgTitle"),
                                                         JOptionPane.YES_NO_OPTION);
           if (resultURC == 1) {
@@ -890,10 +890,10 @@ public class ChangeNode extends AbstractControlFlow {
           throw new IllegalStateException();
       }
       
-      UndoSupport support = new UndoSupport(appState, "undo.changeLinkSourceNode");    
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeLinkSourceNode", dacx_);    
       PostSourceNodeChanger changer = new PostSourceNodeChanger();
-      changer.manageTheChange(throughSeg, breakSegID, padNum, quickKillMap, ambiguity,
-                              segID, sourceID, rcxR, appState, support);
+      changer.manageTheChange(uics_, throughSeg, breakSegID, padNum, quickKillMap, ambiguity,
+                              segID, sourceID, dacx_, support);
       return (true); 
     }
     
@@ -902,7 +902,7 @@ public class ChangeNode extends AbstractControlFlow {
     ** Answer if changing a link source/target node is ambiguous
     */  
    
-    private NodeChange linkNodeChangeIsAmbiguous(BTState appState, Set<String> throughSeg, String nodeID, boolean isSource) {
+    private NodeChange linkNodeChangeIsAmbiguous(Set<String> throughSeg, String nodeID, boolean isSource) {
       
       //
       // The change is completely unambiguous if every child model that contains an
@@ -916,8 +916,8 @@ public class ChangeNode extends AbstractControlFlow {
   
       boolean regionSwitch = false;
       boolean haveCollapse = false;
-      Database db = appState.getDB();   
-      Iterator<GenomeInstance> giit = db.getInstanceIterator();
+      GenomeSource gSrc = dacx_.getGenomeSource();
+      Iterator<GenomeInstance> giit = gSrc.getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         boolean hasLink = false;
@@ -980,15 +980,15 @@ public class ChangeNode extends AbstractControlFlow {
     ** handle all the ambiguous cases.  See if that is the case.
     */  
     
-    private QuickKillResult ambiguousLinkNodeChangeIsQuickKill(BTState appState, Set<String> throughSeg, String nodeID, 
+    private QuickKillResult ambiguousLinkNodeChangeIsQuickKill(Set<String> throughSeg, String nodeID, 
                                                                Map<String, Map<String, String>> quickKillMap, boolean isSource) {
   
       QuickKillResult retval = new QuickKillResult();
       retval.isQuickKill = true;
       retval.mustDeleteLinks = false;
         
-      Database db = appState.getDB();   
-      Iterator<GenomeInstance> giit = db.getInstanceIterator();
+      GenomeSource gSrc = dacx_.getGenomeSource();
+      Iterator<GenomeInstance> giit = gSrc.getInstanceIterator();
       while (giit.hasNext()) {
         GenomeInstance gi = giit.next();
         
@@ -1068,28 +1068,30 @@ public class ChangeNode extends AbstractControlFlow {
   */
   
   private static class PostSourceNodeChanger implements BackgroundWorkerOwner {
-    
-    private BTState myAppState_;
-    
-    void manageTheChange(Set<String> throughSeg, LinkSegmentID breakSegID, 
-                         int padNum, Map<String, Map<String, String>> quickKillMap, NodeChange ambiguity,
-                         LinkSegmentID segID, String sourceID, DataAccessContext rcxR, 
-                         BTState appState, UndoSupport support) { 
       
-      myAppState_ = appState;
+    private UIComponentSource muics_; 
+    private StaticDataAccessContext mdacx_;
+    
+    
+    void manageTheChange(UIComponentSource uics, Set<String> throughSeg, LinkSegmentID breakSegID, 
+                         int padNum, Map<String, Map<String, String>> quickKillMap, NodeChange ambiguity,
+                         LinkSegmentID segID, String sourceID, StaticDataAccessContext rcxR, UndoSupport support) { 
+      
+      muics_ = uics;
+      mdacx_ = rcxR;
 
       SourceNodeChangeRunner runner = 
         new SourceNodeChangeRunner(throughSeg, breakSegID, 
                                    padNum, quickKillMap, ambiguity,
                                    segID, sourceID,
-                                   rcxR, appState, support);
+                                   rcxR, support);
       //
       // We may need to do lots of link relayout operations.  This MUST occur on a background
       // thread!
       // 
 
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(muics_, mdacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       runner.setClient(bwc);
       bwc.launchWorker();
       return;
@@ -1109,7 +1111,7 @@ public class ChangeNode extends AbstractControlFlow {
     }     
         
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(myAppState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      (new LayoutStatusReporter(muics_, mdacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
       return;
     }                
   }  
@@ -1128,15 +1130,14 @@ public class ChangeNode extends AbstractControlFlow {
     private NodeChange ambiguity_;
     private LinkSegmentID segID_; 
     private String sourceID_;
-    private DataAccessContext rcxR_;
+    private StaticDataAccessContext rcxR_;
     private UndoSupport support_;
     private List<LayoutLinkSupport.GlobalLinkRequest> requestList_;
-    private BTState myAppState_;
 
     public SourceNodeChangeRunner(Set<String> throughSeg, LinkSegmentID breakSegID, 
                                   int padNum, Map<String, Map<String, String>> quickKillMap, NodeChange ambiguity,
                                   LinkSegmentID segID, String sourceID,
-                                  DataAccessContext rcxR, BTState appState, UndoSupport support) {
+                                  StaticDataAccessContext rcxR, UndoSupport support) {
       super(new LinkRouter.RoutingResult());
       throughSeg_ = throughSeg;
       breakSegID_ = breakSegID;
@@ -1146,7 +1147,6 @@ public class ChangeNode extends AbstractControlFlow {
       segID_ = segID;
       sourceID_ = sourceID;
       rcxR_ = rcxR;
-      myAppState_ = appState;
       support_ = support;
       requestList_ = new ArrayList<LayoutLinkSupport.GlobalLinkRequest>();
     }
@@ -1155,15 +1155,15 @@ public class ChangeNode extends AbstractControlFlow {
       requestList_ = 
         changeLinkSourceNodeBackground(throughSeg_, breakSegID_, padNum_, quickKillMap_, 
                                        ambiguity_, segID_, sourceID_, 
-                                       support_, rcxR_, myAppState_, this, 0.0, 0.2);
-      LayoutOptions lopt = new LayoutOptions(myAppState_.getLayoutOptMgr().getLayoutOptions());
-      LinkRouter.RoutingResult result = LayoutLinkSupport.relayoutLinksGlobally(myAppState_, requestList_, support_, lopt, this, 0.2, 1.0);
+                                       support_, rcxR_, this, 0.0, 0.2);
+      LayoutOptions lopt = new LayoutOptions(rcxR_.getLayoutOptMgr().getLayoutOptions());
+      LinkRouter.RoutingResult result = LayoutLinkSupport.relayoutLinksGlobally(rcxR_, requestList_, support_, lopt, this, 0.2, 1.0);
       int numReq = requestList_.size();
       for (int i = 0; i < numReq; i++) {
         LayoutLinkSupport.GlobalLinkRequest glr = requestList_.get(i);
         support_.addEvent(new LayoutChangeEvent(glr.layout.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
       }
-      myAppState_.getDB().clearAllDynamicProxyCaches();
+      rcxR_.getGenomeSource().clearAllDynamicProxyCaches();
       return (result);
     }
     
@@ -1182,35 +1182,28 @@ public class ChangeNode extends AbstractControlFlow {
                                                                                            NodeChange ambiguity,
                                                                                            LinkSegmentID segID, String sourceID,
                                                                                            UndoSupport support,
-                                                                                           DataAccessContext rcxR,
-                                                                                         //  DBGenome genome, 
-                                                                                           BTState appState, BTProgressMonitor monitor,
-                                                                                           double startFrac, double endFrac) throws AsynchExitRequestException {
-   //   Database db = appState.getDB();    
+                                                                                           StaticDataAccessContext rcxR,
+                                                                                           BTProgressMonitor monitor,
+                                                                                           double startFrac, double endFrac) throws AsynchExitRequestException {    
+
       ArrayList<LayoutLinkSupport.GlobalLinkRequest> requestList = new ArrayList<LayoutLinkSupport.GlobalLinkRequest>();     
       HashSet<String> changedModels = new HashSet<String>();
-   //   LayoutManager lm = appState.getLayoutMgr();
   
       //
       // Figure out where breaks will occur in kid instances before we start to tear
       // everything apart:
       //
       
-   
-   //   String rootGid = genome.getID();
-    //  Layout rolo = db.getLayout(lm.getLayout(rootGid));
-      
-       
-      Map<String, Map<String, Layout.InheritedInsertionInfo>> matchingSegs = findMatchingLinkSegsInRootInstances(appState, throughSeg, breakSegID, rcxR);
+      Map<String, Map<String, Layout.InheritedInsertionInfo>> matchingSegs = findMatchingLinkSegsInRootInstances(throughSeg, breakSegID, rcxR);
       Map<String, Map<String, Layout.InheritedInsertionInfo>> interSegs = null;
       String segTag = null;
       if (segID != null) {
         if (segID.isTaggedWithEndpoint()) {
           segTag = (segID.startEndpointIsTagged()) ? LinkSegmentID.START : LinkSegmentID.END;
         }
-        BusProperties bp = rcxR.getLayout().getBusForSource(sourceID);
+        BusProperties bp = rcxR.getCurrentLayout().getBusForSource(sourceID);
         Set<String> interSegLinks = bp.resolveLinkagesThroughSegment(segID);
-        interSegs = findMatchingLinkSegsInRootInstances(appState, interSegLinks, segID, rcxR);            
+        interSegs = findMatchingLinkSegsInRootInstances(interSegLinks, segID, rcxR);            
       }
        
       //
@@ -1221,15 +1214,15 @@ public class ChangeNode extends AbstractControlFlow {
       Iterator<String> alit = throughSeg.iterator();
       while (alit.hasNext()) {
         String nextLinkID = alit.next();
-        Linkage nextLink = rcxR.getGenome().getLinkage(nextLinkID);
+        Linkage nextLink = rcxR.getCurrentGenome().getLinkage(nextLinkID);
   
         //
         // Root model:
         //
         
-        GenomeChange undo = rcxR.getGenome().changeLinkageSourceNode(nextLink, sourceID, padNum);
-        support.addEdit(new GenomeChangeCmd(appState, rcxR, undo));
-        changedModels.add(rcxR.getGenomeID());
+        GenomeChange undo = rcxR.getCurrentGenome().changeLinkageSourceNode(nextLink, sourceID, padNum);
+        support.addEdit(new GenomeChangeCmd(rcxR, undo));
+        changedModels.add(rcxR.getCurrentGenomeID());
          
         //
         // Do the top-level instances first:
@@ -1243,24 +1236,24 @@ public class ChangeNode extends AbstractControlFlow {
           if (gi.getVfgParent() != null) {
             continue;
           }
-          DataAccessContext rcxi = new DataAccessContext(rcxR, gi.getID());
+          StaticDataAccessContext rcxi = new StaticDataAccessContext(rcxR, gi.getID());
           Set<String> nodeInst = gi.getNodeInstances(sourceID);
-          Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxi.getGenomeID());
+          Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxi.getCurrentGenomeID());
           
           //
           // Track for use in VFN kids:
           //
           HashSet<String> changeSet = new HashSet<String>();
-          changeMap.put(rcxi.getGenomeID(), changeSet);
+          changeMap.put(rcxi.getCurrentGenomeID(), changeSet);
           
           //
           // Track src changes for instance layout calc:
           //
           
-          Map<String, Set<String>> o2nl4GI = oldSrcToLinkMap.get(rcxi.getGenomeID());
+          Map<String, Set<String>> o2nl4GI = oldSrcToLinkMap.get(rcxi.getCurrentGenomeID());
           if (o2nl4GI == null) {
             o2nl4GI = new HashMap<String, Set<String>>();
-            oldSrcToLinkMap.put(rcxi.getGenomeID(), o2nl4GI);
+            oldSrcToLinkMap.put(rcxi.getCurrentGenomeID(), o2nl4GI);
           }
    
           //
@@ -1313,19 +1306,19 @@ public class ChangeNode extends AbstractControlFlow {
               //Set killSet = gi.returnLinkInstanceIDsForBacking(nextLinkID);
               HashSet<String> killSet = new HashSet<String>();
               killSet.add(clid);
-              RemoveLinkage.deleteLinkSetFromModel(appState, killSet, rcxi, support);
+              RemoveLinkage.deleteLinkSetFromModel(killSet, rcxi, support);
             } else {
               //
               // Get the source pad figured out.  We may need to force the issue
               // and change pads around to get a free pad:
               //
-              int currPadNum = prepareSourcePad(appState, newNodeID, rcxi, rcxR, padNum, support);      
+              int currPadNum = prepareSourcePad(newNodeID, rcxi, rcxR, padNum, support);      
                   
               undo = gi.changeLinkageSourceNode(childLink, newNodeID, currPadNum);
-              support.addEdit(new GenomeChangeCmd(appState, rcxi, undo));    
+              support.addEdit(new GenomeChangeCmd(rcxi, undo));    
             }
             changeSet.add(clid);
-            changedModels.add(rcxi.getGenomeID());
+            changedModels.add(rcxi.getCurrentGenomeID());
           }
         } 
         
@@ -1339,8 +1332,8 @@ public class ChangeNode extends AbstractControlFlow {
           if (gi.getVfgParent() == null) {
             continue;
           }
-          DataAccessContext rcxi = new DataAccessContext(rcxR, gi.getID());
-          Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxi.getGenomeID());
+          StaticDataAccessContext rcxi = new StaticDataAccessContext(rcxR, gi.getID());
+          Map<String, String> quickKillForModel = (quickKillMap == null) ? null : quickKillMap.get(rcxi.getCurrentGenomeID());
   
           GenomeInstance rgi = gi.getVfgParentRoot();
           String rgiid = rgi.getID();
@@ -1368,8 +1361,8 @@ public class ChangeNode extends AbstractControlFlow {
               }
             }
             if (undo != null) {
-              support.addEdit(new GenomeChangeCmd(appState, rcxi, undo));
-              changedModels.add(rcxi.getGenomeID());
+              support.addEdit(new GenomeChangeCmd(rcxi, undo));
+              changedModels.add(rcxi.getCurrentGenomeID());
             }
           }
         }       
@@ -1381,7 +1374,7 @@ public class ChangeNode extends AbstractControlFlow {
       Iterator<String> cmit = changedModels.iterator();
       while (cmit.hasNext()) {
         String modelID = cmit.next();
-        ModelChangeEvent mcev = new ModelChangeEvent(modelID, ModelChangeEvent.UNSPECIFIED_CHANGE);
+        ModelChangeEvent mcev = new ModelChangeEvent(rcxR.getGenomeSource().getID(), modelID, ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }
       
@@ -1389,11 +1382,11 @@ public class ChangeNode extends AbstractControlFlow {
       // Now get the layouts fixed
       //
       
-      Layout.PropChange[] pca = rcxR.getLayout().supportLinkSourceBreakoff(breakSegID, throughSeg, sourceID, segID);
+      Layout.PropChange[] pca = rcxR.getCurrentLayout().supportLinkSourceBreakoff(breakSegID, throughSeg, sourceID, segID);
       if ((pca != null) && (pca.length != 0)) {
-        PropChangeCmd pcc = new PropChangeCmd(appState, rcxR, pca);
+        PropChangeCmd pcc = new PropChangeCmd(rcxR, pca);
         support.addEdit(pcc);
-        LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+        LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(lcev);
       }   
       
@@ -1407,19 +1400,19 @@ public class ChangeNode extends AbstractControlFlow {
         if (gi.getVfgParent() != null) {
           continue;
         }
-        DataAccessContext rcxi = new DataAccessContext(rcxR, gi.getID());       
-        Map<String, Set<String>> o2nl4GI = oldSrcToLinkMap.get(rcxi.getGenomeID());
-        Set<String> needsLayout = breakUpInheritedTree(appState, rcxi, matchingSegs, segTag, interSegs, o2nl4GI, support);
+        StaticDataAccessContext rcxi = new StaticDataAccessContext(rcxR, gi.getID());       
+        Map<String, Set<String>> o2nl4GI = oldSrcToLinkMap.get(rcxi.getCurrentGenomeID());
+        Set<String> needsLayout = breakUpInheritedTree(rcxi, matchingSegs, segTag, interSegs, o2nl4GI, support);
         if (!needsLayout.isEmpty()) {
           LayoutLinkSupport.GlobalLinkRequest glr = new LayoutLinkSupport.GlobalLinkRequest();
-          glr.genome = rcxi.getGenome();
-          glr.layout = rcxi.getLayout();
+          glr.genome = rcxi.getCurrentGenome();
+          glr.layout = rcxi.getCurrentLayout();
           glr.gSrc = rcxi.getGenomeSource();
           glr.badLinks = needsLayout;
           requestList.add(glr);        
         }
       }
-      LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);
      
       return (requestList); 
@@ -1430,9 +1423,8 @@ public class ChangeNode extends AbstractControlFlow {
     ** Find places to resource link trees in inherited layouts
     */  
    
-    private static Map<String, Map<String, Layout.InheritedInsertionInfo>> findMatchingLinkSegsInRootInstances(BTState appState, Set<String> throughSeg, 
-                                                                                                               LinkSegmentID breakSegID, DataAccessContext rcxR) {
-                                                                                                           //    DBGenome genome) {
+    private static Map<String, Map<String, Layout.InheritedInsertionInfo>> findMatchingLinkSegsInRootInstances(Set<String> throughSeg, 
+                                                                                                               LinkSegmentID breakSegID, StaticDataAccessContext rcxR) {
       
       HashMap<String, Map<String, Layout.InheritedInsertionInfo>> retval = new HashMap<String, Map<String, Layout.InheritedInsertionInfo>>();
       if (throughSeg.isEmpty()) {
@@ -1440,7 +1432,7 @@ public class ChangeNode extends AbstractControlFlow {
       }
    
       String aLinkID = throughSeg.iterator().next();
-      BusProperties rootProps = rcxR.getLayout().getLinkProperties(aLinkID);
+      BusProperties rootProps = rcxR.getCurrentLayout().getLinkProperties(aLinkID);
       
       Point2D rootSplit = rootProps.getSegmentGeometryForID(breakSegID, rcxR, false).pointAtFraction(0.5); 
       
@@ -1450,7 +1442,7 @@ public class ChangeNode extends AbstractControlFlow {
         if (gi.getVfgParent() != null) {
           continue;
         }
-        DataAccessContext rcxi = new DataAccessContext(rcxR, gi.getID());       
+        StaticDataAccessContext rcxi = new StaticDataAccessContext(rcxR, gi.getID());       
         HashMap<String, Layout.InheritedInsertionInfo> resultsPerSrc = new HashMap<String, Layout.InheritedInsertionInfo>();
         retval.put(gi.getID(), resultsPerSrc);
         
@@ -1482,7 +1474,7 @@ public class ChangeNode extends AbstractControlFlow {
           String srcID = lpskit.next();
           Set<String> links = linksPerSrc.get(srcID); 
           Layout.InheritedInsertionInfo iii =  
-            rcxi.getLayout().findInheritedMatchingLinkSegment(breakSegID, links, rootProps, rootSplit, rcxR, rcxi);
+            rcxi.getCurrentLayout().findInheritedMatchingLinkSegment(breakSegID, links, rootProps, rootSplit, rcxR, rcxi);
           if (iii != null) {
             resultsPerSrc.put(srcID, iii);
           }
@@ -1496,17 +1488,15 @@ public class ChangeNode extends AbstractControlFlow {
     ** Get source pad ready to go on new source node
     */  
    
-    private static int prepareSourcePad(BTState appState, String nodeID, DataAccessContext rcxI, DataAccessContext rcxR,
-                                      //  GenomeInstance gi, 
+    private static int prepareSourcePad(String nodeID, StaticDataAccessContext rcxI, StaticDataAccessContext rcxR,
                                         int prefPad, 
-                                    //    Layout gilo, 
                                         UndoSupport support) {  
    
-      Integer srcPad = rcxI.getGenome().getSourcePad(nodeID);
+      Integer srcPad = rcxI.getCurrentGenome().getSourcePad(nodeID);
       if (srcPad == null) {
         srcPad = PropagateSupport.findSourcePad(nodeID, prefPad, rcxI, rcxR, null);
         if (srcPad == null) {
-          PropagateSupport.emergencyPadForce(appState, nodeID, rcxI, support);  // revert to root configuration
+          PropagateSupport.emergencyPadForce(nodeID, rcxI, support);  // revert to root configuration
           srcPad = new Integer(prefPad);
         } 
       }
@@ -1518,18 +1508,18 @@ public class ChangeNode extends AbstractControlFlow {
     ** Handle link reorganization for top instance layouts
     */  
    
-    private static Set<String> breakUpInheritedTree(BTState appState, DataAccessContext rcxI, //String giID, GenomeInstance gi, Layout lo,
+    private static Set<String> breakUpInheritedTree(StaticDataAccessContext rcxI,
                                                     Map<String, Map<String, Layout.InheritedInsertionInfo>> matchingSegs, 
                                                     String segTag, 
                                                     Map<String, Map<String, Layout.InheritedInsertionInfo>> interSegs,
                                                     Map<String, Set<String>> oldSrcToLinks, UndoSupport support) {
   
-      Map<String, Layout.InheritedInsertionInfo> segsPerSrc = matchingSegs.get(rcxI.getGenomeID());
+      Map<String, Layout.InheritedInsertionInfo> segsPerSrc = matchingSegs.get(rcxI.getCurrentGenomeID());
       boolean noBreakSegs = (segsPerSrc == null);
       boolean noInterSegs = (interSegs == null);
       Map<String, Layout.InheritedInsertionInfo> interSegsPerSrc = null;
       if (!noInterSegs) {
-        interSegsPerSrc = interSegs.get(rcxI.getGenomeID());
+        interSegsPerSrc = interSegs.get(rcxI.getCurrentGenomeID());
         noInterSegs = (interSegsPerSrc == null);
       }
   
@@ -1548,7 +1538,7 @@ public class ChangeNode extends AbstractControlFlow {
         Iterator<String> lidit = linkIDs.iterator();
         while (lidit.hasNext()) {
           String linkID = lidit.next();
-          Linkage link = rcxI.getGenome().getLinkage(linkID);
+          Linkage link = rcxI.getCurrentGenome().getLinkage(linkID);
           // Dead links don't count yet:
           if (link != null) {
             String srcID = link.getSource(); // This is the _new_ src by now...
@@ -1585,7 +1575,7 @@ public class ChangeNode extends AbstractControlFlow {
         Iterator<String> lidit = linkIDs.iterator();
         while (lidit.hasNext()) {
           String linkID = lidit.next();
-          Linkage link = rcxI.getGenome().getLinkage(linkID);
+          Linkage link = rcxI.getCurrentGenome().getLinkage(linkID);
           if (link == null) {
             continue;  // Should not happen; dead links deleted already...?
           } else if (gottaRedo || noBreakCandidate) {
@@ -1617,13 +1607,13 @@ public class ChangeNode extends AbstractControlFlow {
       // until we repair the links; auto add expects a consistent layout with the genome!
       //
       
-      Map<String, BusProperties.RememberProps> remem = rcxI.getLayout().buildRememberProps(rcxI);
+      Map<String, BusProperties.RememberProps> remem = rcxI.getCurrentLayout().buildRememberProps(rcxI);
       
       Iterator<String> rsit = redoSet.iterator();
       while (rsit.hasNext()) {
         String nextLinkID = rsit.next();
-        PropChange pc = rcxI.getLayout().removeLinkProperties(nextLinkID);
-        support.addEdit(new PropChangeCmd(appState, rcxI, pc));
+        PropChange pc = rcxI.getCurrentLayout().removeLinkProperties(nextLinkID);
+        support.addEdit(new PropChangeCmd(rcxI, pc));
       }
       
       //
@@ -1668,12 +1658,12 @@ public class ChangeNode extends AbstractControlFlow {
           LinkSegmentID interSegID = taggedIntersegs.get(newSrcID);
           // Link will be direct for interSegID == null:
           if ((interSegID == null) || interSegID.isDirect()) {
-            BusProperties bp = rcxI.getLayout().getBusForSource(newSrcID);
+            BusProperties bp = rcxI.getCurrentLayout().getBusForSource(newSrcID);
             if (bp != null) {
               if (bp.isDirect()) { // split it
-                Layout.PropChange pc = rcxI.getLayout().splitDirectLinkInHalf(newSrcID, rcxI);
+                Layout.PropChange pc = rcxI.getCurrentLayout().splitDirectLinkInHalf(newSrcID, rcxI);
                 if (pc != null) {
-                  PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, pc);
+                  PropChangeCmd pcc = new PropChangeCmd(rcxI, pc);
                   support.addEdit(pcc);
                 }            
               }
@@ -1683,9 +1673,9 @@ public class ChangeNode extends AbstractControlFlow {
               interSegID = rootDrop;
             }
           }        
-          Layout.PropChange[] pca = rcxI.getLayout().supportLinkSourceBreakoff(breakSegID, perOldSrcLinks, newSrcID, interSegID);
+          Layout.PropChange[] pca = rcxI.getCurrentLayout().supportLinkSourceBreakoff(breakSegID, perOldSrcLinks, newSrcID, interSegID);
           if ((pca != null) && (pca.length != 0)) {
-            PropChangeCmd pcc = new PropChangeCmd(appState, rcxI, pca);
+            PropChangeCmd pcc = new PropChangeCmd(rcxI, pca);
             support.addEdit(pcc);
           }
         }
@@ -1699,10 +1689,10 @@ public class ChangeNode extends AbstractControlFlow {
       rsit = redoSet.iterator();
       while (rsit.hasNext()) {
         String nextLinkID = rsit.next();
-        LayoutLinkSupport.autoAddCrudeLinkProperties(appState, rcxI, nextLinkID, support, remem);
+        LayoutLinkSupport.autoAddCrudeLinkProperties(rcxI, nextLinkID, support, remem);
       }
        
-      LayoutChangeEvent lcev = new LayoutChangeEvent(rcxI.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent lcev = new LayoutChangeEvent(rcxI.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);
       return (redoSet);
     }  

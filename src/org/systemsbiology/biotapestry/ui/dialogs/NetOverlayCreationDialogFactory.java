@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,12 +29,12 @@ import javax.swing.JLabel;
 import javax.swing.JTextField;
 
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
-import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
@@ -78,7 +78,7 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
     NetOverlayBuildArgs dniba = (NetOverlayBuildArgs)ba;
   
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
-      return (new DesktopDialog(cfh, dniba.existingNames));
+      return (new DesktopDialog(cfh, dniba.existingNames, dniba.choices));
     } else if (platform.getPlatform() == DialogPlatform.Plat.WEB) {
       throw new IllegalStateException();
     }
@@ -100,10 +100,12 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
   public static class NetOverlayBuildArgs extends DialogBuildArgs { 
     
     Set<String> existingNames;
+    Vector<TrueObjChoiceContent> choices;
           
-    public NetOverlayBuildArgs(Set<String> existingNames) {
+    public NetOverlayBuildArgs(Set<String> existingNames, DataAccessContext dacx) {
       super(null);
       this.existingNames = existingNames;
+      choices = NetOverlayProperties.getOverlayTypes(dacx);
     } 
   }
    
@@ -140,7 +142,7 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopDialog(ServerControlFlowHarness cfh, Set<String> existingNames) {      
+    public DesktopDialog(ServerControlFlowHarness cfh, Set<String> existingNames, Vector<TrueObjChoiceContent> choices) {      
       super(cfh, "noverlay.title", new Dimension(500, 300), 3, new NetOverlayCreationRequest(), false);
       existingNames_ = existingNames;
      
@@ -149,7 +151,6 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
       //
       
       JLabel label = new JLabel(rMan_.getString("noverlay.type"));
-      Vector<TrueObjChoiceContent> choices = NetOverlayProperties.getOverlayTypes(appState_);
       typeCombo_ = new JComboBox(choices);
       addLabeledWidget(label, typeCombo_, false, false);
       
@@ -171,6 +172,11 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
       finishConstruction();
     }
   
+    
+    public boolean dialogIsModal() {
+      return (true);
+    }
+      
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED/PRIVATE METHODS
@@ -184,7 +190,7 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
     */
     
     private String uniqueNewName(Set<String> existingNames) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String uniqueBase = rMan.getString("noverlay.defaultBaseName");
       int count = 1;
       while (true) {
@@ -249,6 +255,10 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }  
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean isForApply() {
       return (false);
     }

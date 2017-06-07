@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -44,9 +44,10 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.export.ExportPublish;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.ImageExporter;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.util.FixedJButton;
@@ -96,7 +97,8 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
   private int baseHeight_;
   private ExportPublish.ExportSettings finishedSettings_;  
   private Preferences prefs_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
     
@@ -111,11 +113,12 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
   ** Constructor 
   */ 
   
-  public ExportSettingsDialog(BTState appState, JFrame parent, int baseWidth, int baseHeight) {     
-    super(parent, appState.getRMan().getString("exportDialog.title"), true);
-    appState_ = appState;
+  public ExportSettingsDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, int baseWidth, int baseHeight) {     
+    super(parent, dacx.getRMan().getString("exportDialog.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     setSize(400, 350);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -151,7 +154,7 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
             ExportSettingsDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -162,7 +165,7 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
           ExportSettingsDialog.this.setVisible(false);
           ExportSettingsDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -188,6 +191,10 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
    
   public ServerControlFlowHarness.UserInputs getUserInputs() {
     return (finishedSettings_); 
+  }
+  
+  public boolean dialogIsModal() {
+    return (true);
   }
  
   ////////////////////////////////////////////////////////////////////////////
@@ -427,7 +434,7 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
 
     JLabel fixedLab = new JLabel(rMan.getString("exportDialog.fixedAspect"));    
     UiUtil.gbcSet(gbc, 0, 0, 2, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.E, 1.0, 1.0);    
@@ -521,7 +528,7 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
     
     long numPix = currentZoomWidth_ * currentZoomHeight_;
     if (numPix > HUGE_PIC) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String desc = MessageFormat.format(rMan.getString("export.confirmBigExport"), 
                                          new Object[] {new Long(numPix)});
       desc = UiUtil.convertMessageToHtml(desc);                                         
@@ -595,14 +602,14 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
       try {
         processZoomVal(true, whichVal_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
     public void caretUpdate(CaretEvent evt) {
       try {
         processZoomVal(false, whichVal_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
     public void focusGained(FocusEvent evt) {
@@ -611,7 +618,7 @@ public class ExportSettingsDialog extends JDialog implements DesktopDialogPlatfo
       try {
         fixZoomVals();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }        
   }   

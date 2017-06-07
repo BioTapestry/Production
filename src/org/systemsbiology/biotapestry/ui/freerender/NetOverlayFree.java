@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,27 +22,20 @@ package org.systemsbiology.biotapestry.ui.freerender;
 import java.awt.AlphaComposite;
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Graphics2D;
-import java.awt.geom.Rectangle2D;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Layout;
-import org.systemsbiology.biotapestry.ui.NetModuleLinkageProperties;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
-import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
-import org.systemsbiology.biotapestry.ui.RenderObjectCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache.DrawMode;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.NetModuleCacheGroup;
@@ -85,17 +78,17 @@ public class NetOverlayFree {
   */
   
   public void render(ModelObjectCache cache, NetworkOverlay netOvr, List<GroupFree.ColoredRect> renderedRects, 
-                     boolean doUnderlay, Set<String> showComponents, DataAccessContext rcx) {
+                     boolean doUnderlay, Set<String> showComponents, StaticDataAccessContext rcx, IRenderer.Mode mode) {
   	
   	Integer minorLayer = 0;
   	Integer majorLayer = 0;
   	
-    TaggedSet currentNetMods = rcx.oso.getCurrentNetModules();
+    TaggedSet currentNetMods = rcx.getOSO().getCurrentNetModules();
     Set<String> currMods = (currentNetMods == null) ? null : currentNetMods.set;
-    NetModuleFree.CurrentSettings settings = rcx.oso.getCurrentOverlaySettings();
+    NetModuleFree.CurrentSettings settings = rcx.getOSO().getCurrentOverlaySettings();
     
     String ovrID = netOvr.getID();
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetOverlayProperties.OvrType nopType = nop.getType();
     if (((nopType == NetOverlayProperties.OvrType.UNDERLAY) && !doUnderlay) ||
         ((nopType != NetOverlayProperties.OvrType.UNDERLAY) && doUnderlay)) {
@@ -143,29 +136,29 @@ public class NetOverlayFree {
     // shown as part of the module (important for dynamic instances!)
     //
     
-    Genome useGenome = Layout.determineLayoutTarget(rcx.getGenome());    
-    NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID());
+    Genome useGenome = Layout.determineLayoutTarget(rcx.getCurrentGenome());    
+    NetOverlayOwner noo = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID());
     DynamicInstanceProxy dip = (noo.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)noo 
                                                                                            : null;    
     Set<String> useGroups = noo.getGroupsForOverlayRendering();
  
-    TaggedSet revealed = rcx.oso.getRevealedModules();
+    TaggedSet revealed = rcx.getOSO().getRevealedModules();
     Iterator<NetModule> nmit = netOvr.getModuleIterator();
     while (nmit.hasNext()) {
       NetModule nm = nmit.next();
       String modID = nm.getID();
-      if (!currMods.contains(modID) && !rcx.forWeb) {
+      if (!currMods.contains(modID) && !rcx.isForWeb()) {
         continue;
       }
       boolean showContents = ((revealed != null) && revealed.set.contains(modID));
       NetModuleProperties nmp = nop.getNetModuleProperties(modID);
       NetModuleFree nmf = nmp.getRenderer();
       boolean showingComponents = ((showComponents != null) && showComponents.contains(modID));
-      DataAccessContext rcxr = new DataAccessContext(rcx, useGenome, rcx.getLayout());
+      StaticDataAccessContext rcxr = new StaticDataAccessContext(rcx, useGenome, rcx.getCurrentLayout());
       
       // In the desktop application, the shapes for rendering the NetModules can go directly to the NetOverlay cache group
       // and be therefore drawn by the ConcreteGraphicsCache.
-      if (!rcx.forWeb) {
+      if (!rcx.isForWeb()) {
     	  nmf.render(group, dip, useGroups, ovrID, nm, settings, showingComponents, showContents, true, true, true, rcxr);
       }
       // In the web application, add each NetModule as a sub-group to the NetOverlay so that the hierarchy will be preserved
@@ -194,19 +187,18 @@ public class NetOverlayFree {
     Iterator<String> nlit = nop.getNetModuleLinkagePropertiesKeys();
     NetModuleLinkageFree nmlf = new NetModuleLinkageFree();
     
-    if (!rcx.forWeb) {
+    if (!rcx.isForWeb()) {
 	    while (nlit.hasNext()) {
 	    	String treeID = nlit.next();
-	    	nmlf.render(group, ovrID, treeID, rcx);     
+	    	nmlf.render(group, ovrID, treeID, rcx, mode);     
 	    }
     }
     else {
 	    while (nlit.hasNext()) {
-	    	String treeID = nlit.next();
-	        NetModuleLinkageProperties nmlp = nop.getNetModuleLinkagePropertiesFromTreeID(treeID);   
+	    	String treeID = nlit.next();  
 	    	NetModuleLinkageExportForWeb lefw = new NetModuleLinkageExportForWeb();	        
-	        NetModuleLinkageCacheGroup lcg = new NetModuleLinkageCacheGroup(treeID, treeID, "net_module_linkage", lefw, 0, 0, "null");
-	    	nmlf.renderForWeb(lcg, ovrID, treeID, lefw, rcx);
+	      NetModuleLinkageCacheGroup lcg = new NetModuleLinkageCacheGroup(treeID, treeID, "net_module_linkage", lefw, 0, 0, "null");
+	    	nmlf.renderForWeb(lcg, ovrID, treeID, lefw, rcx, mode);
 	    	group.addNetModuleLinkage(lcg);
 	    }
 	}
@@ -216,97 +208,9 @@ public class NetOverlayFree {
     return;
   }
   
-  public void renderOld(Graphics2D g2, RenderObjectCache cache, Genome genome, Layout layout, 
-                     NetworkOverlay netOvr, List<GroupFree.ColoredRect> renderedRects, OverlayStateOracle oso,
-                     boolean doUnderlay, Set<String> showComponents, boolean showBubbles, 
-                     Rectangle2D clipRect, double pixDiam, GenomeSource gSrc) {
- 
-    TaggedSet currentNetMods = oso.getCurrentNetModules();
-    Set<String> currMods = (currentNetMods == null) ? null : currentNetMods.set;
-    NetModuleFree.CurrentSettings settings = oso.getCurrentOverlaySettings();
-    
-    String ovrID = netOvr.getID();
-    NetOverlayProperties nop = layout.getNetOverlayProperties(ovrID);
-    NetOverlayProperties.OvrType nopType = nop.getType();
-    if (((nopType == NetOverlayProperties.OvrType.UNDERLAY) && !doUnderlay) ||
-        ((nopType != NetOverlayProperties.OvrType.UNDERLAY) && doUnderlay)) {
-      return;
-    }
-    boolean isOpq = (nopType == NetOverlayProperties.OvrType.OPAQUE); 
-    
-    //
-    // If we have region rects, we draw those with SRC compositing (replaces dest regardless
-    // of alpha channel):
-    //
-    
-    if (isOpq && (renderedRects != null)) {
-      g2.setComposite(AlphaComposite.Src);
-      float[] coVals = new float[4];      
-      Iterator<GroupFree.ColoredRect> rrit = renderedRects.iterator();
-      while (rrit.hasNext()) {          
-        GroupFree.ColoredRect cr = rrit.next();
-        cr.drawColor.getComponents(coVals);
-        Color aDrawCol = new Color(coVals[0], coVals[1], coVals[2], (float)settings.backgroundOverlayAlpha); 
-        g2.setPaint(aDrawCol);
-        g2.fill(cr.rect);
-      }
-      g2.setComposite(AlphaComposite.SrcOver);
-    }
- 
-    //
-    // Now draw the mods:
-    //
-    
-    //
-    // We use the rootInstance to drive rendering, so that non-included nodes are not
-    // shown as part of the module (important for dynamic instances!)
-    //
-    
-    Genome useGenome = genome;
-    if (genome instanceof GenomeInstance) {
-      GenomeInstance gi = (GenomeInstance)genome;
-      GenomeInstance rootGI = gi.getVfgParentRoot();
-      useGenome = (rootGI == null) ? gi : rootGI;
-    }
-    NetOverlayOwner noo = gSrc.getOverlayOwnerFromGenomeKey(genome.getID());
-    DynamicInstanceProxy dip = (noo.overlayModeForOwner() == NetworkOverlay.DYNAMIC_PROXY) ? (DynamicInstanceProxy)noo 
-                                                                                           : null;    
-    Set<String> useGroups = noo.getGroupsForOverlayRendering();
- 
-    TaggedSet revealed = oso.getRevealedModules();
-    Iterator<NetModule> nmit = netOvr.getModuleIterator();
-    while (nmit.hasNext()) {
-      NetModule nm = nmit.next();
-      String modID = nm.getID();
-      if (!currMods.contains(modID)) {
-        continue;
-      }
-      boolean showContents = ((revealed != null) && revealed.set.contains(modID));
-      NetModuleProperties nmp = nop.getNetModuleProperties(modID);
-      NetModuleFree nmf = nmp.getRenderer();
-      boolean showingComponents = ((showComponents != null) && showComponents.contains(modID));
-      // nmf.render(g2, useGenome, dip, useGroups, layout, ovrID, nm, settings, 
-      //           showingComponents, showBubbles, showContents, clipRect, pixDiam);     
-    }  
-
-    //
-    // Now draw the mod links TREEs:
-    //
-    
-    Iterator<String> nlit = nop.getNetModuleLinkagePropertiesKeys();
-    NetModuleLinkageFree nmlf = new NetModuleLinkageFree();
-    while (nlit.hasNext()) {
-      String treeID = nlit.next();
-      // nmlf.render(g2, cache, genome, oso, layout, ovrID, showBubbles, treeID, clipRect, pixDiam);     
-    }      
- 
-    return;
-  }
-  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE METHODS
   //
   //////////////////////////////////////////////////////////////////////////// 
-  
 }

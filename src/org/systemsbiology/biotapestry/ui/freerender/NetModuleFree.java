@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -42,6 +42,7 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
@@ -63,7 +64,6 @@ import org.systemsbiology.biotapestry.ui.NetModuleProperties;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalShapeContainer;
-import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalShapeFactory;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactory;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactoryForDesktop;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactoryForWeb;
@@ -168,10 +168,9 @@ public class NetModuleFree {
   ** Render the module to a placement grid
   */
   
-  public void renderToPlacementGrid(DynamicInstanceProxy dip, NetModule module, String ovrID, 
-                                    LinkPlacementGrid grid, DataAccessContext rcx) {
+  public void renderToPlacementGrid(NetModule module, String ovrID,  LinkPlacementGrid grid, DataAccessContext rcx) {
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     Iterator<Rectangle2D> sit = nmp.getShapeIterator();
     while (sit.hasNext()) {
@@ -189,10 +188,10 @@ public class NetModuleFree {
   
   public void render(ModalShapeContainer group, DynamicInstanceProxy dip, Set<String> useGroups, String ovrID, 
                      NetModule module, CurrentSettings settings, boolean showComponents, boolean showContents,
-                     boolean drawEdges, boolean drawFills, boolean drawLabel, DataAccessContext rcx) {
+                     boolean drawEdges, boolean drawFills, boolean drawLabel, StaticDataAccessContext rcx) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -206,7 +205,7 @@ public class NetModuleFree {
     // Figure out the rectangle containing the members:
     //
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
 
     Rectangle outerRect = new Rectangle();
@@ -217,16 +216,16 @@ public class NetModuleFree {
     // If there are lots of pads per pixel, don't bother to render them even if asked to do so:
     //
     
-    boolean tinyPads = !(rcx.pixDiam < (4.0 * PAD_RADIUS));
+    boolean tinyPads = !(rcx.getPixDiam() < (4.0 * PAD_RADIUS));
     
-    ArrayList<LinkPad> padList = (rcx.showBubbles && !tinyPads) ? new ArrayList<LinkPad>() : null;
+    ArrayList<LinkPad> padList = (rcx.getShowBubbles() && !tinyPads) ? new ArrayList<LinkPad>() : null;
     NetOverlayProperties.OvrType nopType = nop.getType();
     boolean isOpq = (nopType == NetOverlayProperties.OvrType.OPAQUE);
     
     float fillAlpha = (showContents && isOpq) ? 0.0F : (float) settings.regionFillAlpha;   
     
-    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, ovrID, module, nameBounds, 
-                                           outerRect, nop, nmp, showComponents, padList, null);
+    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, module, nameBounds, 
+                                           outerRect, nmp, showComponents, padList, null);
 
     //
     // For opaque types, we use Src compositing, which overlays the destination
@@ -250,7 +249,7 @@ public class NetModuleFree {
     
     float[] coVals = new float[4];
     int numShape = shapeList.size();
-    if (twoPass && !rcx.forWeb) {
+    if (twoPass && !rcx.isForWeb()) {
       for (int i = 0; i < numShape; i++) {
         TaggedShape nextShape = shapeList.get(i);
         if ((nextShape.shapeClass == TaggedShape.COMPONENT_SHAPE) || 
@@ -284,7 +283,7 @@ public class NetModuleFree {
         }
         Shape boundArea = nextShape.shape;
         if ((nopType == NetOverlayProperties.OvrType.OPAQUE) || (nopType == NetOverlayProperties.OvrType.UNDERLAY)) {
-          Color fillCol = nmp.getFillColor(rcx.cRes);
+          Color fillCol = nmp.getFillColor(rcx.getColorResolver());
           fillCol.getComponents(coVals);
           Color aDrawCol = new Color(coVals[0], coVals[1], coVals[2], fillAlpha);
           
@@ -306,7 +305,7 @@ public class NetModuleFree {
 	      if (useStroke == null) {
 	        continue;
 	      }
-	      Color borderCol = nmp.getColor(rcx.cRes);
+	      Color borderCol = nmp.getColor(rcx.getColorResolver());
 	      
 	      borderCol.getComponents(coVals);            
 	      Color bDrawCol = new Color(coVals[0], coVals[1], coVals[2], (float)settings.regionBoundaryAlpha);
@@ -333,7 +332,7 @@ public class NetModuleFree {
       float labelAlpha = (quickFade) ? (float)settings.regionLabelAlpha : (float)settings.regionBoundaryAlpha;
       Color tDrawCol = new Color(coVals[0], coVals[1], coVals[2], labelAlpha);
       String name = module.getName();
-      AnnotatedFont bFont = rcx.fmgr.getOverrideFont(FontManager.NET_MODULE, nmp.getFontOverride());
+      AnnotatedFont bFont = rcx.getFontManager().getOverrideFont(FontManager.NET_MODULE, nmp.getFontOverride());
       String breakDef = nmp.getLineBreakDef();
       if (breakDef == null) {
         // g2.setPaint(tDrawCol);       
@@ -381,9 +380,9 @@ public class NetModuleFree {
   */
   public void setGroupBounds(NetModuleCacheGroup group, DynamicInstanceProxy dip, 
                           Set<String> useGroups, NetModule module,
-                          String ovrID, DataAccessContext irx) {
+                          String ovrID, StaticDataAccessContext irx) {
 	
-    NetOverlayProperties nop = irx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = irx.getCurrentLayout().getNetOverlayProperties(ovrID);
     String moduleID = module.getID(); 
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);      
     Rectangle2D nb = getNameBounds(nmp, module, irx);
@@ -392,7 +391,7 @@ public class NetModuleFree {
   	
   	Rectangle outerRect = new Rectangle();
   	Rectangle2D superRect = new Rectangle();
-  	List<TaggedShape> shapelist = getShape(dip, irx, useGroups, ovrID, module, nb, outerRect, nop, nmp, true, null, superRect);
+  	List<TaggedShape> shapelist = getShape(dip, irx, useGroups, module, nb, outerRect, nmp, true, null, superRect);
   	
   	ModelObjectCache.Rectangle rectangle = null;
   	
@@ -421,18 +420,18 @@ public class NetModuleFree {
   
   public Rectangle bounds(DynamicInstanceProxy dip, 
                           Set<String> useGroups, NetModule module,
-                          String ovrID, DataAccessContext irx) {
+                          String ovrID, StaticDataAccessContext irx) {
   
     //
     // Figure out the rectangle containing the members:
     //  
     
-    NetOverlayProperties nop = irx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = irx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, irx);    
-    getShape(dip, irx, useGroups, ovrID, module, nameBounds, outerRect, nop, nmp, false, null, null);
+    getShape(dip, irx, useGroups, module, nameBounds, outerRect, nmp, false, null, null);
     return (outerRect);
   }  
    
@@ -442,19 +441,19 @@ public class NetModuleFree {
   */
   
   public boolean intersects(DynamicInstanceProxy dip, Set<String> useGroups, NetModule module,
-                            String ovrID, Point2D pt, DataAccessContext irx) {
+                            String ovrID, Point2D pt, StaticDataAccessContext irx) {
   
     //
     // Figure out the rectangle containing the members:
     //  
     
-    NetOverlayProperties nop = irx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = irx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, irx);    
-    List<TaggedShape> shapeList = getShape(dip, irx, useGroups, ovrID, module, 
-                                           nameBounds, outerRect, nop, nmp, false, null, null);
+    List<TaggedShape> shapeList = getShape(dip, irx, useGroups, module, 
+                                           nameBounds, outerRect, nmp, false, null, null);
     if (!outerRect.contains(pt)) {
       return (false);
     }
@@ -475,9 +474,9 @@ public class NetModuleFree {
   ** specified in a region intersection
   */
   
-  public boolean nameInRegion(Intersection intersect, NetModule module, String ovrID, int mode, DataAccessContext icx) {
+  public boolean nameInRegion(Intersection intersect, NetModule module, String ovrID, int mode, StaticDataAccessContext icx) {
   
-    NetOverlayProperties nop = icx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = icx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     IntersectionExtraInfo ei = (IntersectionExtraInfo)intersect.getSubID();
     
@@ -635,9 +634,9 @@ public class NetModuleFree {
   public List<Shape> getModuleShapes(Genome ownerGenome,
                                      Set<String> useGroups, String ovrID, 
                                      String moduleID,
-                                     Rectangle2D outerRectRet, DataAccessContext rcx) {
+                                     Rectangle2D outerRectRet, StaticDataAccessContext rcx) {
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);
     NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(ownerGenome.getID());
     DynamicInstanceProxy dip = null;
@@ -649,8 +648,8 @@ public class NetModuleFree {
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, mod, rcx);
        
-    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, ovrID, mod, 
-                                           nameBounds, outerRect, nop, nmp, false, null, null);
+    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, mod, 
+                                           nameBounds, outerRect, nmp, false, null, null);
     ArrayList<Shape> retval = new ArrayList<Shape>();
     int numShapes = shapeList.size();
     for (int i = 0; i < numShapes; i++) {
@@ -666,13 +665,13 @@ public class NetModuleFree {
   */
   
   public Intersection intersectsName(NetModule module, String ovrID, 
-                                     DataAccessContext icx, Point2D pt) {
+                                     StaticDataAccessContext icx, Point2D pt) {
   
     //
     // Figure out name bound and see if we intersect it:
     //  
     
-    NetOverlayProperties nop = icx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = icx.getCurrentLayout().getNetOverlayProperties(ovrID);
     String moduleID = module.getID(); 
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);      
     Rectangle2D nameBounds = getNameBounds(nmp, module, icx);
@@ -690,14 +689,14 @@ public class NetModuleFree {
   public Intersection intersectsLinkPad(DynamicInstanceProxy dip, 
                                         Set<String> useGroups, NetModule module,
                                         String ovrID, 
-                                        DataAccessContext rcx, 
+                                        StaticDataAccessContext rcx, 
                                         Point2D pt) {
   
     //
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     
     String moduleID = module.getID();
@@ -706,15 +705,14 @@ public class NetModuleFree {
     
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
     ArrayList<LinkPad> padList = new ArrayList<LinkPad>();
-    getShape(dip, rcx, useGroups, ovrID, 
-             module, nameBounds, outerRect, nop, nmp, false, padList, null);
+    getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, false, padList, null);
     rcx.popFrc();
      
     //
     // Use this as a testbed for handling large pixel diameters:
     //
     
-    int usePad = ((2 * (int)rcx.pixDiam) > PAD_PAD) ? 2 * (int)rcx.pixDiam : PAD_PAD;
+    int usePad = ((2 * (int)rcx.getPixDiam()) > PAD_PAD) ? 2 * (int)rcx.getPixDiam() : PAD_PAD;
     
     Rectangle padded = new Rectangle(outerRect.x - usePad, outerRect.y - usePad, 
                                      outerRect.width + (2 * usePad), outerRect.height + (2 * usePad));
@@ -722,7 +720,7 @@ public class NetModuleFree {
       return (null);
     } 
     
-    LinkPad interPad = intersectsPad(padList, pt, rcx.pixDiam);    
+    LinkPad interPad = intersectsPad(padList, pt, rcx.getPixDiam());    
     if (interPad != null) {
       IntersectionExtraInfo ei = new IntersectionExtraInfo(interPad.point, interPad.getNormal());    
       Intersection intersect = new Intersection(moduleID, ei, 0.0);
@@ -739,13 +737,13 @@ public class NetModuleFree {
   
   public Intersection intersectsBoundary(DynamicInstanceProxy dip, Set<String> useGroups, NetModule module,
                                          String ovrID, 
-                                         DataAccessContext rcx, Point2D pt) {
+                                         StaticDataAccessContext rcx, Point2D pt) {
   
     //
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
     
     String moduleID = module.getID();
@@ -758,8 +756,7 @@ public class NetModuleFree {
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
     ArrayList<Point2D> intersectedShape = new ArrayList<Point2D>();
-    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, ovrID, module, 
-                                           nameBounds, outerRect, nop, nmp, true, null, null);
+    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, true, null, null);
     
     int numShape = shapeList.size();
     for (int i = 0; i < numShape; i++) {
@@ -785,7 +782,7 @@ public class NetModuleFree {
             intersectedShape.add((Point2D)startPt.clone());
             if (!haveIntersect) {
               seg.setBoth(startPt, movePt);
-              result = checkSeg(seg, pt, moduleID, startPt, movePt, rcx.pixDiam);
+              result = checkSeg(seg, pt, moduleID, startPt, movePt, rcx.getPixDiam());
               if (result != null) {
                 IntersectionExtraInfo ei = (IntersectionExtraInfo)result.getSubID();
                 fillBoundaryLocation(outerRect, nmp, ei);
@@ -802,7 +799,7 @@ public class NetModuleFree {
             intersectedShape.add((Point2D)endPt.clone());
             if (!haveIntersect) {
               seg.setBoth(startPt, endPt);
-              result = checkSeg(seg, pt, moduleID, startPt, endPt, rcx.pixDiam);
+              result = checkSeg(seg, pt, moduleID, startPt, endPt, rcx.getPixDiam());
               if (result != null) {
                 IntersectionExtraInfo ei = (IntersectionExtraInfo)result.getSubID();
                 fillBoundaryLocation(outerRect, nmp, ei);
@@ -848,7 +845,7 @@ public class NetModuleFree {
                                            Point2D pt,
                                            List<Point2D> intersectedShape, List<TaggedShape> shapeList,
                                            NetModuleProperties nmp, 
-                                           Rectangle2D nameBounds, DataAccessContext icx) { 
+                                           Rectangle2D nameBounds, StaticDataAccessContext icx) { 
     IntersectionExtraInfo ei = (IntersectionExtraInfo)result.getSubID();
     ei.contigInfo = nmp.rectsForContig(intersectedShape, shapeList);
     // This tells us what auto-gen member or non-member rects we intersect:
@@ -868,9 +865,9 @@ public class NetModuleFree {
   
   public Intersection intersectsDefinitionBoundary(NetModule module,
                                                    String ovrID, 
-                                                   DataAccessContext icx, Point2D pt) {
+                                                   StaticDataAccessContext icx, Point2D pt) {
   
-    NetOverlayProperties nop = icx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = icx.getCurrentLayout().getNetOverlayProperties(ovrID);
     String moduleID = module.getID();
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);
           
@@ -887,22 +884,22 @@ public class NetModuleFree {
       Point2D bottomLeft = new Point2D.Double(rect.getX(), rect.getMaxY());
        
       seg.setBoth(topLeft, topRight);
-      Intersection result = checkSeg(seg, pt, moduleID, topLeft, topRight, icx.pixDiam);
+      Intersection result = checkSeg(seg, pt, moduleID, topLeft, topRight, icx.getPixDiam());
       if (result != null) {
         return (result);
       }      
       seg.setBoth(topRight, bottomRight);
-      result = checkSeg(seg, pt, moduleID, topRight, bottomRight, icx.pixDiam);
+      result = checkSeg(seg, pt, moduleID, topRight, bottomRight, icx.getPixDiam());
       if (result != null) {
         return (result);
       }      
       seg.setBoth(bottomRight, bottomLeft);
-      result = checkSeg(seg, pt, moduleID, bottomRight, bottomLeft, icx.pixDiam);
+      result = checkSeg(seg, pt, moduleID, bottomRight, bottomLeft, icx.getPixDiam());
       if (result != null) {
         return (result);
       }      
       seg.setBoth(bottomLeft, topLeft);
-      result = checkSeg(seg, pt, moduleID, bottomLeft, topLeft, icx.pixDiam);
+      result = checkSeg(seg, pt, moduleID, bottomLeft, topLeft, icx.getPixDiam());
       if (result != null) {
         return (result);
       }
@@ -919,14 +916,14 @@ public class NetModuleFree {
   public Intersection intersectsInterior(DynamicInstanceProxy dip, 
                                          Set<String> useGroups, NetModule module,
                                          String ovrID, 
-                                         DataAccessContext rcx,
+                                         StaticDataAccessContext rcx,
                                          Point2D pt) {
   
     //
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(ovrID);
     NetModuleProperties nmp = nop.getNetModuleProperties(module.getID());
  
     
@@ -940,8 +937,7 @@ public class NetModuleFree {
     Rectangle outerRect = new Rectangle();
     ArrayList<Point2D> intersectedShape = new ArrayList<Point2D>();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
-    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, ovrID, module, 
-                                           nameBounds, outerRect, nop, nmp, true, null, null);
+    List<TaggedShape> shapeList = getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, true, null, null);
     if (!outerRect.contains(pt)) {
       return (null);
     }
@@ -1025,16 +1021,13 @@ public class NetModuleFree {
   */
 
   public int getPadCountForModule(DynamicInstanceProxy dip, Set<String> useGroups, NetModule module,
-                                  String ovrID, NetModuleProperties nmp,
-                                  DataAccessContext rcx) {  
+                                  NetModuleProperties nmp, StaticDataAccessContext rcx) {  
 
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
     rcx.pushFrc(fixedFrc_);
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
     ArrayList<LinkPad> padList = new ArrayList<LinkPad>();
-    getShape(dip, rcx, useGroups, ovrID, module, 
-             nameBounds, outerRect, nop, nmp, false, padList, null);
+    getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, false, padList, null);
     rcx.popFrc();   
     return (padList.size());
   }
@@ -1046,19 +1039,16 @@ public class NetModuleFree {
   */
 
   public Set<LinkPad> padsForModule(DynamicInstanceProxy dip, Set<String> useGroups, NetModule module,
-                                    String ovrID, NetModuleProperties nmp,
-                                    DataAccessContext rcx) {
+                                    NetModuleProperties nmp, StaticDataAccessContext rcx) {
     //
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
     rcx.pushFrc(fixedFrc_);
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
     ArrayList<LinkPad> padList = new ArrayList<LinkPad>();
-    getShape(dip, rcx, useGroups, ovrID, module, 
-             nameBounds, outerRect, nop, nmp, false, padList, null);
+    getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, false, padList, null);
     rcx.popFrc();
     HashSet<LinkPad> retval = new HashSet<LinkPad>(padList);
     return (retval);   
@@ -1075,8 +1065,7 @@ public class NetModuleFree {
   */
 
   public void needRowsAndCols(DynamicInstanceProxy dip, NetModule module,
-                              String ovrID, NetModuleProperties nmp,
-                              DataAccessContext rcx, 
+                              NetModuleProperties nmp, StaticDataAccessContext rcx, 
                               Rectangle bounds, SortedSet<Integer> needRows, 
                               SortedSet<Integer> needCols, Set<Point2D> usedPads) {
   
@@ -1084,11 +1073,9 @@ public class NetModuleFree {
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
-    
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
-    List<TaggedShape> shapeList = getShape(dip, rcx, null, ovrID, module, nameBounds, outerRect, nop, nmp, true, null, null);      
+    List<TaggedShape> shapeList = getShape(dip, rcx, null, module, nameBounds, outerRect, nmp, true, null, null);      
     
     int slnum = shapeList.size();
     for (int i = 0; i < slnum; i++) {
@@ -1134,8 +1121,7 @@ public class NetModuleFree {
   */
 
   public void expansionExcludedRowsAndCols(DynamicInstanceProxy dip, NetModule module,
-                                           String ovrID, NetModuleProperties nmp,
-                                           DataAccessContext rcx, 
+                                           NetModuleProperties nmp, StaticDataAccessContext rcx, 
                                            Rectangle bounds, SortedSet<Integer> excludeRows, 
                                            SortedSet<Integer> excludeCols, Set<Point2D> usedPads) {
   
@@ -1143,11 +1129,9 @@ public class NetModuleFree {
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
-    
     Rectangle outerRect = new Rectangle();
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
-    List<TaggedShape> shapeList = getShape(dip, rcx, null, ovrID, module, nameBounds, outerRect, nop, nmp, true, null, null);      
+    List<TaggedShape> shapeList = getShape(dip, rcx, null, module, nameBounds, outerRect, nmp, true, null, null);      
     
     //
     // The only expansion we don't allow is between used pads and edges.  So for each used
@@ -1222,8 +1206,7 @@ public class NetModuleFree {
   */
 
   public Map<Layout.PointNoPoint, LinkPad> closestRemainingPads(DynamicInstanceProxy dip, Set<String> useGroups, NetModule module,
-                                                                String ovrID, NetModuleProperties nmp,
-                                                                DataAccessContext rcx, 
+                                                                NetModuleProperties nmp, StaticDataAccessContext rcx, 
                                                                 Map<Layout.PointNoPoint, Vector2D> rigidMoves, 
                                                                 Map<Layout.PointNoPoint, LinkPad> wantPads, 
                                                                 Map<Layout.PointNoPoint, LinkPad> currPads, boolean orphansOnly) {
@@ -1232,14 +1215,11 @@ public class NetModuleFree {
     // Figure out the shapes containing the members:
     //  
     
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(ovrID);
-    
     Rectangle outerRect = new Rectangle();
     rcx.pushFrc(fixedFrc_);
     Rectangle2D nameBounds = getNameBounds(nmp, module, rcx);    
     ArrayList<LinkPad> padList = new ArrayList<LinkPad>();
-    getShape(dip, rcx, useGroups, ovrID, 
-             module, nameBounds, outerRect, nop, nmp, false, padList, null);
+    getShape(dip, rcx, useGroups, module, nameBounds, outerRect, nmp, false, padList, null);
     rcx.popFrc();
     
     HashMap<Layout.PointNoPoint, LinkPad> retval = new HashMap<Layout.PointNoPoint, LinkPad>();
@@ -1256,7 +1236,7 @@ public class NetModuleFree {
   
   public Rectangle2D getNameBounds(NetModuleProperties nmp,  
                                    NetModule module,  
-                                   DataAccessContext irx) {  
+                                   StaticDataAccessContext irx) {  
   
     if (nmp.isHidingLabel()) {
       return (null);
@@ -1266,7 +1246,7 @@ public class NetModuleFree {
     if (nameLoc == null) {
       return (null);
     }    
-    AnnotatedFont abFont = irx.fmgr.getOverrideFont(FontManager.NET_MODULE, nmp.getFontOverride());
+    AnnotatedFont abFont = irx.getFontManager().getOverrideFont(FontManager.NET_MODULE, nmp.getFontOverride());
     String breakDef = nmp.getLineBreakDef();
     Rectangle2D nameBounds;
     if (breakDef == null) {  
@@ -1503,10 +1483,10 @@ public class NetModuleFree {
   */
   
   private List<TaggedShape> getShape(DynamicInstanceProxy dip,
-                                     DataAccessContext rcx,
+                                     StaticDataAccessContext rcx,
                                      Set<String> useGroups,  
-                                     String ovrID, NetModule module, Rectangle2D textBounds,
-                                     Rectangle outerRect, NetOverlayProperties nop, 
+                                     NetModule module, Rectangle2D textBounds,
+                                     Rectangle outerRect,
                                      NetModuleProperties nmp, boolean showComponents, List<LinkPad> bubbleList,
                                      Rectangle2D superRect) {
     //
@@ -1589,7 +1569,7 @@ public class NetModuleFree {
   ** Get the shape of the module for the contiguous single rectangle case
   */
   
-  private List<TaggedShape> getContigRectShape(DataAccessContext rcx,
+  private List<TaggedShape> getContigRectShape(StaticDataAccessContext rcx,
                                                DynamicInstanceProxy dip, Set<String> useGroups,
                                                NetModule module, Rectangle2D textBounds, 
                                                Rectangle outerRect,
@@ -1612,14 +1592,14 @@ public class NetModuleFree {
     //
     
     HashSet<String> nodes = new HashSet<String>();
-    Set<String> allNonMems = getNonMembers(rcx.getGenome(), useGroups, module, nodes, dip);
+    Set<String> allNonMems = getNonMembers(rcx.getCurrentGenome(), useGroups, module, nodes, dip);
        
     Rectangle2D rect = nmp.getShapeIterator().next();
     
     HashMap<String, Rectangle> membRects = null;
     Rectangle intRect = UiUtil.rectFromRect2D(rect);
     
-    if (showComponents || rcx.forWeb) {
+    if (showComponents || rcx.isForWeb()) {
     	membRects = new HashMap<String, Rectangle>();
     }
     
@@ -1702,7 +1682,7 @@ public class NetModuleFree {
     
     //
     // Figure out the super rectangle
-    if (rcx.forWeb && superRect != null) {
+    if (rcx.isForWeb() && superRect != null) {
     	superRect.setRect(outerRect.getBounds2D());
 	    for (Iterator<String> kit = membRects.keySet().iterator(); kit.hasNext(); ) {
 	    	String memberID = kit.next();
@@ -1728,7 +1708,7 @@ public class NetModuleFree {
   ** Get the shape of the module for the multi-rectangle type
   */
   
-  private List<TaggedShape> getMultiRectShape(DataAccessContext rcx,
+  private List<TaggedShape> getMultiRectShape(StaticDataAccessContext rcx,
                                               DynamicInstanceProxy dip, Set<String> useGroups, 
                                               NetModule module, Rectangle2D textBounds, Rectangle outerRect,
                                               NetModuleProperties nmp, boolean showComponents, List<LinkPad> bubbleList,
@@ -1783,7 +1763,7 @@ public class NetModuleFree {
     //
     
     HashSet<String> nodes = new HashSet<String>();
-    Set<String> allNonMems = getNonMembers(rcx.getGenome(), useGroups, module, nodes, dip);
+    Set<String> allNonMems = getNonMembers(rcx.getCurrentGenome(), useGroups, module, nodes, dip);
     
     //
     // Now add rectangles for all members.  Keep a separate copy to use as a filter for
@@ -1924,7 +1904,7 @@ public class NetModuleFree {
     
     //
     // Figure out the super rectangle
-    if (rcx.forWeb && superRect != null) {
+    if (rcx.isForWeb() && superRect != null) {
     	superRect.setRect(outerRect.getBounds2D());
 	    for (Iterator<String> kit = eachRect.keySet().iterator(); kit.hasNext(); ) {
 	    	String memberID = kit.next();
@@ -2065,7 +2045,7 @@ public class NetModuleFree {
   ** Get the shape of the module for the members only type:
   */
   
-  private List<TaggedShape> getMembersOnlyShape(DataAccessContext rcx,
+  private List<TaggedShape> getMembersOnlyShape(StaticDataAccessContext rcx,
                                                 NetModule module, Rectangle2D textBounds,
                                                 Rectangle outerRect,
                                                 NetModuleProperties nmp, List<LinkPad> bubbleList) {
@@ -2209,7 +2189,6 @@ public class NetModuleFree {
     ArrayList<LinkPad> firstStartPads = null;
     ArrayList<LinkPad> lastEndPads = new ArrayList<LinkPad>();
     double lastLen = -1.0;
-    double firstLen = -1.0;
     
     PathIterator pit = padOutline.getPathIterator(null);
     while (!pit.isDone()) {
@@ -2613,7 +2592,7 @@ public class NetModuleFree {
     int countm2 = count - 2;
     Vector2D normVec = vec.normalized();
     for (int i = 0; i < count; i++) {
-      double factor = (double)(i * PAD_SIZE_INT);
+      double factor = i * PAD_SIZE_INT;
       Point2D nextPoint = normVec.scaled(factor).add(start);
       LinkPad lp = new LinkPad(normal, normRun, nextPoint, side, nodeID);
       boolean notTerminal = true;

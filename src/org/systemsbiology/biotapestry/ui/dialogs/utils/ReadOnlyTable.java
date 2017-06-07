@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -55,7 +55,8 @@ import javax.swing.table.JTableHeader;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -108,7 +109,8 @@ public class ReadOnlyTable {
   private boolean identitySort_;
   private List<ExtraButton> extraButtonProps_;
   private boolean tableSuppressed_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -121,8 +123,9 @@ public class ReadOnlyTable {
   ** Use if model is built first
   */
   
-  public ReadOnlyTable(BTState appState, TableModel atm, SelectionHandler sh) {
-    appState_ = appState;
+  public ReadOnlyTable(UIComponentSource uics, DataAccessContext dacx, TableModel atm, SelectionHandler sh) {
+    uics_ = uics;
+    dacx_ = dacx;
     rowElements = new ArrayList();
     this.atm_ = atm;
     userSh_ = sh;
@@ -134,8 +137,9 @@ public class ReadOnlyTable {
   ** Use when the Table needs to be built before the model
   */   
 
-  public ReadOnlyTable(BTState appState) {
-    appState_ = appState;
+  public ReadOnlyTable(UIComponentSource uics, DataAccessContext dacx) {
+    uics_ = uics;
+    dacx_ = dacx;
     rowElements = new ArrayList();
     tableSuppressed_ = false;
   }
@@ -225,7 +229,7 @@ public class ReadOnlyTable {
       if (extraButtonProps_ != null) {
         int numEB = extraButtonProps_.size();
         for (int i = 0; i < numEB; i++) {
-          ExtraButton eb = (ExtraButton)extraButtonProps_.get(i);
+          ExtraButton eb = extraButtonProps_.get(i);
           eb.extraButton.setEnabled(false);
         } 
       }  
@@ -284,7 +288,7 @@ public class ReadOnlyTable {
     if (extraButtonProps_ != null) {
       int numEB = extraButtonProps_.size();
       for (int i = 0; i < numEB; i++) {
-        ExtraButton eb = (ExtraButton)extraButtonProps_.get(i);
+        ExtraButton eb = extraButtonProps_.get(i);
         eb.extraButton.setEnabled(eb.shadowEnabled);
         eb.extraButton.revalidate();
       } 
@@ -329,7 +333,7 @@ public class ReadOnlyTable {
       if (extraButtonProps_ != null) {
         int numEB = extraButtonProps_.size();
         for (int i = 0; i < numEB; i++) {
-          ExtraButton eb = (ExtraButton)extraButtonProps_.get(i);
+          ExtraButton eb = extraButtonProps_.get(i);
           eb.shadowEnabled = eb.behavior.alwaysOn;
         } 
       }  
@@ -398,8 +402,8 @@ public class ReadOnlyTable {
         }
       });
     } else {    
-      double vHeight = (double)vRect.height;
-      double halfHeightInRows = (vHeight/(double)rect.height) / 2.0;
+      double vHeight = vRect.height;
+      double halfHeightInRows = (vHeight/rect.height) / 2.0;
       int padY = (int)(halfHeightInRows * rect.height);
       int useRectY = rect.y - vRect.y - padY;
       rect.setBounds(rect.x - vRect.x, useRectY, rect.width, vRect.height);
@@ -431,8 +435,8 @@ public class ReadOnlyTable {
     // Get row shading on the Mac:
     //
     
-    UiUtil.installDefaultCellRendererForPlatform(jt_, String.class, false, appState_);
-    UiUtil.installDefaultCellRendererForPlatform(jt_, Integer.class, false, appState_);
+    UiUtil.installDefaultCellRendererForPlatform(jt_, String.class, false, uics_.getHandlerAndManagerSource());
+    UiUtil.installDefaultCellRendererForPlatform(jt_, Integer.class, false, uics_.getHandlerAndManagerSource());
     
     //
     // Center integers by default:
@@ -446,7 +450,7 @@ public class ReadOnlyTable {
         throw new IllegalStateException();
       }
     } else {
-      ArrayList allTables = new ArrayList();
+      ArrayList<ReadOnlyTable> allTables = new ArrayList<ReadOnlyTable>();
       if (etp.multiTableSelectionSyncing == null) {
         allTables.add(this);
       } else {
@@ -474,7 +478,7 @@ public class ReadOnlyTable {
       int numC = etp.colWidths.size();
       TableColumnModel tcm = jt_.getColumnModel();
       for (int i = 0; i < numC; i++) {
-        ColumnWidths cw = (ColumnWidths)etp.colWidths.get(i); 
+        ColumnWidths cw = etp.colWidths.get(i); 
         int viewColumn = jt_.convertColumnIndexToView(cw.colNum);
         TableColumn tfCol = tcm.getColumn(viewColumn);
         tfCol.setMinWidth(cw.min);
@@ -580,7 +584,7 @@ public class ReadOnlyTable {
  
   private void createButtons(TableParams etp) {
   
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     if (etp.buttons != NO_BUTTONS) {
       if ((etp.buttons & ADD_BUTTON) != 0x00) {
         String aTag = rMan.getString("dialogs.addEntry");
@@ -590,7 +594,7 @@ public class ReadOnlyTable {
             try {   
               bh_.pressed(ADD_BUTTON);
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -605,7 +609,7 @@ public class ReadOnlyTable {
             try {
               bh_.pressed(DELETE_BUTTON);
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -621,7 +625,7 @@ public class ReadOnlyTable {
             try {
               bh_.pressed(EDIT_BUTTON);
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -730,7 +734,7 @@ public class ReadOnlyTable {
     public boolean disableColumnSort;
     public boolean tableIsUnselectable;
     public int buttons;
-    public List multiTableSelectionSyncing;
+    public List<ReadOnlyTable> multiTableSelectionSyncing;
     public boolean clearOthersOnSelect;
     public String tableTitle;
     public JLabel tableJLabel;
@@ -779,12 +783,14 @@ public class ReadOnlyTable {
     protected List sortMap_;
     protected int rowCount_;
     protected String[] colNames_;
-    protected BTState tabAppState_;
+    protected UIComponentSource uics_;
+    protected DataAccessContext dacx_;
     
     private static final long serialVersionUID = 1L;
     
-    protected TableModel(BTState appState, int colNum) {
-      tabAppState_ = appState;
+    protected TableModel(UIComponentSource uics, DataAccessContext dacx, int colNum) {
+      uics_ = uics;
+      dacx_ = dacx;
       columns_ = new ArrayList[colNum];
       for (int i = 0; i < colNum; i++) {
         columns_[i] = new ArrayList();
@@ -826,20 +832,20 @@ public class ReadOnlyTable {
         }
         return (columns_[c]);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
 
     public String getColumnName(int c) {
       try {
-        ResourceManager rMan = tabAppState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         if (c >= colNames_.length) {
           throw new IllegalArgumentException();
         }
         return (rMan.getString(colNames_[c]));
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -913,7 +919,7 @@ public class ReadOnlyTable {
         List list = getListAt(c);
         return (list.get(mapSelectionIndex(r)));
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -932,7 +938,7 @@ public class ReadOnlyTable {
         }
         return (colClasses_[c]);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -947,7 +953,7 @@ public class ReadOnlyTable {
         }
         return (comparators_[c]);
       } catch (Exception ex) {
-        tabAppState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -1112,12 +1118,12 @@ public class ReadOnlyTable {
   
   public class SelectionTracker implements ListSelectionListener {
     
-    private List allTabs_;
+    private List<ReadOnlyTable> allTabs_;
     private boolean ignore_;
     private boolean clearOthers_;
     private SelectionHandler handler_;
  
-    SelectionTracker(List allTabs, boolean clearOthers, SelectionHandler handler) {
+    SelectionTracker(List<ReadOnlyTable> allTabs, boolean clearOthers, SelectionHandler handler) {
       allTabs_ = allTabs;
       ignore_ = false;
       clearOthers_ = clearOthers;
@@ -1134,9 +1140,9 @@ public class ReadOnlyTable {
         }
         handleSelection();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
       return;             
     }
@@ -1151,7 +1157,7 @@ public class ReadOnlyTable {
       int matchTab = 0;
       int numTabs = allTabs_.size();
       for (int i = 0; i < numTabs; i++) {
-        ReadOnlyTable td = (ReadOnlyTable)allTabs_.get(i);
+        ReadOnlyTable td = allTabs_.get(i);
         if (td == ReadOnlyTable.this) {
           matchTab = i;
           continue;
@@ -1166,7 +1172,7 @@ public class ReadOnlyTable {
           if (td.extraButtonProps_ != null) {
             int numEB = td.extraButtonProps_.size();
             for (int j = 0; j < numEB; j++) {
-              ExtraButton eb = (ExtraButton)td.extraButtonProps_.get(j);
+              ExtraButton eb = td.extraButtonProps_.get(j);
               eb.shadowEnabled = eb.behavior.alwaysOn;
             } 
           }  
@@ -1274,7 +1280,7 @@ public class ReadOnlyTable {
           viewport.scrollRectToVisible(rect);
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
@@ -1295,8 +1301,8 @@ public class ReadOnlyTable {
     
     private static final long serialVersionUID = 1L;
  
-    public NameWithHiddenIDModel(BTState appState) {
-      super(appState, NUM_COL_);
+    public NameWithHiddenIDModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"nameTable.name"};
       addHiddenColumns(NUM_HIDDEN_);
     }    
@@ -1317,8 +1323,8 @@ public class ReadOnlyTable {
       return ((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[0])));
     } 
     
-    public List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    public List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[i])));
       }
@@ -1416,11 +1422,9 @@ public class ReadOnlyTable {
   **
   */
   
-  public static class IntegerComparator implements Comparator {
+  public static class IntegerComparator implements Comparator<Integer> {
  
-    public int compare(Object o1, Object o2) {
-      Integer int1 = (Integer)o1;
-      Integer int2 = (Integer)o2;
+    public int compare(Integer int1, Integer int2) {
       return (int1.compareTo(int2));
     }
   } 

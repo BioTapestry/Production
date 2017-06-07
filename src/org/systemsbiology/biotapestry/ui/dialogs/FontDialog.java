@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,10 +37,10 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.undo.FontChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.ui.FontChange;
 import org.systemsbiology.biotapestry.ui.FontManager;
@@ -48,6 +48,7 @@ import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -68,8 +69,9 @@ public class FontDialog extends JDialog {
   private JCheckBox[] useBold_;
   private JCheckBox[] useItalic_;  
   private String layoutKey_;  
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -84,12 +86,13 @@ public class FontDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public FontDialog(BTState appState, DataAccessContext dacx, String layoutKey) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("fontDialog.title"), true);
-    ResourceManager rMan = appState.getRMan();
+  public FontDialog(UIComponentSource uics, StaticDataAccessContext dacx, String layoutKey, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("fontDialog.title"), true);
     layoutKey_ = layoutKey;
-    appState_ = appState;
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
+    ResourceManager rMan = dacx_.getRMan();
 
     setSize(600, 500);
     JPanel cp = (JPanel)getContentPane();
@@ -101,7 +104,7 @@ public class FontDialog extends JDialog {
     // Build a font setting for each variable font:
     //
 
-    FontManager mgr = appState_.getFontMgr();;
+    FontManager mgr = dacx_.getFontManager();
     int numFonts = mgr.getNumFonts();
     sizeCombo_ = new JComboBox[numFonts];
     useSerif_ = new JCheckBox[numFonts];
@@ -150,7 +153,7 @@ public class FontDialog extends JDialog {
         try {
           resetToDefaults();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });         
@@ -161,7 +164,7 @@ public class FontDialog extends JDialog {
         try {
           applyProperties();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -173,7 +176,7 @@ public class FontDialog extends JDialog {
           FontDialog.this.setVisible(false);
           FontDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -184,7 +187,7 @@ public class FontDialog extends JDialog {
           FontDialog.this.setVisible(false);
           FontDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -203,7 +206,7 @@ public class FontDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, numFonts, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
     
@@ -226,7 +229,7 @@ public class FontDialog extends JDialog {
   */
   
   private void displayProperties() {
-    FontManager mgr = appState_.getFontMgr();
+    FontManager mgr = dacx_.getFontManager();
     int numFonts = mgr.getNumFonts();   
     
     for (int i = 0; i < numFonts; i++) {      
@@ -245,7 +248,7 @@ public class FontDialog extends JDialog {
   */
   
   private void resetToDefaults() {
-    FontManager mgr = appState_.getFontMgr();
+    FontManager mgr = dacx_.getFontManager();
     int numFonts = mgr.getNumFonts();   
     
     for (int i = 0; i < numFonts; i++) {
@@ -266,14 +269,14 @@ public class FontDialog extends JDialog {
   
   private void applyProperties() {
     
-    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.fgho.getGlobalNetModuleLinkPadNeeds();
+    Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
    
     //
     // Undo/Redo support
     //
-    UndoSupport support = new UndoSupport(appState_, "undo.fontDialog");     
+    UndoSupport support = uFac_.provideUndoSupport("undo.fontDialog", dacx_);     
 
-    FontManager mgr = appState_.getFontMgr();
+    FontManager mgr = dacx_.getFontManager();
     int numFonts = mgr.getNumFonts(); 
     ArrayList<FontManager.FontSpec> fontSpecs = new ArrayList<FontManager.FontSpec>();
     for (int i = 0; i < numFonts; i++) {      
@@ -285,14 +288,14 @@ public class FontDialog extends JDialog {
       fontSpecs.add(fs);
     }
     FontChange chg = mgr.setFonts(fontSpecs);
-    FontChangeCmd fcc = new FontChangeCmd(appState_, dacx_, chg);
+    FontChangeCmd fcc = new FontChangeCmd(dacx_, chg);
     support.addEdit(fcc);
     
     // Actually, ALL layouts get changed (FIX ME):
     LayoutChangeEvent lcev = new LayoutChangeEvent(layoutKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE);
     support.addEvent(lcev);        
 
-    ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, dacx_, globalPadNeeds, false, support);
+    ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds, false, support);
 
     //
     // Finish undo support:

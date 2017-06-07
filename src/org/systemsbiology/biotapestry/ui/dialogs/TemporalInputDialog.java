@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
@@ -61,6 +61,7 @@ import org.systemsbiology.biotapestry.util.IntegerEditor;
 import org.systemsbiology.biotapestry.util.ProtoInteger;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -80,12 +81,13 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   private HashMap<Integer, TabData> tabMap_;
   private TabData tdatf_;
   private JTabbedPane tabPane_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   private DataAccessContext dacx_;
-  private List regionList_;
-  private List inputList_;
-  private List signList_;
-  private List strategyList_;
+  private UndoFactory uFac_;
+  private List<EnumCell> regionList_;
+  private List<EnumCell> inputList_;
+  private List<EnumCell> signList_;
+  private List<EnumCell> strategyList_;
   private boolean advanced_;
   private FixedJButton buttonAdv_;
   private boolean namedStages_;
@@ -106,25 +108,25 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** TI structure.
   */ 
   
-  public static TemporalInputDialog temporalInputDialogWrapper(BTState appState, DataAccessContext dacx, List<String> mappedIDs, boolean doForTable) {
+  public static TemporalInputDialog temporalInputDialogWrapper(UIComponentSource uics, DataAccessContext dacx, List<String> mappedIDs, boolean doForTable, UndoFactory uFac) {
     
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState, dacx);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
       tasd.setVisible(true);
     }
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }
     
-    TemporalInputDialog qsd = new TemporalInputDialog(appState, dacx, mappedIDs, doForTable);
+    TemporalInputDialog qsd = new TemporalInputDialog(uics, dacx, mappedIDs, doForTable, uFac);
     return (qsd);
   }      
 
@@ -139,13 +141,14 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Constructor 
   */ 
   
-  private TemporalInputDialog(BTState appState, DataAccessContext dacx, List<String> mappedIDs, boolean doForTable) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tientry.title"), true);
-    appState_ = appState;
+  private TemporalInputDialog(UIComponentSource uics, DataAccessContext dacx, List<String> mappedIDs, boolean doForTable, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tientry.title"), true);
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
     advanced_ = false;    
         
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(900, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -158,7 +161,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     
     tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
     namedStages_ = tad_.haveNamedStages();
-    tirData_ = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    tirData_ = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     
     signList_ = buildSignList();
     inputList_ = buildInputList();
@@ -195,7 +198,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
             stopTheEditing(false);
             tdatf_ = tabMap_.get(new Integer(tabPane_.getSelectedIndex()));
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -219,15 +222,15 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
         try {
           toggleAdvanced();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
     
 
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBoxWithExtra(cp, 8, 1, true, buttonAdv_, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
    
@@ -290,7 +293,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   */ 
   
   private TabData buildATab(String mappedID, boolean doForTable) {       
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     
     TabData tdat = new TabData();
@@ -311,18 +314,18 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     // Here is the table:
     //
     
-    tdat.est = new EditableTable(appState_, new TemporalInputTableModel(appState_), appState_.getTopFrame());
+    tdat.est = new EditableTable(uics_, dacx_, new TemporalInputTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
     etp.singleSelectOnly = true;
     etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.INPUT), new EditableTable.EnumCellInfo(true, inputList_));
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.SIGN), new EditableTable.EnumCellInfo(false, signList_));
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.REGION), new EditableTable.EnumCellInfo(true, regionList_));
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.START_STRAT), new EditableTable.EnumCellInfo(false, strategyList_));
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.END_STRAT), new EditableTable.EnumCellInfo(false, strategyList_));
-    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.RES_SOURCE), new EditableTable.EnumCellInfo(true, regionList_));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.INPUT), new EditableTable.EnumCellInfo(true, inputList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.SIGN), new EditableTable.EnumCellInfo(false, signList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.REGION), new EditableTable.EnumCellInfo(true, regionList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.START_STRAT), new EditableTable.EnumCellInfo(false, strategyList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.END_STRAT), new EditableTable.EnumCellInfo(false, strategyList_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TemporalInputTableModel.RES_SOURCE), new EditableTable.EnumCellInfo(true, regionList_, EnumCell.class));
     JPanel tablePan = tdat.est.buildEditableTable(etp);
     // Can't do this too early:
     tdat.est.getModel().collapseView(!advanced_);
@@ -343,7 +346,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     JPanel tiRangeControls = new JPanel();
     tiRangeControls.setLayout(new GridBagLayout()); 
 
-    tdat.range = dacx_.getExpDataSrc().getTemporalInputRangeData().getRange(mappedID);
+    tdat.range = dacx_.getTemporalRangeSrc().getTemporalInputRangeData().getRange(mappedID);
     if (tdat.range == null) {
       tdat.range = new TemporalRange(mappedID, null, false);
       tdat.isNew = true;
@@ -412,16 +415,16 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       String newName = tdat.nameField.getText().trim();
       if (!newName.equals(currName)) {
         if (newName.equals("")) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tientry.nameBlank"), 
                                         rMan.getString("tientry.nameBlankTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
         }
         if (!tird.nameIsUnique(newName)) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tientry.nameNotUnique"), 
                                         rMan.getString("tientry.nameNotUniqueTitle"),
                                         JOptionPane.ERROR_MESSAGE);
@@ -449,10 +452,10 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
               }
             }
             if (haveDefault) {
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = dacx_.getRMan();
               String desc = MessageFormat.format(rMan.getString("dataTables.disconnecting"), 
                                                  new Object[] {currName, newName});
-              JOptionPane.showMessageDialog(appState_.getTopFrame(), desc, 
+              JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
                                             rMan.getString("dataTables.disconnectingTitle"),
                                             JOptionPane.WARNING_MESSAGE);
             }
@@ -461,7 +464,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
         tdat.range.setName(newName);
         TemporalInputChange[] tic = tird.changeDataMapsToName(currName, newName);
         for (int i = 0; i < tic.length; i++) {
-          support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic[i]));
+          support.addEdit(new TemporalInputChangeCmd(dacx_, tic[i]));
         } 
       }
     }
@@ -558,8 +561,8 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       }
     }
    
-    TemporalInputTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    TemporalInputTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"tientry.input",
                                 "tientry.sign",
                                 "tientry.region",
@@ -592,6 +595,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       return (retval); 
     }
   
+    @Override
     public void extractValues(List prsList) {
       super.extractValues(prsList);
       Iterator rit = prsList.iterator();
@@ -602,6 +606,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       return;
     } 
   
+    @Override
     public boolean addRow(int[] rows) {
       super.addRow(rows);
       int lastIndex = rowCount_ - 1;
@@ -658,7 +663,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   
   private void toggleAdvanced() {
     advanced_ = !advanced_;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String text = rMan.getString((advanced_) ? "dialogs.collapse" : "dialogs.expand");
     buttonAdv_.setText(text);
     Iterator<TabData> tdit = tabData_.values().iterator();
@@ -683,9 +688,9 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     // Check for errors before actually doing the work:
     //
     
-    Iterator tdit = tabData_.values().iterator();
+    Iterator<TabData> tdit = tabData_.values().iterator();
     while (tdit.hasNext()) {
-      TabData tdat = (TabData)tdit.next(); 
+      TabData tdat = tdit.next(); 
       List vals = tdat.est.getModel().getValuesFromTable();
       if (!checkValues(vals)) {
         return (false);
@@ -694,16 +699,16 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     
     tdit = tabData_.values().iterator();
     while (tdit.hasNext()) {
-      TabData tdat = (TabData)tdit.next();
+      TabData tdat = tdit.next();
       List vals = tdat.est.getModel().getValuesFromTable();
       //
       // Undo/Redo support
       //
    
-      UndoSupport support = new UndoSupport(appState_, "undo.tientry");
+      UndoSupport support = uFac_.provideUndoSupport("undo.tientry", dacx_);
       
       if (tdat.isNew) {
-        support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tirData_.addEntry(tdat.range)));
+        support.addEdit(new TemporalInputChangeCmd(dacx_, tirData_.addEntry(tdat.range)));
       }
       TemporalInputChange tic = tirData_.startRangeUndoTransaction(tdat.range.getName());
       boolean ok = applyRangeData(tirData_, tdat, support);
@@ -718,7 +723,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       
       applyValues(tdat, vals);
       tic = tirData_.finishRangeUndoTransaction(tic);
-      support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));
+      support.addEdit(new TemporalInputChangeCmd(dacx_, tic));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();
     }
@@ -730,16 +735,16 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Build region list
   */
    
-  private List buildRegionList() {
-    ArrayList retval = new ArrayList();
-    Set regions = tirData_.getAllRegions();
-    Iterator rit = regions.iterator();
-    ResourceManager rMan = appState_.getRMan();
+  private List<EnumCell> buildRegionList() {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    Set<String> regions = tirData_.getAllRegions();
+    Iterator<String> rit = regions.iterator();
+    ResourceManager rMan = dacx_.getRMan();
     String allRegions = rMan.getString("tientry.allRegions");
     retval.add(new EnumCell(allRegions, null, 0, 0));
     int count = 1;
     while (rit.hasNext()) {
-      String regionName = (String)rit.next();
+      String regionName = rit.next();
       retval.add(new EnumCell(regionName, regionName, count, count));
       count++;
     }
@@ -751,9 +756,9 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Build input list
   */
    
-  private List buildInputList() {
-    ArrayList retval = new ArrayList();
-    ResourceManager rMan = appState_.getRMan();
+  private List<EnumCell> buildInputList() {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    ResourceManager rMan = dacx_.getRMan();
     String inputFormat = rMan.getString("tientry.inputFormat");    
     //
     // We provide all current mapping values.
@@ -776,9 +781,9 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Build sign list
   */
    
-  private List buildSignList() {    
-    ResourceManager rMan = appState_.getRMan();     
-    ArrayList retval = new ArrayList();
+  private List<EnumCell> buildSignList() {    
+    ResourceManager rMan = dacx_.getRMan();     
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     String promote = rMan.getString("ticreate.promote");
     retval.add(new EnumCell(promote, Integer.toString(RegionAndRange.PROMOTER), RegionAndRange.PROMOTER, 0));
  
@@ -793,9 +798,9 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Build Strategy list
   */
    
-  private List buildStrategyList() {   
-    ResourceManager rMan = appState_.getRMan(); 
-    ArrayList retval = new ArrayList();
+  private List<EnumCell> buildStrategyList() {   
+    ResourceManager rMan = dacx_.getRMan(); 
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     StringBuffer buf = new StringBuffer();
     int numItems = RegionAndRange.NUM_STRATEGIES;
     for (int i = 0; i < numItems; i++) {
@@ -813,16 +818,16 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** Build table rows
   */ 
   
-  private List buildTableRows(TabData tDat) {
+  private List<TemporalInputTableModel.TableRow> buildTableRows(TabData tDat) {
     TemporalInputTableModel titm = (TemporalInputTableModel)tDat.est.getModel();
-    ArrayList retval = new ArrayList();
+    ArrayList<TemporalInputTableModel.TableRow> retval = new ArrayList<TemporalInputTableModel.TableRow>();
  
-    Iterator pit = tDat.range.getTimeRanges();
+    Iterator<InputTimeRange> pit = tDat.range.getTimeRanges();
     while (pit.hasNext()) {      
-      InputTimeRange pert = (InputTimeRange)pit.next();
-      Iterator rit = pert.getRanges();
+      InputTimeRange pert = pit.next();
+      Iterator<RegionAndRange> rit = pert.getRanges();
       while (rit.hasNext()) {
-        RegionAndRange rar = (RegionAndRange)rit.next();
+        RegionAndRange rar = rit.next();
         TemporalInputTableModel.TableRow tr = titm.new TableRow();    
         //
         // Set input
@@ -935,7 +940,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       return (true);
     }
 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     int size = vals.size();
     for (int i = 0; i < size; i++) {
       TemporalInputTableModel.TableRow tr = (TemporalInputTableModel.TableRow)vals.get(i);
@@ -948,7 +953,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
         maxTimeVal = tad_.getIndexForNamedStage(maxStageName);
         if ((minTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME) ||
             (maxTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tientry.badStageName"),
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tientry.badStageName"),
                                         rMan.getString("tientry.badStageNameTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
@@ -958,14 +963,14 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
         ProtoInteger max = (ProtoInteger)tr.maxTime;
         if (((min == null) || (!min.valid)) ||
             ((max == null) || (!max.valid))) {
-          IntegerEditor.triggerWarning(appState_, appState_.getTopFrame());
+          IntegerEditor.triggerWarning(uics_.getHandlerAndManagerSource(), uics_.getTopFrame());
           return (false);
         }
         minTimeVal = min.value;
         maxTimeVal = max.value;
       }
       if ((minTimeVal < 0) || (maxTimeVal < 0) || (maxTimeVal < minTimeVal)) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tientry.badRange"), 
                                       rMan.getString("tientry.errorTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -974,7 +979,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
 
       EnumCell eci = tr.input;
       if ((eci.internal == null) || (eci.internal.trim().equals(""))) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tientry.cannotBeBlank"), 
                                       rMan.getString("tientry.errorTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -998,12 +1003,12 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       String pertName = eci.internal;
       String origPert = tr.origInput;
       if (!DataUtil.keysEqual(pertName, origPert)) {
-        Set nodes = tirData_.getTemporalInputSourceKeyInverse(origPert);
+        Set<String> nodes = tirData_.getTemporalInputSourceKeyInverse(origPert);
         if (!nodes.isEmpty()) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           String desc = MessageFormat.format(rMan.getString("dataTables.disconnectingRow"), 
                                              new Object[] {origPert, pertName});
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), desc, 
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
                                         rMan.getString("dataTables.disconnectingTitle"),
                                         JOptionPane.WARNING_MESSAGE);
         }

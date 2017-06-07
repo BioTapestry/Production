@@ -213,6 +213,22 @@ public class CisModuleCreationDialogFactory extends DialogFactory {
 
     ////////////////////////////////////////////////////////////////////////////
     //
+    // PUBLIC METHODS
+    //
+    ////////////////////////////////////////////////////////////////////////////
+
+    /***************************************************************************
+    **
+    ** Gotta say
+    */
+    
+    public boolean dialogIsModal() {
+      return true;
+    } 
+    
+    
+    ////////////////////////////////////////////////////////////////////////////
+    //
     // PROTECTED METHODS
     //
     ////////////////////////////////////////////////////////////////////////////
@@ -282,7 +298,13 @@ public class CisModuleCreationDialogFactory extends DialogFactory {
      }   
      public boolean haveResults() {
        return (haveResult);
-     }       
+     }
+     
+    public void setHasResults() {
+      this.haveResult = true;
+      return;
+    }
+     
      public boolean isForApply() {
        return (false);
      }

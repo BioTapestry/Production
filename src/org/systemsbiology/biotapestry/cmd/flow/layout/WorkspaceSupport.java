@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,6 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 
 import java.awt.Rectangle;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
@@ -41,8 +40,7 @@ public class WorkspaceSupport {
   // PRIVATE INSTANCE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////  
- 
-  private BTState appState_;
+
   private DataAccessContext dacx_;
    
   ////////////////////////////////////////////////////////////////////////////
@@ -56,8 +54,7 @@ public class WorkspaceSupport {
   ** Constructor 
   */ 
   
-  public WorkspaceSupport(BTState appState, DataAccessContext dacx) {
-    appState_ = appState;
+  public WorkspaceSupport(DataAccessContext dacx) {
     dacx_ = dacx;
   }
 
@@ -68,11 +65,11 @@ public class WorkspaceSupport {
     
   public void setWorkspace(Rectangle rect, UndoSupport support) {
     Workspace ws = new Workspace(rect);
-    DatabaseChange dc = dacx_.wSrc.setWorkspace(ws);
+    DatabaseChange dc = dacx_.getWorkspaceSource().setWorkspace(ws);
     if (dc != null) {
-      DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+      DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
       support.addEdit(dcc);
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
       support.finish();
     }
     return;
@@ -85,11 +82,11 @@ public class WorkspaceSupport {
   
   public void setWorkspaceToModelBounds(UndoSupport support, Rectangle allBounds) {
     Workspace boundWs = Workspace.setToModelBounds(allBounds);
-    DatabaseChange dc = dacx_.wSrc.setWorkspace(boundWs);
+    DatabaseChange dc = dacx_.getWorkspaceSource().setWorkspace(boundWs);
     if (dc != null) {
-      DatabaseChangeCmd dcc = new DatabaseChangeCmd(appState_, dacx_, dc);
+      DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
       support.addEdit(dcc);
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
     }
     return;
   }

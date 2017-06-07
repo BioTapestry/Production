@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,6 +36,10 @@ public class ProxyChange {
   public int maxOld;  
   public boolean hourlyNew;
   public boolean hourlyOld;
+  public boolean oldForSimDiff;
+  public boolean newForSimDiff;
+  public String oldSimKey;
+  public String newSimKey;
   public HashMap<Integer, String> oldImageKeys;
   public HashMap<Integer, String> newImageKeys;
   public Group removedGroup;

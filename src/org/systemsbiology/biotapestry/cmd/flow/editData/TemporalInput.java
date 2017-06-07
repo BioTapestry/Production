@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,13 +25,18 @@ import java.util.List;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditGroupProperties;
+import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -45,6 +50,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputMappingDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputRegionMappingDialog;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -66,6 +72,9 @@ public class TemporalInput extends AbstractControlFlow {
     DELETE_MAP("genePopup.DeleteTemporalInputMap", "genePopup.DeleteTemporalInputMap", "FIXME24.gif", "genePopup.DeleteTemporalInputMapMnem", null),
     EDIT_REGION_MAP("groupPopup.InputRegionMap", "groupPopup.InputRegionMap", "FIXME24.gif", "groupPopup.InputRegionMapMnem", null),
     DELETE_REGION_MAP("groupPopup.DeleteInputRegionMap", "groupPopup.DeleteInputRegionMap", "FIXME24.gif", "groupPopup.DeleteInputRegionMapMnem", null), 
+    TEMPORAL_INPUT_DERIVE("command.TemporalInputDerive", "command.TemporalInputDerive", "FIXME24.gif", "command.TemporalInputDeriveMnem", null),
+    TEMPORAL_INPUT_DROP_ALL("command.TemporalInputDropAll", "command.TemporalInputDropAll", "FIXME24.gif", "command.TemporalInputDropAllMnem", null),
+
     ;
     
     private String name_;
@@ -123,8 +132,7 @@ public class TemporalInput extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public TemporalInput(BTState appState, Action action) {
-    super(appState);
+  public TemporalInput(Action action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -138,8 +146,8 @@ public class TemporalInput extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public TemporalInput(BTState appState, Action action, EditGroupProperties.GroupArg pargs) {
-    this(appState, action);
+  public TemporalInput(Action action, EditGroupProperties.GroupArg pargs) {
+    this(action);
     if ((action != Action.DELETE_REGION_MAP) && (action != Action.EDIT_REGION_MAP)) {
       throw new IllegalArgumentException();
     }
@@ -156,7 +164,8 @@ public class TemporalInput extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     TemporalInputRangeData tird;
     switch (action_) {
       case EDIT: 
@@ -164,14 +173,17 @@ public class TemporalInput extends AbstractControlFlow {
       case EDIT_REGION_MAP:
         return (true);
       case DELETE:
-        tird = appState_.getDB().getTemporalInputRangeData();
-        return ((tird != null) && tird.haveDataForNode(GenomeItemInstance.getBaseID(inter.getObjectID())));
+        tird = rcx.getTemporalRangeSrc().getTemporalInputRangeData();
+        return ((tird != null) && tird.haveDataForNode(GenomeItemInstance.getBaseID(inter.getObjectID()), rcx.getGenomeSource()));
       case DELETE_MAP:     
-        tird = appState_.getDB().getTemporalInputRangeData();
+        tird = rcx.getTemporalRangeSrc().getTemporalInputRangeData();
        return ((tird != null) && tird.haveCustomMapForNode(GenomeItemInstance.getBaseID(inter.getObjectID())));
       case DELETE_REGION_MAP:
-        tird = appState_.getDB().getTemporalInputRangeData();    
+        tird = rcx.getTemporalRangeSrc().getTemporalInputRangeData();    
         return ((tird != null) && tird.haveCustomMapForRegion(Group.getBaseID(groupID_)));
+      case TEMPORAL_INPUT_DERIVE:
+      case TEMPORAL_INPUT_DROP_ALL:
+        return (false);
       default:
         throw new IllegalStateException();
     }
@@ -179,13 +191,30 @@ public class TemporalInput extends AbstractControlFlow {
   
   /***************************************************************************
   **
+  ** Answer if we are enabled
+  ** 
+  */
+  
+  @Override  
+  public boolean isEnabled(CheckGutsCache cache) {
+    if (action_ == Action.TEMPORAL_INPUT_DERIVE) {
+        return (cache.haveTimeCourseData() && cache.genomeNotEmpty()); 
+    } else if (action_ == Action.TEMPORAL_INPUT_DROP_ALL) {
+        return (cache.haveTemporalInputData()); 
+    } else {
+      return (false);
+    }
+  }  
+ 
+  /***************************************************************************
+  **
   ** For programmatic preload
   ** 
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, action_, groupID_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(action_, groupID_, dacx));
   }     
   
   /***************************************************************************
@@ -212,9 +241,10 @@ public class TemporalInput extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, groupID_, cfh.getDataAccessContext());
+        ans = new StepState(action_, groupID_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -233,17 +263,22 @@ public class TemporalInput extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
 
-    private String nextStep_;
     private Action myAction_;
-    private BTState appState_;
     private Intersection inter_;
     private String myGroupID_;
-    private DataAccessContext dacx_;
+     
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
     
-    public String getNextStep() {
-      return (nextStep_);
+    public StepState(Action action, String groupID, StaticDataAccessContext dacx) {
+      super(dacx);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
+      myGroupID_ = groupID;
     }
     
     /***************************************************************************
@@ -251,12 +286,11 @@ public class TemporalInput extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, Action action, String groupID, DataAccessContext dacx) {
+    public StepState(Action action, String groupID, ServerControlFlowHarness cfh) {
+      super(cfh);
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
       myGroupID_ = groupID;
-      dacx_ = dacx;
     }
      
     /***************************************************************************
@@ -298,6 +332,12 @@ public class TemporalInput extends AbstractControlFlow {
         case EDIT_REGION_MAP:           
           isDone = editRegionMap();
           break;  
+        case TEMPORAL_INPUT_DERIVE:           
+          isDone = temporalInputDerive();
+          break; 
+       case TEMPORAL_INPUT_DROP_ALL:   
+          isDone = temporalInputDelete();
+          break;  
         default:
           throw new IllegalStateException();
       }
@@ -315,9 +355,9 @@ public class TemporalInput extends AbstractControlFlow {
        
     private boolean editData() { 
       String id = inter_.getObjectID();
-      Node node = dacx_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       id = GenomeItemInstance.getBaseID(id);
-      TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       DBGenome rootGenome = dacx_.getDBGenome();
       boolean hasInputs = rootGenome.nodeHasInputs(id);
       List<String> targets = null;
@@ -325,8 +365,8 @@ public class TemporalInput extends AbstractControlFlow {
         targets = rootGenome.getNodeTargetNames(id, true);
 
         if (targets.isEmpty()) {
-          int result = JOptionPane.showConfirmDialog(appState_.getTopFrame(), dacx_.rMan.getString("tirdNoTargets.message"),
-                                                     dacx_.rMan.getString("tirdNoTargets.title"),
+          int result = JOptionPane.showConfirmDialog(uics_.getTopFrame(), dacx_.getRMan().getString("tirdNoTargets.message"),
+                                                     dacx_.getRMan().getString("tirdNoTargets.title"),
                                                      JOptionPane.YES_NO_OPTION);
 
           if ((result == -1) || (result == 1)) {
@@ -340,11 +380,11 @@ public class TemporalInput extends AbstractControlFlow {
       // map generation:
       //
 
-      List<String> keys = tird.getTemporalInputRangeEntryKeysWithDefault(id);
+      List<String> keys = tird.getTemporalInputRangeEntryKeysWithDefault(id, dacx_.getGenomeSource());
       boolean waiting = ((keys == null) || keys.isEmpty());
       if (waiting) {
         while (waiting) {                   
-          TemporalInputMappingDialog timd = new TemporalInputMappingDialog(appState_, dacx_, node.getName(), id);
+          TemporalInputMappingDialog timd = new TemporalInputMappingDialog(uics_, dacx_, uFac_, node.getName(), id);
           timd.setVisible(true);
           if (timd.wasCancelled()) {
             return (false);
@@ -352,8 +392,8 @@ public class TemporalInput extends AbstractControlFlow {
           keys = tird.getCustomTemporalInputRangeEntryKeys(id);
           waiting = ((keys == null) || keys.isEmpty());
           if (waiting) {
-            ResourceManager rMan = appState_.getRMan();
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+            ResourceManager rMan = dacx_.getRMan();
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                           rMan.getString("tirdNoKey.message"), 
                                           rMan.getString("tirdNoKey.title"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -362,8 +402,8 @@ public class TemporalInput extends AbstractControlFlow {
       }        
 
       if (!hasInputs) {
-        ResourceManager rMan = appState_.getRMan();
-        int result = JOptionPane.showConfirmDialog(appState_.getTopFrame(), rMan.getString("tirdNoInputs.message"),
+        ResourceManager rMan = dacx_.getRMan();
+        int result = JOptionPane.showConfirmDialog(uics_.getTopFrame(), rMan.getString("tirdNoInputs.message"),
                                                    rMan.getString("tirdNoInputs.title"),
                                                    JOptionPane.YES_NO_OPTION);
 
@@ -371,7 +411,7 @@ public class TemporalInput extends AbstractControlFlow {
           return (false);
         }
       }
-      TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(appState_, dacx_, keys, false);
+      TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(uics_, dacx_, keys, false, uFac_);
       if (tid != null) {
         tid.setVisible(true);
       }
@@ -385,9 +425,9 @@ public class TemporalInput extends AbstractControlFlow {
        
     private boolean editMap() {
       String id = inter_.getObjectID();
-      Node node = dacx_.getGenome().getNode(id);
+      Node node = dacx_.getCurrentGenome().getNode(id);
       String baseID = GenomeItemInstance.getBaseID(id);
-      TemporalInputMappingDialog timd = new TemporalInputMappingDialog(appState_, dacx_, node.getName(), baseID);
+      TemporalInputMappingDialog timd = new TemporalInputMappingDialog(uics_, dacx_, uFac_, node.getName(), baseID);
       timd.setVisible(true);
       return (true);
     }
@@ -399,11 +439,11 @@ public class TemporalInput extends AbstractControlFlow {
        
     private boolean editRegionMap() {    
       String gid = Group.getBaseID(myGroupID_);
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       GenomeInstance root = gi.getVfgParentRoot();
       Group group = (root == null) ? gi.getGroup(gid) : root.getGroup(gid);          
       TemporalInputRegionMappingDialog tirmd = 
-        new TemporalInputRegionMappingDialog(appState_, dacx_, gid, group.getName());
+        new TemporalInputRegionMappingDialog(uics_, dacx_, uFac_, gid, group.getName());
       tirmd.setVisible(true);
       return (true);
     }      
@@ -415,12 +455,12 @@ public class TemporalInput extends AbstractControlFlow {
        
     private boolean deleteRegionMap() {      
       String gid = Group.getBaseID(myGroupID_);
-      TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       if (tird != null) {
         TemporalInputChange tichg = tird.dropGroupMap(gid);
         if (tichg != null) {
-          UndoSupport support = new UndoSupport(appState_, "undo.deleteTIRM");           
-          TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(appState_, dacx_, tichg, false);
+          UndoSupport support = uFac_.provideUndoSupport("undo.deleteTIRM", dacx_);           
+          TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(dacx_, tichg, false);
           support.addEdit(cmd);
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
           support.finish();          
@@ -437,16 +477,16 @@ public class TemporalInput extends AbstractControlFlow {
     private boolean deleteMap() {
       String id = inter_.getObjectID();
       String baseID = GenomeItemInstance.getBaseID(id);
-      TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       if (tird != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteTIM");
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteTIM", dacx_);
         TemporalInputChange chg1 = tird.dropDataEntryKeys(baseID);
         if (chg1 != null) {
-          support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, chg1, false));
+          support.addEdit(new TemporalInputChangeCmd(dacx_, chg1, false));
         }
         TemporalInputChange chg2 = tird.dropDataSourceKeys(baseID);
         if (chg2 != null) {
-          support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, chg2, false));
+          support.addEdit(new TemporalInputChangeCmd(dacx_, chg2, false));
         }
         if ((chg1 != null) || (chg1 != null)) {
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
@@ -464,10 +504,10 @@ public class TemporalInput extends AbstractControlFlow {
     private boolean deleteData() {
       String id = inter_.getObjectID();
       String baseID = GenomeItemInstance.getBaseID(id);
-      TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
       if (tird != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteTIDat");
-        List<String> mapped = tird.getTemporalInputRangeEntryKeysWithDefault(baseID);
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteTIDat", dacx_);
+        List<String> mapped = tird.getTemporalInputRangeEntryKeysWithDefault(baseID, dacx_.getGenomeSource());
         mapped = (mapped == null) ? new ArrayList<String>() : new ArrayList<String>(mapped);
         Iterator<String> mit = mapped.iterator();
         while (mit.hasNext()) {
@@ -475,15 +515,63 @@ public class TemporalInput extends AbstractControlFlow {
           // FIX ME:  Drop dangling maps too????
           TemporalInputChange[] changes = tird.dropMapsTo(name);
           for (int j = 0; j < changes.length; j++) {
-            support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, changes[j]));
+            support.addEdit(new TemporalInputChangeCmd(dacx_, changes[j]));
           }
           TemporalInputChange tcc = tird.dropEntry(name);
-          support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tcc)); 
+          support.addEdit(new TemporalInputChangeCmd(dacx_, tcc)); 
         }
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
         support.finish();
       }
       return (true);
-    }   
+    }
+    
+    /***************************************************************************
+    **
+    ** Do the step
+    */ 
+       
+    private boolean temporalInputDerive() {
+      DatabaseChange dc = null;
+      UndoSupport support = uFac_.provideUndoSupport("undo.deriveTemporalInputData", dacx_);
+      TemporalInputRangeData nowTird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
+      TemporalInputRangeData tird;
+      if (nowTird.haveMaps()) {
+        tird = nowTird.extractOnlyMaps();    
+      } else {
+        tird = new TemporalInputRangeData(dacx_);
+        tird.buildMapsFromTCDMaps(dacx_);
+      } 
+      dc = dacx_.getTemporalRangeSrc().startTemporalInputUndoTransaction();
+      dacx_.getTemporalRangeSrc().setTemporalInputRangeData(tird);    
+      tird.buildFromTCD(dacx_);   
+      dc = dacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.finish();
+      // FIX ME??? Use events instead of direct calls.
+      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
+      UiUtil.fixMePrintout("Gotta send out event so CommonView knows to refresh current loaded model!");
+      return (true);    
+    }
+    
+    /***************************************************************************
+    **
+    ** Do the step
+    */ 
+       
+    private boolean temporalInputDelete() {
+      UndoSupport support = uFac_.provideUndoSupport("undo.dropAllTemporalInputData", dacx_);
+      DatabaseChange dc = dacx_.getTemporalRangeSrc().startTemporalInputUndoTransaction();
+      dacx_.getTemporalRangeSrc().setTemporalInputRangeData(new TemporalInputRangeData(dacx_));     
+      dc = dacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.finish();
+      // FIX ME??? Use events instead of direct calls.
+      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
+      UiUtil.fixMePrintout("Gotta send out event so CommonView knows to refresh current loaded model!");
+      return (true);    
+    }
   }
 }

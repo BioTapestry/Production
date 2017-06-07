@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,8 @@ import java.awt.geom.Rectangle2D;
 
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /***************************************************************************
@@ -57,13 +58,13 @@ public class OverviewPanel extends JPanel {
   ////////////////////////////////////////////////////////////////////////////  
 
   private OverviewPresentation myGenomePre_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext rcx_;
+  private UIComponentSource uics_;
   private AffineTransform transform_;
   private Point2D clickPoint_;
   private Rectangle2D floater_;
   private Rectangle2D directRect_;
   private ActionListener listener_;
-  private BTState appState_;
   
   private static final long serialVersionUID = 1L;
   
@@ -84,8 +85,8 @@ public class OverviewPanel extends JPanel {
   ** Constructor
   */
   
-  public OverviewPanel(BTState appState, Rectangle rect, boolean allowDirect, ActionListener al) {
-    appState_ = appState;
+  public OverviewPanel(UIComponentSource uics, Rectangle rect, boolean allowDirect, ActionListener al) {
+    uics_ = uics;
     myGenomePre_ = new OverviewPresentation();
     addMouseListener(new MouseHandler());
     addMouseMotionListener(new MouseMotionHandler());
@@ -142,10 +143,10 @@ public class OverviewPanel extends JPanel {
       
       Dimension currentSize = this.getSize();
 
-      double wZoom = (double)currentSize.width / finalRect.getWidth();
-      double hZoom = (double)currentSize.height / finalRect.getHeight();    
+      double wZoom = currentSize.width / finalRect.getWidth();
+      double hZoom = currentSize.height / finalRect.getHeight();    
       double zoom = ((wZoom > hZoom) ? hZoom : wZoom) / 3.0;  // give lots of room to grow
-      transform_.translate((double)currentSize.width / 2.0, (double)currentSize.height / 2.0);
+      transform_.translate(currentSize.width / 2.0, currentSize.height / 2.0);
       transform_.scale(zoom, zoom);
       double centerX = finalRect.getX() + (finalRect.getWidth() / 2.0);
       double centerY = finalRect.getY() + (finalRect.getHeight() / 2.0); 
@@ -154,7 +155,7 @@ public class OverviewPanel extends JPanel {
       super.paintComponent(g);
       drawingGuts(g, transform_);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayPaintException(ex);
+      uics_.getExceptionHandler().displayPaintException(ex);
     }
     return;
   }
@@ -164,7 +165,7 @@ public class OverviewPanel extends JPanel {
   ** Set the genome
   */
   
-  public void setRenderingContext(DataAccessContext rcx) {
+  public void setRenderingContext(StaticDataAccessContext rcx) {
     rcx_ = rcx;
     return;
   }
@@ -271,7 +272,7 @@ public class OverviewPanel extends JPanel {
       try {
         lastPress_ = new Point(me.getX(), me.getY());
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
@@ -299,13 +300,13 @@ public class OverviewPanel extends JPanel {
           dragResult(lastX, lastY);
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
 
     private void clickResult(int x, int y) {
-      clickPoint_ = new Point2D.Double((double)x, (double)y);
+      clickPoint_ = new Point2D.Double(x, y);
       try {
         transform_.inverseTransform(clickPoint_, clickPoint_);
       } catch (NoninvertibleTransformException nitex) {
@@ -329,7 +330,7 @@ public class OverviewPanel extends JPanel {
     public void mouseMoved(MouseEvent me) {
       try {
         if (clickPoint_ == null) {      
-          Point2D movePoint = new Point2D.Double((double)me.getX(), (double)me.getY());      
+          Point2D movePoint = new Point2D.Double(me.getX(), me.getY());      
           try {
             transform_.inverseTransform(movePoint, movePoint);
           } catch (NoninvertibleTransformException nitex) {
@@ -343,7 +344,7 @@ public class OverviewPanel extends JPanel {
           OverviewPanel.this.repaint();
         } 
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }        
   }

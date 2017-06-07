@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,16 +38,17 @@ import java.util.TreeSet;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.PadConstraints;
 import org.systemsbiology.biotapestry.cmd.instruct.DialogBuiltMotif;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -59,7 +60,6 @@ import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.ColorAssigner;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
-import org.systemsbiology.biotapestry.ui.DisplayOptionsManager;
 import org.systemsbiology.biotapestry.ui.Grid;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -70,7 +70,6 @@ import org.systemsbiology.biotapestry.ui.LinkRouter;
 import org.systemsbiology.biotapestry.ui.NetModuleShapeFixer;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
-import org.systemsbiology.biotapestry.ui.NodeRenderBase;
 import org.systemsbiology.biotapestry.ui.RectangularTreeEngine;
 import org.systemsbiology.biotapestry.ui.SpecialSegmentTracker;
 import org.systemsbiology.biotapestry.ui.layouts.ColorTypes;
@@ -93,6 +92,7 @@ import org.systemsbiology.biotapestry.util.PatternGrid;
 import org.systemsbiology.biotapestry.util.PatternPlacerVerticalNesting;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
@@ -128,8 +128,8 @@ public class LayoutLinkSupport {
   ** Run an optimization pass
   */  
  
-  public static LinkRouter.RoutingResult optimizeLinks(BTState appState, Set<String> links, Set<Point2D> frozen, 
-                                                       DataAccessContext rcx, UndoSupport support,
+  public static LinkRouter.RoutingResult optimizeLinks(Set<String> links, Set<Point2D> frozen, 
+                                                       StaticDataAccessContext rcx, UndoSupport support,
                                                        boolean allowReroutes, BTProgressMonitor monitor, 
                                                        double startFrac, double endFrac) 
                                                          throws AsynchExitRequestException {
@@ -140,7 +140,7 @@ public class LayoutLinkSupport {
     // Start layout undo operations:
     //
           
-    DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(rcx.getLayoutID());
+    DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(rcx.getCurrentLayoutID());
     
     //
     // Init the router placement:
@@ -149,7 +149,7 @@ public class LayoutLinkSupport {
     try {    
       LinkRouter router = new LinkRouter();
       LinkPlacementGrid routerGrid = router.initGrid(rcx, null, INodeRenderer.STRICT, monitor);
-      rcx.getLayout().optimizeLinks(links, routerGrid, rcx, null, frozen, allowReroutes, monitor, 1, startFrac, endFrac);
+      rcx.getCurrentLayout().optimizeLinks(links, routerGrid, rcx, null, frozen, allowReroutes, monitor, 1, startFrac, endFrac);
    
       //
       // Report ambiguous color overlaps
@@ -163,11 +163,11 @@ public class LayoutLinkSupport {
         retval.collisionSrc2 = (issues.collisionSrc2 == null) ? retval.collisionSrc2 : issues.collisionSrc2; 
       } 
       
-      dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-      support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+      dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(rcx, dc));
       return (retval);    
     } catch (AsynchExitRequestException ex) {
-      rcx.lSrc.rollbackLayoutUndoTransaction(dc);
+      rcx.getLayoutSource().rollbackLayoutUndoTransaction(dc);
       throw ex;
     }
   }
@@ -177,22 +177,22 @@ public class LayoutLinkSupport {
   ** Command
   */ 
     
-  public static void offerColorFixup(BTState appState, DataAccessContext dacx, LinkRouter.RoutingResult result) {
-    if (appState.isHeadless()) {
+  public static void offerColorFixup(UIComponentSource uics, DataAccessContext dacx, LinkRouter.RoutingResult result, UndoFactory uFac) {
+    if (uics.isHeadless()) {
       return;
     }
     if ((result.linkResult & LinkRouter.COLOR_PROBLEM) != 0x00) {    
-      DisplayOptionsManager dopmgr = appState.getDisplayOptMgr();
+      MinimalDispOptMgr dopmgr = dacx.getDisplayOptsSource();
       DisplayOptions dopt = dopmgr.getDisplayOptions();
       if (dopt.getBranchMode() == DisplayOptions.NO_BUS_BRANCHES) {
-        ResourceManager rMan = appState.getRMan();          
+        ResourceManager rMan = dacx.getRMan();          
         int doBranches = 
-          JOptionPane.showConfirmDialog(appState.getTopFrame(), 
+          JOptionPane.showConfirmDialog(uics.getTopFrame(), 
                                         rMan.getString("reassignColors.doBranches"), 
                                         rMan.getString("reassignColors.doBranchesTitle"),
                                         JOptionPane.YES_NO_OPTION);        
         if (doBranches == JOptionPane.YES_OPTION) {
-          UndoSupport supportTos = new UndoSupport(appState, "undo.turnOnSpecialBranches");
+          UndoSupport supportTos = uFac.provideUndoSupport("undo.turnOnSpecialBranches", dacx);
           dopmgr.turnOnSpecialLinkBranches(supportTos, dacx, true); 
         }
       }
@@ -204,7 +204,7 @@ public class LayoutLinkSupport {
   **
   */  
   
-  public static LinkRouter.RoutingResult autoLayoutHierarchical(BTState appState, DataAccessContext rcxR, Point2D center, 
+  public static LinkRouter.RoutingResult autoLayoutHierarchical(StaticDataAccessContext rcxR, Point2D center, 
                                                                 Map<String, Integer> newNodeTypes, Set<String> newLinks,
                                                                 Dimension size, UndoSupport support,
                                                                 List<DialogBuiltMotif> motifs, 
@@ -222,13 +222,13 @@ public class LayoutLinkSupport {
     
      RectangularTreeEngine ce = new RectangularTreeEngine();
 
-     int count = rcxR.getGenome().getFullNodeCount();
+     int count = rcxR.getCurrentGenome().getFullNodeCount();
      if (newNodes.size() == count) {
        incremental = false;
      }
      
-     Map<String, Layout.OverlayKeySet> allKeys = rcxR.fgho.fullModuleKeysPerLayout();
-     Layout.OverlayKeySet loModKeys = allKeys.get(rcxR.getLayoutID()); 
+     Map<String, Layout.OverlayKeySet> allKeys = rcxR.getFGHO().fullModuleKeysPerLayout();
+     Layout.OverlayKeySet loModKeys = allKeys.get(rcxR.getCurrentLayoutID()); 
   
      Grid grid = ce.layoutMotifsHier(motifs, newNodes, rcxR, options, incremental, null, false);
      int colNum = grid.getNumCols();
@@ -286,16 +286,16 @@ public class LayoutLinkSupport {
            int nodeType = newNodeTypes.get(geneID).intValue();          
            Point2D loc = (incremental) ? grid.getGridLocation(i, j, corner)
                                        : ce.placePoint(i * colNum + j, grid, center, size);
-           NodeProperties np = new NodeProperties(rcxR.cRes, rcxR.getLayout(), nodeType, geneID, 0.0, 0.0, false);
+           NodeProperties np = new NodeProperties(rcxR.getColorResolver(), nodeType, geneID, 0.0, 0.0, false);
            double yOffset = np.getRenderer().getStraightThroughOffset();
            double xOffset = np.getRenderer().getVerticalOffset();
            np.setLocation(new Point2D.Double(loc.getX() + xOffset, loc.getY() + yOffset));
            Layout.PropChange[] lpc = new Layout.PropChange[1];    
-           lpc[0] = rcxR.getLayout().setNodeProperties(geneID, new NodeProperties(np, rcxR.getLayout(), nodeType));
+           lpc[0] = rcxR.getCurrentLayout().setNodeProperties(geneID, new NodeProperties(np, nodeType));
            if (lpc != null) {
-             PropChangeCmd pcc = new PropChangeCmd(appState, rcxR, lpc);
+             PropChangeCmd pcc = new PropChangeCmd(rcxR, lpc);
              support.addEdit(pcc);
-             LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+             LayoutChangeEvent lcev = new LayoutChangeEvent(rcxR.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
              support.addEvent(lcev);            
            }
          }
@@ -310,15 +310,15 @@ public class LayoutLinkSupport {
      // Crude autolayout:
      //
      
-     DataAccessContext rcxt = new DataAccessContext(rcxR);
-     rcxt.setLayout(new Layout(rcxR.getLayout()));
+     StaticDataAccessContext rcxt = new StaticDataAccessContext(rcxR);
+     rcxt.setLayout(new Layout(rcxR.getCurrentLayout()));
      gridlessLinkLayoutPrep(rcxt, newLinks, rememberLinkProps);
      
      //
      // Wiggle pad assignments based on node locations:
      //
      
-     wigglePads(appState, rcxt, padConstraints, support); 
+     wigglePads(rcxt, padConstraints, support); 
      
      
      double fullFrac = endFrac - startFrac;
@@ -335,7 +335,7 @@ public class LayoutLinkSupport {
      // Clean up the links:
      //
      
-     DatabaseChange dc = rcxR.lSrc.startLayoutUndoTransaction(rcxR.getLayoutID()); 
+     DatabaseChange dc = rcxR.getLayoutSource().startLayoutUndoTransaction(rcxR.getCurrentLayoutID()); 
      try {   
        HashSet<String> needColors = new HashSet<String>();
        LinkRouter.RoutingResult retval = router.multiPassLayout(newLinks, rcxt,
@@ -343,40 +343,40 @@ public class LayoutLinkSupport {
        
        // Only iterate on failed layout from scratch:
        if (((retval.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) || incremental) {
-         rcxR.getLayout().replaceContents(rcxt.getLayout());
+         rcxR.getCurrentLayout().replaceContents(rcxt.getCurrentLayout());
        } else {
-         Set<String> targCollide = rcxR.getGenome().hasLinkTargetPadCollisions();
+         Set<String> targCollide = rcxR.getCurrentGenome().hasLinkTargetPadCollisions();
          if (!targCollide.isEmpty()) {
-           rcxR.getLayout().replaceContents(rcxt.getLayout());
+           rcxR.getCurrentLayout().replaceContents(rcxt.getCurrentLayout());
          } else {
           boolean success = false;
-          Layout baseLayout = rcxt.getLayout();
+          Layout baseLayout = rcxt.getCurrentLayout();
           int maxPasses = 2;  // (exponential) magic number; too big, and we can run out of memory 
           double fracInc = frac2 / maxPasses;
           double halfFi = fracInc / 2.0;
           double cFrac = eFrac1;
-          DataAccessContext rcxE = new DataAccessContext(rcxR);
+          StaticDataAccessContext rcxE = new StaticDataAccessContext(rcxR);
           for (int mult = 1; mult <= maxPasses; mult++) {      
              rcxE.setLayout(new Layout(baseLayout));
              TreeSet<Integer> insertRows = new TreeSet<Integer>();
              TreeSet<Integer> insertCols = new TreeSet<Integer>();      
-             rcxE.getLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
-             rcxE.getLayout().expand(rcxE, insertRows, insertCols, mult, false, null, null, null, monitor, cFrac, cFrac + halfFi);
+             rcxE.getCurrentLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
+             rcxE.getCurrentLayout().expand(rcxE, insertRows, insertCols, mult, false, null, null, null, monitor, cFrac, cFrac + halfFi);
              cFrac += halfFi;
-             LinkRouter.RoutingResult eres = relayoutLinks(appState, rcxE, null, options, false, null,
+             LinkRouter.RoutingResult eres = relayoutLinks(rcxE, null, options, false, null,
                                                            monitor, cFrac, cFrac + halfFi, strictOKGroups);
              cFrac += halfFi;
              if ((eres.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) {
-               rcxR.getLayout().replaceContents(rcxE.getLayout());
+               rcxR.getCurrentLayout().replaceContents(rcxE.getCurrentLayout());
                retval = eres;
                success = true;
                break;
              } 
-             baseLayout = rcxE.getLayout();
+             baseLayout = rcxE.getCurrentLayout();
            }
 
            if (!success) {
-             rcxR.getLayout().replaceContents(rcxt.getLayout()); // zero-expansion version...
+             rcxR.getCurrentLayout().replaceContents(rcxt.getCurrentLayout()); // zero-expansion version...
            }
          }
        }
@@ -387,9 +387,9 @@ public class LayoutLinkSupport {
        //
        
        LinkPlacementGrid routerGrid = router.initGrid(rcxR, null, INodeRenderer.STRICT, monitor);
-       rcxR.getLayout().dropUselessCorners(rcxR, null, eFrac2, eFrac3, monitor);
+       rcxR.getCurrentLayout().dropUselessCorners(rcxR, null, eFrac2, eFrac3, monitor);
        // Empty hash set means no points are being pinned:
-       rcxR.getLayout().optimizeLinks(newLinks, routerGrid, rcxR, null, new HashSet<Point2D>(), true, monitor, 
+       rcxR.getCurrentLayout().optimizeLinks(newLinks, routerGrid, rcxR, null, new HashSet<Point2D>(), true, monitor, 
                                  options.optimizationPasses, eFrac3, eFrac4);
 
        //
@@ -407,15 +407,15 @@ public class LayoutLinkSupport {
          retval.collisionSrc2 = (issues.collisionSrc2 == null) ? retval.collisionSrc2 : issues.collisionSrc2;      
        }
        
-       rcxR.getLayout().applySupplementalDataCoords(sdc, rcxR, loModKeys);
+       rcxR.getCurrentLayout().applySupplementalDataCoords(sdc, rcxR, loModKeys);
 
 
-       dc = rcxR.lSrc.finishLayoutUndoTransaction(dc);
-       support.addEdit(new DatabaseChangeCmd(appState, rcxR, dc));
+       dc = rcxR.getLayoutSource().finishLayoutUndoTransaction(dc);
+       support.addEdit(new DatabaseChangeCmd(rcxR, dc));
 
        return (retval);
      } catch (AsynchExitRequestException ex) {
-       rcxR.lSrc.rollbackLayoutUndoTransaction(dc);
+       rcxR.getLayoutSource().rollbackLayoutUndoTransaction(dc);
        throw ex;
      }    
    }
@@ -425,11 +425,11 @@ public class LayoutLinkSupport {
   ** Answer if top or bottom nesting is best
   */  
    
-  private static boolean topIsBest(DataAccessContext rcx, Set<String> newNodes, Grid grid, Point topCorner, Point bottomCorner) {
+  private static boolean topIsBest(StaticDataAccessContext rcx, Set<String> newNodes, Grid grid, Point topCorner, Point bottomCorner) {
     if (topCorner.equals(bottomCorner)) {
       return (true);
     }
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     double topDiffSum = 0.0;
     double botDiffSum = 0.0;
     while (lit.hasNext()) {
@@ -447,7 +447,7 @@ public class LayoutLinkSupport {
         srcLocTop = grid.getGridLocation(src, topCorner);
         srcLocBot = grid.getGridLocation(src, bottomCorner);
       } else {
-        NodeProperties sp = rcx.getLayout().getNodeProperties(src);
+        NodeProperties sp = rcx.getCurrentLayout().getNodeProperties(src);
         srcLocTop = sp.getLocation();
         srcLocBot = srcLocTop;
       }
@@ -457,7 +457,7 @@ public class LayoutLinkSupport {
         trgLocTop = grid.getGridLocation(trg, topCorner);
         trgLocBot = grid.getGridLocation(trg, bottomCorner);
       } else {
-        NodeProperties tp = rcx.getLayout().getNodeProperties(trg);
+        NodeProperties tp = rcx.getCurrentLayout().getNodeProperties(trg);
         trgLocTop = tp.getLocation();
         trgLocBot = trgLocTop;
       }
@@ -473,11 +473,11 @@ public class LayoutLinkSupport {
   ** Layout requested links across all global requests.
   */  
  
-  public static LinkRouter.RoutingResult relayoutLinksGlobally(BTState appState, List<GlobalLinkRequest> requests, UndoSupport support,
-                                                                LayoutOptions options, 
-                                                                BTProgressMonitor monitor,
-                                                                double startFrac, double maxFrac) 
-                                                                throws AsynchExitRequestException {
+  public static LinkRouter.RoutingResult relayoutLinksGlobally(StaticDataAccessContext dacx, List<GlobalLinkRequest> requests, UndoSupport support,
+                                                               LayoutOptions options, 
+                                                               BTProgressMonitor monitor,
+                                                               double startFrac, double maxFrac) 
+                                                                 throws AsynchExitRequestException {
     LinkRouter.RoutingResult retval = new LinkRouter.RoutingResult();
     int numReq = requests.size();
     double currProg = startFrac;
@@ -490,8 +490,8 @@ public class LayoutLinkSupport {
       GenomeSource gSrc = glr.gSrc;
       Layout lo = glr.layout;
       Set<String> badLinks = glr.badLinks;
-      DataAccessContext rcx = new DataAccessContext(appState, gSrc, genome, lo);
-      LinkRouter.RoutingResult oneRes = relayoutLinks(appState, rcx, support, options, false, 
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx, gSrc, genome, lo);
+      LinkRouter.RoutingResult oneRes = relayoutLinks(rcx, support, options, false, 
                                                       badLinks, monitor, currProg, currProg + perReqFrac, strictOKGroups);
       retval.merge(oneRes);
       currProg += perReqFrac;
@@ -510,7 +510,7 @@ public class LayoutLinkSupport {
   ** "diagonal" links.
   */  
  
-  public static LinkRouter.RoutingResult relayoutLinks(BTState appState, DataAccessContext rcx, UndoSupport support,
+  public static LinkRouter.RoutingResult relayoutLinks(StaticDataAccessContext rcx, UndoSupport support,
                                                        LayoutOptions options, 
                                                        boolean doFull, Set<String> badLinks, BTProgressMonitor monitor,
                                                        double startFrac, double endFrac, boolean strictOKGroups) 
@@ -521,10 +521,10 @@ public class LayoutLinkSupport {
     //
     
     HashMap<String, String> colorMap = new HashMap<String, String>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
-      BusProperties lp = rcx.getLayout().getLinkProperties(link.getID());
+      BusProperties lp = rcx.getCurrentLayout().getLinkProperties(link.getID());
       String oldColor = lp.getColorName();
       colorMap.put(link.getID(), oldColor);
     }   
@@ -542,14 +542,14 @@ public class LayoutLinkSupport {
       if (badLinks == null) {
         // is this ever called anymore?  need !doFull with no links-> no longer called
         LinkPlacementGrid oldRouterGrid = router.initGrid(rcx, null, INodeRenderer.STRICT, monitor);
-        newLinks = rcx.getLayout().discoverNonOrthoLinks(rcx);
+        newLinks = rcx.getCurrentLayout().discoverNonOrthoLinks(rcx);
         badRuns = oldRouterGrid.findBadRuns();
       } else {
         newLinks = badLinks;
       }
       // is this ever called anymore?  need !doFull with no links-> no longer called
       if (badRuns != null) {
-        Iterator<Linkage> brlit = rcx.getGenome().getLinkageIterator();
+        Iterator<Linkage> brlit = rcx.getCurrentGenome().getLinkageIterator();
         while (brlit.hasNext()) {
           Linkage link = brlit.next();
           if (badRuns.contains(link.getSource())) {
@@ -566,21 +566,21 @@ public class LayoutLinkSupport {
           
     DatabaseChange dc = null;
     if (support != null) {
-      dc = rcx.lSrc.startLayoutUndoTransaction(rcx.getLayoutID());
+      dc = rcx.getLayoutSource().startLayoutUndoTransaction(rcx.getCurrentLayoutID());
     }
 
     try {
-      Map<String, SpecialSegmentTracker> specials = rcx.getLayout().rememberSpecialLinks();
+      Map<String, SpecialSegmentTracker> specials = rcx.getCurrentLayout().rememberSpecialLinks();
 
       Map<String, BusProperties.RememberProps> rememberProps = null;
       if (badLinks == null) {
-        rememberProps = rcx.getLayout().dropSelectedLinkProperties(newLinks, rcx);
+        rememberProps = rcx.getCurrentLayout().dropSelectedLinkProperties(newLinks, rcx);
       } else {
         rememberProps = new HashMap<String, BusProperties.RememberProps>();
         Iterator<String> nlit = newLinks.iterator();
         while (nlit.hasNext()) {
           String lid = nlit.next();
-          rcx.getLayout().removeLinkPropertiesAndRemember(lid, rememberProps, rcx);
+          rcx.getCurrentLayout().removeLinkPropertiesAndRemember(lid, rememberProps, rcx);
         }
       }
       
@@ -598,7 +598,7 @@ public class LayoutLinkSupport {
 
       if (doFull) {
         newLinks = new HashSet<String>();
-        lit = rcx.getGenome().getLinkageIterator();
+        lit = rcx.getCurrentGenome().getLinkageIterator();
         while (lit.hasNext()) {
           Linkage link = lit.next();
           newLinks.add(link.getID());
@@ -612,7 +612,7 @@ public class LayoutLinkSupport {
       Iterator<String> nlit = newLinks.iterator();
       while (nlit.hasNext()) {
         String linkID = nlit.next();
-        autoAddCrudeLinkProperties(appState, rcx, linkID, null, rememberProps);
+        autoAddCrudeLinkProperties(rcx, linkID, null, rememberProps);
       }
       
       double fullFrac = endFrac - startFrac;
@@ -638,7 +638,7 @@ public class LayoutLinkSupport {
       
       LinkPlacementGrid routerGrid = router.initGrid(rcx, retval.failedLinks, INodeRenderer.STRICT, monitor);
       // Empty hash set means no points are being pinned:
-      rcx.getLayout().optimizeLinks(newLinks, routerGrid, rcx, null, new HashSet<Point2D>(), 
+      rcx.getCurrentLayout().optimizeLinks(newLinks, routerGrid, rcx, null, new HashSet<Point2D>(), 
                                true, monitor, options.optimizationPasses, eFrac1, eFrac2);
 
       //
@@ -659,7 +659,7 @@ public class LayoutLinkSupport {
       // Get special link segments back up to snuff:
       //
 
-      rcx.getLayout().restoreSpecialLinks(specials);    
+      rcx.getCurrentLayout().restoreSpecialLinks(specials);    
 
       if (monitor != null) {
         if (!monitor.updateProgress((int)(endFrac * 100.0))) {
@@ -672,15 +672,15 @@ public class LayoutLinkSupport {
       //
 
       if (support != null) {
-        dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+        dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(rcx, dc));
       }
       return (retval);
     
     } catch (AsynchExitRequestException ex) {
       // Adding conditional to fix BT-10-27-09:5
       if (support != null) {
-        rcx.lSrc.rollbackLayoutUndoTransaction(dc);
+        rcx.getLayoutSource().rollbackLayoutUndoTransaction(dc);
       }
       throw ex;
     }
@@ -691,7 +691,7 @@ public class LayoutLinkSupport {
   ** Recolor links to remove ambiguity
   */
  
-  public static LinkRouter.RoutingResult reassignColors(BTState appState, DataAccessContext rcx, UndoSupport support) {
+  public static LinkRouter.RoutingResult reassignColors(StaticDataAccessContext rcx, UndoSupport support) {
   
     //
     // Build maps and sets
@@ -699,7 +699,7 @@ public class LayoutLinkSupport {
     
     HashSet<String> seenSrcs = new HashSet<String>();
     HashSet<String> needColors = new HashSet<String>();    
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String src = link.getSource();
@@ -715,7 +715,7 @@ public class LayoutLinkSupport {
       return (retval);
     }
     
-    DatabaseChange dc = (support != null) ? rcx.lSrc.startLayoutUndoTransaction(rcx.getLayoutID()) : null;
+    DatabaseChange dc = (support != null) ? rcx.getLayoutSource().startLayoutUndoTransaction(rcx.getCurrentLayoutID()) : null;
     LinkRouter router = new LinkRouter(); 
     LinkPlacementGrid routerGrid;
     try {
@@ -739,8 +739,8 @@ public class LayoutLinkSupport {
     }
     
     if (support != null) {
-      dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-      support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+      dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(rcx, dc));
       support.finish();
     }
     return (retval);
@@ -751,7 +751,7 @@ public class LayoutLinkSupport {
   ** Layout links for specialty cases
   */  
  
-  public static LinkRouter.RoutingResult runSpecialtyLinkPlacement(BTState appState, SpecialtyLayoutEngine sle,
+  public static LinkRouter.RoutingResult runSpecialtyLinkPlacement(SpecialtyLayoutEngine sle,
                                                                    UndoSupport support, 
                                                                    BTProgressMonitor monitor,                                                         
                                                                    double startFrac, double maxFrac)
@@ -766,8 +766,8 @@ public class LayoutLinkSupport {
     
     SpecialtyLayoutEngine.GlobalSLEState gss = sle.getGSS();
     GenomeSubset firstSub = subsetList.get(0);
-    DataAccessContext rcx = sle.getRcx();
-    DataAccessContext rcxMod = sle.getWorkingRcx();
+    StaticDataAccessContext rcx = sle.getRcx();
+    StaticDataAccessContext rcxMod = sle.getWorkingRcx();
       
     List<SpecialtyInstructions> propsList = sle.getInstructions();
     
@@ -818,21 +818,21 @@ public class LayoutLinkSupport {
    
     
     
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
-      BusProperties lp = rcxMod.getLayout().getLinkProperties(link.getID());
+      BusProperties lp = rcxMod.getCurrentLayout().getLinkProperties(link.getID());
       String oldColor = lp.getColorName();
       colorMap.put(link.getID(), oldColor);
       linkCount++;
     }
     
     LinkRouter router = new LinkRouter();
-    String loID = rcx.getLayoutID();
-    DatabaseChange dc = (support != null) ? rcx.lSrc.startLayoutUndoTransaction(loID) : null;
+    String loID = rcx.getCurrentLayoutID();
+    DatabaseChange dc = (support != null) ? rcx.getLayoutSource().startLayoutUndoTransaction(loID) : null;
     try { 
       //System.out.println(ManagementFactory.getMemoryMXBean().getHeapMemoryUsage());
-      rcx.fullLayoutReplacement(loID, rcxMod.getLayout());
+      rcx.fullLayoutReplacement(loID, rcxMod.getCurrentLayout());
       
       // For non-link layout debugging exit:
       // if (support != null) {
@@ -847,12 +847,12 @@ public class LayoutLinkSupport {
       HashMap<String, SpecialtyLayoutLinkData> alienSources = new HashMap<String, SpecialtyLayoutLinkData>();
       HashMap<String, SpecialtyLayoutLinkData> srcToBetween = new HashMap<String, SpecialtyLayoutLinkData>();
       HashSet<String> newLinks = new HashSet<String>();
-      Map<String, SpecialSegmentTracker> specials = rcx.getLayout().rememberSpecialLinks();
+      Map<String, SpecialSegmentTracker> specials = rcx.getCurrentLayout().rememberSpecialLinks();
       // The first call really only works for full-on drops.  The second one is needed
       // to repair partial deletions
       if (isCompleteGenome) { 
         newLinks.addAll(DataUtil.setFromIterator(firstSub.getLinkageSuperSetIterator()));
-        rcx.getLayout().dropSelectedLinkProperties(null, rcx);
+        rcx.getCurrentLayout().dropSelectedLinkProperties(null, rcx);
       } else {
         HashMap<String, BusProperties.RememberProps> fakeRememberProps = new HashMap<String, BusProperties.RememberProps>();
         forRecoveriesOut.addAll(sle.getForRecoveriesOut());
@@ -865,7 +865,7 @@ public class LayoutLinkSupport {
         Iterator<String> oosit = newLinks.iterator();
         while (oosit.hasNext()) {
           String lid = oosit.next();
-          rcx.getLayout().removeLinkPropertiesAndRemember(lid, fakeRememberProps, rcx);
+          rcx.getCurrentLayout().removeLinkPropertiesAndRemember(lid, fakeRememberProps, rcx);
         }
       }
                  
@@ -914,21 +914,21 @@ public class LayoutLinkSupport {
            
       Set<String> ultimateFailures = sle.getUltimateFailures();
       if (!ultimateFailures.isEmpty()) {
-        LayoutOptions options = appState.getLayoutOptMgr().getLayoutOptions(); 
-        relayoutLinks(appState, rcx, null, options, false, ultimateFailures, monitor, midFrac1, midFrac2, false);
+        LayoutOptions options = rcx.getLayoutOptMgr().getLayoutOptions(); 
+        relayoutLinks(rcx, null, options, false, ultimateFailures, monitor, midFrac1, midFrac2, false);
       }
       
       //
       // Get special link segments back up to snuff:
       //
 
-      rcx.getLayout().restoreSpecialLinks(specials);
+      rcx.getCurrentLayout().restoreSpecialLinks(specials);
       
       //
       // Get rid of useless corners:
       //
     
-      rcx.getLayout().dropUselessCorners(rcx, null, midFrac2, midFrac3, monitor);
+      rcx.getCurrentLayout().dropUselessCorners(rcx, null, midFrac2, midFrac3, monitor);
             
       //
       // FIXME
@@ -940,7 +940,7 @@ public class LayoutLinkSupport {
       //
     
       if (isCompleteGenome && !gss.dataIterator().next().nps.pureCoreNetwork) {
-        rcx.getLayout().eliminateStaggeredRuns(10, rcx, null, null, midFrac3, midFrac4, monitor);
+        rcx.getCurrentLayout().eliminateStaggeredRuns(10, rcx, null, null, midFrac3, midFrac4, monitor);
       }
       
       //
@@ -950,22 +950,22 @@ public class LayoutLinkSupport {
       
       if (!isCompleteGenome && (numSub == 1)) {
         Set<String> fixLinks = sle.getNewLinks();
-        List<LinkProperties> lps = rcx.getLayout().listOfProps(rcx.getGenome(), null, fixLinks);
+        List<LinkProperties> lps = rcx.getCurrentLayout().listOfProps(rcx.getCurrentGenome(), null, fixLinks);
         int numLps = lps.size();
         for (int i = 0; i < numLps; i++) {
           LinkProperties lp = lps.get(i);
           // Comment out to debug auto layout
-          rcx.getLayout().fixAllNonOrthoForTree(lp, rcx, false, null, monitor, midFrac4, midFrac5);
+          rcx.getCurrentLayout().fixAllNonOrthoForTree(lp, rcx, false, null, monitor, midFrac4, midFrac5);
         }
       }
       // Comment out to debug auto layout
-      rcx.getLayout().repairAllTopologyForAuto(rcx, null, monitor, midFrac5, midFrac6); 
+      rcx.getCurrentLayout().repairAllTopologyForAuto(rcx, null, monitor, midFrac5, midFrac6); 
    
       //
       // Assign colors either by map or by auto-assignment.  If user chose not to
       // assign, we check if there is new ambiguity.
       //
-      doColorOperations(appState, colorType, checkColors, router, allNodeColors, 
+      doColorOperations(colorType, checkColors, router, allNodeColors, 
                         allLinkColors, rcx, sle.getGSS(), retval, monitor);
       
       //
@@ -1012,18 +1012,18 @@ public class LayoutLinkSupport {
             SortedSet<Integer> useEmptyCols = new TreeSet<Integer>();
             brect.x += (int)shiftedAmount.getX();
             brect.y += (int)shiftedAmount.getY();
-            rcx.getLayout().chooseCompressionRows(rcx, 1.0, 1.0, brect, false, null, useEmptyRows, useEmptyCols, monitor);
+            rcx.getCurrentLayout().chooseCompressionRows(rcx, 1.0, 1.0, brect, false, null, useEmptyRows, useEmptyCols, monitor);
             useEmptyRows = DataUtil.trimOut(useEmptyRows, brect.y / 10, (brect.y + brect.height) / 10);
             useEmptyCols = DataUtil.trimOut(useEmptyCols, brect.x/ 10, (brect.x + brect.width) / 10);
             double boundEnd = boundStart + boundInc;
-            rcx.getLayout().compress(rcx, useEmptyRows, useEmptyCols, brect, null, null, null, monitor, boundStart, boundEnd);
+            rcx.getCurrentLayout().compress(rcx, useEmptyRows, useEmptyCols, brect, null, null, null, monitor, boundStart, boundEnd);
             boundStart = boundEnd;
           }
           //
           // This is how we deal with the left-hand stack trace errors described above.  We just
           // force the intersection points up as needed.
           //
-          rcx.getLayout().repairStackedCompressionErrors(rcx);
+          rcx.getCurrentLayout().repairStackedCompressionErrors(rcx);
         }
       }
       if (monitor != null) {
@@ -1059,7 +1059,7 @@ public class LayoutLinkSupport {
           (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
         // Used to handle PropChange and undo support, but we are in an undo transaction.
         Layout.OverlayKeySet reduced = loModKeys.dropOverlay(overlayKey);
-        rcx.getLayout().shiftModuleShapesPerParams(reduced, moduleShapeRecovery, rcx);
+        rcx.getCurrentLayout().shiftModuleShapesPerParams(reduced, moduleShapeRecovery, rcx);
       }
       
       //
@@ -1075,7 +1075,7 @@ public class LayoutLinkSupport {
             newSize = sp.getPlacedFullBounds();         
           }
           // Contig rect module cores are getting reset to contain what they need
-          rcx.getLayout().sizeCoreToGivenBounds(rcx.getGenomeID(), overlayKey, sp.moduleID, new Rectangle(newSize));
+          rcx.getCurrentLayout().sizeCoreToGivenBounds(overlayKey, sp.moduleID, new Rectangle(newSize));
         }
       }
      
@@ -1085,7 +1085,7 @@ public class LayoutLinkSupport {
       
       if (overlayKey != null) {
         Map<Point2D, Point2D> modLinkCornerMoves = sle.getModLinkCornerMoves();
-        rcx.getLayout().shiftModLinksToNewPositions(overlayKey, modLinkCornerMoves, false, rcx); 
+        rcx.getCurrentLayout().shiftModLinksToNewPositions(overlayKey, modLinkCornerMoves, false, rcx); 
       }
       
       //
@@ -1096,11 +1096,11 @@ public class LayoutLinkSupport {
       
       // Null test is one fix for BT-10-24-12:1
       if (padNeedsForLayout != null) {
-        Map<String, Boolean> orpho = rcx.getLayout().orphansOnlyForAll(false);
+        Map<String, Boolean> orpho = rcx.getCurrentLayout().orphansOnlyForAll(false);
         if (overlayKey != null) {
           orpho.put(overlayKey, new Boolean(true));
         }
-        rcx.getLayout().repairAllNetModuleLinkPadRequirements(rcx, padNeedsForLayout, orpho);
+        rcx.getCurrentLayout().repairAllNetModuleLinkPadRequirements(rcx, padNeedsForLayout, orpho);
       }
       
       //
@@ -1108,17 +1108,17 @@ public class LayoutLinkSupport {
       // 
       
       Layout.SupplementalDataCoords sdc = sle.getSupplementalDataCoords();
-      Rectangle2D rect = rcx.getLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);    
-      rcx.getLayout().restoreLabelLocations(rememberProps, rcx, rect);
+      Rectangle2D rect = rcx.getCurrentLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);    
+      rcx.getCurrentLayout().restoreLabelLocations(rememberProps, rcx, rect);
       Point2D fullGenomeCenter = sle.getFullGenomeCenter();
       if (fullGenomeCenter != null) {
-        Vector2D shifted = rcx.getLayout().recenterLayout(fullGenomeCenter, rcx, true, true, true, 
+        Vector2D shifted = rcx.getCurrentLayout().recenterLayout(fullGenomeCenter, rcx, true, true, true, 
                                                      null, null, null, loModKeys, padNeedsForLayout);
         shiftedAmount.setXY(shifted.getX(), shifted.getY());
       }
             
       if (sle.doHideNames()) {
-        rcx.getLayout().hideAllMinorNodeNames(rcx);     
+        rcx.getCurrentLayout().hideAllMinorNodeNames(rcx);     
       }
       
       //
@@ -1126,8 +1126,8 @@ public class LayoutLinkSupport {
       //    
 
       if (support != null) {
-        dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+        dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(rcx, dc));
       }
       
       //
@@ -1145,7 +1145,7 @@ public class LayoutLinkSupport {
       return (retval);
 
     } catch (AsynchExitRequestException ex) {
-      rcx.lSrc.rollbackLayoutUndoTransaction(dc);
+      rcx.getLayoutSource().rollbackLayoutUndoTransaction(dc);
       throw ex;
     }    
   }   
@@ -1214,15 +1214,15 @@ public class LayoutLinkSupport {
   ** Do layout color operations
   */  
  
-  private static void doColorOperations(BTState appState, ColorTypes colorType, boolean checkColors, LinkRouter router, 
+  private static void doColorOperations(ColorTypes colorType, boolean checkColors, LinkRouter router, 
                                         Map<String, String> allNodeColors, Map<String, String> allLinkColors, 
-                                        DataAccessContext rcx,
+                                        StaticDataAccessContext rcx,
                                         SpecialtyLayoutEngine.GlobalSLEState gss,
                                         LinkRouter.RoutingResult retval, 
                                         BTProgressMonitor monitor) throws AsynchExitRequestException {
 
       
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
     //
     // We do not allow assignment for subsets, just reuse:
@@ -1230,7 +1230,7 @@ public class LayoutLinkSupport {
 
     ColorAssigner.ColorIssues issues = null; 
     if (colorType == ColorTypes.COLOR_BY_CYCLE) {
-      int numCol = rcx.cRes.getNumColors();
+      int numCol = rcx.getColorResolver().getNumColors();
       Iterator<SpecialtyLayoutData> sldit = gss.dataIterator();
       while (sldit.hasNext()) {
         SpecialtyLayoutData sld = sldit.next();
@@ -1239,7 +1239,7 @@ public class LayoutLinkSupport {
         int count = 0;
         while (vit.hasNext()) {
           String srcID = vit.next();
-          String color = rcx.cRes.getGeneColor(count);
+          String color = rcx.getColorResolver().getGeneColor(count);
           allNodeColors.put(srcID, color);
           count = (count + 1) % numCol;
         }
@@ -1253,7 +1253,7 @@ public class LayoutLinkSupport {
         String srcID = node.getID();
         if (allNodeColors.get(srcID) == null) {
           if (ist.outboundLinkCount(srcID) > 0) {
-            String color = rcx.cRes.getGeneColor(count);
+            String color = rcx.getColorResolver().getGeneColor(count);
             allNodeColors.put(srcID, color);
             count = (count + 1) % numCol;
           } else {
@@ -1307,7 +1307,7 @@ public class LayoutLinkSupport {
       }
     // Looks for ambiguity and assigns (by grid) if needed:
     } else if (colorType == ColorTypes.COLOR_IF_NEEDED) {
-      LinkRouter.RoutingResult result = reassignColors(appState, rcx, null);
+      LinkRouter.RoutingResult result = reassignColors(rcx, null);
       if (checkColors && (result.colorResult != ColorAssigner.COLORING_OK)) {
         issues = new ColorAssigner.ColorIssues(result.collisionSrc1, result.collisionSrc2);
       }
@@ -1343,7 +1343,7 @@ public class LayoutLinkSupport {
   ** Prepare to add some links
   */
    
-  public static void gridlessLinkLayoutPrep(DataAccessContext rcx, 
+  public static void gridlessLinkLayoutPrep(StaticDataAccessContext rcx, 
                                             Set<String> toDo, Map<String, BusProperties.RememberProps> rememberProps) {   
     
     //
@@ -1351,7 +1351,7 @@ public class LayoutLinkSupport {
     //
     
     HashMap<String, String> linkForSrc = new HashMap<String, String>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     
     while (lit.hasNext()) {
       Linkage link = lit.next();
@@ -1360,7 +1360,7 @@ public class LayoutLinkSupport {
       if (linkForSrc.get(src) != null) {
         continue;
       }
-      BusProperties testProp = rcx.getLayout().getLinkProperties(linkID);
+      BusProperties testProp = rcx.getCurrentLayout().getLinkProperties(linkID);
       if (testProp != null) {
         linkForSrc.put(src, linkID);
       }
@@ -1383,11 +1383,11 @@ public class LayoutLinkSupport {
   ** Automatically add crude link properties for a link.
   */  
    
-  public static boolean autoAddCrudeLinkProperties(BTState appState, DataAccessContext rcx, String linkID, 
+  public static boolean autoAddCrudeLinkProperties(StaticDataAccessContext rcx, String linkID, 
                                                    UndoSupport support, Map<String, BusProperties.RememberProps> rememberProps) {
     
-    Genome genome = rcx.getGenome();
-    Layout lo = rcx.getLayout();
+    Genome genome = rcx.getCurrentGenome();
+    Layout lo = rcx.getCurrentLayout();
     
     //
     // Look for a preexisting link from the source:
@@ -1442,7 +1442,7 @@ public class LayoutLinkSupport {
       lpc = lo.mergeNewLinkToTreeAtSegment(rcx, existingID, nlp, null);
     }
     if (support != null) {
-      support.addEdit(new PropChangeCmd(appState, rcx, new Layout.PropChange[] {lpc}));
+      support.addEdit(new PropChangeCmd(rcx, new Layout.PropChange[] {lpc}));
     }
     
     return (true); 
@@ -1453,12 +1453,12 @@ public class LayoutLinkSupport {
   ** Automatically add crude link properties for a link.
   */  
    
-  public static void autoAddCrudeLinkPropertiesFastBatch(DataAccessContext rcx, String linkID, 
+  public static void autoAddCrudeLinkPropertiesFastBatch(StaticDataAccessContext rcx, String linkID, 
                                                          Map<String, BusProperties.RememberProps> rememberProps, 
                                                          Map<String, String> cacheMap) {
    
-    Genome genome = rcx.getGenome();
-    Layout lo = rcx.getLayout();
+    Genome genome = rcx.getCurrentGenome();
+    Layout lo = rcx.getCurrentLayout();
     
     Linkage thisLink = genome.getLinkage(linkID);
     String srcID = thisLink.getSource();
@@ -1502,15 +1502,12 @@ public class LayoutLinkSupport {
   ** Get wiggle pad assignments based on node locations:
   */  
    
-  private static void wigglePads(BTState appState, DataAccessContext rcx, Map<String, PadConstraints> padConstraints, UndoSupport support) {
+  private static void wigglePads(StaticDataAccessContext rcx, Map<String, PadConstraints> padConstraints, UndoSupport support) {
     //
     // Wiggle pad assignments based on node locations:
     //
-    
-    //Iterator nit = genome.getGeneIterator();
-    //wigglePadCore(nit, lo, genome, padConstraints, support);
-    Iterator<Node> nit = rcx.getGenome().getNodeIterator();
-    wigglePadCore(appState, nit, rcx, padConstraints, support);
+    Iterator<Node> nit = rcx.getCurrentGenome().getNodeIterator();
+    wigglePadCore(nit, rcx, padConstraints, support);
     return;
   }
     
@@ -1519,13 +1516,13 @@ public class LayoutLinkSupport {
   ** Core of wiggle pads
   */  
  
-  public static void wigglePadCore(BTState appState, Iterator<Node> nit, DataAccessContext rcx, 
+  public static void wigglePadCore(Iterator<Node> nit, StaticDataAccessContext rcx, 
                                    Map<String, PadConstraints> padConstraints, UndoSupport support) {
     //
     // Wiggle pad assignments based on node locations:
     //
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     PadCalculatorToo padCalc = new PadCalculatorToo();
     while (nit.hasNext()) {
       Node node = nit.next();
@@ -1538,7 +1535,7 @@ public class LayoutLinkSupport {
         if (pres.launch != link.getLaunchPad()) {
           GenomeChange gc = genome.changeLinkageSource(link, pres.launch);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
             support.addEdit(gcc);
           }
         }
@@ -1546,7 +1543,7 @@ public class LayoutLinkSupport {
         if (pres.landing != link.getLandingPad()) {      
           GenomeChange gc = genome.changeLinkageTarget(link, pres.landing);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
             support.addEdit(gcc);
           }
         }
@@ -1559,12 +1556,12 @@ public class LayoutLinkSupport {
   ** Get average node spacing:
   */  
   
-  private static Vector2D avgDistance(DataAccessContext rcx) {
+  private static Vector2D avgDistance(StaticDataAccessContext rcx) {
     ArrayList<Point2D> points = new ArrayList<Point2D>();
-    Iterator<Node> nit = rcx.getGenome().getAllNodeIterator();
+    Iterator<Node> nit = rcx.getCurrentGenome().getAllNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
-      NodeProperties np = rcx.getLayout().getNodeProperties(node.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(node.getID());
       if (np != null) {  // not all nodes placed yet
         points.add(np.getLocation());
       }
@@ -1578,7 +1575,7 @@ public class LayoutLinkSupport {
   ** Arrange new node grid spacing for new incremental nodes
   */  
     
-  private static double calcIncrementalGridSpacing(DataAccessContext rcxR, Set<String> newNodes,
+  private static double calcIncrementalGridSpacing(StaticDataAccessContext rcxR, Set<String> newNodes,
                                                    Grid grid, double defaultLeft, 
                                                    LayoutOptions options) {                                      
     //
@@ -1645,7 +1642,7 @@ public class LayoutLinkSupport {
   ** Arrange new node grid spacing for new incremental nodes
   */  
    
-  private static void calcColumnPositions(DataAccessContext rcxR, Set<String> newNodes,
+  private static void calcColumnPositions(StaticDataAccessContext rcxR, Set<String> newNodes,
                                           Grid grid, double colW, 
                                           double defaultLeft, SortedMap<Integer, Double> colLocs, 
                                           SortedSet<Integer> empties, LayoutOptions options) {
@@ -1715,7 +1712,7 @@ public class LayoutLinkSupport {
             }
             continue;
           }
-          currPos += ((colPos.average - (colW * (double)numFilled)) * colPos.count);
+          currPos += ((colPos.average - (colW * numFilled)) * colPos.count);
           currCount += colPos.count;
           numFilled++;
         }
@@ -1733,7 +1730,7 @@ public class LayoutLinkSupport {
           currPos = minPos;
           currPos = varianceReductionTweak(rcxR, currPos, colW * 0.4, true);   
         } else {
-          currPos /= (double)currCount;
+          currPos /= currCount;
           if (currPos < minPos) {
             currPos = minPos;
             currPos = varianceReductionTweak(rcxR, currPos, colW * 0.4, true);      
@@ -1741,7 +1738,7 @@ public class LayoutLinkSupport {
             currPos = varianceReductionTweak(rcxR, currPos, colW * 0.4, false);
           }
         }
-        currPos = (((double)Math.round(currPos / 10.0)) * 10.0);
+        currPos = Math.round(currPos / 10.0) * 10.0;
         lastColPos = currPos;
         currPosObj = new Double(currPos);
         colLocs.put(iObj, currPosObj);
@@ -1756,7 +1753,7 @@ public class LayoutLinkSupport {
   ** pre-existing sources.
   */  
     
-   private static WeightedAverage findSourceWeightedAvg(DataAccessContext rcx, Set<String> newNodes, Grid grid, int col) {
+   private static WeightedAverage findSourceWeightedAvg(StaticDataAccessContext rcx, Set<String> newNodes, Grid grid, int col) {
 
      WeightedAverage wa = new WeightedAverage();                                   
      wa.average = 0.0;
@@ -1769,7 +1766,7 @@ public class LayoutLinkSupport {
          continue;
        }
        int topoColTarg = topoSort.get(nodeID).intValue();
-       Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+       Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
        while (lit.hasNext()) {
          Linkage link = lit.next();
          String trg = link.getTarget();
@@ -1784,7 +1781,7 @@ public class LayoutLinkSupport {
          if (topoColSrc >= topoColTarg) {
            continue;
          }
-         NodeProperties np = rcx.getLayout().getNodeProperties(src);
+         NodeProperties np = rcx.getCurrentLayout().getNodeProperties(src);
          double xOffset = np.getRenderer().getVerticalOffset();
          double val = np.getLocation().getX() - xOffset;
          wa.average += val;
@@ -1792,7 +1789,7 @@ public class LayoutLinkSupport {
        }
      }
      if (wa.count != 0) {
-       wa.average /= (double)wa.count;
+       wa.average /= wa.count;
      }
      return (wa);
    }
@@ -1803,7 +1800,7 @@ public class LayoutLinkSupport {
    ** pre-existing targets.
    */  
 
-   private static WeightedAverage findTargetWeightedAvg(DataAccessContext rcx, Set<String> newNodes, Grid grid, int col) {
+   private static WeightedAverage findTargetWeightedAvg(StaticDataAccessContext rcx, Set<String> newNodes, Grid grid, int col) {
                                         
      WeightedAverage wa = new WeightedAverage();
      wa.average = 0.0;
@@ -1816,7 +1813,7 @@ public class LayoutLinkSupport {
          continue;
        }
        int topoColSrc = topoSort.get(nodeID).intValue();
-       Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+       Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
        while (lit.hasNext()) {
          Linkage link = lit.next();
          String src = link.getSource();
@@ -1831,7 +1828,7 @@ public class LayoutLinkSupport {
          if (topoColSrc >= topoColTarg) {
            continue;
          }
-         NodeProperties np = rcx.getLayout().getNodeProperties(trg);
+         NodeProperties np = rcx.getCurrentLayout().getNodeProperties(trg);
          double xOffset = np.getRenderer().getVerticalOffset();
          double val = np.getLocation().getX() - xOffset;
          wa.average += val;
@@ -1839,7 +1836,7 @@ public class LayoutLinkSupport {
        }
      }
      if (wa.count != 0) {
-       wa.average /= (double)wa.count;
+       wa.average /= wa.count;
      }
      return (wa);
    }
@@ -1849,7 +1846,7 @@ public class LayoutLinkSupport {
    ** Tweak column to reduce variance
    */  
     
-   private static double varianceReductionTweak(DataAccessContext rcx, double xCenter, double width, boolean plusOnly) {                                      
+   private static double varianceReductionTweak(StaticDataAccessContext rcx, double xCenter, double width, boolean plusOnly) {                                      
      //
      // Find all the existing x coords within +- half a column width.  Then take
      // the coord that minimizes the variance.
@@ -1872,7 +1869,7 @@ public class LayoutLinkSupport {
      
      if (numCoords != 0) {
        for (int i = xMin; i <= xMax; i += 10) {
-         xCoordsPlus[numCoords] = (double)i;
+         xCoordsPlus[numCoords] = i;
          double varSq = varianceSq(xCoordsPlus);
          if (varSq < minVariance) {
            minVariance = varSq;
@@ -1882,7 +1879,7 @@ public class LayoutLinkSupport {
      }
      
      if (minVariance != Double.POSITIVE_INFINITY) {
-       return ((double)minCoord);
+       return (minCoord);
      }
      return (xCenter);
    }
@@ -1901,7 +1898,7 @@ public class LayoutLinkSupport {
        sum += values[i];
        sumsq += (values[i] * values[i]);
      }
-     double n = (double)size;
+     double n = size;
      double retval = (1.0 / (n - 1)) * (sumsq - ((sum * sum) / n));
      return (retval);
    }      
@@ -1912,7 +1909,7 @@ public class LayoutLinkSupport {
    ** the best vertical position by minimizing link displacements.
    */  
   
-   private static Point2D findBestVerticalPosition(DataAccessContext rcx, Grid grid,
+   private static Point2D findBestVerticalPosition(StaticDataAccessContext rcx, Grid grid,
                                                    Map<String, Integer> newNodeTypes, double leftie) {
 
      //
@@ -1941,7 +1938,7 @@ public class LayoutLinkSupport {
      
      int count = 0;
      double deltaSum = 0.0;
-     Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+     Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
      while (lit.hasNext()) {
        Linkage link = lit.next();
        String trg = link.getTarget();
@@ -1959,18 +1956,18 @@ public class LayoutLinkSupport {
          newNode = src;
          oldNode = trg;
        }
-       NodeProperties np = rcx.getLayout().getNodeProperties(oldNode);
+       NodeProperties np = rcx.getCurrentLayout().getNodeProperties(oldNode);
        Point2D oldPos = np.getLocation();
        Point2D newPos = gridPos.get(newNode);
        int nodeType = newNodeTypes.get(newNode).intValue();          
-       np = new NodeProperties(rcx.cRes, rcx.getLayout(), nodeType, newNode, 0.0, 0.0, false);
+       np = new NodeProperties(rcx.getColorResolver(), nodeType, newNode, 0.0, 0.0, false);
        double yOffset = np.getRenderer().getStraightThroughOffset();
        double yDiff = oldPos.getY() - (newPos.getY() + yOffset);
        count++;
        deltaSum += yDiff;
      }
         
-     return (new Point2D.Double(leftie, deltaSum / (double)count));
+     return (new Point2D.Double(leftie, deltaSum / count));
    }
   
    /***************************************************************************
@@ -1978,12 +1975,12 @@ public class LayoutLinkSupport {
    ** Collect all the x coords near the given coord
    */  
   
-   private static double[] collectXCoords(DataAccessContext rcx, double xCenter, double width) {
+   private static double[] collectXCoords(StaticDataAccessContext rcx, double xCenter, double width) {
      ArrayList<Point2D> points = new ArrayList<Point2D>();
-     Iterator<Node> nit = rcx.getGenome().getNodeIterator();
+     Iterator<Node> nit = rcx.getCurrentGenome().getNodeIterator();
      while (nit.hasNext()) {
        Node node = nit.next();
-       NodeProperties np = rcx.getLayout().getNodeProperties(node.getID());
+       NodeProperties np = rcx.getCurrentLayout().getNodeProperties(node.getID());
        if (np != null) {  // not all nodes placed yet
          Point2D loc = np.getLocation();
          double xLoc = loc.getX() - np.getRenderer().getVerticalOffset();
@@ -1992,10 +1989,10 @@ public class LayoutLinkSupport {
          }
        }
      }
-     Iterator<Gene> git = rcx.getGenome().getGeneIterator();
+     Iterator<Gene> git = rcx.getCurrentGenome().getGeneIterator();
      while (git.hasNext()) {
        Node node = git.next();
-       NodeProperties np = rcx.getLayout().getNodeProperties(node.getID());
+       NodeProperties np = rcx.getCurrentLayout().getNodeProperties(node.getID());
        if (np != null) {  // not all nodes placed yet
          Point2D loc = np.getLocation();
          double xLoc = loc.getX() - np.getRenderer().getVerticalOffset();

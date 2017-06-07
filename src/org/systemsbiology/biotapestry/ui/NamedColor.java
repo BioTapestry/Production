@@ -21,14 +21,12 @@ package org.systemsbiology.biotapestry.ui;
 
 import java.awt.Color;
 
-import org.systemsbiology.biotapestry.util.ColorListRenderer;
-
 /****************************************************************************
 **
 ** Represents a color with a name
 */
 
-public class NamedColor implements Comparable<ColorListRenderer.ColorSource>, ColorListRenderer.ColorSource {
+public class NamedColor implements Comparable<NamedColor> {
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -124,7 +122,7 @@ public class NamedColor implements Comparable<ColorListRenderer.ColorSource>, Co
    * than, equal to, or greater than the specified object.<p>
   */
   
-  public int compareTo(ColorListRenderer.ColorSource other) { 
+  public int compareTo(NamedColor other) { 
     if (this == other) {
       return (0);
     }

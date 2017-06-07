@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 package org.systemsbiology.biotapestry.timeCourse;
 
 import java.util.Set;
-import java.util.HashSet;
 import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 import java.io.PrintWriter;
@@ -28,10 +27,13 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 
 /****************************************************************************
@@ -39,7 +41,7 @@ import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 ** This is a Temporal Perturbation Region
 */
 
-public class RegionAndRange {
+public class RegionAndRange implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -123,7 +125,7 @@ public class RegionAndRange {
   ** Constructor
   */
 
-  public RegionAndRange(BTState appState, String region, String min, String max, 
+  public RegionAndRange(DataAccessContext dacx, String region, String min, String max, 
                         String sign, String note, String source,
                         String startStrategy, String endStrategy) throws IOException {
     region_ = region;
@@ -135,7 +137,7 @@ public class RegionAndRange {
       throw new IOException();
     }
 
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.spanIsOk(min_, max_)) {
       throw new IOException();
     }
@@ -198,6 +200,21 @@ public class RegionAndRange {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Clone
+  **
+  */  
+  
+  @Override
+  public RegionAndRange clone() { 
+    try {
+      return ((RegionAndRange)super.clone());
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  } 
+
   /***************************************************************************
   **
   ** Get the region
@@ -319,7 +336,23 @@ public class RegionAndRange {
     min_ = min;
     return;
   }
-
+  
+  /***************************************************************************
+  **
+  ** Add a time
+  **
+  */
+  
+  public void addTime(int time) {
+    if (time < min_) {
+      min_ = time;
+    }
+    if (time > max_) {
+      max_ = time;
+    }
+    return;
+  }
+ 
   /***************************************************************************
   **
   ** Set the max
@@ -502,12 +535,28 @@ public class RegionAndRange {
     }
   }    
 
+  /***************************************************************************
+  **
+  ** Map signs
+  */
+  
+  public static int signForSign(int linkageSign) {
+    if ((linkageSign == Linkage.POSITIVE) || (linkageSign == Linkage.NONE)) {
+      return (PROMOTER);
+    } else if (linkageSign == Linkage.NEGATIVE) {
+      return (REPRESSOR);
+    } else {
+      throw new IllegalArgumentException();
+    }
+  }  
+  
  /***************************************************************************
   **
   ** Standard toString():
   ** 
   */
   
+  @Override
   public String toString() {
     return ("RegionAndRange: region_ = " + region_ + " min = " + min_ +
             " max = " + max_ + " sign = " + sign_ + " note = " + note_ +
@@ -519,12 +568,64 @@ public class RegionAndRange {
   // PUBLIC CLASS METHODS
   //
   ///////////////////////////////////////////////////////////////////////////
-  
+ 
+  /***************************************************************************
+  **
+  ** For XML I/O
+  */  
+      
+  public static class RegionAndRangeWorker extends AbstractFactoryClient {
+    
+    private DataAccessContext dacx_;
+    private boolean mapsAreIllegal_;
+    
+    public RegionAndRangeWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("range");
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+ 
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("range")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.regionAndRange = buildFromXML(elemName, attrs);
+        retval = board.regionAndRange;
+      }
+      return (retval);     
+    }  
+    
+    private RegionAndRange buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String region = AttributeExtractor.extractAttribute(elemName, attrs, "range", "region", false);
+      if (region != null) {
+        region = CharacterEntityMapper.unmapEntities(region, false);
+      }
+      String min = AttributeExtractor.extractAttribute(elemName, attrs, "range", "minTime", true);
+      String max = AttributeExtractor.extractAttribute(elemName, attrs, "range", "maxTime", true);
+      String sign = AttributeExtractor.extractAttribute(elemName, attrs, "range", "sign", true);
+      String note = AttributeExtractor.extractAttribute(elemName, attrs, "range", "note", false);
+      if (note != null) {
+        note = CharacterEntityMapper.unmapEntities(note, false);
+      }
+      String source = AttributeExtractor.extractAttribute(elemName, attrs, "range", "source", false);
+      if (source != null) {
+        source = CharacterEntityMapper.unmapEntities(source, false);
+      }
+      String startStrategy = AttributeExtractor.extractAttribute(elemName, attrs, "range", "starttype", false);
+      String endStrategy = AttributeExtractor.extractAttribute(elemName, attrs, "range", "endtype", false);    
+      return (new RegionAndRange(dacx_, region, min, max, sign, note, source, startStrategy, endStrategy));
+    } 
+  }
+ 
   /***************************************************************************
   **
   ** Figure out extrapolation strategy
   */
-  
+
   @SuppressWarnings("unused")
   public static int calculateStrategy(String token, boolean isStart) {
   
@@ -562,74 +663,6 @@ public class RegionAndRange {
         throw new IllegalArgumentException();
     } 
   } 
-  
-  /***************************************************************************
-  **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("range");
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static RegionAndRange buildFromXML(BTState appState, String elemName, 
-                                            Attributes attrs) throws IOException {
-    if (!elemName.equals("range")) {
-      return (null);
-    }
-    
-    String region = null; 
-    String min = null; 
-    String max = null; 
-    String sign = null;
-    String note = null;
-    String source = null;
-    String startStrategy = null;
-    String endStrategy = null;     
-   
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("region")) {
-          region = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("minTime")) {
-          min = val;
-        } else if (key.equals("maxTime")) {
-          max = val;
-        } else if (key.equals("sign")) {
-          sign = val;          
-        } else if (key.equals("note")) {
-          note = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("source")) {
-          source = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("starttype")) {
-          startStrategy = val;
-        } else if (key.equals("endtype")) {
-          endStrategy = val;
-        }
-      }
-    }
-    
-    if ((min == null) || (max == null) || (sign == null)) {
-      throw new IOException();
-    }
-    
-    return (new RegionAndRange(appState, region, min, max, sign, note, source, startStrategy, endStrategy));
-  }
   
   ////////////////////////////////////////////////////////////////////////////
   //

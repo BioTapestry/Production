@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,14 +43,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import javax.swing.undo.UndoManager;
-
 import org.systemsbiology.biotapestry.analysis.SignedLink;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.ModelData;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.embedded.ExternalSelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.gaggle.GooseAppInterface;
@@ -73,6 +72,7 @@ import org.systemsbiology.biotapestry.genome.NetworkOverlay;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.nav.GroupSettings;
+import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.freerender.GroupFree;
 import org.systemsbiology.biotapestry.ui.freerender.LinkageFree;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
@@ -90,11 +90,12 @@ import org.systemsbiology.biotapestry.ui.modelobjectcache.ModelObjectCache.Modal
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.TaggedSet;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
 **
-** This handles the representation of a genome
+** This handles the presentation of the network.
 */
 
 public class GenomePresentation implements ZoomPresentation {
@@ -140,35 +141,34 @@ public class GenomePresentation implements ZoomPresentation {
   private HashMap<String, RenderObjectCache> ghostedViewerRocCache_;
   private HashMap<String, ModelObjectCache> viewerMocCache_;
   private HashMap<String, ModelObjectCache> ghostedViewerMocCache_;
-  private DisplayOptionsManager dopmgr_;
+  private MinimalDispOptMgr dopmgr_;
   private boolean isMain_;
 
   LocalGenomeSource floaterSrc_;
-  
-  private BTState appState_;
-    
-  //private BufferedImage grid_;
-  
+  private UIComponentSource uics_;
+  private DataAccessContext floaterDacx_;
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
   //
   ////////////////////////////////////////////////////////////////////////////
-
   /***************************************************************************
   **
-  ** constructor
+  ** constructor. Yes, this can take either a static or dynamic DAC, depending on 
+  ** how it is deployed.
   */
 
-  public GenomePresentation(BTState appState, boolean isMain, double zoom, boolean processSelections, DataAccessContext rcx) {
-    appState_ = (isMain) ? appState.setGenomePresentation(this) : appState;
+  public GenomePresentation(UIComponentSource uics, boolean isMain, double zoom, boolean processSelections, DataAccessContext dacxDyn) {
+    uics_ = uics;
     isMain_ = isMain;
+    floaterDacx_ = dacxDyn;
     selectionKeys_ = new HashMap<String, Intersection>();
     currSelZoomKey_ = null;
     floater_ = null;
     floaterColor_ = null;
-    floaterGenome_ = new DBGenome(appState_, "floater", "floater");
-    floaterLayout_ = new Layout(appState_, "floater", "floater");
+    floaterGenome_ = new DBGenome(floaterDacx_, "floater", "floater");
+    floaterLayout_ = new Layout("floater", "floater");
     currentTargets_ = new HashSet<String>(); 
     currentRootOverlays_ = new HashSet<String>();     
     viewerRocCache_ = new HashMap<String, RenderObjectCache>();
@@ -176,7 +176,8 @@ public class GenomePresentation implements ZoomPresentation {
     viewerMocCache_ = new HashMap<String, ModelObjectCache>();
     ghostedViewerMocCache_ = new HashMap<String, ModelObjectCache>();
     processSelections_ = processSelections;
-    dopmgr_ = appState_.getDisplayOptMgr();
+    dopmgr_ = dacxDyn.getDisplayOptsSource();
+
         
     /*
     grid_ = new BufferedImage(2000, 1600, BufferedImage.TYPE_INT_RGB);
@@ -193,7 +194,7 @@ public class GenomePresentation implements ZoomPresentation {
       }
     }
     */
-    setPresentationZoomFactor(zoom, rcx);
+    setPresentationZoomFactor(zoom, dacxDyn);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -204,19 +205,15 @@ public class GenomePresentation implements ZoomPresentation {
 
   /***************************************************************************
   **
-  ** Answer if nothing misc has been intersected. NOTE we should be handed an OSO instead; this
-  ** is tied to appState_'s current overlay state!
+  ** Answer if nothing misc has been intersected.
   */
   
-  public boolean noMiscHits(DataAccessContext rcx, Point pt) {
-    String currentOverlay = rcx.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = rcx.oso.getCurrentNetModules();
-    NetModuleFree.CurrentSettings currOvrSettings = rcx.oso.getCurrentOverlaySettings();
+  public boolean noMiscHits(StaticDataAccessContext rcx, Point pt) {
 
-    return ((intersectModelData(rcx, pt, currentOverlay, currentNetMods.set, currOvrSettings.intersectionMask) == null) &&
+    return ((intersectModelData(rcx, pt) == null) &&
           (!intersectLinkageLabels(rcx, pt)) &&
           (intersectANetModuleElement(pt.x, pt.y, rcx, NetModuleIntersect.NET_MODULE_BOUNDARY) == null) &&
-          (!appState_.showingModuleComponents() || (intersectANetModuleElement(pt.x, pt.y, rcx, NetModuleIntersect.NET_MODULE_DEFINITION_RECT) == null)) &&
+          (!rcx.getOSO().showingModuleComponents() || (intersectANetModuleElement(pt.x, pt.y, rcx, NetModuleIntersect.NET_MODULE_DEFINITION_RECT) == null)) &&
           (intersectNetModuleLinks(pt.x, pt.y, rcx) == null) &&
           (intersectANetModuleElement(pt.x, pt.y, rcx, NetModuleIntersect.NET_MODULE_NAME) == null));
   }
@@ -237,8 +234,8 @@ public class GenomePresentation implements ZoomPresentation {
   
   public boolean linksAreHidden(DataAccessContext rcx) {
     boolean hideLinks = false;
-    if ((rcx.oso != null) && (rcx.oso.getCurrentOverlay() != null)) {
-      NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(rcx.oso.getCurrentOverlay());
+    if ((rcx.getOSO() != null) && (rcx.getOSO().getCurrentOverlay() != null)) {
+      NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(rcx.getOSO().getCurrentOverlay());
       hideLinks = nop.hideLinks();  
     }
     return (hideLinks);
@@ -249,8 +246,8 @@ public class GenomePresentation implements ZoomPresentation {
   ** Present the given genome with the given layout
   */
   
-	public void presentGenome(ModelObjectCache moc, DataAccessContext rcx, boolean showRoot) { // String genomeKey,Layout layout, boolean showBubbles, boolean showRoot,OverlayStateOracle oso, double pixDiam) {
-		presentGenomeWithOverlay(moc, null, null, null, null, rcx, showRoot, null);
+	public void presentGenome(ModelObjectCache moc, StaticDataAccessContext rcx, boolean showRoot, IRenderer.Mode mode) {
+		presentGenomeWithOverlay(moc, null, null, rcx, showRoot, null, mode);
 		return;
 	}
   
@@ -260,19 +257,19 @@ public class GenomePresentation implements ZoomPresentation {
   */
   
   public void presentGenomeWithOverlay(ModelObjectCache moc, ModelObjectCache overMoc, ModelObjectCache floaterCache, 
-      																 Graphics2D g2, OpaqueOverlayInfo ooi, DataAccessContext rcxI,
-      																 boolean showRoot, Set<String> showComponents) {
+      																 DataAccessContext rcxI,
+      																 boolean showRoot, Set<String> showComponents, IRenderer.Mode mode) {
 		//
 		// This is done in up to two passes
 		//
 
-		DataAccessContext rcx = new DataAccessContext(rcxI);
+		StaticDataAccessContext rcx = new StaticDataAccessContext(rcxI);
 			
 		List<GroupFree.ColoredRect> renderedRects = null;
 		
 		boolean hideLinks = false;
-		if (rcx.getGenome() instanceof GenomeInstance) { // yuk! gag!
-			GenomeInstance child = rcx.getGenomeAsInstance();
+		if (rcx.currentGenomeIsAnInstance()) {
+			GenomeInstance child = rcx.getCurrentGenomeAsInstance();
 			GenomeInstance rootvfg = child.getVfgParentRoot();
 			//
 			// When in pull-down mode, we only want to show the immediate parent
@@ -280,32 +277,32 @@ public class GenomePresentation implements ZoomPresentation {
 			//
 			GenomeInstance ancestorVfg = (showRoot) ? rootvfg : child.getVfgParent();
 			// Shows background for regions actually in the model:
-			if ((rcx.oso != null) && (rcx.oso.getCurrentOverlay() != null)) {
+			if ((rcx.getOSO() != null) && (rcx.getOSO().getCurrentOverlay() != null)) {
 				renderedRects = new ArrayList<GroupFree.ColoredRect>();
 			}
-			else if (rcx.oso != null && rcx.forWeb) {
+			else if (rcx.getOSO() != null && rcx.isForWeb()) {
 				renderedRects = new ArrayList<GroupFree.ColoredRect>();
 			}
 
 			moc.setDrawLayer(DrawLayer.BACKGROUND_REGIONS);
-			renderGroupsInBackground(moc, rcx, rootvfg, child, renderedRects);
+			renderGroupsInBackground(moc, rcx, rootvfg, child, renderedRects, mode);
 
 			moc.setDrawLayer(DrawLayer.UNDERLAY);
-			hideLinks = underlayRender(moc, null, null, showComponents, rcx);
+			hideLinks = underlayRender(moc, null, null, showComponents, rcx, mode);
 
 			if (rootvfg != null) {
 				// I.E. if not a top-level instance, we draw inactive parent under the
 				// model:
 				moc.setDrawLayer(DrawLayer.VFN_GHOSTED);
-				DataAccessContext rcx2 = new DataAccessContext(rcx, ancestorVfg);
+				StaticDataAccessContext rcx2 = new StaticDataAccessContext(rcx, ancestorVfg);
 				rcx2.pushGhosted(true);
-				presentationGuts(moc, null, false, hideLinks, rcx2);
+				presentationGuts(moc, null, false, hideLinks, rcx2, mode);
 				rcx2.popGhosted();
 
 				// And then ghosted groups not in the model:
 				moc.setDrawLayer(DrawLayer.VFN_UNUSED_REGIONS);
-			  DataAccessContext rcxR = new DataAccessContext(rcxI, rootvfg);
-				presentUnusedGroups(moc, rcxR, ancestorVfg, child);
+			  StaticDataAccessContext rcxR = new StaticDataAccessContext(rcxI, rootvfg);
+				presentUnusedGroups(moc, rcxR, ancestorVfg, child, mode);
 			}
 
 			// Draw the actual contents of the model:
@@ -313,20 +310,20 @@ public class GenomePresentation implements ZoomPresentation {
 
 			// linkRoc = presentationGuts(moc, null, genome, layout, false,
 			// showBubbles, false, hideLinks, clipRect, pixDiam);
-			presentationGuts(moc, null, false, hideLinks, rcx);
+			presentationGuts(moc, null, false, hideLinks, rcx, mode);
 
 			// used to obscure toggled groups:
 			moc.setDrawLayer(DrawLayer.FOREGROUND_REGIONS);
-			renderGroupsInForeground(moc, rcx, rootvfg, child);
+			renderGroupsInForeground(moc, rcx, rootvfg, child, mode);
 		} else {
 			moc.setDrawLayer(DrawLayer.UNDERLAY);
-			hideLinks = overlayRender(moc,  null, null, true, showComponents, rcx);
+			hideLinks = overlayRender(moc,  null, null, true, showComponents, rcx, mode);
 
 			moc.setDrawLayer(DrawLayer.MODEL_NODEGROUPS);
 
 			// linkRoc = presentationGuts(moc, null, layout, false, showBubbles,
 			// false, hideLinks, clipRect, pixDiam);
-			presentationGuts(moc, null, false, hideLinks, rcx);
+			presentationGuts(moc, null, false, hideLinks, rcx, mode);
 		}
 
 		//
@@ -346,7 +343,7 @@ public class GenomePresentation implements ZoomPresentation {
 		if (overMoc != null) {
 			// TODO remove null ROC parameter
 			overMoc.setDrawLayer(DrawLayer.OVERLAY);
-			overlayRender(overMoc, renderedRects, null, false, showComponents, rcx);
+			overlayRender(overMoc, renderedRects, null, false, showComponents, rcx, mode);
 		}
 		
 		moc.setDrawLayer(DrawLayer.MODELDATA);
@@ -356,7 +353,7 @@ public class GenomePresentation implements ZoomPresentation {
 		
 		if (floaterCache != null) {
 			floaterCache.setDrawLayer(DrawLayer.MODEL_NODEGROUPS);
-			DataAccessContext rcxF = new DataAccessContext(rcxI);
+			StaticDataAccessContext rcxF = new StaticDataAccessContext(rcxI);
 			rcxF.setLayout(floaterLayout_);
 			rcxF.setGenome(floaterGenome_);
 			rcxF.setGenomeSource((floaterSrc_ != null) ? floaterSrc_ : new LocalGenomeSource((DBGenome)floaterGenome_, new ArrayList<Genome>()));
@@ -376,18 +373,18 @@ public class GenomePresentation implements ZoomPresentation {
                                  List<GroupFree.ColoredRect> renderedRects, 
                                  RenderObjectCache roc,
                                  Set<String> showComponents, 
-                                 DataAccessContext rcx) {
+                                 StaticDataAccessContext rcx, IRenderer.Mode mode) {
   	
     boolean hideLinks = false;
     
-    if ((rcx.oso != null) && (rcx.oso.getCurrentOverlay() != null)) {
-      String genomeKey = rcx.getGenomeID();
+    if ((rcx.getOSO() != null) && (rcx.getOSO().getCurrentOverlay() != null)) {
+      String genomeKey = rcx.getCurrentGenomeID();
       NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(genomeKey);
-      NetworkOverlay no = owner.getNetworkOverlay(rcx.oso.getCurrentOverlay());
-      NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(rcx.oso.getCurrentOverlay());
+      NetworkOverlay no = owner.getNetworkOverlay(rcx.getOSO().getCurrentOverlay());
+      NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(rcx.getOSO().getCurrentOverlay());
       hideLinks = nop.hideLinks();
       NetOverlayFree nof = nop.getRenderer();
-      nof.render(moc, no, renderedRects, true, showComponents, rcx);
+      nof.render(moc, no, renderedRects, true, showComponents, rcx, mode);
     }
     
     return (hideLinks);
@@ -400,14 +397,14 @@ public class GenomePresentation implements ZoomPresentation {
   private boolean overlayRender(ModelObjectCache moc,
       List<GroupFree.ColoredRect> renderedRects, RenderObjectCache roc,
       boolean doUnderlay, 
-      Set<String> showComponents, DataAccessContext rcx) {
+      Set<String> showComponents, StaticDataAccessContext rcx, IRenderer.Mode mode) {
   	
   	// TODO correct layers
   	Integer minorLayer = 0;
   	Integer majorLayer = 0;
   	
-  	Layout layout = rcx.getLayout();
-  	Genome genome = rcx.getGenome();
+  	Layout layout = rcx.getCurrentLayout();
+  	Genome genome = rcx.getCurrentGenome();
   	
     boolean hideLinks = false;
     String genomeKey = genome.getID();
@@ -415,7 +412,7 @@ public class GenomePresentation implements ZoomPresentation {
     
     // In the web application, loop through every overlay and render it, so that all overlays
     // can be packaged and exported at the same time.
-    if (appState_.isWebApplication()) {
+    if (rcx.isForWeb()) {
     	for (Iterator<NetworkOverlay> noi = owner.getNetworkOverlayIterator(); noi.hasNext();) {
     		NetworkOverlay no = noi.next();
     		
@@ -433,33 +430,33 @@ public class GenomePresentation implements ZoomPresentation {
     			
     			FreezeDriedOverlayOracle enabledOverlayOracle = new FreezeDriedOverlayOracle(no.getID(), enabledModules, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
     			
-    			DataAccessContext overlayAccessContext = new DataAccessContext(rcx);
-    			overlayAccessContext.oso = enabledOverlayOracle;
+    			StaticDataAccessContext overlayAccessContext = new StaticDataAccessContext(rcx);
+    			overlayAccessContext.setOSO(enabledOverlayOracle);
     			
         		NetOverlayProperties nop = layout.getNetOverlayProperties(no.getID());
         		// For underlays to be rendered, the type of the overlay has to be OvrType.UNDERLAY
         		// and the doUnderlay parameter to renderNetworkOverlay has to be true.
         		moc.setDrawLayer(DrawLayer.OVERLAY);
         		if (nop.getType() == NetOverlayProperties.OvrType.UNDERLAY) {
-        			renderNetworkOverlay(moc, no, renderedRects, layout, true, showComponents, overlayAccessContext);
+        			renderNetworkOverlay(moc, no, renderedRects, layout, true, showComponents, overlayAccessContext, mode);
         		}
         		else {
-        			renderNetworkOverlay(moc, no, renderedRects, layout, doUnderlay, showComponents, overlayAccessContext);
+        			renderNetworkOverlay(moc, no, renderedRects, layout, doUnderlay, showComponents, overlayAccessContext, mode);
         		}
     			
     		}
     	}
     }
-    else if ((rcx.oso != null) && (rcx.oso.getCurrentOverlay() != null)) {
-      NetworkOverlay no = owner.getNetworkOverlay(rcx.oso.getCurrentOverlay());
+    else if ((rcx.getOSO() != null) && (rcx.getOSO().getCurrentOverlay() != null)) {
+      NetworkOverlay no = owner.getNetworkOverlay(rcx.getOSO().getCurrentOverlay());
       hideLinks = renderNetworkOverlay(moc, no, renderedRects, layout,
-			doUnderlay, showComponents, rcx);
+			doUnderlay, showComponents, rcx, mode);
               
       //
       // Drill holes for selection:
       //
       
-      if (doUnderlay || !overlayIsOpaque(layout, rcx.oso.getCurrentOverlay()) || selectionKeys_.isEmpty()) { 
+      if (doUnderlay || !overlayIsOpaque(layout, rcx.getOSO().getCurrentOverlay()) || selectionKeys_.isEmpty()) { 
         return (hideLinks);
       }
       
@@ -477,10 +474,10 @@ public class GenomePresentation implements ZoomPresentation {
         IRenderer render = layout.getNodeProperties(node.getID()).getRenderer(); 
         // TODO correct cache
         rcx.pushGhosted(false);
-        boolean oldShow = rcx.showBubbles;
-        rcx.showBubbles = false;
-        render.render(moc, node, selected, rcx, null);
-        rcx.showBubbles = oldShow;
+        boolean oldShow = rcx.getShowBubbles();
+        rcx.setShowBubbles(false);
+        render.render(moc, node, selected, rcx, mode, null);
+        rcx.setShowBubbles(oldShow);
         rcx.popGhosted();
       }
       if (roc != null) {
@@ -501,15 +498,15 @@ public class GenomePresentation implements ZoomPresentation {
 	private boolean renderNetworkOverlay(ModelObjectCache moc,
 			NetworkOverlay no, List<GroupFree.ColoredRect> renderedRects,
 			Layout layout, boolean doUnderlay, Set<String> showComponents,
-			DataAccessContext rcx) {
+			StaticDataAccessContext rcx, IRenderer.Mode mode) {
 		boolean hideLinks;
-		// NetOverlayProperties nop = layout.getNetOverlayProperties(rcx.oso.getCurrentOverlay());
+		// NetOverlayProperties nop = layout.getNetOverlayProperties(rcx.getOSO().getCurrentOverlay());
 		
 		NetOverlayProperties nop = layout.getNetOverlayProperties(no.getID());
 		hideLinks = nop.hideLinks();
 		NetOverlayFree nof = nop.getRenderer();
 
-		nof.render(moc, no, renderedRects, doUnderlay, showComponents, rcx);
+		nof.render(moc, no, renderedRects, doUnderlay, showComponents, rcx, mode);
 		return hideLinks;
 	}
   
@@ -518,11 +515,11 @@ public class GenomePresentation implements ZoomPresentation {
   ** Present the given genome with the given layout
   */
   
-  public void presentRootGenome(ModelObjectCache moc, DataAccessContext rcx) { //String genomeKey, Layout layout, boolean isGhosted, double pixDiam) {
-		if (rcx.getGenome() instanceof GenomeInstance) {
+  public void presentRootGenome(ModelObjectCache moc, StaticDataAccessContext rcx) {
+		if (rcx.getCurrentGenome() instanceof GenomeInstance) {
 			throw new IllegalArgumentException();
 		} else {
-			presentationGuts(moc, null, false, false, rcx);
+			presentationGuts(moc, null, false, false, rcx, IRenderer.Mode.NORMAL);
 		}
 		return;
 	}
@@ -532,7 +529,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Get the bounds of all notes
   */
   
-  public Map<String, Rectangle> getNoteBounds(Graphics2D g2, DataAccessContext rcx) {
+  public Map<String, Rectangle> getNoteBounds(Graphics2D g2, StaticDataAccessContext rcx) {
 
     HashMap<String, Rectangle> retval = new HashMap<String, Rectangle>();
     //
@@ -540,10 +537,10 @@ public class GenomePresentation implements ZoomPresentation {
     //
     
     rcx.pushFrc(g2.getFontRenderContext());
-    Iterator<Note> noit = rcx.getGenome().getNoteIterator();    
+    Iterator<Note> noit = rcx.getCurrentGenome().getNoteIterator();    
     while (noit.hasNext()) {
       Note note = noit.next();
-      IRenderer render = rcx.getLayout().getNoteProperties(note.getID()).getRenderer();
+      IRenderer render = rcx.getCurrentLayout().getNoteProperties(note.getID()).getRenderer();
       Rectangle bounds = render.getBounds(note, rcx, null);
       retval.put(note.getID(), bounds);
     }
@@ -557,7 +554,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Get the bounds of all nodes
   */
   
-  public Map<String, Rectangle> getNodeBounds(Graphics2D g2, DataAccessContext rcx) {
+  public Map<String, Rectangle> getNodeBounds(Graphics2D g2, StaticDataAccessContext rcx) {
 
     HashMap<String, Rectangle> retval = new HashMap<String, Rectangle>();
     //
@@ -565,10 +562,10 @@ public class GenomePresentation implements ZoomPresentation {
     //
     
     rcx.pushFrc(g2.getFontRenderContext());
-    Iterator<Node> noit = rcx.getGenome().getAllNodeIterator();    
+    Iterator<Node> noit = rcx.getCurrentGenome().getAllNodeIterator();    
     while (noit.hasNext()) {
       Node node = noit.next();
-      IRenderer render = rcx.getLayout().getNodeProperties(node.getID()).getRenderer();
+      IRenderer render = rcx.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();
       Rectangle bounds = render.getBounds(node, rcx, null);
       retval.put(node.getID(), bounds);
     }
@@ -660,7 +657,7 @@ public class GenomePresentation implements ZoomPresentation {
     if (selectionKeys.isEmpty()) {
       return (false);
     } 
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Iterator<String> ksit = selectionKeys.iterator();
     boolean haveNode = false;
     boolean haveLink = false;
@@ -692,7 +689,7 @@ public class GenomePresentation implements ZoomPresentation {
     Iterator<String> ksit = selectionKeys.iterator();
     while (ksit.hasNext()) {
       String objID = ksit.next(); 
-      if (rcx.getGenome().getNode(objID) != null) {
+      if (rcx.getCurrentGenome().getNode(objID) != null) {
         retval.add(objID);
       }
     }
@@ -713,12 +710,14 @@ public class GenomePresentation implements ZoomPresentation {
   ** Set the zoom
   */
   
-  public void setPresentationZoomFactor(double zoom, DataAccessContext rcx) {
+  public void setPresentationZoomFactor(double zoom, DataAccessContext dacx) {
+    System.out.println("set presentation Zoom");
     AffineTransform trans = new AffineTransform();
     trans.scale(zoom, zoom);
-    rcx.setFrc(new FontRenderContext(trans, true, true));
+    dacx.setFrc(new FontRenderContext(trans, true, true));
     if (isMain_) {
-      appState_.setFontRenderContext(rcx.getFrc());
+      UiUtil.fixMePrintout("FIX THIS GARBAGE!");
+      uics_.getAppState().setFontRenderContext(dacx.getFrc()); 
     }
     return;
   }
@@ -746,7 +745,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Clear the selection
   */
   
-  public boolean clearSelections(DataAccessContext rcx, UndoSupport support) {
+  public boolean clearSelections(UIComponentSource uics, StaticDataAccessContext rcx, UndoSupport support) {
     if (selectionKeys_.isEmpty()) {
       return (false);
     }
@@ -758,7 +757,7 @@ public class GenomePresentation implements ZoomPresentation {
     if (support == null) {
       throw new IllegalArgumentException();
     }
-    postSelect(rcx, sc, support, null, false, null);
+    postSelect(uics, rcx, sc, support, null, false, null);
     return (true);
   } 
   
@@ -767,14 +766,14 @@ public class GenomePresentation implements ZoomPresentation {
   ** Drop node selections from current selection set
   */
   
-  public void dropNodeSelections(DataAccessContext rcx, Integer nodeType, UndoManager undom) {
+  public void dropNodeSelections(UIComponentSource uics, StaticDataAccessContext rcx, Integer nodeType, UndoFactory uFac) {
     if (selectionKeys_.isEmpty()) {
       return;
     }
     SelectionChange sc = preSelect();
     
     HashSet<String> keySet = new HashSet<String>(selectionKeys_.keySet());
-    Iterator<Node> git = rcx.getGenome().getAllNodeIterator();    
+    Iterator<Node> git = rcx.getCurrentGenome().getAllNodeIterator();    
     while (git.hasNext()) {
       Node node = git.next();
       if ((nodeType == null) || (node.getNodeType() == nodeType.intValue())) {
@@ -786,7 +785,7 @@ public class GenomePresentation implements ZoomPresentation {
     }
     currSelZoomKey_ = null;
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return; 
   }
   
@@ -795,14 +794,14 @@ public class GenomePresentation implements ZoomPresentation {
   ** Drop link selections from current selection set
   */
   
-  public void dropLinkSelections(DataAccessContext rcx, SelectionChangeCmd.Bundle bundle, UndoManager undom) {
+  public void dropLinkSelections(UIComponentSource uics, StaticDataAccessContext rcx, SelectionChangeCmd.Bundle bundle, UndoFactory uFac) {
     if (selectionKeys_.isEmpty()) {
       return;
     }
     SelectionChange sc = preSelect();
     
     HashSet<String> keySet = new HashSet<String>(selectionKeys_.keySet());       
-    Iterator<Linkage> git = rcx.getGenome().getLinkageIterator();    
+    Iterator<Linkage> git = rcx.getCurrentGenome().getLinkageIterator();    
     while (git.hasNext()) {
       Linkage link = git.next();
       String linkID = link.getID();
@@ -812,7 +811,7 @@ public class GenomePresentation implements ZoomPresentation {
     }
     currSelZoomKey_ = null;
     
-    postSelect(rcx, sc, null, bundle, false, undom);
+    postSelect(uics, rcx, sc, null, bundle, false, uFac);
     return; 
   }  
   
@@ -827,6 +826,25 @@ public class GenomePresentation implements ZoomPresentation {
     // We traditionally return the "quick" version
     //
     return (getRequiredSize(rcx, false, false, doModules, doModules, ovrKey, modSet, allKeys));    
+  }
+
+  /***************************************************************************
+  **
+  ** Get the basic model bounds (may not be current keys!)
+  */
+  
+  public Rectangle getBasicBounds(DataAccessContext rcx, boolean doComplete, boolean doBuffer, int moduleHandling) {  
+    if (moduleHandling == ZoomTarget.VISIBLE_MODULES) {
+      throw new IllegalArgumentException();
+    }
+    
+    boolean doModules = false;
+    Map<String, Layout.OverlayKeySet> allKeys = null;
+    if (moduleHandling == ZoomTarget.ALL_MODULES) {
+      doModules = true;
+      allKeys = rcx.getFGHO().fullModuleKeysPerLayout();
+    } 
+    return (getRequiredSize(rcx, doComplete, doBuffer, doModules, doModules, null, null, allKeys));  
   }
   
   /***************************************************************************
@@ -846,13 +864,13 @@ public class GenomePresentation implements ZoomPresentation {
     Rectangle backupRetval = new Rectangle(1950, 1450, 100, 100);
     Rectangle retval = null;
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
-    if ((genome == null) || (rcx.getLayout() == null)) {
+    if ((genome == null) || (rcx.getCurrentLayout() == null)) {
       return (backupRetval);
     }
 
-    String ovrOwnerKey = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID()).getID();
+    String ovrOwnerKey = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID()).getID();
     // Layout KNOWS who it is for these days!
    // if (genome instanceof GenomeInstance) { //yuk!  gag!
    //   GenomeInstance parentvfg = ((GenomeInstance)genome).getVfgParentRoot();      
@@ -863,10 +881,10 @@ public class GenomePresentation implements ZoomPresentation {
     
     Layout.OverlayKeySet myKeys = null;
     if (allKeys != null) {
-      myKeys = allKeys.get(rcx.getLayoutID());
+      myKeys = allKeys.get(rcx.getCurrentLayoutID());
     }
     
-    retval = rcx.getLayout().getLayoutBounds(rcx, doComplete, doModules, doModuleLinks, true, true, ovrOwnerKey, ovrKey, modSet, myKeys);
+    retval = rcx.getCurrentLayout().getLayoutBounds(rcx, doComplete, doModules, doModuleLinks, true, true, ovrOwnerKey, ovrKey, modSet, myKeys);
     
     //
     // Make sure we return something
@@ -923,11 +941,11 @@ public class GenomePresentation implements ZoomPresentation {
 
     Rectangle retval = null;
     
-    if (rcx.getGenome() == null) {
+    if (rcx.getCurrentGenome() == null) {
       return (retval);
     } 
-    if (rcx.getGenome() instanceof GenomeInstance) { //yuk!  gag!
-      rcx = new DataAccessContext(rcx, rcx.getRootInstance());
+    if (rcx.getCurrentGenome() instanceof GenomeInstance) { //yuk!  gag!
+      rcx = new StaticDataAccessContext(rcx, rcx.getRootInstanceFOrCurrentInstance());
     }    
     
     HashSet<String> selectedNodes = new HashSet<String>();
@@ -935,7 +953,7 @@ public class GenomePresentation implements ZoomPresentation {
     
     Set<String> keySet = selectionKeys_.keySet();
     
-    Iterator<Node> git = rcx.getGenome().getAllNodeIterator();    
+    Iterator<Node> git = rcx.getCurrentGenome().getAllNodeIterator();    
     while (git.hasNext()) {
       Node node = git.next();
       String nodeID = node.getID();
@@ -947,7 +965,7 @@ public class GenomePresentation implements ZoomPresentation {
     }
     
     Map subLinks = new HashMap();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
@@ -962,7 +980,8 @@ public class GenomePresentation implements ZoomPresentation {
       }
     }    
 
-    retval = rcx.getLayout().getPartialBounds(selectedNodes, true, true, selectedLinks, subLinks, true, rcx);  
+    StaticDataAccessContext rcxls = new StaticDataAccessContext(rcx);
+    retval = rcxls.getCurrentLayout().getPartialBounds(selectedNodes, true, true, selectedLinks, subLinks, true, rcxls);  
     return (retval);
   } 
   
@@ -971,7 +990,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect an item
   */
   
-  public List<Intersection.AugmentedIntersection> intersectItem(int x, int y, DataAccessContext rcx, boolean nodesFirst, 
+  public List<Intersection.AugmentedIntersection> intersectItem(int x, int y, StaticDataAccessContext rcx, boolean nodesFirst, 
                                                                 boolean doOverlay) {
     return (selectionGuts(x, y, rcx, nodesFirst, false, doOverlay));
   }
@@ -981,7 +1000,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect items with a box
   */
   
-  public List<Intersection> intersectItems(Rectangle rect, DataAccessContext rcx) {
+  public List<Intersection> intersectItems(Rectangle rect, StaticDataAccessContext rcx) {
     return (selectionGuts(rect, rcx, true));
   } 
   
@@ -990,13 +1009,13 @@ public class GenomePresentation implements ZoomPresentation {
   ** Answer if we intersect any net modules
   */
   
-  public List<String> intersectNetModules(int x, int y, DataAccessContext rcxM, String ovrKey, Set<String> modKeys) {
+  public List<String> intersectNetModules(int x, int y, StaticDataAccessContext rcxM, String ovrKey, Set<String> modKeys) {
 
     ArrayList<String> retval = new ArrayList<String>();
     if (ovrKey == null) {
       return (retval);
     }
-    Genome genome = rcxM.getGenome();
+    Genome genome = rcxM.getCurrentGenome();
     //
     // We use the rootInstance to drive rendering, so that non-included nodes are not
     // shown as part of the module (important for dynamic instances!)
@@ -1004,7 +1023,7 @@ public class GenomePresentation implements ZoomPresentation {
     Genome useGenome = genome;
     DynamicInstanceProxy dip = null;
     if (genome instanceof GenomeInstance) {
-      useGenome = rcxM.getRootInstance();
+      useGenome = rcxM.getRootInstanceFOrCurrentInstance();
       if (genome instanceof DynamicGenomeInstance) {
         dip = rcxM.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)genome).getProxyID());
       }
@@ -1014,9 +1033,9 @@ public class GenomePresentation implements ZoomPresentation {
     NetOverlayOwner owner = rcxM.getGenomeSource().getOverlayOwnerFromGenomeKey(genome.getID());
     Set<String> useGroups = owner.getGroupsForOverlayRendering();
     NetworkOverlay novr = owner.getNetworkOverlay(ovrKey);
-    NetOverlayProperties nop = rcxM.getLayout().getNetOverlayProperties(ovrKey);
+    NetOverlayProperties nop = rcxM.getCurrentLayout().getNetOverlayProperties(ovrKey);
     Iterator<NetModule> mit = novr.getModuleIterator();
-    DataAccessContext rcx = new DataAccessContext(rcxM, useGenome, rcxM.getLayout());
+    StaticDataAccessContext rcx = new StaticDataAccessContext(rcxM, useGenome, rcxM.getCurrentLayout());
     while (mit.hasNext()) {
       NetModule mod = mit.next();
       String id = mod.getID();
@@ -1035,17 +1054,17 @@ public class GenomePresentation implements ZoomPresentation {
   ** Return an Intersection for first intersected net module:
   */
   
-  public Intersection intersectANetModuleElement(int x, int y, DataAccessContext rcxN, NetModuleIntersect type) {
+  public Intersection intersectANetModuleElement(int x, int y, StaticDataAccessContext rcxN, NetModuleIntersect type) {
  
-    String ovrKey = rcxN.oso.getCurrentOverlay();
+    String ovrKey = rcxN.getOSO().getCurrentOverlay();
     if (ovrKey == null) {
       return (null);
     }
-    TaggedSet currentNetMods = rcxN.oso.getCurrentNetModules();
+    TaggedSet currentNetMods = rcxN.getOSO().getCurrentNetModules();
     Set<String> modKeys = (currentNetMods == null) ? null : currentNetMods.set;
-    NetModuleFree.CurrentSettings settings = rcxN.oso.getCurrentOverlaySettings();  
+    NetModuleFree.CurrentSettings settings = rcxN.getOSO().getCurrentOverlaySettings();  
 
-    Genome genome = rcxN.getGenome();
+    Genome genome = rcxN.getCurrentGenome();
     //
     // We use the rootInstance to drive rendering, so that non-included nodes are not
     // shown as part of the module (important for dynamic instances!)
@@ -1053,20 +1072,20 @@ public class GenomePresentation implements ZoomPresentation {
     Genome useGenome = genome;
     DynamicInstanceProxy dip = null;
     if (genome instanceof GenomeInstance) {
-      useGenome = rcxN.getRootInstance();
+      useGenome = rcxN.getRootInstanceFOrCurrentInstance();
       if (genome instanceof DynamicGenomeInstance) {
         dip = rcxN.getGenomeSource().getDynamicProxy(((DynamicGenomeInstance)genome).getProxyID());
       }
     } 
     Point2D pt = new Point2D.Float(x, y);
-    NetOverlayOwner owner = rcxN.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxN.getGenomeID());
+    NetOverlayOwner owner = rcxN.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxN.getCurrentGenomeID());
     Set<String> useGroups = owner.getGroupsForOverlayRendering();
     NetworkOverlay novr = owner.getNetworkOverlay(ovrKey);
-    NetOverlayProperties nop = rcxN.getLayout().getNetOverlayProperties(ovrKey);
+    NetOverlayProperties nop = rcxN.getCurrentLayout().getNetOverlayProperties(ovrKey);
     boolean isOpq = (nop.getType() == NetOverlayProperties.OvrType.OPAQUE);
     Iterator<NetModule> mit = novr.getModuleIterator();
     
-    DataAccessContext rcxU = new DataAccessContext(rcxN, useGenome, rcxN.getLayout());
+    StaticDataAccessContext rcxU = new StaticDataAccessContext(rcxN, useGenome, rcxN.getCurrentLayout());
     
     while (mit.hasNext()) {
       NetModule mod = mit.next();
@@ -1087,7 +1106,7 @@ public class GenomePresentation implements ZoomPresentation {
             break;
           case NET_MODULE_NAME:
             // Name fading is tricky.  Handle all the special cases here.
-            boolean isRevealed = rcxU.oso.getRevealedModules().set.contains(id);
+            boolean isRevealed = rcxU.getOSO().getRevealedModules().set.contains(id);
             boolean quickFade = (nmp.getNameFadeMode() == NetModuleProperties.FADE_QUICKLY);
             boolean nameHiding = (isRevealed && isOpq && quickFade);
             boolean labelViz = !nameHiding && ((quickFade) ? settings.fastDecayLabelVisible : true);            
@@ -1114,8 +1133,8 @@ public class GenomePresentation implements ZoomPresentation {
   ** Answer if we intersect any net module links
   */
   
-  public Intersection intersectNetModuleLinks(int x, int y, DataAccessContext rcxN) {
-    String ovrKey = rcxN.oso.getCurrentOverlay();
+  public Intersection intersectNetModuleLinks(int x, int y, StaticDataAccessContext rcxN) {
+    String ovrKey = rcxN.getOSO().getCurrentOverlay();
     
     if (ovrKey == null) {
       return (null);
@@ -1123,7 +1142,7 @@ public class GenomePresentation implements ZoomPresentation {
     // Though use the rootInstance to drive rendering for modules, genome key is being used
     // in link rendering to derive overlay owner, so don't fool with it!
     Point2D pt = new Point2D.Float(x, y);
-    NetOverlayProperties nop = rcxN.getLayout().getNetOverlayProperties(ovrKey);
+    NetOverlayProperties nop = rcxN.getCurrentLayout().getNetOverlayProperties(ovrKey);
     
     Iterator<String> nlit = nop.getNetModuleLinkagePropertiesKeys();   
     while (nlit.hasNext()) {
@@ -1143,7 +1162,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select a full link
   */
   
-  public void selectFullItem(Intersection intersect, DataAccessContext rcx, UndoManager undom) {
+  public void selectFullItem(UIComponentSource uics, Intersection intersect, StaticDataAccessContext rcx, UndoFactory uFac) {
     SelectionChange sc = preSelect(); 
 
     String itemID = intersect.getObjectID();
@@ -1157,7 +1176,7 @@ public class GenomePresentation implements ZoomPresentation {
       currSelZoomKey_ = null;
     }
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }
   
@@ -1166,7 +1185,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** unselect a full link
   */
   
-  public void unselectFullLink(Intersection intersect, DataAccessContext rcx, UndoManager undom) {
+  public void unselectFullLink(UIComponentSource uics, Intersection intersect, StaticDataAccessContext rcx, UndoFactory uFac) {
 
     String itemID = intersect.getObjectID();
     Intersection exists = selectionKeys_.get(itemID);
@@ -1176,7 +1195,7 @@ public class GenomePresentation implements ZoomPresentation {
       selectionKeys_.remove(itemID);
       currSelZoomKey_ = null;
 
-      postSelect(rcx, sc, null, null, false, undom);
+      postSelect(uics, rcx, sc, null, null, false, uFac);
     }
     return;
   } 
@@ -1186,7 +1205,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select the given nodes/genes
   */
   
-  public void appendToSelectNodes(Set<String> nodeIDs, DataAccessContext rcx, UndoManager undom) {
+  public void appendToSelectNodes(UIComponentSource uics, Set<String> nodeIDs, StaticDataAccessContext rcx, UndoFactory uFac) {
     
     SelectionChange sc = preSelect();
     
@@ -1200,7 +1219,7 @@ public class GenomePresentation implements ZoomPresentation {
       }
     }
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }
   
@@ -1209,13 +1228,13 @@ public class GenomePresentation implements ZoomPresentation {
   ** Throw away all selections
   */
   
-  public void selectNone(DataAccessContext rcx, UndoManager undom) {
+  public void selectNone(UIComponentSource uics, StaticDataAccessContext rcx, UndoFactory uFac) {
     SelectionChange sc = preSelect();
     
     selectionKeys_.clear();
     currSelZoomKey_ = null;
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }    
   
@@ -1224,12 +1243,12 @@ public class GenomePresentation implements ZoomPresentation {
   ** If a single node/gene is selected, return the ID.  Else return null.
   */
   
-  public String getSingleNodeSelection(DataAccessContext rcx) {    
+  public String getSingleNodeSelection(StaticDataAccessContext rcx) {    
     if (selectionKeys_.size() != 1) {
       return (null);
     }    
     String key = selectionKeys_.keySet().iterator().next();
-    Node node = rcx.getGenome().getNode(key);
+    Node node = rcx.getCurrentGenome().getNode(key);
     return ((node == null) ? null : key);
   }
 
@@ -1238,21 +1257,21 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select everybody
   */
   
-  public void selectAll(DataAccessContext rcx, UndoManager undom) {
+  public void selectAll(UIComponentSource uics, StaticDataAccessContext rcx, UndoFactory uFac) {
     
     SelectionChange sc = preSelect(); 
   
     selectionKeys_.clear();
     currSelZoomKey_ = null;
     
-    Iterator<Node> nit = rcx.getGenome().getAllNodeIterator();
+    Iterator<Node> nit = rcx.getCurrentGenome().getAllNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
       Intersection fullInt = new Intersection(node.getID(), null, 0.0);
       selectionKeys_.put(fullInt.getObjectID(), fullInt); 
     }
 
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       Intersection fullInt = new Intersection(link.getID(), null, 0.0);
@@ -1263,23 +1282,23 @@ public class GenomePresentation implements ZoomPresentation {
     // No groups or notes at the moment
     //
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }  
 
   /***************************************************************************
   **
-  ** Select all nodes
+  ** Select all nodes. If UNdoFactory is not null, will do an undo transaction
   */
   
-  public void selectAllNodes(DataAccessContext rcx, UndoManager undom) {
+  public void selectAllNodes(UIComponentSource uics, StaticDataAccessContext rcx, UndoFactory uFac) {
     
     SelectionChange sc = preSelect(); 
   
     selectionKeys_.clear();
     currSelZoomKey_ = null;
     
-    Iterator<Node> nit = rcx.getGenome().getAllNodeIterator();    
+    Iterator<Node> nit = rcx.getCurrentGenome().getAllNodeIterator();    
     while (nit.hasNext()) {
       Node node = nit.next();
       Intersection fullInt = new Intersection(node.getID(), null, 0.0);
@@ -1290,7 +1309,7 @@ public class GenomePresentation implements ZoomPresentation {
     // No groups or notes at the moment
     //
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }   
   
@@ -1314,8 +1333,8 @@ public class GenomePresentation implements ZoomPresentation {
   ** Selection postprocessing
   */
   
-  private boolean postSelect(DataAccessContext rcxPS, SelectionChange sc, UndoSupport support, 
-                             SelectionChangeCmd.Bundle bundle, boolean shortCircuit, UndoManager undom) {
+  private boolean postSelect(UIComponentSource uics, StaticDataAccessContext rcxPS, SelectionChange sc, UndoSupport support, 
+                             SelectionChangeCmd.Bundle bundle, boolean shortCircuit, UndoFactory uFac) {
     
     viewerRocCache_.clear();
     ghostedViewerRocCache_.clear();
@@ -1330,11 +1349,11 @@ public class GenomePresentation implements ZoomPresentation {
       if (shortCircuit && sc.oldMap.isEmpty() && sc.newMap.isEmpty()) {
         return (false);
       }
-      GooseAppInterface goose = (isMain_) ? appState_.getGooseMgr().getGoose() : null;
+      GooseAppInterface goose = (isMain_) ? uics.getGooseMgr().getGoose() : null;
       if ((goose != null) && goose.isActivated()) {
         gaggleSelectionSupport(goose, rcxPS);
       }
-      selectionUndoSupport(sc, rcxPS.getGenomeID(), rcxPS.getLayoutID(), support, bundle, rcxPS, undom);
+      selectionUndoSupport(sc, rcxPS.getCurrentGenomeID(), rcxPS.getCurrentLayoutID(), support, bundle, rcxPS, uFac);
     }
     return (true);
   }  
@@ -1344,7 +1363,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select items
   */
   
-  public void selectItems(Rectangle rect, DataAccessContext rcxSI, boolean isShifted, UndoManager undom) {
+  public void selectItems(UIComponentSource uics, Rectangle rect, StaticDataAccessContext rcxSI, boolean isShifted, UndoFactory uFac) {
     
     SelectionChange sc = preSelect();
     
@@ -1358,7 +1377,7 @@ public class GenomePresentation implements ZoomPresentation {
       selectionDecision(newSelection, rcxSI, doShifted);
     }
 
-    postSelect(rcxSI, sc, null, null, false, undom);
+    postSelect(uics, rcxSI, sc, null, null, false, uFac);
     return;
   } 
 
@@ -1367,8 +1386,8 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select the given nodes/genes, with links thrown in
   */
   
-  public void selectNodesAndLinks(Set<String> nodeIDs, DataAccessContext rcx, 
-                                  List<Intersection> linkIntersections, boolean clearCurrent, UndoManager undom) {
+  public void selectNodesAndLinks(UIComponentSource uics, Set<String> nodeIDs, StaticDataAccessContext rcx, 
+                                  List<Intersection> linkIntersections, boolean clearCurrent, UndoFactory uFac) {
     SelectionChange sc = preSelect();
     
     if (clearCurrent) { 
@@ -1391,7 +1410,7 @@ public class GenomePresentation implements ZoomPresentation {
       }    
     }
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }  
 
@@ -1400,7 +1419,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select the given intersection list
   */
   
-  public void selectIntersectionList(List<Intersection> intersections, DataAccessContext rcx, UndoManager undom) {
+  public void selectIntersectionList(UIComponentSource uics, List<Intersection> intersections, StaticDataAccessContext rcx, UndoFactory uFac) {
     SelectionChange sc = preSelect();
              
     selectionKeys_.clear();
@@ -1416,7 +1435,7 @@ public class GenomePresentation implements ZoomPresentation {
     // No groups or notes at the moment
     //
     
-    postSelect(rcx, sc, null, null, false, undom);
+    postSelect(uics, rcx, sc, null, null, false, uFac);
     return;
   }
   
@@ -1425,15 +1444,15 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select an item
   */
   
-  public Intersection selectItem(int x, int y, DataAccessContext rcxSI,
-                                 boolean isShifted, boolean doOverlay, UndoManager undom) {
+  public Intersection selectItem(UIComponentSource uics, int x, int y, StaticDataAccessContext rcxSI,
+                                 boolean isShifted, boolean doOverlay, UndoFactory uFac) {
     
     SelectionChange sc = preSelect();                
     List<Intersection.AugmentedIntersection> augs = selectionGuts(x, y, rcxSI, true, true, doOverlay);
     Intersection.AugmentedIntersection aug = (new IntersectionChooser(false, rcxSI)).selectionRanker(augs);
     Intersection newSelection = (aug == null) ? null : aug.intersect;
     Intersection retval = selectionDecision(newSelection, rcxSI, isShifted);   
-    postSelect(rcxSI, sc, null, null, true, undom);
+    postSelect(uics, rcxSI, sc, null, null, true, uFac);
     return (retval);
   }
  
@@ -1442,7 +1461,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Handle selection semantics
   */
   
-  private Intersection selectionDecision(Intersection newSelection, DataAccessContext rcxSD, boolean isShifted) {
+  private Intersection selectionDecision(Intersection newSelection, StaticDataAccessContext rcxSD, boolean isShifted) {
    
     //
     // Clicking on a note short circuits the selection process:
@@ -1450,7 +1469,7 @@ public class GenomePresentation implements ZoomPresentation {
                                            
     if (newSelection != null) {
       String itemID = newSelection.getObjectID();
-      if (rcxSD.getGenome().getNote(itemID) != null) {
+      if (rcxSD.getCurrentGenome().getNote(itemID) != null) {
         return (newSelection);
       }
     }
@@ -1500,7 +1519,7 @@ public class GenomePresentation implements ZoomPresentation {
           if ((exSub == null) && (newSub == null)) {
             matches = true;
           } else if ((exSub == null) || (newSub == null)) {
-            Linkage newLink = rcxSD.getGenome().getLinkage(newID);
+            Linkage newLink = rcxSD.getCurrentGenome().getLinkage(newID);
             if (newLink == null) {
               throw new IllegalStateException();
             }
@@ -1570,27 +1589,28 @@ public class GenomePresentation implements ZoomPresentation {
   
   public void setFloater(Object floater, Color floaterColor) {
 
-    floaterLayout_ = new Layout(appState_, "floater", "floater");
+    StaticDataAccessContext dacx = new StaticDataAccessContext(floaterDacx_);
+    floaterLayout_ = new Layout("floater", "floater");
     floaterSrc_ = null;
     if (floater == null) {
-      floaterGenome_ = new DBGenome(appState_, "floater", "floater");
+      floaterGenome_ = new DBGenome(dacx, "floater", "floater");
       floater_ = null;
       floatPoint_ = null;
       floaterColor_ = null;
       return;
     }
     if (floater instanceof Gene) {
-      floaterGenome_ = new DBGenome(appState_, "floater", "floater");
+      floaterGenome_ = new DBGenome(dacx, "floater", "floater");
       floaterGenome_.addGene((Gene)floater);
     } else if (floater instanceof Node) {
-      floaterGenome_ = new DBGenome(appState_, "floater", "floater");
+      floaterGenome_ = new DBGenome(dacx, "floater", "floater");
       floaterGenome_.addNode((Node)floater);
     } else if (floater instanceof Linkage) {
-      floaterGenome_ = new DBGenome(appState_, "floater", "floater");
+      floaterGenome_ = new DBGenome(dacx, "floater", "floater");
       floaterGenome_.addLinkage((Linkage)floater);
     } else if (floater instanceof Group) {
-      floaterGenome_ = new GenomeInstance(appState_, "floater", "floater", null);
-      DBGenome bogoGenome = new DBGenome(appState_, "floaterDB", "floaterDB");
+      floaterGenome_ = new GenomeInstance(dacx, "floater", "floater", null);
+      DBGenome bogoGenome = new DBGenome(dacx, "floaterDB", "floaterDB");
       List<Genome> bogoList = new ArrayList<Genome>();
       bogoList.add(bogoGenome);
       bogoList.add(floaterGenome_);
@@ -1598,7 +1618,7 @@ public class GenomePresentation implements ZoomPresentation {
       ((GenomeInstance)floaterGenome_).setGenomeSource(floaterSrc_);   
       ((GenomeInstance)floaterGenome_).addGroupWithExistingLabel((Group)floater);
     } else if (floater instanceof Note) {
-      floaterGenome_ = new DBGenome(appState_, "floater", "floater");
+      floaterGenome_ = new DBGenome(dacx, "floater", "floater");
       floaterGenome_.addNote((Note)floater);
     } else {
       // do nothing
@@ -1723,14 +1743,14 @@ public class GenomePresentation implements ZoomPresentation {
   ** Reduce selections
   */
   
-  public Intersection[] selectionReduction(Intersection[] inters, DataAccessContext rcx) {
+  public Intersection[] selectionReduction(Intersection[] inters, StaticDataAccessContext rcx) {
     
     //
     // Two different intersected linkages can resolve to one tree, and
     // we only want to deal with the tree once.  Handle this reduction.
     //
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     
     int size = inters.length;
     ArrayList<Intersection> reducedList = new ArrayList<Intersection>();
@@ -1743,7 +1763,7 @@ public class GenomePresentation implements ZoomPresentation {
         reducedList.add(inters[i]);
         continue;
       }
-      LinkProperties lp = rcx.getLayout().getLinkProperties(interID);
+      LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(interID);
       if (lp == null) {
         continue;
       }
@@ -1763,9 +1783,9 @@ public class GenomePresentation implements ZoomPresentation {
   ** so group ID should be for the root!
   */
   
-  public Intersection selectGroupFromParent(int x, int y, DataAccessContext rcx) {
+  public Intersection selectGroupFromParent(int x, int y, StaticDataAccessContext rcx) {
     
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     if (!(genome instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
@@ -1778,7 +1798,7 @@ public class GenomePresentation implements ZoomPresentation {
     Point2D pt = new Point2D.Float(x, y);
  
     GenomeInstance rootvfg = gi.getVfgParentRoot();
-    DataAccessContext rcxV = new DataAccessContext(rcx, rootvfg);
+    StaticDataAccessContext rcxV = new StaticDataAccessContext(rcx, rootvfg);
     Intersection groupCheck = intersectGroups(rcxV, null, rootvfg, pt, false);
     return (groupCheck);
   }
@@ -1788,9 +1808,9 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select a group
   */
   
-  public Intersection selectGroupForRootInstance(int x, int y, DataAccessContext rcxT) {
+  public Intersection selectGroupForRootInstance(int x, int y, StaticDataAccessContext rcxT) {
     
-    Genome genome = rcxT.getGenome();
+    Genome genome = rcxT.getCurrentGenome();
     if (!(genome instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
@@ -1811,12 +1831,12 @@ public class GenomePresentation implements ZoomPresentation {
   ** model.
   */
   
-  public Intersection selectGroup(int x, int y, DataAccessContext rcxT) {
+  public Intersection selectGroup(int x, int y, StaticDataAccessContext rcxT) {
  
-    if (!(rcxT.getGenome() instanceof GenomeInstance)) {
+    if (!(rcxT.getCurrentGenome() instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
-    GenomeInstance gi = rcxT.getGenomeAsInstance();
+    GenomeInstance gi = rcxT.getCurrentGenomeAsInstance();
     GenomeInstance rootvfg = gi.getVfgParentRoot(); // may be null...
     Point2D pt = new Point2D.Float(x, y);
     Intersection groupCheck = intersectGroups(rcxT, rootvfg, gi, pt, false);
@@ -1828,16 +1848,16 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select from a limited set of linkages present in the root parent
   */
   
-  public List<Intersection> selectLinkFromRootParent(int x, int y, DataAccessContext rcxP, Set<String> okLinks) {
+  public List<Intersection> selectLinkFromRootParent(int x, int y, StaticDataAccessContext rcxP, Set<String> okLinks) {
 
     //
     // Crank through the items and ask the renderers for an intersection
     //
     
-    if (!(rcxP.getGenome() instanceof GenomeInstance)) {
+    if (!(rcxP.getCurrentGenome() instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
-    GenomeInstance gi = rcxP.getGenomeAsInstance();
+    GenomeInstance gi = rcxP.getCurrentGenomeAsInstance();
     GenomeInstance rootvfg = gi.getVfgParentRoot();
     if (rootvfg == null) {
       throw new IllegalArgumentException();
@@ -1849,7 +1869,7 @@ public class GenomePresentation implements ZoomPresentation {
     // First intersect collapsed groups, which mask their contents.
     //
     
-    DataAccessContext rcxRo = new DataAccessContext(rcxP, rootvfg);
+    StaticDataAccessContext rcxRo = new StaticDataAccessContext(rcxP, rootvfg);
     
     Intersection groupCheck = intersectGroups(rcxRo, rootvfg, gi, pt, true);
     if (groupCheck != null) {
@@ -1862,7 +1882,7 @@ public class GenomePresentation implements ZoomPresentation {
     while (lit.hasNext()) {
       String linkID = lit.next();
       Linkage link = rootvfg.getLinkage(linkID);
-      LinkageFree render = (LinkageFree)rcxRo.getLayout().getLinkProperties(linkID).getRenderer();      
+      LinkageFree render = (LinkageFree)rcxRo.getCurrentLayout().getLinkProperties(linkID).getRenderer();      
       Intersection inter = render.intersects(link, pt, rcxRo, null);
       if (inter != null) {
         retval.add(inter);
@@ -1876,16 +1896,16 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select an item
   */
   
-  public List<Intersection> selectFromParent(int x, int y, DataAccessContext rcxO) {
+  public List<Intersection> selectFromParent(int x, int y, StaticDataAccessContext rcxO) {
        
     //
     // Crank through the items and ask the renderers for an intersection
     //
     
-    if (!(rcxO.getGenome() instanceof GenomeInstance)) {
+    if (!(rcxO.getCurrentGenome() instanceof GenomeInstance)) {
       throw new IllegalArgumentException();
     }
-    GenomeInstance gi = rcxO.getGenomeAsInstance();
+    GenomeInstance gi = rcxO.getCurrentGenomeAsInstance();
     GenomeInstance parent = gi.getVfgParent();
     if (parent == null) {
       throw new IllegalArgumentException();
@@ -1899,21 +1919,21 @@ public class GenomePresentation implements ZoomPresentation {
     
    
     GenomeInstance rootvfg = gi.getVfgParentRoot();
-    DataAccessContext rcxR = new DataAccessContext(rcxO, rootvfg);
+    StaticDataAccessContext rcxR = new StaticDataAccessContext(rcxO, rootvfg);
     
     Intersection groupCheck = intersectGroups(rcxR, rootvfg, gi, pt, true);
     if (groupCheck != null) {
       return (null);
     }
     
-    DataAccessContext rcxP = new DataAccessContext(rcxO, parent);
+    StaticDataAccessContext rcxP = new StaticDataAccessContext(rcxO, parent);
     
     ArrayList<Intersection> retval = new ArrayList<Intersection>();
     
     Iterator<Linkage> lit = parent.getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
-      LinkageFree render = (LinkageFree)rcxP.getLayout().getLinkProperties(link.getID()).getRenderer();      
+      LinkageFree render = (LinkageFree)rcxP.getCurrentLayout().getLinkProperties(link.getID()).getRenderer();      
       Intersection inter = render.intersects(link, pt, rcxP, null);
       if (inter != null) {
         retval.add(inter);
@@ -1923,7 +1943,7 @@ public class GenomePresentation implements ZoomPresentation {
     Iterator<Gene> git = parent.getGeneIterator();    
     while (git.hasNext()) {
       Gene gene = git.next();
-      IRenderer render = rcxP.getLayout().getNodeProperties(gene.getID()).getRenderer();
+      IRenderer render = rcxP.getCurrentLayout().getNodeProperties(gene.getID()).getRenderer();
       Intersection inter = render.intersects(gene, pt, rcxP, null);      
       if (inter != null) {
         retval.add(inter);
@@ -1933,7 +1953,7 @@ public class GenomePresentation implements ZoomPresentation {
     Iterator<Node> nit = parent.getNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
-      IRenderer render = rcxP.getLayout().getNodeProperties(node.getID()).getRenderer();      
+      IRenderer render = rcxP.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();      
       Intersection inter = render.intersects(node, pt, rcxP, null);
       if (inter != null) {
         retval.add(inter);
@@ -1957,15 +1977,15 @@ public class GenomePresentation implements ZoomPresentation {
   ** Undo a change
   */
   
-  public void changeUndo(SelectionChange undo) {
+  public void changeUndo(UIComponentSource uics, SelectionChange undo, DataAccessContext dacx) {
     if (undo.oldMap != null) {
       selectionKeys_ = duplicateSelections(undo.oldMap);
     }
-    GooseAppInterface goose = (isMain_) ? appState_.getGooseMgr().getGoose() : null;
+    GooseAppInterface goose = (isMain_) ? uics.getGooseMgr().getGoose() : null;
     if ((goose != null) && goose.isActivated()) {
-      DataAccessContext rcx = new DataAccessContext(appState_);
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx).getContextForRoot();
       rcx.setGenome(rcx.getGenomeSource().getGenome(undo.genomeKey));
-      rcx.setLayout(rcx.lSrc.getLayout(undo.layoutKey));
+      rcx.setLayout(rcx.getLayoutSource().getLayout(undo.layoutKey));
       gaggleSelectionSupport(goose, rcx);
     }
     return;
@@ -1976,15 +1996,15 @@ public class GenomePresentation implements ZoomPresentation {
   ** Redo a change
   */
   
-  public void changeRedo(SelectionChange undo) {
+  public void changeRedo(UIComponentSource uics, DataAccessContext dacx, SelectionChange undo) {
     if (undo.newMap != null) {
       selectionKeys_ = duplicateSelections(undo.newMap);
     }
-    GooseAppInterface goose = (isMain_) ? appState_.getGooseMgr().getGoose() : null;
+    GooseAppInterface goose = (isMain_) ? uics.getGooseMgr().getGoose() : null;
     if ((goose != null) && goose.isActivated()) {
-      DataAccessContext rcx = new DataAccessContext(appState_);
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx).getContextForRoot();
       rcx.setGenome(rcx.getGenomeSource().getGenome(undo.genomeKey));
-      rcx.setLayout(rcx.lSrc.getLayout(undo.layoutKey));
+      rcx.setLayout(rcx.getLayoutSource().getLayout(undo.layoutKey));
       gaggleSelectionSupport(goose, rcx);
     }
     return;
@@ -1998,13 +2018,13 @@ public class GenomePresentation implements ZoomPresentation {
   ** no restrictions.
   */
   
-  public Set<String> nonBlackHoles(DataAccessContext rcxB) {
+  public Set<String> nonBlackHoles(StaticDataAccessContext rcxB) {
     
-    String currentOverlay = rcxB.oso.getCurrentOverlay();
-    TaggedSet modKeys = rcxB.oso.getCurrentNetModules();
-    int intersectMask = rcxB.oso.getCurrentOverlaySettings().intersectionMask;
+    String currentOverlay = rcxB.getOSO().getCurrentOverlay();
+    TaggedSet modKeys = rcxB.getOSO().getCurrentNetModules();
+    int intersectMask = rcxB.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> currentNetModSet = (modKeys == null) ? null : modKeys.set;
-    TaggedSet revKeys = rcxB.oso.getRevealedModules();
+    TaggedSet revKeys = rcxB.getOSO().getRevealedModules();
     Set<String> currentRevealed = (revKeys == null) ? null : revKeys.set;         
 
     //
@@ -2017,7 +2037,7 @@ public class GenomePresentation implements ZoomPresentation {
     if (intersectMask == NetModuleFree.CurrentSettings.NOTHING_MASKED) {
       return (null);
     } 
-    NetOverlayProperties nop = rcxB.getLayout().getNetOverlayProperties(currentOverlay);
+    NetOverlayProperties nop = rcxB.getCurrentLayout().getNetOverlayProperties(currentOverlay);
     if (nop.getType() != NetOverlayProperties.OvrType.OPAQUE) {
       return (null);
     }   
@@ -2105,24 +2125,24 @@ public class GenomePresentation implements ZoomPresentation {
   
   private void selectionUndoSupport(SelectionChange sc, String genomeKey, 
                                     String layoutKey, UndoSupport support, 
-                                    SelectionChangeCmd.Bundle bundle, DataAccessContext dacx, UndoManager undom) {
+                                    SelectionChangeCmd.Bundle bundle, StaticDataAccessContext dacx, UndoFactory uFac) {
     sc.gp = this;
     sc.genomeKey = genomeKey;
     sc.layoutKey = layoutKey;
 
     boolean localUndo = false;
     if ((support == null) && (bundle == null)) {
-      if (undom != null) {
+      if (uFac != null) {
         localUndo = true;
-        support = new UndoSupport(appState_, "undo.selection");
+        support = uFac.provideUndoSupport("undo.selection", dacx);
       }
     }    
 
     if (support != null) {
-      support.addEdit(new SelectionChangeCmd(appState_, dacx, sc));
+      support.addEdit(new SelectionChangeCmd(dacx, sc));
       support.addEvent(new SelectionChangeEvent(genomeKey, layoutKey, SelectionChangeEvent.SELECTED_ELEMENT));
     } else {
-      bundle.cmd = new SelectionChangeCmd(appState_, dacx, sc);
+      bundle.cmd = new SelectionChangeCmd(dacx, sc);
       bundle.event = new SelectionChangeEvent(genomeKey, layoutKey, SelectionChangeEvent.SELECTED_ELEMENT);
     }
     if (localUndo) {support.finish();}
@@ -2169,15 +2189,15 @@ public class GenomePresentation implements ZoomPresentation {
   */
   
 	private void presentationGuts(ModelObjectCache moc, ModelObjectCache linkMoc,
-		                           	boolean doReset, boolean hideLinks, DataAccessContext rcx) {
+		                           	boolean doReset, boolean hideLinks, StaticDataAccessContext rcx, IRenderer.Mode mode) {
 
 		Object misc = null;
 
 		if (doReset) {
 			// g2.drawImage(grid_, 0, 0, 2000, 1600, null);
 		}
-    Genome genome = rcx.getGenome();
-    Layout layout = rcx.getLayout();
+    Genome genome = rcx.getCurrentGenome();
+    Layout layout = rcx.getCurrentLayout();
 		
 		//
 		// Crank through the genes and nodes and draw them up
@@ -2195,7 +2215,7 @@ public class GenomePresentation implements ZoomPresentation {
 				localGhost = !currentTargets_.contains(node.getID());
 			}
 			rcx.pushGhosted(localGhost);
-			render.render(moc, node, selected, rcx, misc);
+			render.render(moc, node, selected, rcx, mode, misc);
 			rcx.popGhosted();
 		}
 
@@ -2231,7 +2251,7 @@ public class GenomePresentation implements ZoomPresentation {
 		
 		// RenderObjectCache roc = cache.get(genome.getID());
 		ModelObjectCache linkagemoc = mcache.get(genome.getID());
-		boolean viewerOnly = !appState_.getIsEditor();
+		boolean viewerOnly = !uics_.getIsEditor();
 		
 		// TODO
 		// In the viewer, cache the rendered linkage and do not render it again.
@@ -2246,7 +2266,7 @@ public class GenomePresentation implements ZoomPresentation {
 			 * }
 		 	*/
 			if (!hideLinks) {
-				renderLinkage(moc, rcx, adopt, skipDrops, adoptf, rootParent, renderedBuses, lit);
+				renderLinkage(moc, rcx, adopt, skipDrops, adoptf, rootParent, renderedBuses, lit, mode);
 
 				/*
 				 * if (linkMoc != null) { renderLinkage(linkMoc, genome, layout,
@@ -2266,17 +2286,17 @@ public class GenomePresentation implements ZoomPresentation {
 				Note note = noit.next();
 				IRenderer render = layout.getNoteProperties(note.getID()).getRenderer();
 				Intersection selected = isSelected(selectionKeys_, note);
-				render.render(moc, note, selected, rcx, misc);
+				render.render(moc, note, selected, rcx, mode, misc);
 			}
 		}
 
 		// return (roc);
 	}
 
-	private void renderLinkage(ModelObjectCache moc, DataAccessContext rcx, 
+	private void renderLinkage(ModelObjectCache moc, StaticDataAccessContext rcx, 
 			LinkageFree.AugmentedDisplayOptions adopt, HashSet<String> skipDrops,
 			LinkageFree.AugmentedDisplayOptions adoptf, Genome rootParent,
-			HashSet<LinkProperties> renderedBuses, Iterator<Linkage> lit) {
+			HashSet<LinkProperties> renderedBuses, Iterator<Linkage> lit, IRenderer.Mode mode) {
 	  
 		Set<String> justKeys = selectionKeys_.keySet();
 		while (lit.hasNext()) {
@@ -2284,7 +2304,7 @@ public class GenomePresentation implements ZoomPresentation {
 		  if (link.getID().equals(nullRender_)) {
 		    continue;
 		  }      
-		  LinkProperties lp = rcx.getLayout().getLinkProperties(link.getID());
+		  LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(link.getID());
 		  if (lp == null) {
 		    System.err.println("No linkProperties for " + link.getID());
 		    throw new IllegalStateException();
@@ -2294,7 +2314,7 @@ public class GenomePresentation implements ZoomPresentation {
 		  } else {
 		    renderedBuses.add(lp);
 		  }
-		  Intersection selected = linkIsSelected(justKeys, selectionKeys_, rcx.getLayout(), link);
+		  Intersection selected = linkIsSelected(justKeys, selectionKeys_, rcx.getCurrentLayout(), link);
 		  LinkageFree render = (LinkageFree)lp.getRenderer();
 		  //
 		  // If we are drawing into an instance, sometimes we ghost everything but
@@ -2322,14 +2342,14 @@ public class GenomePresentation implements ZoomPresentation {
 		      currentRootOverlays_.contains(link.getID())) {
 		    skipDrops.clear();
 		    skipDrops.addAll(currentRootOverlays_);
-		    Set<String> actuallyPresent = rcx.getGenome().getOutboundLinks(link.getSource());
+		    Set<String> actuallyPresent = rcx.getCurrentGenome().getOutboundLinks(link.getSource());
 		    skipDrops.removeAll(actuallyPresent);
 		    link = rootParent.getLinkage(link.getID());
-		    DataAccessContext rcxP = new DataAccessContext(rcx);
+		    StaticDataAccessContext rcxP = new StaticDataAccessContext(rcx);
 		    rcxP.setGenome(rootParent);
-		    render.render(moc, link, selected, rcxP, adoptf);
+		    render.render(moc, link, selected, rcxP, mode, adoptf);
 		  } else {
-		    render.render(moc, link, selected, rcx, adopt);
+		    render.render(moc, link, selected, rcx, mode, adopt);
 		  }
 		  rcx.popGhosted();
 		}
@@ -2344,7 +2364,7 @@ public class GenomePresentation implements ZoomPresentation {
 		  skipDrops.addAll(currentRootOverlays_);
 		  while (croit.hasNext()) {
 		    String linkID = croit.next();
-		    LinkProperties lp = rcx.getLayout().getLinkProperties(linkID);
+		    LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(linkID);
 		    if (renderedBuses.contains(lp)) {
 		      continue;
 		    } else {
@@ -2352,10 +2372,10 @@ public class GenomePresentation implements ZoomPresentation {
 		    }
 		    LinkageFree render = (LinkageFree)lp.getRenderer();
 		    Linkage link = rootParent.getLinkage(linkID);
-		    DataAccessContext rcxP = new DataAccessContext(rcx);
+		    StaticDataAccessContext rcxP = new StaticDataAccessContext(rcx);
         rcxP.setGenome(rootParent);
 		    rcxP.pushGhosted(false);
-        render.render(moc, link, null, rcxP, adoptf);
+        render.render(moc, link, null, rcxP, mode, adoptf);
         rcxP.popGhosted();
 		  }
 		}
@@ -2366,10 +2386,10 @@ public class GenomePresentation implements ZoomPresentation {
   ** Render the model data
   */
   
-	private void renderModelData(ModelObjectCache moc, DataAccessContext rcx) {
+	private void renderModelData(ModelObjectCache moc, StaticDataAccessContext rcx) {
 	  	ModalTextShapeFactory textFactory = null;
 	  	
-	  	if (rcx.forWeb) {
+	  	if (rcx.isForWeb()) {
 	  		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
 	  	}
 	  	else {
@@ -2381,15 +2401,15 @@ public class GenomePresentation implements ZoomPresentation {
 		Integer minorLayer = 0;
 		CommonCacheGroup group = new CommonCacheGroup("_modeldata", "modeldata", "modeldata");
 
-		ModelData md = appState_.getDB().getModelData();
-		String longName = rcx.getGenome().getLongName();
+		ModelData md = rcx.getModelDataSource().getModelData();
+		String longName = rcx.getCurrentGenome().getLongName();
 		if (((md != null) || (longName != null)) && !rcx.isGhosted()) {
-			Font mFont = appState_.getFontMgr().getFont(FontManager.DATE);
-			Font bFont = appState_.getFontMgr().getFont(FontManager.TITLE);
+			Font mFont = rcx.getFontManager().getFont(FontManager.DATE);
+			Font bFont = rcx.getFontManager().getFont(FontManager.TITLE);
 
 			String date = (md == null) ? null : md.getDate();
 			if ((date != null) && (!date.trim().equals(""))) {
-				Point2D loc = rcx.getLayout().getDataLocation(Layout.DATE);
+				Point2D loc = rcx.getCurrentLayout().getDataLocation(Layout.DATE);
 				if (loc != null) { // Should not ever be null, but...
 					Rectangle2D bounds = mFont.getStringBounds(date, rcx.getFrc());
 					double width = bounds.getWidth();
@@ -2407,7 +2427,7 @@ public class GenomePresentation implements ZoomPresentation {
 			}
 			String attrib = (md == null) ? null : md.getAttribution();
 			if ((attrib != null) && (!attrib.trim().equals(""))) {
-				Point2D loc = rcx.getLayout().getDataLocation(Layout.ATTRIB);
+				Point2D loc = rcx.getCurrentLayout().getDataLocation(Layout.ATTRIB);
 				if (loc != null) { // Should not ever be null, but...
 					Rectangle2D bounds = mFont.getStringBounds(attrib, rcx.getFrc());
 					double width = bounds.getWidth();
@@ -2425,15 +2445,15 @@ public class GenomePresentation implements ZoomPresentation {
 
 			int keySize = (md == null) ? 0 : md.getKeySize();
 			if (keySize > 0) {
-				DataLocator dl = new DataLocator(appState_, rcx);
-				Point2D loc = rcx.getLayout().getDataLocation(Layout.KEY);
+				DataLocator dl = new DataLocator(this, rcx);
+				Point2D loc = rcx.getCurrentLayout().getDataLocation(Layout.KEY);
 				if (loc != null) { // Should not ever be null, but...
 
 					ArrayList<String> keyList = new ArrayList<String>();
 					for (int i = 0; i < keySize; i++) {
 						keyList.add(md.getKey(i));
 					}
-					Dimension dim = dl.calcKeyBounds(keyList, rcx.getLayout(), mFont, rcx.getFrc());
+					Dimension dim = dl.calcKeyBounds(keyList, rcx.getCurrentLayout(), mFont, rcx.getFrc());
 					double width = dim.getWidth();
 					double height = dim.getHeight();
 					double keyX = loc.getX() - (width / 2.0);
@@ -2454,7 +2474,7 @@ public class GenomePresentation implements ZoomPresentation {
 			}
 
 			if ((longName != null) && (!longName.trim().equals(""))) {
-				Point2D loc = rcx.getLayout().getDataLocation(Layout.TITLE);
+				Point2D loc = rcx.getCurrentLayout().getDataLocation(Layout.TITLE);
 				if (loc != null) { // Should not ever be null, but...
 					Rectangle2D bounds = mFont.getStringBounds(longName, rcx.getFrc());
 					double width = bounds.getWidth();
@@ -2481,17 +2501,17 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect linkage labels
   */
   
-  public boolean intersectLinkageLabels(DataAccessContext rcx2, Point2D pt) {
-    String currentOverlay = rcx2.oso.getCurrentOverlay();
-    TaggedSet modKeys = rcx2.oso.getCurrentNetModules();
-    int intersectMask = rcx2.oso.getCurrentOverlaySettings().intersectionMask;
+  public boolean intersectLinkageLabels(StaticDataAccessContext rcx2, Point2D pt) {
+    String currentOverlay = rcx2.getOSO().getCurrentOverlay();
+    TaggedSet modKeys = rcx2.getOSO().getCurrentNetModules();
+    int intersectMask = rcx2.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> currentNetModSet = (modKeys == null) ? null : modKeys.set;
-    TaggedSet revKeys = rcx2.oso.getRevealedModules();
+    TaggedSet revKeys = rcx2.getOSO().getRevealedModules();
     Set<String> revMods = (revKeys == null) ? null : revKeys.set;     
     // Intersect linkage labels:
     HashSet<String> seenSrcs = new HashSet<String>();
     
-    Iterator<Linkage> lit = rcx2.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx2.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String lSrc = link.getSource();
@@ -2499,7 +2519,7 @@ public class GenomePresentation implements ZoomPresentation {
         continue;
       }
       seenSrcs.add(lSrc);
-      LinkProperties lp = rcx2.getLayout().getLinkProperties(link.getID());
+      LinkProperties lp = rcx2.getCurrentLayout().getLinkProperties(link.getID());
       LinkageFree render = (LinkageFree)lp.getRenderer();    
       if (render.intersectsLabel(link, lp, rcx2, pt)) {
         Intersection dummy = new Intersection(null, null, 0.0);
@@ -2517,13 +2537,13 @@ public class GenomePresentation implements ZoomPresentation {
   ** Filter intersection for module mask
   */
   
-  public Intersection filterForModuleMask(DataAccessContext rcx, Point2D pt, Intersection inter,
+  public Intersection filterForModuleMask(StaticDataAccessContext rcx, Point2D pt, Intersection inter,
                                           String currentOverlay, Set<String> currentNetModSet, Set<String> currentRevealed, 
                                           int intersectMask) {
     if (inter != null) {
       int x = (int)pt.getX();
       int y = (int)pt.getY();
-      int maskNeed = needMaskingReduction(rcx.getLayout(), currentOverlay, intersectMask);
+      int maskNeed = needMaskingReduction(rcx.getCurrentLayout(), currentOverlay, intersectMask);
       switch (maskNeed) {
         case NetModuleFree.CurrentSettings.NOTHING_MASKED:
           return (inter);
@@ -2556,11 +2576,11 @@ public class GenomePresentation implements ZoomPresentation {
   ** Filter rectangle-derived link intersections for module mask
   */  
   
-  private List<Intersection> filterLinksForModuleMask(DataAccessContext rcx, List<Intersection> rawMatches,
+  private List<Intersection> filterLinksForModuleMask(StaticDataAccessContext rcx, List<Intersection> rawMatches,
                                                       String currentOverlay, Set<String> currentNetModSet, Set<String> currentRevealed, int intersectMask) {  
 
     Set<String> useForIntersect = currentNetModSet;
-    int maskNeed = needMaskingReduction(rcx.getLayout(), currentOverlay, intersectMask);
+    int maskNeed = needMaskingReduction(rcx.getCurrentLayout(), currentOverlay, intersectMask);
     switch (maskNeed) {
       case NetModuleFree.CurrentSettings.NOTHING_MASKED:
         return (rawMatches);
@@ -2588,17 +2608,17 @@ public class GenomePresentation implements ZoomPresentation {
   ** Build up shape maps
   */
   
-  public void buildShapeMapForNetModules(DataAccessContext rcx,
+  public void buildShapeMapForNetModules(StaticDataAccessContext rcx,
                                           String currentOverlay, 
                                           Set<String> useModsForIntersect,
                                           Map<String, Rectangle2D> outerRectMap, 
                                           Map<String, List<Shape>> shapeMap) {
 
-    Genome inputGenome = rcx.getGenome();
+    Genome inputGenome = rcx.getCurrentGenome();
     NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(inputGenome.getID());
     Set<String> useGroups = owner.getGroupsForOverlayRendering();
     NetworkOverlay novr = owner.getNetworkOverlay(currentOverlay);
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(currentOverlay);
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(currentOverlay);
     //
     // We use the rootInstance to drive rendering, so that non-included nodes are not
     // shown as part of the module (important for dynamic instances!)
@@ -2610,7 +2630,7 @@ public class GenomePresentation implements ZoomPresentation {
       GenomeInstance rootGI = gi.getVfgParentRoot();
       useGenome = (rootGI == null) ? gi : rootGI;
     }
-    DataAccessContext rcxU = new DataAccessContext(rcx);
+    StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx);
     rcxU.setGenome(useGenome);
 
     Iterator<NetModule> mit = novr.getModuleIterator();
@@ -2633,7 +2653,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Reduce the intersection list by eliminating segments not in the unmasked modules
   */
   
-  public List<Intersection> intersectCandidatesWithShapes(DataAccessContext rcx,
+  public List<Intersection> intersectCandidatesWithShapes(StaticDataAccessContext rcx,
                                                           List<Intersection> rawMatches,
                                                           Map<String, Rectangle2D> outerRectMap, 
                                                           Map<String, List<Shape>> shapeMap) { 
@@ -2644,7 +2664,7 @@ public class GenomePresentation implements ZoomPresentation {
     for (int i = 0; i < numRaw; i++) {
       Intersection inter = rawMatches.get(i);
       String linkID = inter.getObjectID();
-      BusProperties bp = rcx.getLayout().getLinkProperties(linkID);
+      BusProperties bp = rcx.getCurrentLayout().getLinkProperties(linkID);
       LinkSegmentID[] lsids = inter.segmentIDsFromIntersect();
       HashSet<LinkSegmentID> rawLSIDs = new HashSet<LinkSegmentID>(Arrays.asList(lsids));
       Iterator<String> skit = shapeMap.keySet().iterator();
@@ -2683,21 +2703,21 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect notes
   */
   
-  public List<Intersection> intersectNotes(Point2D pt, DataAccessContext rcx, boolean interactiveOnly) {
+  public List<Intersection> intersectNotes(Point2D pt, StaticDataAccessContext rcx, boolean interactiveOnly) {
 
-    String currentOverlay = rcx.oso.getCurrentOverlay();
-    TaggedSet modKeys = rcx.oso.getCurrentNetModules();
-    int intersectMask = rcx.oso.getCurrentOverlaySettings().intersectionMask;
+    String currentOverlay = rcx.getOSO().getCurrentOverlay();
+    TaggedSet modKeys = rcx.getOSO().getCurrentNetModules();
+    int intersectMask = rcx.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> currentNetModSet = (modKeys == null) ? null : modKeys.set;
-    TaggedSet revKeys = rcx.oso.getRevealedModules();
+    TaggedSet revKeys = rcx.getOSO().getRevealedModules();
     Set<String> revMods = (revKeys == null) ? null : revKeys.set;    
     ArrayList<Intersection> retval = new ArrayList<Intersection>();
    
-    Iterator<Note> ntit = rcx.getGenome().getNoteIterator();
+    Iterator<Note> ntit = rcx.getCurrentGenome().getNoteIterator();
     while (ntit.hasNext()) {
       Note note = ntit.next();
       if (!interactiveOnly || note.isInteractive()) {
-        IRenderer render = rcx.getLayout().getNoteProperties(note.getID()).getRenderer();      
+        IRenderer render = rcx.getCurrentLayout().getNoteProperties(note.getID()).getRenderer();      
         Intersection inter = render.intersects(note, pt, rcx, null);
         inter = filterForModuleMask(rcx, pt, inter, currentOverlay, currentNetModSet, revMods, intersectMask);
         if (inter != null) {
@@ -2713,16 +2733,13 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect the model data
   */
   
-  public String intersectModelData(DataAccessContext rcxD,
-                                   Point2D pt,                                     
-                                   String currentOverlay, 
-                                   Set<String> currentNetModSet, int intersectMask) { 
+  public String intersectModelData(StaticDataAccessContext rcxD, Point2D pt) { 
 
     String[] keys = new String[] {Layout.DATE, Layout.ATTRIB, Layout.TITLE, Layout.KEY};
     int[] fonts = new int[] {FontManager.DATE, FontManager.DATE, FontManager.TITLE, FontManager.DATE};
     boolean[] isSingle = new boolean[] {true, true, true, false};    
-    ModelData md = appState_.getDB().getModelData();
-    String longName = rcxD.getGenome().getLongName();
+    ModelData md = rcxD.getModelDataSource().getModelData();
+    String longName = rcxD.getCurrentGenome().getLongName();
     if ((md == null) && ((longName == null) || longName.trim().equals(""))) {
       return (null);
     }
@@ -2741,12 +2758,12 @@ public class GenomePresentation implements ZoomPresentation {
       data[3] = null;
     }
 
-    DataLocator dl = new DataLocator(appState_, rcxD);
+    DataLocator dl = new DataLocator(this, rcxD);
     for (int i = 0; i < keys.length; i++) {
       if (data[i] != null) {        
-        Point2D loc = rcxD.getLayout().getDataLocation(keys[i]);
+        Point2D loc = rcxD.getCurrentLayout().getDataLocation(keys[i]);
         if (loc != null) {  // 7-15-04 I'm getting a null value here!
-          Font mFont = appState_.getFontMgr().getFont(fonts[i]);
+          Font mFont = rcxD.getFontManager().getFont(fonts[i]);
           double width;
           double height;
           if (isSingle[i]) {
@@ -2754,7 +2771,7 @@ public class GenomePresentation implements ZoomPresentation {
             width = bounds.getWidth();
             height = bounds.getHeight();
           } else {
-            Dimension dim = dl.calcKeyBounds((List<String>)data[i], rcxD.getLayout(), mFont, rcxD.getFrc());
+            Dimension dim = dl.calcKeyBounds((List<String>)data[i], rcxD.getCurrentLayout(), mFont, rcxD.getFrc());
             width = dim.getWidth();
             height = dim.getHeight();                        
           }  
@@ -2783,8 +2800,8 @@ public class GenomePresentation implements ZoomPresentation {
     String[] keys = new String[] {Layout.DATE, Layout.ATTRIB, Layout.TITLE, Layout.KEY};
     int[] fonts = new int[] {FontManager.DATE, FontManager.DATE, FontManager.TITLE, FontManager.DATE};
     boolean[] isSingle = new boolean[] {true, true, true, false};    
-    ModelData md = appState_.getDB().getModelData();
-    String longName = rcx.getGenome().getLongName();
+    ModelData md = rcx.getModelDataSource().getModelData();
+    String longName = rcx.getCurrentGenome().getLongName();
     if ((md == null) && ((longName == null) || longName.trim().equals(""))) {
       return (null);
     }
@@ -2803,12 +2820,12 @@ public class GenomePresentation implements ZoomPresentation {
       data[3] = null;
     }
 
-    DataLocator dl = new DataLocator(appState_, rcx);
+    DataLocator dl = new DataLocator(this, new StaticDataAccessContext(rcx));
     for (int i = 0; i < keys.length; i++) {
       if (data[i] != null) {        
-        Point2D loc = rcx.getLayout().getDataLocation(keys[i]);
+        Point2D loc = rcx.getCurrentLayout().getDataLocation(keys[i]);
         if (loc != null) {  // 7-15-04 I'm getting a null value here!
-          Font mFont = appState_.getFontMgr().getFont(fonts[i]);
+          Font mFont = rcx.getFontManager().getFont(fonts[i]);
           int width;
           int height;
           if (isSingle[i]) {
@@ -2816,7 +2833,7 @@ public class GenomePresentation implements ZoomPresentation {
             width = (int)bounds.getWidth();
             height = (int)bounds.getHeight();
           } else {
-            Dimension dim = dl.calcKeyBounds((List<String>)data[i], rcx.getLayout(), mFont, rcx.getFrc());
+            Dimension dim = dl.calcKeyBounds((List<String>)data[i], rcx.getCurrentLayout(), mFont, rcx.getFrc());
             width = (int)dim.getWidth();
             height = (int)dim.getHeight();                        
           }  
@@ -2841,15 +2858,15 @@ public class GenomePresentation implements ZoomPresentation {
   ** groups actually present in the given genome.
   */
   
-	private void renderGroupsInBackground(ModelObjectCache moc, DataAccessContext rcx,
-			GenomeInstance root, GenomeInstance genome, List<GroupFree.ColoredRect> collectRects) {
+	private void renderGroupsInBackground(ModelObjectCache moc, StaticDataAccessContext rcx,
+			GenomeInstance root, GenomeInstance genome, List<GroupFree.ColoredRect> collectRects, IRenderer.Mode mode) {
 
 		//
 		// If we don't have a parent instance, we just render the groups. If we
 		// do, we use the parent to render the groups that are subsetted in the
 		// child.
 		//
-		List<String> order = rcx.getLayout().getGroupDrawingOrder();
+		List<String> order = rcx.getCurrentLayout().getGroupDrawingOrder();
 
 		GroupFree renderer;
 		for (int i = 0; i <= GroupProperties.MAX_SUBGROUP_LAYER; i++) {
@@ -2866,7 +2883,7 @@ public class GenomePresentation implements ZoomPresentation {
 				if (root == null) {
 					useToRender = genome;
 					groupRef = group.getID();
-					gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+					gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
 					if (gp.getLayer() != i) {
 						continue;
 					}
@@ -2875,12 +2892,12 @@ public class GenomePresentation implements ZoomPresentation {
 					augExtra.extra = new GroupFree.ExtraInfo();
 					useToRender = root;
 					groupRef = group.getReference();
-					gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+					gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
 					if (gp.getLayer() != i) {
 						continue;
 					}
 					renderer = gp.getRenderer();
-					augExtra.extra.vizVal = rcx.gsm.getGroupVisibility(genome.getID(), group.getID(), rcx);
+					augExtra.extra.vizVal = rcx.getGSM().getGroupVisibility(genome.getID(), group.getID(), rcx);
 					augExtra.extra.dropName = group.isUsingParent();
 					augExtra.extra.genomeIsRoot = false;
 					String activeSubsetID = group.getActiveSubset();
@@ -2898,9 +2915,9 @@ public class GenomePresentation implements ZoomPresentation {
 						}
 						augExtra.extra.replacementName = activeSubset
 								.getInheritedDisplayName(genome);
-						GroupProperties asgp = rcx.getLayout().getGroupProperties(Group
+						GroupProperties asgp = rcx.getCurrentLayout().getGroupProperties(Group
 								.getBaseID(activeSubsetID));
-						augExtra.extra.replacementColor = asgp.getColor(false, rcx.cRes);
+						augExtra.extra.replacementColor = asgp.getColor(false, rcx.getColorResolver());
 					}
 					String inherit = Group.buildInheritedID(groupRef,
 							root.getGeneration());
@@ -2909,10 +2926,10 @@ public class GenomePresentation implements ZoomPresentation {
 				// The renderer has to know the group's ID in the genome so that
 				// it can be exported in the web application.
 				augExtra.childId_ = childId;
-			  DataAccessContext rcxU = new DataAccessContext(rcx);
+			  StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx);
         rcxU.setGenome(useToRender);
 				rcxU.pushGhosted(false);				
-				renderer.render(moc, group, null, rcxU, augExtra);
+				renderer.render(moc, group, null, rcxU, mode, augExtra);
 				rcxU.popGhosted();
 			}
 		}
@@ -2925,20 +2942,20 @@ public class GenomePresentation implements ZoomPresentation {
   ** groups present in immediate parent, sized by root.
   */
   
-	private void presentUnusedGroups(ModelObjectCache moc, DataAccessContext rcx,
-			GenomeInstance parent, GenomeInstance genome) {
+	private void presentUnusedGroups(ModelObjectCache moc, StaticDataAccessContext rcx,
+			GenomeInstance parent, GenomeInstance genome, IRenderer.Mode mode) {
 	  
 		//
 		// Ghost groups not included in the child.
 		//
 
-		List<String> order = rcx.getLayout().getGroupDrawingOrder();
+		List<String> order = rcx.getCurrentLayout().getGroupDrawingOrder();
 		Iterator<Group> grit = parent.getGroupIteratorFromList(order);
 		while (grit.hasNext()) {
 			Group group = grit.next();
 			String childId = group.getID();
 			String groupRef = group.getID();
-			GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+			GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
 			if (gp.getLayer() != 0) {
 				continue;
 			}
@@ -2954,11 +2971,11 @@ public class GenomePresentation implements ZoomPresentation {
 			}
 			GroupFree renderer = gp.getRenderer();
 			if (needToGhost) { // not in child - ghost it:
-				group = ((GenomeInstance)rcx.getGenome()).getGroup(Group.getBaseID(groupRef));
+				group = ((GenomeInstance)rcx.getCurrentGenome()).getGroup(Group.getBaseID(groupRef));
 				rcx.pushGhosted(true);
 				GroupFree.AugmentedExtraInfo augExtra = new GroupFree.AugmentedExtraInfo();
 				augExtra.childId_ = childId;
-				renderer.render(moc, group, null, rcx, augExtra);
+				renderer.render(moc, group, null, rcx, mode, augExtra);
 				rcx.popGhosted();
 			}
 		}
@@ -2970,8 +2987,8 @@ public class GenomePresentation implements ZoomPresentation {
   ** Render groups in foregrond.  Used to obscure toggled groups.
   */
   
-	private void renderGroupsInForeground(ModelObjectCache moc, DataAccessContext rcx,
-																				GenomeInstance parent, GenomeInstance genome) {
+	private void renderGroupsInForeground(ModelObjectCache moc, StaticDataAccessContext rcx,
+																				GenomeInstance parent, GenomeInstance genome, IRenderer.Mode mode) {
 
 		//
 		// If we have no parent, we crank through collapsed groups to cover them up.
@@ -2980,27 +2997,27 @@ public class GenomePresentation implements ZoomPresentation {
 		//
 
 		GenomeInstance iterateOver = (parent == null) ? genome : parent;
-		List<String> order = rcx.getLayout().getGroupDrawingOrder();
+		List<String> order = rcx.getCurrentLayout().getGroupDrawingOrder();
 		Iterator<Group> grit = iterateOver.getGroupIteratorFromList(order);
 		
 		while (grit.hasNext()) {
 			Group group = grit.next();
 			if (parent == null) {
 				String groupRef = group.getID();
-				GroupProperties gp = rcx.getLayout().getGroupProperties(groupRef);
-				GroupSettings.Setting groupViz = rcx.gsm.getGroupVisibility(genome.getID(), groupRef, rcx);
+				GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(groupRef);
+				GroupSettings.Setting groupViz = rcx.getGSM().getGroupVisibility(genome.getID(), groupRef, rcx);
 				int layer = gp.getLayer();
 				if ((layer == 0) && (groupViz != GroupSettings.Setting.ACTIVE)) {
 					GroupFree renderer = gp.getRenderer();
-					DataAccessContext rcxU = new DataAccessContext(rcx);
+					StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx);
           rcxU.setGenome(genome);
 					rcxU.pushGhosted(false);
-					renderer.render(moc, group, null, rcxU, null);
+					renderer.render(moc, group, null, rcxU, mode, null);
 					rcxU.popGhosted();
 				}
 			} else {
 				String groupRef = group.getID();
-				GroupProperties gp = rcx.getLayout().getGroupProperties(groupRef);
+				GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(groupRef);
 				if (gp.getLayer() != 0) {
 					continue;
 				}
@@ -3008,7 +3025,7 @@ public class GenomePresentation implements ZoomPresentation {
 				while (cgrit.hasNext()) {
 					Group cgroup = cgrit.next();
 					if (Group.getBaseID(cgroup.getReference()).equals(groupRef)) {
-						GroupSettings.Setting groupViz = rcx.gsm.getGroupVisibility(genome.getID(), cgroup.getID(), rcx);
+						GroupSettings.Setting groupViz = rcx.getGSM().getGroupVisibility(genome.getID(), cgroup.getID(), rcx);
 						if (groupViz != GroupSettings.Setting.ACTIVE) {
 							GroupFree.AugmentedExtraInfo augExtra = new GroupFree.AugmentedExtraInfo();
 							augExtra.extra = new GroupFree.ExtraInfo();
@@ -3019,15 +3036,15 @@ public class GenomePresentation implements ZoomPresentation {
 							if (activeSubsetName != null) {
 								activeSubsetName = Group.buildInheritedID(activeSubsetName, parent.getGeneration());
 								Group activeSubset = parent.getGroup(activeSubsetName);
-								GroupProperties asgp = rcx.getLayout().getGroupProperties(activeSubsetName);
+								GroupProperties asgp = rcx.getCurrentLayout().getGroupProperties(activeSubsetName);
 								augExtra.extra.replacementName = activeSubset.getName();
-								augExtra.extra.replacementColor = asgp.getColor(false, rcx.cRes);
+								augExtra.extra.replacementColor = asgp.getColor(false, rcx.getColorResolver());
 							}
 							GroupFree renderer = gp.getRenderer();
-              DataAccessContext rcxU = new DataAccessContext(rcx);
+              StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx);
               rcxU.setGenome(parent);
               rcxU.pushGhosted(false);
-              renderer.render(moc, group, null, rcxU, augExtra);
+              renderer.render(moc, group, null, rcxU, mode, augExtra);
               rcxU.popGhosted();
 						}
 						break;
@@ -3043,7 +3060,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Do group intersection test
   */
   
-  private Intersection intersectGroups(DataAccessContext rcx, 
+  private Intersection intersectGroups(StaticDataAccessContext rcx, 
                                        GenomeInstance parent, GenomeInstance genome, Point2D pt,
                                        boolean inactiveOnly) {
 
@@ -3053,7 +3070,7 @@ public class GenomePresentation implements ZoomPresentation {
     // to either intersect only inactive groups, or all groups
     //
     
-    List<String> order = rcx.getLayout().getGroupIntersectionOrder();
+    List<String> order = rcx.getCurrentLayout().getGroupIntersectionOrder();
     Iterator<Group> grit = genome.getGroupIteratorFromList(order);
     while (grit.hasNext()) {
       Group group = grit.next();
@@ -3068,8 +3085,8 @@ public class GenomePresentation implements ZoomPresentation {
         groupRef = group.getReference();
         group = parent.getGroup(Group.getBaseID(groupRef));
       }  
-      GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
-      GroupSettings.Setting groupViz = rcx.gsm.getGroupVisibility(genome.getID(), origID, rcx);
+      GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
+      GroupSettings.Setting groupViz = rcx.getGSM().getGroupVisibility(genome.getID(), origID, rcx);
       boolean checkForIntersect = ((gp.getLayer() == 0) && 
                                    ((inactiveOnly && (groupViz != GroupSettings.Setting.ACTIVE)) ||
                                     !inactiveOnly));
@@ -3078,7 +3095,7 @@ public class GenomePresentation implements ZoomPresentation {
         augExtra.extra = new GroupFree.ExtraInfo();
         augExtra.extra.genomeIsRoot = (parent == null);
         GroupFree renderer = gp.getRenderer();
-        DataAccessContext rcxU = new DataAccessContext(rcx);
+        StaticDataAccessContext rcxU = new StaticDataAccessContext(rcx);
         rcxU.setGenome(useToRender);
         Intersection inter = renderer.intersects(group, pt, rcxU, augExtra);
         if (inter != null) {
@@ -3141,7 +3158,7 @@ public class GenomePresentation implements ZoomPresentation {
   **
   */
   
-  private MaskData maskingReduction(DataAccessContext rcxM) {
+  private MaskData maskingReduction(StaticDataAccessContext rcxM) {
  
     MaskData retval = new MaskData();
     retval.nonBlackHoles = nonBlackHoles(rcxM);
@@ -3149,23 +3166,23 @@ public class GenomePresentation implements ZoomPresentation {
       retval.candidates = new HashSet<String>();
     }
      
-    String ovrID = rcxM.oso.getCurrentOverlay();
+    String ovrID = rcxM.getOSO().getCurrentOverlay();
     if (ovrID == null) {
       return (retval);
     }    
    
-    NetOverlayOwner owner = rcxM.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxM.getGenomeID());
+    NetOverlayOwner owner = rcxM.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxM.getCurrentGenomeID());
     NetworkOverlay novr = owner.getNetworkOverlay(ovrID);
-    NetOverlayProperties nop = rcxM.getLayout().getNetOverlayProperties(ovrID);
+    NetOverlayProperties nop = rcxM.getCurrentLayout().getNetOverlayProperties(ovrID);
     boolean isOpq = (nop.getType() == NetOverlayProperties.OvrType.OPAQUE);
-    NetModuleFree.CurrentSettings settings = rcxM.oso.getCurrentOverlaySettings();
+    NetModuleFree.CurrentSettings settings = rcxM.getOSO().getCurrentOverlaySettings();
  
     Iterator<NetModule> modit = novr.getModuleIterator();
     while (modit.hasNext()) {
       NetModule nmod = modit.next();
       String modID = nmod.getID();
       NetModuleProperties nmp = nop.getNetModuleProperties(modID);
-      boolean isRevealed = rcxM.oso.getRevealedModules().set.contains(modID);
+      boolean isRevealed = rcxM.getOSO().getRevealedModules().set.contains(modID);
       boolean quickFade = (nmp.getNameFadeMode() == NetModuleProperties.FADE_QUICKLY);
       boolean nameHiding = (isRevealed && isOpq && quickFade);
       boolean labelViz = !nameHiding && ((quickFade) ? settings.fastDecayLabelVisible : true);
@@ -3220,21 +3237,21 @@ public class GenomePresentation implements ZoomPresentation {
   ** Select an item
   */
   
-  public List<Intersection.AugmentedIntersection> selectionGuts(int x, int y, DataAccessContext rcxS, boolean nodesFirst, 
+  public List<Intersection.AugmentedIntersection> selectionGuts(int x, int y, StaticDataAccessContext rcxS, boolean nodesFirst, 
                                                                 boolean omitGroups, boolean doOverlay) {
  
-    String currentOverlay = rcxS.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = rcxS.oso.getCurrentNetModules();
-    int intersectMask = rcxS.oso.getCurrentOverlaySettings().intersectionMask;
+    String currentOverlay = rcxS.getOSO().getCurrentOverlay();
+    TaggedSet currentNetMods = rcxS.getOSO().getCurrentNetModules();
+    int intersectMask = rcxS.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> currentNetModSet = (currentNetMods == null) ? null : currentNetMods.set;
-    TaggedSet revKeys = rcxS.oso.getRevealedModules();
+    TaggedSet revKeys = rcxS.getOSO().getRevealedModules();
     Set<String> revMods = (revKeys == null) ? null : revKeys.set; 
 
     //
     // Crank through the items and ask the renderers for an intersection
     //
 
-    Genome genome = rcxS.getGenome();
+    Genome genome = rcxS.getCurrentGenome();
     if (genome == null) { // not showing anything
       return (null);
     }
@@ -3314,7 +3331,7 @@ public class GenomePresentation implements ZoomPresentation {
       while (git.hasNext()) {
         Gene gene = git.next();
         String gid = gene.getID();
-        IRenderer render = rcxS.getLayout().getNodeProperties(gene.getID()).getRenderer();      
+        IRenderer render = rcxS.getCurrentLayout().getNodeProperties(gene.getID()).getRenderer();      
         Intersection inter = render.intersects(gene, pt, rcxS, null);
         if ((inter != null) && 
             ((overMask.candidates == null) || 
@@ -3327,7 +3344,7 @@ public class GenomePresentation implements ZoomPresentation {
       while (nit.hasNext()) {
         Node node = nit.next();
         String nid = node.getID();
-        IRenderer render = rcxS.getLayout().getNodeProperties(node.getID()).getRenderer();      
+        IRenderer render = rcxS.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();      
         Intersection inter = render.intersects(node, pt, rcxS, null);
         if ((inter != null) && 
             ((overMask.candidates == null) || 
@@ -3353,7 +3370,7 @@ public class GenomePresentation implements ZoomPresentation {
         retval.add(ait);
       }
      
-      NetModuleFree.CurrentSettings settings = rcxS.oso.getCurrentOverlaySettings();
+      NetModuleFree.CurrentSettings settings = rcxS.getOSO().getCurrentOverlaySettings();
       if (settings.intersectionMask == NetModuleFree.CurrentSettings.ALL_MASKED) {
         inter = intersectANetModuleElement(x, y, rcxS, NetModuleIntersect.NET_MODULE_INTERIOR);
         if (inter != null) {
@@ -3383,10 +3400,10 @@ public class GenomePresentation implements ZoomPresentation {
           continue;
         }
         seenSrc.add(srcID);
-        LinkageFree render = (LinkageFree)rcxS.getLayout().getLinkProperties(link.getID()).getRenderer();      
+        LinkageFree render = (LinkageFree)rcxS.getCurrentLayout().getLinkProperties(link.getID()).getRenderer();      
         Intersection inter = render.intersects(link, pt, rcxS, null);
         // already selected gets a free pass
-        if ((inter != null) && intersectsSelectedLinkSegment(link, inter, rcxS.getLayout())) {  
+        if ((inter != null) && intersectsSelectedLinkSegment(link, inter, rcxS.getCurrentLayout())) {  
           retval.add(new Intersection.AugmentedIntersection(inter, Intersection.IS_LINK));
         }   
         inter = filterForModuleMask(rcxS, pt, inter, currentOverlay, currentNetModSet, revMods, intersectMask);
@@ -3401,7 +3418,7 @@ public class GenomePresentation implements ZoomPresentation {
       while (git.hasNext()) {
         Gene gene = git.next();
         String gid = gene.getID();
-        IRenderer render = rcxS.getLayout().getNodeProperties(gene.getID()).getRenderer();      
+        IRenderer render = rcxS.getCurrentLayout().getNodeProperties(gene.getID()).getRenderer();      
         Intersection inter = render.intersects(gene, pt, rcxS, null);
         if ((inter != null) && 
             ((overMask.candidates == null) || 
@@ -3415,7 +3432,7 @@ public class GenomePresentation implements ZoomPresentation {
       while (nit.hasNext()) {
         Node node = nit.next();
         String nid = node.getID();
-        IRenderer render = rcxS.getLayout().getNodeProperties(node.getID()).getRenderer();      
+        IRenderer render = rcxS.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();      
         Intersection inter = render.intersects(node, pt, rcxS, null);   
         if ((inter != null) && 
             ((overMask.candidates == null) || 
@@ -3429,7 +3446,7 @@ public class GenomePresentation implements ZoomPresentation {
     Iterator<Note> ntit = genome.getNoteIterator();
     while (ntit.hasNext()) {
       Note note = ntit.next();
-      IRenderer render = rcxS.getLayout().getNoteProperties(note.getID()).getRenderer();      
+      IRenderer render = rcxS.getCurrentLayout().getNoteProperties(note.getID()).getRenderer();      
       Intersection inter = render.intersects(note, pt, rcxS, null);
       inter = filterForModuleMask(rcxS, pt, inter, currentOverlay, currentNetModSet, revMods, intersectMask);
       if (inter != null) {
@@ -3461,14 +3478,14 @@ public class GenomePresentation implements ZoomPresentation {
   ** Intersect a bunch of things, return a list of intersections
   */
   
-  private List<Intersection> selectionGuts(Rectangle rect, DataAccessContext rcxG, boolean nodesFirst) {
+  private List<Intersection> selectionGuts(Rectangle rect, StaticDataAccessContext rcxG, boolean nodesFirst) {
 
     ArrayList<Intersection> retval = new ArrayList<Intersection>();
-    String currentOverlay = rcxG.oso.getCurrentOverlay();
-    TaggedSet currentNetMods = rcxG.oso.getCurrentNetModules();
-    int intersectMask = rcxG.oso.getCurrentOverlaySettings().intersectionMask;
+    String currentOverlay = rcxG.getOSO().getCurrentOverlay();
+    TaggedSet currentNetMods = rcxG.getOSO().getCurrentNetModules();
+    int intersectMask = rcxG.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> currentNetModSet = (currentNetMods == null) ? null : currentNetMods.set;
-    TaggedSet revKeys = rcxG.oso.getRevealedModules();
+    TaggedSet revKeys = rcxG.getOSO().getRevealedModules();
     Set<String> revMods = (revKeys == null) ? null : revKeys.set;    
        
     //
@@ -3498,19 +3515,19 @@ public class GenomePresentation implements ZoomPresentation {
     
     // Sometimes we want to intersect nodes first
     if (nodesFirst) {
-      Iterator<Gene> git = rcxG.getGenome().getGeneIterator();    
+      Iterator<Gene> git = rcxG.getCurrentGenome().getGeneIterator();    
       while (git.hasNext()) {
         Gene gene = git.next();
-        IRenderer render = rcxG.getLayout().getNodeProperties(gene.getID()).getRenderer();      
+        IRenderer render = rcxG.getCurrentLayout().getNodeProperties(gene.getID()).getRenderer();      
         Intersection inter = render.intersects(gene, rect, false, rcxG, null);
         if ((inter != null) && ((overMask.candidates == null) || overMask.candidates.contains(inter.getObjectID()))) {
           retval.add(inter);
         }
       }
-      Iterator<Node> nit = rcxG.getGenome().getNodeIterator();
+      Iterator<Node> nit = rcxG.getCurrentGenome().getNodeIterator();
       while (nit.hasNext()) {
         Node node = nit.next();
-        IRenderer render = rcxG.getLayout().getNodeProperties(node.getID()).getRenderer();      
+        IRenderer render = rcxG.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();      
         Intersection inter = render.intersects(node, rect, false, rcxG, null);
         if ((inter != null) && ((overMask.candidates == null) || overMask.candidates.contains(inter.getObjectID()))) {
           retval.add(inter);
@@ -3521,7 +3538,7 @@ public class GenomePresentation implements ZoomPresentation {
     if (!linksAreHidden(rcxG)) {
       ArrayList<Intersection> linkOnlyRetval = new ArrayList<Intersection>();
       HashSet<String> seenSrc = new HashSet<String>();
-      Iterator<Linkage> lit = rcxG.getGenome().getLinkageIterator();
+      Iterator<Linkage> lit = rcxG.getCurrentGenome().getLinkageIterator();
       while (lit.hasNext()) {
         Linkage link = lit.next();
         // 1/30/09: NOTE that every link through a segment is getting intersected, not just one
@@ -3532,7 +3549,7 @@ public class GenomePresentation implements ZoomPresentation {
           continue;
         }
         seenSrc.add(srcID);
-        LinkageFree render = (LinkageFree)rcxG.getLayout().getLinkProperties(link.getID()).getRenderer(); 
+        LinkageFree render = (LinkageFree)rcxG.getCurrentLayout().getLinkProperties(link.getID()).getRenderer(); 
         Intersection inter = render.intersects(link, rect, false, rcxG, null);
         if (inter != null) {
           linkOnlyRetval.add(inter);
@@ -3547,20 +3564,20 @@ public class GenomePresentation implements ZoomPresentation {
     }
  
     if (!nodesFirst) {
-      Iterator<Gene> git = rcxG.getGenome().getGeneIterator();    
+      Iterator<Gene> git = rcxG.getCurrentGenome().getGeneIterator();    
       while (git.hasNext()) {
         Gene gene = git.next();
-        IRenderer render = rcxG.getLayout().getNodeProperties(gene.getID()).getRenderer();      
+        IRenderer render = rcxG.getCurrentLayout().getNodeProperties(gene.getID()).getRenderer();      
         Intersection inter = render.intersects(gene, rect, false, rcxG, null);
         if ((inter != null) && ((overMask.candidates == null) || overMask.candidates.contains(inter.getObjectID()))) {
           retval.add(inter);
         }
       }
  
-      Iterator<Node> nit = rcxG.getGenome().getNodeIterator();
+      Iterator<Node> nit = rcxG.getCurrentGenome().getNodeIterator();
       while (nit.hasNext()) {
         Node node = nit.next();
-        IRenderer render = rcxG.getLayout().getNodeProperties(node.getID()).getRenderer();      
+        IRenderer render = rcxG.getCurrentLayout().getNodeProperties(node.getID()).getRenderer();      
         Intersection inter = render.intersects(node, rect, false, rcxG, null);
         if ((inter != null) && ((overMask.candidates == null) || overMask.candidates.contains(inter.getObjectID()))) {
           retval.add(inter);
@@ -3597,7 +3614,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Render the floater
   */
   
-  private void renderFloater(ModelObjectCache floaterCache, DataAccessContext rcxF) { //boolean showBubbles, double pixDiam) {
+  private void renderFloater(ModelObjectCache floaterCache, StaticDataAccessContext rcxF) {
     if (floater_ == null) {
       return;
     } else if (floater_ instanceof ArrayList) {
@@ -3642,7 +3659,7 @@ public class GenomePresentation implements ZoomPresentation {
         augExtra.extra.vizVal = GroupSettings.Setting.ACTIVE;
         optArg = augExtra;
         if (floaterCache != null) {
-          gFRender.render(floaterCache, git, null, rcxF, optArg);
+          gFRender.render(floaterCache, git, null, rcxF, IRenderer.Mode.NORMAL, optArg);
         }
         return;
       } else if (git instanceof Note) {
@@ -3650,7 +3667,7 @@ public class GenomePresentation implements ZoomPresentation {
       }
       
       if (floaterCache != null) {
-	      render.render(floaterCache, git, null, rcxF, optArg);
+	      render.render(floaterCache, git, null, rcxF, IRenderer.Mode.NORMAL, optArg);
       }
     }
     return;
@@ -3744,19 +3761,19 @@ public class GenomePresentation implements ZoomPresentation {
   ** Common gaggle selection operations
   */
   
-  private void gaggleSelectionSupport(GooseAppInterface goose, DataAccessContext rcx) {
+  private void gaggleSelectionSupport(GooseAppInterface goose, StaticDataAccessContext rcx) {
     SelectionSupport ss = goose.getSelectionSupport();
-    if ((rcx.getGenome() == null) || selectionKeys_.isEmpty()) {
+    if ((rcx.getCurrentGenome() == null) || selectionKeys_.isEmpty()) {
       ss.setSelections(new ArrayList<String>());
       ss.setOutboundNetwork(new SelectionSupport.NetworkForSpecies());
       return;
     }
-    Genome gen = rcx.getGenome();
+    Genome gen = rcx.getCurrentGenome();
     Map<String, String> uniques = rcx.getDBGenome().genUnique();
     Set<String> selections = cullNodeSelections(gen, uniques, false);
 
     ss.setSelections(new ArrayList<String>(selections));
-    SelectionSupport.NetworkForSpecies nfs = selectionsToGaggleNets(gen, uniques, rcx.getLayout());
+    SelectionSupport.NetworkForSpecies nfs = selectionsToGaggleNets(gen, uniques, rcx.getCurrentLayout());
     ss.setOutboundNetwork(nfs);
     return;
   }   
@@ -3927,7 +3944,7 @@ public class GenomePresentation implements ZoomPresentation {
   ** Generate external selection event info
   */
   
-  public ExternalSelectionChangeEvent selectionsForExternalEvents(DataAccessContext rcx) {
+  public ExternalSelectionChangeEvent selectionsForExternalEvents(StaticDataAccessContext rcx) {
     
     //
     // Get links through selected segments:
@@ -3939,11 +3956,11 @@ public class GenomePresentation implements ZoomPresentation {
       String key = sit.next();
       Intersection inter = selectionKeys_.get(key);
       String itemID = inter.getObjectID();
-      Linkage lnk = rcx.getGenome().getLinkage(itemID);
+      Linkage lnk = rcx.getCurrentGenome().getLinkage(itemID);
       if (lnk == null) {
         continue;
       }
-      LinkProperties lp = rcx.getLayout().getLinkProperties(itemID);
+      LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(itemID);
       LinkSegmentID[] segIDs = inter.segmentIDsFromIntersect();      
       if (segIDs == null) {
         List<String> allLinks = ((BusProperties)lp).getLinkageList();
@@ -3966,7 +3983,7 @@ public class GenomePresentation implements ZoomPresentation {
       String key = sit.next();
       Intersection inter = selectionKeys_.get(key);
       String itemID = inter.getObjectID();
-      Iterator<Node> git = rcx.getGenome().getAllNodeIterator();    
+      Iterator<Node> git = rcx.getCurrentGenome().getAllNodeIterator();    
       while (git.hasNext()) {
         Node node = git.next();
         String nodeID = node.getID();
@@ -3985,14 +4002,14 @@ public class GenomePresentation implements ZoomPresentation {
     Iterator<String> slit = selectedLinks.iterator();
     while (slit.hasNext()) {
       String linkID = slit.next();
-      Linkage link = rcx.getGenome().getLinkage(linkID);
+      Linkage link = rcx.getCurrentGenome().getLinkage(linkID);
       if (link == null) {
         continue;
       }
       linkSelections.add(linkID);    
     }
  
-    ExternalSelectionChangeEvent ce = new ExternalSelectionChangeEvent(rcx.getGenomeID(), selectedNodes, linkSelections);
+    ExternalSelectionChangeEvent ce = new ExternalSelectionChangeEvent(rcx.getCurrentGenomeID(), selectedNodes, linkSelections);
     return (ce);
   }
 }

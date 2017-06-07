@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,12 +32,12 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DataUtil;
-import org.xml.sax.Attributes;
-
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
+
+import org.xml.sax.Attributes;
 
 /****************************************************************************
 **
@@ -52,9 +52,9 @@ class Perturbation {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private ArrayList timeSpans_;
+  private ArrayList<TimeSpan> timeSpans_;
   private ArrayList<String> investigators_;
-  private ArrayList sources_;
+  private ArrayList<Source> sources_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -68,9 +68,9 @@ class Perturbation {
   */
 
    Perturbation() {
-    timeSpans_ = new ArrayList();
+    timeSpans_ = new ArrayList<TimeSpan>();
     investigators_ = new ArrayList<String>();
-    sources_ = new ArrayList();    
+    sources_ = new ArrayList<Source>();    
   }
   
   /***************************************************************************
@@ -79,20 +79,20 @@ class Perturbation {
   */
 
    Perturbation(Perturbation other) {
-    this.timeSpans_ = new ArrayList();
-    Iterator otit = other.timeSpans_.iterator();
+    this.timeSpans_ = new ArrayList<TimeSpan>();
+    Iterator<TimeSpan> otit = other.timeSpans_.iterator();
     while (otit.hasNext()) {
-      this.timeSpans_.add(new TimeSpan((TimeSpan)otit.next()));
+      this.timeSpans_.add(new TimeSpan(otit.next()));
     }
     //
     // Investigators are just strings:
     //
     this.investigators_ = new ArrayList<String>(other.investigators_);
 
-    this.sources_ = new ArrayList();
-    Iterator osit = other.sources_.iterator();
+    this.sources_ = new ArrayList<Source>();
+    Iterator<Source> osit = other.sources_.iterator();
     while (osit.hasNext()) {
-      this.sources_.add(new Source((Source)osit.next()));
+      this.sources_.add(new Source(osit.next()));
     }    
   }
   
@@ -109,9 +109,9 @@ class Perturbation {
   */
   
    boolean isActiveAtTime(MinMax range) {
-    Iterator tsit = getTimeSpans();
+    Iterator<TimeSpan> tsit = getTimeSpans();
     while (tsit.hasNext()) {
-      TimeSpan t = (TimeSpan)tsit.next();  
+      TimeSpan t = tsit.next();  
       if (t.getMinMaxSpan().equals(range)) {
         if (t.hasStandardTime()) {
           return (true);
@@ -126,20 +126,20 @@ class Perturbation {
   ** Answer if our set of sources matches the given set
   */
   
-   boolean sourcesMatch(List otherSources) {
+   boolean sourcesMatch(List<Source> otherSources) {
     if (otherSources.size() != sources_.size()) {
       return (false);
     }
     QPCRData.SourceComparator srcCmp = new QPCRData.SourceComparator();     
-    TreeSet mySorted = new TreeSet(srcCmp);
+    TreeSet<Source> mySorted = new TreeSet<Source>(srcCmp);
     mySorted.addAll(sources_);
-    TreeSet otherSorted = new TreeSet(srcCmp);
+    TreeSet<Source> otherSorted = new TreeSet<Source>(srcCmp);
     otherSorted.addAll(otherSources);
-    Iterator msit = mySorted.iterator();
-    Iterator osit = otherSorted.iterator();    
+    Iterator<Source> msit = mySorted.iterator();
+    Iterator<Source> osit = otherSorted.iterator();    
     while (msit.hasNext()) {
-      Source ms = (Source)msit.next();
-      Source os = (Source)osit.next();
+      Source ms = msit.next();
+      Source os = osit.next();
       if (srcCmp.compare(ms, os) != 0) {
         return (false);
       }
@@ -162,7 +162,7 @@ class Perturbation {
   ** Get an iterator over the sources
   */
   
-   Iterator getSources() {
+   Iterator<Source> getSources() {
     return (sources_.iterator());
   }
   
@@ -191,7 +191,7 @@ class Perturbation {
   */
   
    Source getSource(int index) {
-    return ((Source)sources_.get(index));
+    return (sources_.get(index));
   }
 
   /***************************************************************************
@@ -206,14 +206,14 @@ class Perturbation {
       return (null);
     } else if (num == 1) {
       if (useDisplayForSingle) {
-        return (((Source)sources_.get(0)).getDisplayValue());
+        return (sources_.get(0).getDisplayValue());
       } else {
-        return (((Source)sources_.get(0)).getBaseType());       
+        return (sources_.get(0).getBaseType());       
       }
     } else {
       StringBuffer buf = new StringBuffer();
       for (int i = 0; i < num; i++) {
-        Source src = (Source)sources_.get(i);
+        Source src = sources_.get(i);
         buf.append(src.getDisplayValue());
         if (i < num - 1) {
           buf.append(" + ");
@@ -320,7 +320,7 @@ class Perturbation {
    void dropTime(MinMax span) {
     int num = timeSpans_.size();
     for (int i = 0; i < num; i++) {
-      TimeSpan ts = (TimeSpan)timeSpans_.get(i);
+      TimeSpan ts = timeSpans_.get(i);
       if (ts.getMinMaxSpan().equals(span)) {
         timeSpans_.remove(i);
         return;
@@ -334,7 +334,7 @@ class Perturbation {
   ** Get an iterator over the time spans
   */
   
-   Iterator getTimeSpans() {
+   Iterator<TimeSpan> getTimeSpans() {
     return (timeSpans_.iterator());
   }
   
@@ -344,9 +344,9 @@ class Perturbation {
   */
   
    TimeSpan getTimeSpan(MinMax span) {
-    Iterator tsit = getTimeSpans();
+    Iterator<TimeSpan> tsit = getTimeSpans();
     while (tsit.hasNext()) {
-      TimeSpan ts = (TimeSpan)tsit.next();
+      TimeSpan ts = tsit.next();
       if (ts.getMinMaxSpan().equals(span)) {
         return (ts);
       }
@@ -359,18 +359,18 @@ class Perturbation {
   ** Get the set of footnote numbers used by this perturbation
   */
   
-   Set getFootnoteNumbers() {
-    HashSet retval = new HashSet();
-    Iterator srcs = getSources();
+   Set<String> getFootnoteNumbers() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<Source> srcs = getSources();
     while (srcs.hasNext()) {
-      Source src = (Source)srcs.next();
-      List srcNotes = src.getFootnoteNumbers();
+      Source src = srcs.next();
+      List<String> srcNotes = src.getFootnoteNumbers();
       retval.addAll(srcNotes);
     }
-    Iterator times = getTimeSpans();
+    Iterator<TimeSpan> times = getTimeSpans();
     while (times.hasNext()) {
-      TimeSpan time = (TimeSpan)times.next();
-      Set notes = time.getFootnoteNumbers();
+      TimeSpan time = times.next();
+      Set<String> notes = time.getFootnoteNumbers();
       retval.addAll(notes);
     }    
     return (retval);
@@ -384,9 +384,9 @@ class Perturbation {
   
    String displayString(boolean footnotes) {
     StringBuffer buf = new StringBuffer();
-    Iterator sit = getSources();
+    Iterator<Source> sit = getSources();
     while (sit.hasNext()) {
-      Source src = (Source)sit.next();
+      Source src = sit.next();
       buf.append(src.getDisplayValue());
       if (footnotes) {
         String notes = src.getNotes();
@@ -409,12 +409,12 @@ class Perturbation {
   **
   */
   
-   void prepForHTML(List mapList, List srcNames) {
+   void prepForHTML(List<SortedMap<String, Map<MinMax, TimeSpan>>> mapList, List<String> srcNames) {
      if (srcNames != null) {
        boolean gotIt = false;
-       Iterator srcIt = sources_.iterator();
+       Iterator<Source> srcIt = sources_.iterator();
        while (srcIt.hasNext()) {
-         Source src = (Source)srcIt.next();
+         Source src = srcIt.next();
          if (DataUtil.containsKey(srcNames, src.getBaseType())) {
            gotIt = true;
            break;
@@ -435,12 +435,12 @@ class Perturbation {
   **
   */
   
-  boolean matchesForHTML(List srcNames) {  
+  boolean matchesForHTML(List<String> srcNames) {  
    if (srcNames != null) {
       boolean gotIt = false;
-      Iterator srcIt = sources_.iterator();
+      Iterator<Source> srcIt = sources_.iterator();
       while (srcIt.hasNext()) {
-        Source src = (Source)srcIt.next();
+        Source src = srcIt.next();
         if (DataUtil.containsKey(srcNames, src.getBaseType())) {
           gotIt = true;
           break;
@@ -460,8 +460,9 @@ class Perturbation {
   */
   
   boolean writeHTML(PrintWriter out, Indenter ind, String geneTag, 
-                    int numRows, ArrayList timeCols, QpcrTablePublisher qtp, 
-                    SortedMap gbi, boolean breakOutInvest, List srcNames, BTState appState) {
+                    int numRows, List<MinMax> timeCols, QpcrTablePublisher qtp, 
+                    SortedMap<String, Map<MinMax, TimeSpan>> gbi, 
+                    boolean breakOutInvest, List<String> srcNames, DataAccessContext dacx) {
      
     if (!matchesForHTML(srcNames)) {
       return (false);
@@ -501,9 +502,9 @@ class Perturbation {
     }
     out.println(">");
     ind.up();
-    Iterator srcs = getSources();   
+    Iterator<Source> srcs = getSources();   
     while (srcs.hasNext()) {
-      Source src = (Source)srcs.next();
+      Source src = srcs.next();
       src.writeHTML(out, ind, srcs.hasNext(), qtp, false);
     }      
     ind.down().indent();
@@ -514,24 +515,24 @@ class Perturbation {
     // time points in the span to be called out:
     //
     
-    HashMap timeProfs = new HashMap();
-    Iterator times = timeSpans_.iterator();
+    HashMap<MinMax, TimeSpan.SpanTimeProfile> timeProfs = new HashMap<MinMax, TimeSpan.SpanTimeProfile>();
+    Iterator<TimeSpan> times = timeSpans_.iterator();
     while (times.hasNext()) {
-      TimeSpan time = (TimeSpan)times.next();
+      TimeSpan time = times.next();
       TimeSpan.SpanTimeProfile stp = time.getBatchTimeProfile();
       timeProfs.put(time.getMinMaxSpan(), stp);
     }
      
     if (breakOutInvest) {
-      Iterator gbiit = gbi.keySet().iterator();
+      Iterator<String> gbiit = gbi.keySet().iterator();
       while (gbiit.hasNext()) {
-        String invest = (String)gbiit.next();
-        HashMap byInv = (HashMap)gbi.get(invest);
-        writeOutTimeSpans(out, ind, qtp, timeCols, new ArrayList(byInv.values()), timeProfs, appState);
+        String invest = gbiit.next();
+        Map<MinMax, TimeSpan> byInv = gbi.get(invest);
+        writeOutTimeSpans(out, ind, qtp, timeCols, new ArrayList<TimeSpan>(byInv.values()), timeProfs, dacx);
         if (invest.equals("WJRL_HACKASTIC_KLUDGE")) {
           writeOutInvestigators(out, ind, qtp, null, 0);
         } else {
-          List investList = Perturbation.unformatInvestigators(invest);
+          List<String> investList = Perturbation.unformatInvestigators(invest);
           writeOutInvestigators(out, ind, qtp, investList.iterator(), investList.size());
         }
         ind.down().indent();       
@@ -539,10 +540,10 @@ class Perturbation {
       }
     } else {
       // Crank through time spans, output results if needed:
-      writeOutTimeSpans(out, ind, qtp, timeCols, timeSpans_, timeProfs, appState);  
+      writeOutTimeSpans(out, ind, qtp, timeCols, timeSpans_, timeProfs, dacx);  
 
       // Output the investigators column:
-      Iterator iit = getInvestigators();
+      Iterator<String> iit = getInvestigators();
       int icount = investigators_.size();
       writeOutInvestigators(out, ind, qtp, iit, icount);
       ind.down().indent();       
@@ -559,22 +560,23 @@ class Perturbation {
   */
   
   void writeOutTimeSpans(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, 
-                         List timeCols, List timeSpans, Map timeProfs, BTState appState) {  
+                         List<MinMax> timeCols, List<TimeSpan> timeSpans, 
+                         Map<MinMax, TimeSpan.SpanTimeProfile> timeProfs, DataAccessContext dacx) {  
     // Crank through time spans, output results if needed:
-    Iterator tcit= timeCols.iterator();
+    Iterator<MinMax> tcit= timeCols.iterator();
     while (tcit.hasNext()) {
-      MinMax tcol = (MinMax)tcit.next();
+      MinMax tcol = tcit.next();
       ind.indent();
       out.println("<td>");
       ind.up();      
-      Iterator times = timeSpans.iterator();
+      Iterator<TimeSpan> times = timeSpans.iterator();
       boolean haveMatch = false;
       while (times.hasNext()) {
-        TimeSpan time = (TimeSpan)times.next();
+        TimeSpan time = times.next();
         MinMax mms = time.getMinMaxSpan();
         if (mms.equals(tcol)) {
-          TimeSpan.SpanTimeProfile stp = (TimeSpan.SpanTimeProfile)timeProfs.get(mms);
-          time.writeHTML(out, ind, qtp, stp, appState);
+          TimeSpan.SpanTimeProfile stp = timeProfs.get(mms);
+          time.writeHTML(out, ind, qtp, stp, dacx);
           haveMatch = true;
           break;
         }
@@ -595,7 +597,7 @@ class Perturbation {
   **
   */
   
-  void writeOutInvestigators(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Iterator iit, int icount) {
+  void writeOutInvestigators(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Iterator<String> iit, int icount) {
     ind.indent();
     out.println("<td>");
     ind.up();
@@ -604,7 +606,7 @@ class Perturbation {
       out.println("<p>&nbsp;</p>");
     } else {
       while (iit.hasNext()) {
-        String inv = (String)iit.next();
+        String inv = iit.next();
         ind.indent();
         if (icount > 0) {
           qtp.paragraph(false);
@@ -632,36 +634,36 @@ class Perturbation {
   **
   */
   
-  SortedMap groupByInvestigator() {
-    TreeMap byInvest = new TreeMap();
-    Iterator times = getTimeSpans();
+  SortedMap<String, Map<MinMax, TimeSpan>> groupByInvestigator() {
+    TreeMap<String, Map<MinMax, TimeSpan>> byInvest = new TreeMap<String, Map<MinMax, TimeSpan>>();
+    Iterator<TimeSpan> times = getTimeSpans();
     while (times.hasNext()) {
-      TimeSpan time = (TimeSpan)times.next();
-      Iterator bit = time.getBatches();
+      TimeSpan time = times.next();
+      Iterator<Batch> bit = time.getBatches();
       while (bit.hasNext()) {
-        Batch bat = (Batch)bit.next();
+        Batch bat = bit.next();
         String invest = bat.getInvestigators();
         if ((invest == null) || invest.trim().equals("")) {
           invest = "WJRL_HACKASTIC_KLUDGE";
         }    
-        HashMap tsMapByInv = (HashMap)byInvest.get(invest);
+        Map<MinMax, TimeSpan> tsMapByInv = byInvest.get(invest);
         if (tsMapByInv == null) {
-          tsMapByInv = new HashMap();
+          tsMapByInv = new HashMap<MinMax, TimeSpan>();
           byInvest.put(invest, tsMapByInv);         
         }
         MinMax tmm = time.getMinMaxSpan();
-        TimeSpan tsByInv = (TimeSpan)tsMapByInv.get(tmm);
+        TimeSpan tsByInv = tsMapByInv.get(tmm);
         if (tsByInv == null) {
           tsByInv = new TimeSpan(tmm);
           if (time.haveRegionRestrictions()) {
-            Iterator grrit = time.getRegionRestrictions();
+            Iterator<String> grrit = time.getRegionRestrictions();
             while (grrit.hasNext()) {
-              tsByInv.addRegionRestriction((String)grrit.next());
+              tsByInv.addRegionRestriction(grrit.next());
             }
           } 
           tsMapByInv.put(tmm, tsByInv);
         }
-        tsByInv.addBatch((Batch)bat.clone());
+        tsByInv.addBatch(bat.clone());
       }
     }
     return (byInvest);
@@ -716,8 +718,9 @@ class Perturbation {
   ** Handle the attributes for the keyword
   **
   */
-  
-   static Perturbation buildFromXML(String elemName, 
+   
+  @SuppressWarnings("unused")
+  static Perturbation buildFromXML(String elemName, 
                                           Attributes attrs) throws IOException {
     if (!elemName.equals("perturbation")) {
       return (null);
@@ -732,12 +735,12 @@ class Perturbation {
   **
   */
   
-   static String formatInvestigators(List investList) {
+   static String formatInvestigators(List<String> investList) {
     StringBuffer buf = new StringBuffer();
-    Iterator iit = investList.iterator();
+    Iterator<String> iit = investList.iterator();
     int icount = investList.size();
     while (iit.hasNext()) {
-      String inv = (String)iit.next();
+      String inv = iit.next();
       buf.append(inv);
       icount--;
       if (icount == 1) {
@@ -755,9 +758,9 @@ class Perturbation {
   **
   */
   
-   static List unformatInvestigators(String invest) {
+   static List<String> unformatInvestigators(String invest) {
     
-    ArrayList retval = new ArrayList();
+    ArrayList<String> retval = new ArrayList<String>();
     invest = invest.replaceAll("&", ",");
     String[] result = invest.split(",");
     int numRes = result.length;

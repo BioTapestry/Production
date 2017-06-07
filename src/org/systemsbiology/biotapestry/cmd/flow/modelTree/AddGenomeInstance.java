@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,11 +26,13 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -42,11 +44,11 @@ import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.dialogs.GenomeInstanceCreationDialogFactory;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -67,8 +69,7 @@ public class AddGenomeInstance extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddGenomeInstance(BTState appState) {
-    super(appState);
+  public AddGenomeInstance() {
     name =  "command.AddInstance";
     desc = "command.AddInstance";
     icon = "CreateSubmodel24.gif";
@@ -88,14 +89,21 @@ public class AddGenomeInstance extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx) {
-    if (!appState_.getIsEditor() || (key == null)) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx, UIComponentSource uics) {
+    if (!uics.getIsEditor() || (key == null)) {
       return (false);
     } else if ((key.modType == XPlatModelNode.ModelType.DYNAMIC_INSTANCE) || 
                (key.modType == XPlatModelNode.ModelType.DYNAMIC_PROXY))  {
       return (false);
+    } else if (key.modType == XPlatModelNode.ModelType.SUPER_ROOT) {
+      return (false);
+    } else if (key.modType == XPlatModelNode.ModelType.DB_GENOME) {
+      return (true);     
+    } else {
+      NavTree nt = dacx.getGenomeSource().getModelHierarchy();
+      TreeNode node = nt.resolveNode(key);
+      return (nt.ancestorIsStatic(node));
     }
-    return (true);
   }
   
   /***************************************************************************
@@ -103,7 +111,8 @@ public class AddGenomeInstance extends AbstractControlFlow {
   ** Answer if we are enabled
   ** 
   */
-    
+  
+  @Override  
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.isNotDynamicInstance());
   }
@@ -115,8 +124,8 @@ public class AddGenomeInstance extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new AddGenomeInstanceState(appState_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new AddGenomeInstanceState(dacx));  
   }
   
   /***************************************************************************
@@ -130,14 +139,11 @@ public class AddGenomeInstance extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        AddGenomeInstanceState ans = new AddGenomeInstanceState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        AddGenomeInstanceState ans = new AddGenomeInstanceState(cfh);      
         next = ans.stepGetCreationDialog();
       } else {
         AddGenomeInstanceState ans = (AddGenomeInstanceState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGetCreationDialog")) {
           next = ans.stepGetCreationDialog();
         } else if (ans.getNextStep().equals("stepExtractNewInstanceInfo")) {
@@ -160,58 +166,72 @@ public class AddGenomeInstance extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class AddGenomeInstanceState implements DialogAndInProcessCmd.ModelTreeCmdState {
+  public static class AddGenomeInstanceState extends AbstractStepState implements DialogAndInProcessCmd.ModelTreeCmdState {
     
     private String newName;
     private boolean timeBounded; 
     private int minTime;
     private int maxTime;
     private Genome parent;
-    private boolean isPopup;
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;     
-    private BTState appState_;
+    private boolean isPopup;   
     private TreeSupport treeSupp_;
-    private Genome popupTarget_;
+    private Genome popupModelAncestor_;
     private TreeNode popupNode_;
-    private DataAccessContext dacx_;
  
     /***************************************************************************
     **
     ** Constructor
     */
       
-    public AddGenomeInstanceState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public AddGenomeInstanceState(StaticDataAccessContext dacx) {
+      super(dacx);
       parent = null;
       isPopup = false;
       nextStep_ = "stepGetCreationDialog";
-      treeSupp_ = new TreeSupport(appState_);
-      dacx_ = dacx;
+      treeSupp_ = null; // new TreeSupport(uics_); NO uics_ yet...
     }
-     
+    
     /***************************************************************************
     **
-    ** Next step...
-    */ 
-       
-    public String getNextStep() {
-      return (nextStep_);
+    ** Constructor
+    */
+      
+    public AddGenomeInstanceState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      parent = null;
+      isPopup = false;
+      nextStep_ = "stepGetCreationDialog";
+      treeSupp_ = new TreeSupport(uics_);
     }
-        
+    
+    /***************************************************************************
+    **
+    ** Add cfh in if StepState was pre-built
+    */
+     
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      treeSupp_ = new TreeSupport(uics_);
+      return;
+    }
+
     /***************************************************************************
     **
     ** for preload
     */ 
-        
-    public void setPreload(Genome popupTarget, TreeNode popupNode) {
-      popupTarget_ = popupTarget;
-      parent = popupTarget_;
+   
+    public void setPreload(Genome popupModel, Genome popupModelAncestor, TreeNode popupNode) {
+      popupModelAncestor_ = popupModelAncestor; // NEVER null
       popupNode_ = popupNode;
+      parent = popupModelAncestor;
       isPopup = true;
       return;
-    }
- 
+    }    
+    
     /***************************************************************************
     **
     ** Get dialog to create new genome instance
@@ -220,7 +240,8 @@ public class AddGenomeInstance extends AbstractControlFlow {
     private DialogAndInProcessCmd stepGetCreationDialog() { 
 
       if (!isPopup) {
-        parent = dacx_.getGenome();
+        UiUtil.fixMePrintout("NO this is wrong");
+        parent = dacx_.getCurrentGenome();
       }
       
       //
@@ -241,7 +262,7 @@ public class AddGenomeInstance extends AbstractControlFlow {
       } else { // root genome 
         suggested = true;
         TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
-        if ((tcd != null) && tcd.haveData()) {
+        if ((tcd != null) && tcd.haveDataEntries()) {
           timeBounded = true;            
           minTime = tcd.getMinimumTime(); 
           maxTime = tcd.getMaximumTime(); 
@@ -249,9 +270,9 @@ public class AddGenomeInstance extends AbstractControlFlow {
       }
 
       GenomeInstanceCreationDialogFactory.GenomeInstanceBuildArgs ba = 
-        new GenomeInstanceCreationDialogFactory.GenomeInstanceBuildArgs(dacx_.getGenomeSource().getUniqueModelName(), 
+        new GenomeInstanceCreationDialogFactory.GenomeInstanceBuildArgs(dacx_.getGenomeSource().getUniqueModelName(dacx_.getRMan()), 
                                                                         timeBounded, minTime, maxTime, suggested);
-      GenomeInstanceCreationDialogFactory nocdf = new GenomeInstanceCreationDialogFactory(cfh);
+      GenomeInstanceCreationDialogFactory nocdf = new GenomeInstanceCreationDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractNewInstanceInfo";
@@ -284,7 +305,7 @@ public class AddGenomeInstance extends AbstractControlFlow {
 
     /***************************************************************************
     **
-    ** Add a new overlay.
+    ** Add a new genome instance
     */  
        
     private DialogAndInProcessCmd addNewGenomeInstance() { 
@@ -293,11 +314,11 @@ public class AddGenomeInstance extends AbstractControlFlow {
       // Undo/Redo support
       //
 
-      UndoSupport support = new UndoSupport(appState_, "undo.addGenomeInstance");
+      UndoSupport support = uFac_.provideUndoSupport("undo.addGenomeInstance", dacx_);
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-      nt.setSkipFlag(NavTree.SKIP_FINISH); // We stay in the same place, so don't issue tree change events...
+      nt.setSkipFlag(NavTree.Skips.SKIP_FINISH); // We stay in the same place, so don't issue tree change events...
  
-      VirtualModelTree vmTree = appState_.getTree();
+      VirtualModelTree vmTree = uics_.getTree();
 
       //
       // Record the pre-change tree expansion state, and hold onto a copy of the expansion
@@ -307,7 +328,7 @@ public class AddGenomeInstance extends AbstractControlFlow {
  
       ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec));      
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
 
       //
       // Make the change
@@ -315,10 +336,10 @@ public class AddGenomeInstance extends AbstractControlFlow {
 
       GenomeInstance vfg;
       if (isPopup) {
-        if ((popupTarget_ == null) || (parent != popupTarget_)) {
+        if ((popupModelAncestor_ == null) || (parent != popupModelAncestor_)) {
           throw new IllegalStateException();
         }
-        vfg = (popupTarget_ instanceof GenomeInstance) ? (GenomeInstance)popupTarget_ : null;
+        vfg = (popupModelAncestor_ instanceof GenomeInstance) ? (GenomeInstance)popupModelAncestor_ : null;
       } else {
         // This is where BT-10-27-09:6 crashed, because creating a model from dialogs changes the model,
         // and selection target is holding onto the stale model reference.  We switched to using ID tag
@@ -330,17 +351,18 @@ public class AddGenomeInstance extends AbstractControlFlow {
         vfg = (parent instanceof GenomeInstance) ? (GenomeInstance)parent : null;
         popupNode_ = vmTree.getSelectionNode();
       }
+      String parID = (vfg == null) ? null : vfg.getID();
       String nextKey = dacx_.getGenomeSource().getNextKey();
-      GenomeInstance gi = new GenomeInstance(appState_, newName, nextKey, (vfg == null) ? null : vfg.getID(), 
+      GenomeInstance gi = new GenomeInstance(dacx_, newName, nextKey, parID, 
                                              timeBounded, minTime, maxTime);
       DatabaseChange dc = dacx_.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc)); 
-      support.addEvent(new ModelChangeEvent(nextKey, ModelChangeEvent.MODEL_ADDED));       
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc)); 
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), nextKey, ModelChangeEvent.MODEL_ADDED));       
       if (vfg == null) {
         String nextloKey = dacx_.getGenomeSource().getNextKey();
-        Layout lo = new Layout(appState_, nextloKey, nextKey);
-        dc = dacx_.lSrc.addLayout(nextloKey, lo);
-        support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));        
+        Layout lo = new Layout(nextloKey, nextKey);
+        dc = dacx_.getLayoutSource().addLayout(nextloKey, lo);
+        support.addEdit(new DatabaseChangeCmd(dacx_, dc));        
       }
 
       //
@@ -351,14 +373,15 @@ public class AddGenomeInstance extends AbstractControlFlow {
       //
        
       vmTree.setIgnoreSelection(true);
-      NavTreeChange ntc = nt.addNode(newName, (vfg == null) ? null : vfg.getID(), nextKey);
-      support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
+      NavTree.Kids kidType = (parID == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
+      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, popupNode_, new NavTree.ModelID(nextKey), null, null, dacx_);
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       //
       // Note that these changes are now being made to the ExpansionChange that has already
       // been entered into the UndoSupport!
       //
-      ec.expanded = nt.mapAllPaths(ec.expanded, ntc, true);
-      ec.selected = nt.mapAPath(ec.selected, ntc, true);
+      ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);
+      ec.selected = nt.mapAPath(ec.selected, nac.ntc, true);
 
       //
       // Tell the world our node structure has changed, make sure we select the
@@ -390,12 +413,12 @@ public class AddGenomeInstance extends AbstractControlFlow {
       //
 
       ec = treeSupp_.buildExpansionChange(false, dacx_);
-      ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
-      ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec));      
+      ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, false);
+      ec.selected = nt.mapAPath(ec.selected, nac.ntc, false);      
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
 
       support.finish();
-      nt.setSkipFlag(NavTree.NO_FLAG);
+      nt.setSkipFlag(NavTree.Skips.NO_FLAG);
 
       //
       // DONE!

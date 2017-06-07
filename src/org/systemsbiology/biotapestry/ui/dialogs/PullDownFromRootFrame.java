@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -42,31 +42,28 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.add.PropagateSupport;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.BusProperties;
-import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -93,20 +90,14 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
   private ClickableModelViewPanel msp_;
   private Set<String> currTargs_;
   private DBGenome reducedLinkGenome_;
-//  private LocalGenomeSource lgs_;
-  private DataAccessContext rcx_;
- // private Layout tmpLo_; //
-  // Add mode cancel options:
-  //
-  
- // public static final int CANCEL_ADDS_ALL_MODES        = 0x00;
- // public static final int CANCEL_ADDS_SKIP_PULLDOWNS   = 0x01;  
- // public static final int CANCEL_ADDS_SKIP_MODULE_ADDS = 0x02; 
+  private StaticDataAccessContext rcx_;
+  private UIComponentSource uics_;
+  private StaticDataAccessContext dacx_;
+  private UndoFactory uFac_;
+  private CmdSource cSrc_;
 
-  
   private JRadioButton drawInOne_;
   private JRadioButton drawLinksInTwo_;
-  private BTState appState_;
   
   private static final long serialVersionUID = 1L;
   
@@ -121,12 +112,17 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
   ** Constructor 
   */ 
   
-  public PullDownFromRootFrame(BTState appState, DBGenome rootGenome, GenomeInstance rgi) {
-    super(appState.getTopFrame(), appState.getRMan().getString("rootPullDown.title"), false);
-    appState_ = appState;
-    ResourceManager rMan = appState.getRMan();
+  public PullDownFromRootFrame(UIComponentSource uics, StaticDataAccessContext dacx, UndoFactory uFac, CmdSource cSrc) {
+    super(uics.getTopFrame(), dacx.getRMan().getString("rootPullDown.title"), false);
+
+    uics_ = uics;
+    dacx_ = dacx;
+    uFac_ = uFac;
+    cSrc_ = cSrc;
+    ResourceManager rMan = dacx.getRMan(); 
     
     addWindowListener(new WindowAdapter() {
+      @Override
       public void windowClosing(WindowEvent e) {
         closeDown();
       }
@@ -137,8 +133,8 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();    
-    rgi_ = rgi;
-    rootGenome_ = rootGenome;
+    rgi_ = dacx_.getCurrentGenomeAsInstance();
+    rootGenome_ = dacx_.getDBGenome();
   //  tmpLo_ = null;
     
     //
@@ -205,16 +201,9 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
     //
     
     LocalGenomeSource lgs = new LocalGenomeSource();
-    rcx_ = new DataAccessContext(null, null, false, false, 0.0,
-                                appState_.getFontMgr(), appState_.getDisplayOptMgr(), 
-                                appState_.getFontRenderContext(), lgs, appState_.getDB(), false, 
-                                new FullGenomeHierarchyOracle(lgs, appState_.getDB()), appState_.getRMan(), 
-                                new LocalGroupSettingSource(), appState_.getDB(), appState_.getDB(),
-                                new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), 
-                                appState_.getDB(), appState_.getDB()
-    );    
-    
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, this, false, rcx_);
+    rcx_ = dacx_.getCustomDACX4(lgs);
+                                
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, this, false, rcx_);
     msp_ = (ClickableModelViewPanel)mvpwz.getModelView();
     lgs.setGenome(rootGenome_);
     
@@ -231,7 +220,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
         try {
           closeDown();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -246,7 +235,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
     UiUtil.gbcSet(gbc, 0, 10, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
     setActiveFields(true); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
  /***************************************************************************
@@ -255,8 +244,8 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
   */
   
   public void closeDown() {
-    if (appState_.getCommonView().getPullFrame() != null) {
-      appState_.getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
+    if (uics_.getCommonView().getPullFrame() != null) {
+      cSrc_.getPanelCmds().cancelAddMode(PanelCommands.CANCEL_ADDS_ALL_MODES);
     }
     setVisible(false);
     dispose();    
@@ -288,7 +277,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
       boolean isDrawOne = drawInOne_.isSelected();
       updateNetworkDisplay(isDrawOne);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -306,7 +295,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
         setActiveFields(isDrawOne); 
         updateNetworkDisplay(isDrawOne);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }
@@ -361,16 +350,16 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
       regionID2 = ((ObjChoiceContent)regionCombo2t_.getSelectedItem()).val;    
     }
     
-    buildTargetSet(isDrawOne, regionID1, regionID2);
+    buildTargetSet(regionID1, regionID2);
     msp_.setTargets(currTargs_, (reducedLinkGenome_ == null) ? null : reducedLinkGenome_.getID());
-    rcx_.setLayout(rcx_.lSrc.getLayoutForGenomeKey(genomeID));          
+    rcx_.setLayout(rcx_.getLayoutSource().getLayoutForGenomeKey(genomeID));          
     msp_.showFullModel();
       
     if (isDrawOne) {
-      Layout lo = appState_.getLayoutForGenomeKey(rgi_.getID());
+      Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(rgi_.getID());
       GroupProperties gp = lo.getGroupProperties(regionID1);
       Rectangle rect = msp_.getCurrentBasicBounds(true, false, ZoomTarget.NO_MODULES);
-      Color gCol = gp.getColor(true, appState_.getDB());
+      Color gCol = gp.getColor(true, rcx_.getColorResolver());
       msp_.showBackgroundRegion(gCol, rect);
     } else {
       msp_.showBackgroundRegion(null, null);
@@ -385,7 +374,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
   ** 
   */
   
-  private void buildTargetSet(boolean isDrawOne, String groupID1, String groupID2) {
+  private void buildTargetSet(String groupID1, String groupID2) {
     
     currTargs_ = new HashSet<String>();
     Group group = rgi_.getGroup(groupID1);
@@ -404,7 +393,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
-      if (!rgi_.linkInstanceExists(appState_, linkID, groupID1, groupID2)) {
+      if (!rgi_.linkInstanceExists(linkID, groupID1, groupID2)) {
         useLinks.add(linkID);
       } 
       allLinks.add(linkID);  // Everybody needs to be here to get link drawn at all...
@@ -483,8 +472,8 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
     String regionID = ((ObjChoiceContent)regionCombo1_.getSelectedItem()).val;
     HashSet<String> nodes = new HashSet<String>();
     nodes.add(nodeID);
-    PropagateSupport.pullDownsFromFrame(appState_, nodes, new HashSet<String>(), regionID, null);
-    buildTargetSet(isDrawOne, regionID, null);
+    PropagateSupport.pullDownsFromFrame(uics_, dacx_, nodes, new HashSet<String>(), regionID, null, uFac_);
+    buildTargetSet(regionID, null);
     msp_.setTargets(currTargs_, (reducedLinkGenome_ == null) ? null : reducedLinkGenome_.getID());
     msp_.repaint();
     return;
@@ -498,7 +487,7 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
   public void linkIntersected(Intersection intersect) { 
     boolean isDrawOne = drawInOne_.isSelected();
         
-    Layout lo = appState_.getLayoutForGenomeKey(rootGenome_.getID());
+    Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(rootGenome_.getID());
     BusProperties bp = lo.getLinkProperties(intersect.getObjectID());
     LinkSegmentID segID = intersect.segmentIDFromIntersect();
     Set<String> linksThru = bp.resolveLinkagesThroughSegment(segID);
@@ -516,8 +505,8 @@ public class PullDownFromRootFrame extends JDialog implements ActionListener, Cl
       regionID1 = ((ObjChoiceContent)regionCombo2s_.getSelectedItem()).val;
       regionID2 = ((ObjChoiceContent)regionCombo2t_.getSelectedItem()).val;    
     }
-    PropagateSupport.pullDownsFromFrame(appState_, new HashSet<String>(), linksThru, regionID1, regionID2);
-    buildTargetSet(isDrawOne, regionID1, regionID2);
+    PropagateSupport.pullDownsFromFrame(uics_, dacx_, new HashSet<String>(), linksThru, regionID1, regionID2, uFac_);
+    buildTargetSet(regionID1, regionID2);
     msp_.setTargets(currTargs_, (reducedLinkGenome_ == null) ? null : reducedLinkGenome_.getID());
     msp_.repaint();
     return;

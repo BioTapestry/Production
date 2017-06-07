@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,8 +32,8 @@ import javax.swing.JSlider;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleAlphaBuilder;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -57,7 +57,8 @@ public class NetOverlayControlPanel extends JPanel implements ChangeListener {
   
   private boolean managing_;
   private NetModuleAlphaBuilder alphaCalc_;
-  private BTState appState_;
+  private DynamicDataAccessContext dacx_;
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -72,10 +73,11 @@ public class NetOverlayControlPanel extends JPanel implements ChangeListener {
   ** Constructor 
   */
   
-  public NetOverlayControlPanel(BTState appState, NetModuleAlphaBuilder alphaCalc) {
-    appState_ = appState;
+  public NetOverlayControlPanel(UIComponentSource uics, NetModuleAlphaBuilder alphaCalc, DynamicDataAccessContext dacx) {
+    uics_ = uics;
     managing_ = false;
     alphaCalc_ = alphaCalc;
+    dacx_ = dacx;
        
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
@@ -142,14 +144,13 @@ public class NetOverlayControlPanel extends JPanel implements ChangeListener {
       }
       JSlider slider = (JSlider)e.getSource();
       int value = slider.getValue();
-      DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-      NetModuleFree.CurrentSettings currSettings = dacx.oso.getCurrentOverlaySettings();
-      alphaCalc_.alphaCalc((double)value, currSettings);
+      NetModuleFree.CurrentSettings currSettings = dacx_.getOSO().getCurrentOverlaySettings();
+      alphaCalc_.alphaCalc(value, currSettings);
       boolean maybeMasking = alphaCalc_.modContentsMasked(currSettings);
-      appState_.getNetOverlayController().checkMaskState(maybeMasking, dacx);
-      appState_.getSUPanel().drawModel(false);
+      uics_.getNetOverlayController().checkMaskState(maybeMasking, dacx_);
+      uics_.getSUPanel().drawModel(false);
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -168,7 +169,7 @@ public class NetOverlayControlPanel extends JPanel implements ChangeListener {
   
   private JSlider buildSlider(List<JLabel> labels) {
     JSlider slider = new JSlider(JSlider.HORIZONTAL, 0, 100, 100);
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     Hashtable<Integer, JLabel> labelMap = new Hashtable<Integer, JLabel>();
     JLabel minLabel = new JLabel(rMan.getString("netOverlayController.min"));
     JLabel maxLabel = new JLabel(rMan.getString("netOverlayController.max"));

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,11 +21,11 @@ package org.systemsbiology.biotapestry.cmd.flow.userPath;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.UserTreePathStopCreationDialog;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -55,8 +55,7 @@ public class PathStop extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathStop(BTState appState, boolean doAdd) {
-    super(appState);
+  public PathStop(boolean doAdd) {
     name =  (doAdd) ? "command.TreePathAddStop" : "command.TreePathDeleteStop";
     desc = (doAdd) ? "command.TreePathAddStop" : "command.TreePathDeleteStop";
     icon = (doAdd) ? "TreePathAddStop24.gif" : "TreePathDeleteStop24.gif";
@@ -92,7 +91,7 @@ public class PathStop extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, doAdd_, cfh.getDataAccessContext());
+        StepState ans = new StepState(doAdd_, cfh);
         next = ans.stepToProcess();    
       } else {
         throw new IllegalStateException();
@@ -109,15 +108,19 @@ public class PathStop extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
     
     private boolean doAdd;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(boolean doAdd, StaticDataAccessContext dacx) {
+      super(dacx);
+      this.doAdd = doAdd;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -125,13 +128,12 @@ public class PathStop extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean doAdd, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean doAdd, ServerControlFlowHarness cfh) {
+      super(cfh);
       this.doAdd = doAdd;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
-      
+ 
     /***************************************************************************
     **
     ** Do the step
@@ -143,7 +145,7 @@ public class PathStop extends AbstractControlFlow {
       } else {
         doRemove();
       }
-      appState_.getPathControls().handlePathButtons();      
+      uics_.getPathControls().handlePathButtons();      
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
     
@@ -154,15 +156,15 @@ public class PathStop extends AbstractControlFlow {
     */ 
    
     public void doAdd() {
-      UserTreePathStopCreationDialog scd = new UserTreePathStopCreationDialog(appState_);
+      UserTreePathStopCreationDialog scd = new UserTreePathStopCreationDialog(uics_, dacx_);
       scd.setVisible(true);
       if (!scd.haveResult()) {
         return;
       }
       String addToPathKey = scd.getChosenPath();
       String insertMode = scd.getInsertionMode();
-      appState_.getPathController().addAStop(addToPathKey, insertMode, dacx_);
-      appState_.getPathControls().handlePathButtons();
+      uics_.getPathController().addAStop(addToPathKey, insertMode, dacx_, uFac_);
+      uics_.getPathControls().handlePathButtons();
       return;
     }
   
@@ -173,9 +175,9 @@ public class PathStop extends AbstractControlFlow {
     */ 
 
     public void doRemove() {
-      if (appState_.getPathController().pathHasOnlyOneStop()) {
-        ResourceManager rMan = appState_.getRMan(); 
-        int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      if (uics_.getPathController().pathHasOnlyOneStop()) {
+        ResourceManager rMan = dacx_.getRMan(); 
+        int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                rMan.getString("treePathDeleteStop.oneStopWarningMessage"), 
                                rMan.getString("treePathDeleteStop.oneStopWarningMessageTitle"),
                                JOptionPane.YES_NO_OPTION);
@@ -183,8 +185,8 @@ public class PathStop extends AbstractControlFlow {
           return;
         }
       }
-      appState_.getPathController().deleteCurrentStop(dacx_);
-      appState_.getPathControls().handlePathButtons();   
+      uics_.getPathController().deleteCurrentStop(dacx_, uFac_);
+      uics_.getPathControls().handlePathButtons();   
       return;
     }
   }  

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,10 +25,11 @@ import java.awt.Rectangle;
 import java.awt.geom.Point2D;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNetModule;
@@ -37,15 +38,12 @@ import org.systemsbiology.biotapestry.cmd.flow.move.Mover;
 import org.systemsbiology.biotapestry.cmd.flow.move.RunningMove;
 import org.systemsbiology.biotapestry.cmd.flow.move.RunningMoveGenerator;
 import org.systemsbiology.biotapestry.cmd.flow.select.Selection;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.TextBoxManager;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 
 /***************************************************************************
@@ -129,12 +127,15 @@ public class PanelCommands  {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
   private ModeHandler currentClickHandler_;
   private ModeHandler noModeHandler_;
   private Mode currentMode_;
   private ServerControlFlowHarness harness_;
   private boolean moveResult_;
+  
+  private UIComponentSource uics_;
+  private DynamicDataAccessContext ddacx_;
+  private HarnessBuilder hBld_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -153,8 +154,10 @@ public class PanelCommands  {
   ** Constructor
   */
   
-  public PanelCommands(BTState appState) {
-    appState_ = appState.setPanelCmds(this);   
+  public PanelCommands(UIComponentSource uics, DynamicDataAccessContext ddacx, HarnessBuilder hBld) {
+    uics_ = uics;
+    ddacx_ = ddacx;
+    hBld_ = hBld;
     currentClickHandler_ = null;
     noModeHandler_ = new DefaultHandler();
     currentMode_ = Mode.NO_MODE;
@@ -176,7 +179,7 @@ public class PanelCommands  {
   ** Main entry point
   */
    
-  public void processMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+  public void processMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
     PanelCommands.ModeHandler handler = currentClickHandler_;
     handler.handleMouseClick(pt, isShifted, rcx);
     return;
@@ -187,7 +190,7 @@ public class PanelCommands  {
   ** Main entry point too
   */ 
   
-  public void processMouseMotion(Point pt, DataAccessContext rcx) {
+  public void processMouseMotion(Point pt, StaticDataAccessContext rcx) {
     ((MotionHandler)currentClickHandler_).handleMouseMotion(pt, rcx);
     return;
   }
@@ -237,13 +240,13 @@ public class PanelCommands  {
   */
 
   public void cancelAddMode(int which) {
-    if (!appState_.getCommonView().canAccept()) {
+    if (!uics_.getCommonView().canAccept()) {
       return;
     }
-    appState_.getTextBoxMgr().clearCurrentMouseOver();
-    appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
+    uics_.getTextBoxMgr().clearCurrentMouseOver();
+    uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
     if (isInShowBubbleMode()) {
-      appState_.getSUPanel().popBubbles();
+      uics_.getSUPanel().popBubbles();
     }
     ModeHandler handler = currentClickHandler_;
     if (handler != null) {
@@ -255,14 +258,14 @@ public class PanelCommands  {
     currentMode_ = Mode.NO_MODE;
     currentClickHandler_ = noModeHandler_;
     
-    appState_.getCommonView().clearPullFrame(); 
-    appState_.getGenomePresentation().setFloater(null);
-    appState_.getGenomePresentation().clearTargets();
-    appState_.getGenomePresentation().clearRootOverlays();    
-    appState_.getCursorMgr().showDefaultCursor();
-    appState_.getCommonView().enableControls();
-    appState_.getCommonView().cancelModals(which);
-    appState_.getSUPanel().drawModel(false);
+    uics_.getCommonView().clearPullFrame(); 
+    uics_.getGenomePresentation().setFloater(null);
+    uics_.getGenomePresentation().clearTargets();
+    uics_.getGenomePresentation().clearRootOverlays();    
+    uics_.getCursorMgr().showDefaultCursor();
+    uics_.getCommonView().enableControls();
+    uics_.getCommonView().cancelModals(which);
+    uics_.getSUPanel().drawModel(false);
     return;
   }
   
@@ -288,7 +291,7 @@ public class PanelCommands  {
   */
     
    public ModeHandler getCurrentHandler(boolean readOnly) {
-     return ((readOnly) ? noModeHandler_ : currentClickHandler_);
+     return ((readOnly || (currentClickHandler_ == null)) ? noModeHandler_ : currentClickHandler_);
    }
      
   /***************************************************************************
@@ -296,14 +299,11 @@ public class PanelCommands  {
   ** Select items in a rectangle
   */
     
-   public void selectItems(Rectangle rect, boolean isShifted) { 
-     DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-     ControlFlow cf = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.LOCAL_RECT_SELECTION, null); 
-     DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-     Selection.StepState agis = (Selection.StepState)cf.getEmptyStateForPreload(dacx);
+   public void selectItems(Rectangle rect, boolean isShifted) {
+     HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.LOCAL_RECT_SELECTION);
+     Selection.StepState agis = (Selection.StepState)pH.getCmdState();
      agis.setPreload(rect, isShifted);
-     dcf.initFlow(cf, dacx);
-     dcf.runFlow(agis);
+     hBld_.runHarness(pH);
      return;
    }
  
@@ -315,7 +315,7 @@ public class PanelCommands  {
   public void visualizeAMove(RunningMove rmov, Point pt0, Layout dragLayout) {  
     Layout.PadNeedsForLayout padFixups = null; 
     RunningMove.PadFixup needFixups = RunningMoveGenerator.needPadFixupsForMove(rmov);
-    DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome(), dragLayout);
+    StaticDataAccessContext rcx = (new StaticDataAccessContext(ddacx_)).replaceImmediateLayout(dragLayout);
     if (needFixups != RunningMove.PadFixup.NO_PAD_FIXUP) {
       padFixups = dragLayout.findAllNetModuleLinkPadRequirementsForOverlay(rcx);
     }
@@ -334,13 +334,10 @@ public class PanelCommands  {
    
   public boolean doAMove(RunningMove rmov, Point2D end) {
     moveResult_ = false;
-    DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-    ControlFlow cf = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.MOVE_ELEMENTS, null);
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    Mover.StepState agis = (Mover.StepState)cf.getEmptyStateForPreload(dacx);
+    HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.MOVE_ELEMENTS);
+    Mover.StepState agis = (Mover.StepState)pH.getCmdState();
     agis.setPreload(rmov, end, this);
-    dcf.initFlow(cf, dacx);
-    dcf.runFlow(agis);
+    hBld_.runHarness(pH);
     return (moveResult_);
   }
   
@@ -369,12 +366,11 @@ public class PanelCommands  {
     
     public abstract Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms);   
     public abstract void cancelMode(Object args);
-    public abstract void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx);
+    public abstract void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx);
     
     protected boolean modelIsSubset() {
-      String genomeKey = appState_.getGenome();  
-      Database db = appState_.getDB();
-      Genome genome = db.getGenome(genomeKey);    
+      String genomeKey = ddacx_.getCurrentGenomeID();  
+      Genome genome = ddacx_.getGenomeSource().getGenome(genomeKey);    
       if (genome instanceof GenomeInstance) {
         GenomeInstance parent = ((GenomeInstance)genome).getVfgParent();
         if (parent != null) {
@@ -385,23 +381,20 @@ public class PanelCommands  {
     } 
     
     protected boolean modelIsRoot() {
-      String genomeKey = appState_.getGenome();  
-      Database db = appState_.getDB();
-      Genome genome = db.getGenome(genomeKey);    
+      String genomeKey = ddacx_.getCurrentGenomeID();  
+      Genome genome = ddacx_.getGenomeSource().getGenome(genomeKey);    
       return (genome instanceof DBGenome);
     }
        
     protected boolean modelIsInstance() {
-      String genomeKey = appState_.getGenome();  
-      Database db = appState_.getDB();
-      Genome genome = db.getGenome(genomeKey);    
+      String genomeKey = ddacx_.getCurrentGenomeID();
+      Genome genome = ddacx_.getGenomeSource().getGenome(genomeKey);    
       return (genome instanceof GenomeInstance);
     }
     
     protected boolean modelIsDynamic() {
-      String genomeKey = appState_.getGenome();  
-      Database db = appState_.getDB();
-      Genome genome = db.getGenome(genomeKey);    
+      String genomeKey = ddacx_.getCurrentGenomeID();
+      Genome genome = ddacx_.getGenomeSource().getGenome(genomeKey);    
       return (genome instanceof DynamicGenomeInstance);
     }
  
@@ -424,7 +417,8 @@ public class PanelCommands  {
     public boolean showBubbleHandler() {
       return (false);
     }    
-          
+     
+    @SuppressWarnings("unused")
     public Object getFloater(int x, int y) {
       return (null);
     }
@@ -449,10 +443,10 @@ public class PanelCommands  {
       mccs = (DialogAndInProcessCmd.MouseClickCmdState)daipc.currStateX;
     }
      
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
       ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.UNSELECTED;
       try {    
-        DialogAndInProcessCmd daipc = harness_.handleClick(pt, isShifted, rcx.pixDiam);
+        DialogAndInProcessCmd daipc = harness_.handleClick(pt, isShifted, rcx.getPixDiam());
         result = daipc.pccr;
       } finally {
         if ((result == ServerControlFlowHarness.ClickResult.PROCESSED) || (result == ServerControlFlowHarness.ClickResult.CANCELLED)) {
@@ -465,9 +459,9 @@ public class PanelCommands  {
       if ((result == ServerControlFlowHarness.ClickResult.REJECT) || 
           (result == ServerControlFlowHarness.ClickResult.ERROR) || 
           (result == ServerControlFlowHarness.ClickResult.UNSELECTED)) {
-        appState_.getSUPanel().giveErrorFeedback();
+        uics_.getSUPanel().giveErrorFeedback();
       } else {
-        appState_.getSUPanel().drawModel(false);
+        uics_.getSUPanel().drawModel(false);
       } 
       return;
     }
@@ -502,8 +496,8 @@ public class PanelCommands  {
     }
 
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
       if (mccs.noSubModels() && modelIsSubset()) {
         return (Mode.NO_MODE);  // nothing to do for subset stuff
       }
@@ -536,20 +530,20 @@ public class PanelCommands  {
       }
   
       if (mccs.showBubbles()) {
-        appState_.getSUPanel().pushBubblesAndShow();
+        uics_.getSUPanel().pushBubblesAndShow();
       }
-      appState_.getCommonView().disableControls(ms);
+      uics_.getCommonView().disableControls(ms);
       
       if (flstate == DialogAndInProcessCmd.MouseClickCmdState.Floater.OBJECT_FLOATER) {
-        appState_.getGenomePresentation().setFloater(newFloater);
-        Layout flay = appState_.getGenomePresentation().getFloaterLayout();
+        uics_.getGenomePresentation().setFloater(newFloater);
+        Layout flay = uics_.getGenomePresentation().getFloaterLayout();
         mccs.setFloaterPropsInLayout(flay);
       } else {
-        appState_.getGenomePresentation().setFloater(null); // Includes LINES_FLOATER case as well (set via another route)   
+        uics_.getGenomePresentation().setFloater(null); // Includes LINES_FLOATER case as well (set via another route)   
       }
-      appState_.getCursorMgr().showModeCursor();
+      uics_.getCursorMgr().showModeCursor();
       if (mccs.hasTargetsAndOverlays()) {
-        appState_.getSUPanel().drawModel(false);
+        uics_.getSUPanel().drawModel(false);
       }
       //this.requestFocus();  this may be useful?? 
       return (myMode);
@@ -572,13 +566,13 @@ public class PanelCommands  {
       anm_ = (AddNetModule.StepState)daipc.currStateX;
     }
     
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
        ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
        try {    
-         result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+         result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
        } finally {
          if (result == ServerControlFlowHarness.ClickResult.REJECT) {
-           appState_.getSUPanel().giveErrorFeedback();       
+           uics_.getSUPanel().giveErrorFeedback();       
          } else {
            if ((anm_.nmc_ != null) && (anm_.nmc_.buildState == AddNetModule.CommonNetModuleCandidate.DONE)) {
              boolean timeToBail = true;
@@ -593,7 +587,7 @@ public class PanelCommands  {
            }
          }
        }
-       appState_.getSUPanel().drawModel(false);
+       uics_.getSUPanel().drawModel(false);
        return;
      }
     
@@ -626,12 +620,12 @@ public class PanelCommands  {
     }   
      
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
       anm_ = (AddNetModule.StepState)daipc.currStateX; 
-      appState_.getCommonView().disableControls(ms);
-      appState_.getGenomePresentation().setFloater(null);        
-      appState_.getCursorMgr().showModeCursor();
+      uics_.getCommonView().disableControls(ms);
+      uics_.getGenomePresentation().setFloater(null);        
+      uics_.getCursorMgr().showModeCursor();
       //this.requestFocus();  this may be useful
       return (myMode);
     }
@@ -652,20 +646,20 @@ public class PanelCommands  {
       anm_ = (AddNetModule.StepState)daipc.currStateX;
     }
     
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
        ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
        try {    
-         result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+         result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
        } finally {
          if (result == ServerControlFlowHarness.ClickResult.REJECT) {
-           appState_.getSUPanel().giveErrorFeedback();
+           uics_.getSUPanel().giveErrorFeedback();
          } else { // THIS HANDLER _NEVER_ EXITS BY ITSELF!
            if (anm_.nmc_.buildState == AddNetModule.CommonNetModuleCandidate.DONE) {
              anm_.nmc_.reset();
            }
          }
        }
-       appState_.getSUPanel().drawModel(false);
+       uics_.getSUPanel().drawModel(false);
        return;
      }
       
@@ -698,12 +692,12 @@ public class PanelCommands  {
     }   
     
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
       anm_ = (AddNetModule.StepState)daipc.currStateX;
-      appState_.getCommonView().disableControls(ms);
-      appState_.getGenomePresentation().setFloater(null);        
-      appState_.getCursorMgr().showModeCursor();
+      uics_.getCommonView().disableControls(ms);
+      uics_.getGenomePresentation().setFloater(null);        
+      uics_.getCursorMgr().showModeCursor();
       //this.requestFocus();  this may be useful
       return (myMode);
     }    
@@ -716,6 +710,7 @@ public class PanelCommands  {
     
    public class PullDownHandler extends ModeHandler {
     
+    @SuppressWarnings("unused")
     private PullDown.StepState dpss_;
     protected Mode myMode;
      
@@ -724,16 +719,16 @@ public class PanelCommands  {
       dpss_ = (PullDown.StepState)daipc.currStateX;
     }
 
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
       ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.UNSELECTED;
       try {    
-        result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+        result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
       } finally {
         if ((result == ServerControlFlowHarness.ClickResult.REJECT) || (result == ServerControlFlowHarness.ClickResult.ERROR) || (result == ServerControlFlowHarness.ClickResult.UNSELECTED)) {
-          appState_.getSUPanel().giveErrorFeedback();
+          uics_.getSUPanel().giveErrorFeedback();
         } 
       }
-      appState_.getSUPanel().drawModel(false); 
+      uics_.getSUPanel().drawModel(false); 
       return;
     }
     
@@ -748,14 +743,14 @@ public class PanelCommands  {
     }    
        
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
       if (!modelIsInstance()) {
         return (Mode.NO_MODE); 
       }
-      appState_.getCommonView().disableControls(ms);
+      uics_.getCommonView().disableControls(ms);
       if (modelIsSubset()) {
-        appState_.getCursorMgr().showModeCursor();
+        uics_.getCursorMgr().showModeCursor();
       }
       //this.requestFocus();  this may be useful
       return (myMode);
@@ -777,18 +772,18 @@ public class PanelCommands  {
       mccs = (DialogAndInProcessCmd.MouseClickCmdState)daipc.currStateX;
     }
      
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
       ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
       try {    
-        result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+        result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
       } finally {
         if (result == ServerControlFlowHarness.ClickResult.REJECT) {
-          appState_.getSUPanel().giveErrorFeedback();
+          uics_.getSUPanel().giveErrorFeedback();
         } else { // Note this gets called if we had exception emerge from handleClick: result still ACCEPT
           setToNoMode(result, mccs.showBubbles(), false, false);
         }
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return;
     }
    
@@ -802,8 +797,8 @@ public class PanelCommands  {
     }
 
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
       if (mccs.noSubModels() && modelIsSubset()) {
         return (Mode.NO_MODE);  // nothing to do for subset stuff
       }
@@ -820,10 +815,10 @@ public class PanelCommands  {
        return (Mode.NO_MODE);
       }         
       if (mccs.showBubbles()) {
-        appState_.getSUPanel().pushBubblesAndShow();
+        uics_.getSUPanel().pushBubblesAndShow();
       }   
-      appState_.getCommonView().disableControls(ms);     
-      appState_.getCursorMgr().showModeCursor();
+      uics_.getCommonView().disableControls(ms);     
+      uics_.getCursorMgr().showModeCursor();
       return (myMode);
     }    
   }
@@ -843,19 +838,19 @@ public class PanelCommands  {
       mccs = (DialogAndInProcessCmd.MouseClickCmdState)daipc.currStateX;
     }
       
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
       ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
       try {    
-        result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+        result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
       } finally {
         if (result == ServerControlFlowHarness.ClickResult.REJECT) {
-         appState_.getSUPanel().giveErrorFeedback();       
+         uics_.getSUPanel().giveErrorFeedback();       
         } else if ((result == ServerControlFlowHarness.ClickResult.PROCESSED) || (result == ServerControlFlowHarness.ClickResult.CANCELLED)) {
           setToNoMode(result, mccs.showBubbles(), false, false);
           mccs = null;
         }
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return;
     }
    
@@ -869,8 +864,8 @@ public class PanelCommands  {
     }
 
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);
       if (mccs.noSubModels() && modelIsSubset()) {
         return (Mode.NO_MODE);  // nothing to do for subset stuff
       }
@@ -887,35 +882,14 @@ public class PanelCommands  {
        return (Mode.NO_MODE);
       }         
       if (mccs.showBubbles()) {
-        appState_.getSUPanel().pushBubblesAndShow();
+        uics_.getSUPanel().pushBubblesAndShow();
       }   
-      appState_.getCommonView().disableControls(ms);     
-      appState_.getCursorMgr().showModeCursor();
+      uics_.getCommonView().disableControls(ms);     
+      uics_.getCursorMgr().showModeCursor();
       return (myMode);
     }    
   }
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
- 
   /***************************************************************************
   **
   ** Move Handler
@@ -931,18 +905,18 @@ public class PanelCommands  {
       mvss_ = (Mover.StepState)daipc.currStateX;
     }
      
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
       ServerControlFlowHarness.ClickResult result = ServerControlFlowHarness.ClickResult.ACCEPT;
       try {    
-        result = harness_.handleClick(pt, isShifted, rcx.pixDiam).pccr;
+        result = harness_.handleClick(pt, isShifted, rcx.getPixDiam()).pccr;
       } finally {
         if (result == ServerControlFlowHarness.ClickResult.REJECT) {
-          appState_.getSUPanel().giveErrorFeedback();
+          uics_.getSUPanel().giveErrorFeedback();
         } else { // Note this gets called if we had exception emerge from handleClick: result still ACCEPT
           setToNoMode(result, false, false, true);
         }
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return;
     }
     
@@ -955,7 +929,7 @@ public class PanelCommands  {
       return (mvss_.getMultiMov());
     }   
     
-    public void handleMouseMotion(Point pt, DataAccessContext rcx) {
+    public void handleMouseMotion(Point pt, StaticDataAccessContext rcx) {
       mvss_.handleMouseMotion(pt, rcx);
       return;
     }  
@@ -966,9 +940,9 @@ public class PanelCommands  {
     }
       
     public Mode setToMode(DialogAndInProcessCmd daipc, XPlatMaskingStatus ms) {
-      appState_.getTextBoxMgr().clearCurrentMouseOver();
-      appState_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
-      appState_.getCommonView().disableControls(ms);
+      uics_.getTextBoxMgr().clearCurrentMouseOver();
+      uics_.getTextBoxMgr().clearMessageSource(TextBoxManager.SELECTED_ITEM_MESSAGE);   
+      uics_.getCommonView().disableControls(ms);
       return (myMode); 
     }
   }
@@ -986,13 +960,11 @@ public class PanelCommands  {
     // to an already running flow.
     //
     
-    public void handleMouseClick(Point pt, boolean isShifted, DataAccessContext rcx) {
-      DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-      ControlFlow cf = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.LOCAL_CLICK_SELECTION, null);
-      Selection.StepState agis = (Selection.StepState)cf.getEmptyStateForPreload(rcx);
-      agis.setPreload(pt, rcx.pixDiam, isShifted);
-      dcf.initFlow(cf, rcx);
-      dcf.runFlow(agis);
+    public void handleMouseClick(Point pt, boolean isShifted, StaticDataAccessContext rcx) {
+      HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.LOCAL_CLICK_SELECTION, rcx);
+      Selection.StepState agis = (Selection.StepState)pH.getCmdState();
+      agis.setPreload(pt, rcx.getPixDiam(), isShifted);
+      hBld_.runHarness(pH);
       return;
     }
         
@@ -1015,19 +987,19 @@ public class PanelCommands  {
     currentMode_ = Mode.NO_MODE;
     currentClickHandler_ = noModeHandler_;
     if (popBub) {
-      appState_.getSUPanel().popBubbles();
+      uics_.getSUPanel().popBubbles();
     }
     if (result != ServerControlFlowHarness.ClickResult.ACCEPT_DELAYED) {
-      appState_.getCommonView().enableControls();
+      uics_.getCommonView().enableControls();
     }
     if (clearFloat) {
-      appState_.getGenomePresentation().setFloater(null);
+      uics_.getGenomePresentation().setFloater(null);
     }
     if (targsAndOvers) {
-      appState_.getGenomePresentation().clearTargets();
-      appState_.getGenomePresentation().clearRootOverlays();
+      uics_.getGenomePresentation().clearTargets();
+      uics_.getGenomePresentation().clearRootOverlays();
     }
-    appState_.getCursorMgr().showDefaultCursor();
+    uics_.getCursorMgr().showDefaultCursor();
     return;
   }
    

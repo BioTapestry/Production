@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -44,11 +44,11 @@ import org.systemsbiology.biotapestry.analysis.Link;
 import org.systemsbiology.biotapestry.analysis.PlacementElement;
 import org.systemsbiology.biotapestry.analysis.RectangleFitter;
 import org.systemsbiology.biotapestry.analysis.TopLeftPacker;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
@@ -125,7 +125,6 @@ public class LayoutRubberStamper {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
   private RSData rsd_;
   private ERILData eril_;
   
@@ -140,8 +139,7 @@ public class LayoutRubberStamper {
   ** Constructor
   */
 
-  public LayoutRubberStamper(BTState appState) {
-    appState_ = appState;
+  public LayoutRubberStamper() {
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -231,7 +229,7 @@ public class LayoutRubberStamper {
     // Build the node map:
     //
     
-    Genome genome = rcx.getGenomeSource().getGenome();
+    Genome genome = rcx.getGenomeSource().getRootDBGenome();
     
     Iterator<Node> nit = genome.getAllNodeIterator();
     while (nit.hasNext()) {
@@ -255,7 +253,7 @@ public class LayoutRubberStamper {
       // the link calculations later:
       //
       String modelID = lds.getModelID();
-      Layout lo = rcx.lSrc.getLayoutForGenomeKey(modelID);
+      Layout lo = rcx.getLayoutSource().getLayoutForGenomeKey(modelID);
       Iterator<String> nmit = nodeMap.keySet().iterator();
       while (nmit.hasNext()) {
         String baseID = nmit.next();
@@ -293,7 +291,7 @@ public class LayoutRubberStamper {
       // same relationship as a source and target in an instance
       //
       
-      if (findFoldInRelativeMatch(rcx.getGenomeSource(), rcx.lSrc, null, nodePositions, ld, link, src, trg) != null) {
+      if (findFoldInRelativeMatch(rcx.getGenomeSource(), rcx.getLayoutSource(), null, nodePositions, ld, link, src, trg) != null) {
         orphanedLinks.remove(linkID);
         continue;
       }
@@ -342,20 +340,20 @@ public class LayoutRubberStamper {
   ** root genome will be defined by the definition
   */
   
-  public Set<String> definedByLayout(LayoutDataSource lds, DataAccessContext rcx) { 
+  public Set<String> definedByLayout(LayoutDataSource lds, StaticDataAccessContext rcx) { 
  
     //
     // Build the node map:
     //
     
     HashSet<String> defined = new HashSet<String>();
-    Group useGroup = ((GenomeInstance)rcx.getGenome()).getGroup(lds.getGroupID());
+    Group useGroup = ((GenomeInstance)rcx.getCurrentGenome()).getGroup(lds.getGroupID());
     Iterator<GroupMember> mit = useGroup.getMemberIterator();
     while (mit.hasNext()) {
       GroupMember meb = mit.next();
       String nodeID = meb.getID();
       String baseID = GenomeItemInstance.getBaseID(nodeID);
-      NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
       if (np == null) {  // for partial layouts...
         continue;
       }        
@@ -371,7 +369,7 @@ public class LayoutRubberStamper {
   ** is in effect; support only for model changes
   */
   
-  public LinkRouter.RoutingResult upwardCopy(DataAccessContext rcxRt,    
+  public LinkRouter.RoutingResult upwardCopy(StaticDataAccessContext rcxRt,    
                                              LayoutDerivation ld,
                                              Map<String, BusProperties.RememberProps> rememberMap,
                                              Layout.OverlayKeySet loModKeys, 
@@ -406,7 +404,7 @@ public class LayoutRubberStamper {
     
     int overlayOption = ld.getOverlayOption();    
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) { 
-      rcxRt.getLayout().convertAllModulesToMemberOnly(loModKeys, rcxRt);
+      rcxRt.getCurrentLayout().convertAllModulesToMemberOnly(loModKeys, rcxRt);
     }
  
     PadCalculatorToo.UpwardPadSyncData upsd = new PadCalculatorToo.UpwardPadSyncData();
@@ -421,7 +419,7 @@ public class LayoutRubberStamper {
     // Make a copy of the root layout before messing with it:
     //
     
-    Layout rloCopy = new Layout(rcxRt.getLayout());
+    Layout rloCopy = new Layout(rcxRt.getCurrentLayout());
 
     //
     // Place the nodes in the order specified by the group preferences:
@@ -429,15 +427,15 @@ public class LayoutRubberStamper {
     
     double currProg = startFrac;
     double maxAfterPref = (maxFrac - startFrac) * 0.5;
-    double perPrefFrac = (numGp == 0) ? 0.0 : ((maxAfterPref - startFrac) / (double)numGp);     
+    double perPrefFrac = (numGp == 0) ? 0.0 : ((maxAfterPref - startFrac) / numGp);     
     
     
     HashSet<String> allNodeSet = new HashSet<String>();      
     for (int i = 0; i < numGp; i++) {    
       LayoutDataSource lds = ld.getDirective(i);
       Map<String, String> nodeMap = nodesPerDirective(rcxRt, lds, usedGIs, allNodeSet, placedBy, placedByInstance, upsd);
-      DataAccessContext rcxLDS = new DataAccessContext(rcxRt, lds.getModelID());
-      rcxLDS.setLayout(rcxRt.lSrc.getLayoutForGenomeKey(lds.getModelID()));   
+      StaticDataAccessContext rcxLDS = new StaticDataAccessContext(rcxRt, lds.getModelID());
+      rcxLDS.setLayout(rcxRt.getLayoutSource().getLayoutForGenomeKey(lds.getModelID()));   
       rcxLDS.setLayout(scaleLayout(lds, rcxLDS, scaledLayouts, monitor, currProg, currProg + perPrefFrac));
       //
       // Root layout will have relocated nodes after this:
@@ -445,7 +443,7 @@ public class LayoutRubberStamper {
       // Root layout retains all overlay properties, and has nothing to learn from the instance layout, so
       // we provide triple-null maps for overlay copying directives:
       //
-      rcxRt.getLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, true, null, rcxRt, rcxLDS);
+      rcxRt.getCurrentLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, true, null, rcxRt, rcxLDS);
       
       currProg += perPrefFrac;
       if (monitor != null) {
@@ -462,9 +460,9 @@ public class LayoutRubberStamper {
     // node.  If that fails...
     //
     
-    HashSet<String> orphanedLinks = buildOrphans(rcxRt.getGenome(), rcxRt.getLayout());  
+    HashSet<String> orphanedLinks = buildOrphans(rcxRt.getCurrentGenome(), rcxRt.getCurrentLayout());  
     
-    Iterator<Linkage> lit = rcxRt.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcxRt.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String src = link.getSource();
@@ -497,7 +495,7 @@ public class LayoutRubberStamper {
     // links the chance to get things organized first:
     //
     
-    lit = rcxRt.getGenome().getLinkageIterator();
+    lit = rcxRt.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
@@ -521,16 +519,16 @@ public class LayoutRubberStamper {
     Iterator<String> oit = orphanedLinks.iterator();
     while (oit.hasNext()) {
       String orphanID = oit.next();
-      LayoutLinkSupport.autoAddCrudeLinkProperties(appState_, rcxRt, orphanID, null, rememberMap);
+      LayoutLinkSupport.autoAddCrudeLinkProperties(rcxRt, orphanID, null, rememberMap);
     }
     
     if (ld.getSwitchPads()) {
-      (new SyncSupport(appState_, rcxRt)).upwardSyncAllLinkPads((DBGenome)rcxRt.getGenome(), upsd, support, ld.getForceUnique(), orphanedLinks);
+      (new SyncSupport(rcxRt)).upwardSyncAllLinkPads((DBGenome)rcxRt.getCurrentGenome(), upsd, support, ld.getForceUnique(), orphanedLinks);
     }
     
-    LayoutOptions options = appState_.getLayoutOptMgr().getLayoutOptions();
+    LayoutOptions options = rcxRt.getLayoutOptMgr().getLayoutOptions();
     boolean strictOKGroups = false;
-    LayoutLinkSupport.relayoutLinks(appState_, rcxRt, null, options, false, 
+    LayoutLinkSupport.relayoutLinks(rcxRt, null, options, false, 
                                     orphanedLinks, monitor, maxAfterPref, maxFrac, strictOKGroups);
 
     //
@@ -538,15 +536,15 @@ public class LayoutRubberStamper {
     //
     
     if ((moduleShapeRecovery != null) && (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
-      rcxRt.getLayout().shiftModuleShapesPerParams(loModKeys, moduleShapeRecovery, rcxRt);
+      rcxRt.getCurrentLayout().shiftModuleShapesPerParams(loModKeys, moduleShapeRecovery, rcxRt);
     }         
     
     //
     // Install the directives in the layout:
     //
     
-    LayoutDerivation ldcopy = (LayoutDerivation)ld.clone();
-    rcxRt.getLayout().setDerivation(ldcopy);
+    LayoutDerivation ldcopy = ld.clone();
+    rcxRt.getCurrentLayout().setDerivation(ldcopy);
     
     if (monitor != null) {
       if (!monitor.updateProgress((int)(maxFrac * 100.0))) {
@@ -562,7 +560,7 @@ public class LayoutRubberStamper {
   ** Expand a group layout for upward copying
   */
   
-  public Layout expandGroupForUpwardCopy(DataAccessContext rcx, String groupID,
+  public Layout expandGroupForUpwardCopy(StaticDataAccessContext rcx, String groupID,
                                          double fracV, double fracH,
                                          BTProgressMonitor monitor, 
                                          double startFrac, double endFrac) throws AsynchExitRequestException {
@@ -590,14 +588,14 @@ public class LayoutRubberStamper {
     buildGroupLayouts(rcx, layouts, oldRegionBounds, allGroups, null,
                       false, false, null, null, null, false, monitor, startFrac, eFrac1);
 
-    DataAccessContext rcx4G = new DataAccessContext(rcx);
+    StaticDataAccessContext rcx4G = new StaticDataAccessContext(rcx);
     rcx4G.setLayout(layouts.get(groupID));
     TreeSet<Integer> insertRows = new TreeSet<Integer>();
     TreeSet<Integer> insertCols = new TreeSet<Integer>();
     // ignoring overlays:
-    rcx4G.getLayout().chooseExpansionRows(rcx4G, fracV, fracH, null, null, insertRows, insertCols, false, monitor); 
-    rcx4G.getLayout().expand(rcx4G, insertRows, insertCols, 1, false, null, null, null, monitor, eFrac1, eFrac2);
-    return (rcx4G.getLayout());
+    rcx4G.getCurrentLayout().chooseExpansionRows(rcx4G, fracV, fracH, null, null, insertRows, insertCols, false, monitor); 
+    rcx4G.getCurrentLayout().expand(rcx4G, insertRows, insertCols, 1, false, null, null, null, monitor, eFrac1, eFrac2);
+    return (rcx4G.getCurrentLayout());
   }    
   
   /***************************************************************************
@@ -637,7 +635,7 @@ public class LayoutRubberStamper {
     // info -> just keep going anyway!
     //
     
-    eril_.rcx.getLayout().repairAllTopology(eril_.rcx, null, eril_.monitor, eril_.startFrac, eril_.startFrac);    
+    eril_.rcx.getCurrentLayout().repairAllTopology(eril_.rcx, null, eril_.monitor, eril_.startFrac, eril_.startFrac);    
       
     HashMap<String, String> linkColors = new HashMap<String, String>();
     buildLinkColorsMap(eril_.rcx, linkColors);
@@ -648,7 +646,7 @@ public class LayoutRubberStamper {
     
     int overlayOption = eril_.options.overlayOption;    
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) {     
-      eril_.rcx.getLayout().convertAllModulesToMemberOnly(eril_.loModKeys, eril_.rcx);
+      eril_.rcx.getCurrentLayout().convertAllModulesToMemberOnly(eril_.loModKeys, eril_.rcx);
     }
 
     //
@@ -658,7 +656,7 @@ public class LayoutRubberStamper {
     HashSet<String> crossRegion = new HashSet<String>();
     HashSet<String> allGroups = new HashSet<String>();
     HashMap<String, Link> crossTuples = new HashMap<String, Link>();
-    doGroupOrdering((GenomeInstance)eril_.rcx.getGenome(), crossRegion, allGroups, crossTuples); 
+    doGroupOrdering((GenomeInstance)eril_.rcx.getCurrentGenome(), crossRegion, allGroups, crossTuples); 
         
     //
     // Build list of exemptions:
@@ -698,10 +696,10 @@ public class LayoutRubberStamper {
     
     buildCrossPathRegionAssociations(eril_.rcx, oldRegionBounds, crossTuples, recovery, null);
       
-    eril_.regExp.setup(appState_, eril_.rcx, oldRegionBounds, oldToNewShapes, layouts, moduleLinkFragShifts, eril_.loModKeys, recovery, eril_.monitor);
+    eril_.regExp.setup(eril_.rcx, oldRegionBounds, oldToNewShapes, layouts, moduleLinkFragShifts, eril_.loModKeys, recovery, eril_.monitor);
        
     int numG = allGroups.size();
-    double fracInc = (numG == 0) ? frac2 : (frac2 / (double)numG);
+    double fracInc = (numG == 0) ? frac2 : (frac2 / numG);
     double cFrac = eFrac1;    
     Iterator<String> agit = allGroups.iterator();
     while (agit.hasNext()) {
@@ -726,13 +724,13 @@ public class LayoutRubberStamper {
     // Merge separate layouts into one:
     // 
     
-    Map<String, BusProperties.RememberProps> rememberProps = eril_.rcx.getLayout().dropProperties(eril_.rcx);
+    Map<String, BusProperties.RememberProps> rememberProps = eril_.rcx.getCurrentLayout().dropProperties(eril_.rcx);
     // At the moment, if no groups, don't toss ANY module info, since we have no unclaimed slices...
  
     if (!allGroups.isEmpty()) {
-      eril_.rcx.getLayout().reduceToUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
+      eril_.rcx.getCurrentLayout().reduceToUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
     }          
-    Map<Object, Vector2D> deltas = mergeExpandedGroupLayouts(eril_.rcx.getLayout(), newRegionBounds, 
+    Map<Object, Vector2D> deltas = mergeExpandedGroupLayouts(eril_.rcx.getCurrentLayout(), newRegionBounds, 
                                                              oldRegionBounds, layouts, paddings, 
                                                              null, moduleLinkFragShifts, true, nameOwner);
     eril_.regExp.setDeltas(deltas);
@@ -742,11 +740,11 @@ public class LayoutRubberStamper {
     //
     if ((eril_.loModKeys != null) && !eril_.loModKeys.isEmpty()) {
       NetModuleShapeFixer nmsf = new NetModuleShapeFixer();
-      Point2D center = eril_.rcx.getLayout().getLayoutCenter(eril_.rcx, false, null, null, null, null);
+      Point2D center = eril_.rcx.getCurrentLayout().getLayoutCenter(eril_.rcx, false, null, null, null, null);
 
       nmsf.pinModuleShapesForGroups(oldToNewShapes, cauSlices.claimedSlices, cauSlices.unclaimedSlices, deltas, center); 
       if (!allGroups.isEmpty()) {
-        eril_.rcx.getLayout().shiftUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
+        eril_.rcx.getCurrentLayout().shiftUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
       }
     }
  
@@ -761,7 +759,7 @@ public class LayoutRubberStamper {
         String gpID = lit.next();
         if (!eril_.groups.contains(gpID)) {
           Vector2D delta = deltas.get(gpID);
-          pinUnchangedRecoveryPaths(eril_.rcx.getLayout(), gpID, recovery, delta);
+          pinUnchangedRecoveryPaths(eril_.rcx.getCurrentLayout(), gpID, recovery, delta);
         }
       }
     }
@@ -781,7 +779,7 @@ public class LayoutRubberStamper {
     Iterator<String> fit = res.failedLinks.iterator();
     while (fit.hasNext()) {
       String failID = fit.next();
-      eril_.rcx.getLayout().removeLinkProperties(failID);
+      eril_.rcx.getCurrentLayout().removeLinkProperties(failID);
     }
     remaining.addAll(res.failedLinks);
     
@@ -793,9 +791,9 @@ public class LayoutRubberStamper {
       }
     }
     LayoutFailureTracker.postLayoutReport(eril_.rcx);         
-    Layout rootLayout = eril_.rcx.lSrc.getRootLayout();
+    Layout rootLayout = eril_.rcx.getLayoutSource().getRootLayout();
     // BT-03-01-12:1 This first shift for netmodule link drops is here!
-    Vector2D diff = eril_.rcx.getLayout().alignToLayout(rootLayout, eril_.rcx, false, null, null, eril_.padNeeds);
+    Vector2D diff = eril_.rcx.getCurrentLayout().alignToLayout(rootLayout, eril_.rcx, false, null, null, eril_.padNeeds);
   //  LayoutFailureTracker.postLayoutReport(gi, layout, frc);
     return (diff);
   }  
@@ -833,10 +831,10 @@ public class LayoutRubberStamper {
     
     int overlayOption = eril_.options.overlayCpexOption;    
     if (overlayOption == NetOverlayProperties.CPEX_LAYOUT_TO_MEMBER_ONLY) {
-      eril_.rcx.getLayout().convertAllModulesToMemberOnly(eril_.loModKeys, eril_.rcx);
+      eril_.rcx.getCurrentLayout().convertAllModulesToMemberOnly(eril_.loModKeys, eril_.rcx);
     }   
     
-    eril_.rcx.getLayout().dropUselessCorners(eril_.rcx, null, eril_.startFrac, eFrac1, eril_.monitor); 
+    eril_.rcx.getCurrentLayout().dropUselessCorners(eril_.rcx, null, eril_.startFrac, eFrac1, eril_.monitor); 
                                               
     //
     // Use ordering to get allGroups and crossTuples:
@@ -845,7 +843,7 @@ public class LayoutRubberStamper {
     HashSet<String> crossRegion = new HashSet<String>();
     HashSet<String> allGroups = new HashSet<String>();
     HashMap<String, Link> crossTuples = new HashMap<String, Link>();
-    doGroupOrdering((GenomeInstance)eril_.rcx.getGenome(), crossRegion, allGroups, crossTuples);
+    doGroupOrdering((GenomeInstance)eril_.rcx.getCurrentGenome(), crossRegion, allGroups, crossTuples);
       
     //
     // Build list of exemptions (features in the existing layout that would not be
@@ -887,13 +885,13 @@ public class LayoutRubberStamper {
     buildCrossPathRegionAssociations(eril_.rcx, oldRegionBounds, crossTuples, recovery, null);
            
     int numG = allGroups.size();
-    double fracInc = (numG == 0) ? frac2 : (frac2 / (double)numG);
+    double fracInc = (numG == 0) ? frac2 : (frac2 / numG);
     double cFrac = eFrac1a;
     Iterator<String> agit = allGroups.iterator();
     while (agit.hasNext()) {
       String grpID = agit.next();
-      Group grp = ((GenomeInstance)eril_.rcx.getGenome()).getGroup(grpID);
-      DataAccessContext rcxG = new DataAccessContext(eril_.rcx);
+      Group grp = ((GenomeInstance)eril_.rcx.getCurrentGenome()).getGroup(grpID);
+      StaticDataAccessContext rcxG = new StaticDataAccessContext(eril_.rcx);
       rcxG.setLayout(layouts.get(grpID)); 
       if ((eril_.groups == null) || eril_.groups.contains(grpID)) {
         TreeSet<Integer> emptyRows = new TreeSet<Integer>();
@@ -903,16 +901,16 @@ public class LayoutRubberStamper {
         // Compression selection needs to occur on regions of the whole layout, to account
         // for cross-region links.  Compression occurs on separate group layouts:
         //
-        eril_.rcx.getLayout().chooseCompressionRows(eril_.rcx, fracV, fracH, bounds, false, eril_.loModKeys, emptyRows, emptyCols, eril_.monitor); 
+        eril_.rcx.getCurrentLayout().chooseCompressionRows(eril_.rcx, fracV, fracH, bounds, false, eril_.loModKeys, emptyRows, emptyCols, eril_.monitor); 
         HashMap<String, Map<String, List<NetModuleProperties.TaggedShape>>> oldToNewShapesPerGroup = 
           new HashMap<String, Map<String, List<NetModuleProperties.TaggedShape>>>();
         oldToNewShapes.put(grpID, oldToNewShapesPerGroup);
        
-        rcxG.getLayout().compress(rcxG, emptyRows, emptyCols, null, oldToNewShapesPerGroup, moduleLinkFragShifts, grpID, eril_.monitor, cFrac, cFrac + fracInc);
-        expandOrCompressRecoveryPaths(false, rcxG.getLayout(), grpID, emptyRows, emptyCols, 1, recovery);
+        rcxG.getCurrentLayout().compress(rcxG, emptyRows, emptyCols, null, oldToNewShapesPerGroup, moduleLinkFragShifts, grpID, eril_.monitor, cFrac, cFrac + fracInc);
+        expandOrCompressRecoveryPaths(false, rcxG.getCurrentLayout(), grpID, emptyRows, emptyCols, 1, recovery);
       }
       cFrac += fracInc;
-      Rectangle newBounds = rcxG.getLayout().getLayoutBoundsForGroup(grp, rcxG, true, true);
+      Rectangle newBounds = rcxG.getCurrentLayout().getLayoutBoundsForGroup(grp, rcxG, true, true);
       newRegionBounds.put(grpID, newBounds);
     }
     
@@ -926,12 +924,12 @@ public class LayoutRubberStamper {
     // Merge separate layouts into one.  First reduce overlays to member-only modules and unclaimed slices.
     // 
     
-    Map<String, BusProperties.RememberProps> rememberProps = eril_.rcx.getLayout().dropProperties(eril_.rcx);
+    Map<String, BusProperties.RememberProps> rememberProps = eril_.rcx.getCurrentLayout().dropProperties(eril_.rcx);
     // At the moment, if no groups, don't toss ANY module info, since we have no unclaimed slices...
     if (!allGroups.isEmpty()) {
-      eril_.rcx.getLayout().reduceToUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
+      eril_.rcx.getCurrentLayout().reduceToUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
     }
-    int baseGroupOrder = eril_.rcx.getLayout().getTopGroupOrder(); 
+    int baseGroupOrder = eril_.rcx.getCurrentLayout().getTopGroupOrder(); 
     HashMap<Object, Vector2D> deltas = new HashMap<Object, Vector2D>();
     agit = allGroups.iterator();
     while (agit.hasNext()) {
@@ -939,11 +937,11 @@ public class LayoutRubberStamper {
       Layout grpLo = layouts.get(grpID);
       Rectangle obounds = oldRegionBounds.get(grpID);      
       Rectangle nbounds = newRegionBounds.get(grpID);
-      double delx = (double)(obounds.x - nbounds.x);
-      double dely = (double)(obounds.y - nbounds.y);
+      double delx = obounds.x - nbounds.x;
+      double dely = obounds.y - nbounds.y;
       Vector2D delta = new Vector2D(delx, dely);
       boolean doName = ((nameOwner != null) && nameOwner.equals(grpID));
-      eril_.rcx.getLayout().mergeLayoutOfRegion(grpLo, delta, true, doName, baseGroupOrder, moduleLinkFragShifts, grpID);
+      eril_.rcx.getCurrentLayout().mergeLayoutOfRegion(grpLo, delta, true, doName, baseGroupOrder, moduleLinkFragShifts, grpID);
       deltas.put(grpID, delta);    
     }
         
@@ -952,11 +950,11 @@ public class LayoutRubberStamper {
     //
     if ((eril_.loModKeys != null) && !eril_.loModKeys.isEmpty()) {
       NetModuleShapeFixer nmsf = new NetModuleShapeFixer();
-      Point2D center = eril_.rcx.getLayout().getLayoutCenter(eril_.rcx, false, null, null, null, null);
+      Point2D center = eril_.rcx.getCurrentLayout().getLayoutCenter(eril_.rcx, false, null, null, null, null);
 
       nmsf.pinModuleShapesForGroups(oldToNewShapes, cauSlices.claimedSlices, cauSlices.unclaimedSlices, deltas, center); 
       if (!allGroups.isEmpty()) {
-        eril_.rcx.getLayout().shiftUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
+        eril_.rcx.getCurrentLayout().shiftUnclaimedSlices(eril_.loModKeys, cauSlices.unclaimedSlices); 
       }
     }
  
@@ -970,7 +968,7 @@ public class LayoutRubberStamper {
         String gpID = lit.next();
         if (!eril_.groups.contains(gpID)) {
           Vector2D delta = deltas.get(gpID);
-          pinUnchangedRecoveryPaths(eril_.rcx.getLayout(), gpID, recovery, delta);
+          pinUnchangedRecoveryPaths(eril_.rcx.getCurrentLayout(), gpID, recovery, delta);
         }
       }
     }
@@ -997,7 +995,7 @@ public class LayoutRubberStamper {
     Iterator<String> fit = res.failedLinks.iterator();
     while (fit.hasNext()) {
       String failID = fit.next();
-      eril_.rcx.getLayout().removeLinkProperties(failID);
+      eril_.rcx.getCurrentLayout().removeLinkProperties(failID);
     }
     remaining.addAll(res.failedLinks);
 
@@ -1014,16 +1012,16 @@ public class LayoutRubberStamper {
     if ((eril_.groups == null) || eril_.groups.equals(allGroups)) {
       TreeSet<Integer> useEmptyRows = new TreeSet<Integer>();
       TreeSet<Integer> useEmptyCols = new TreeSet<Integer>();
-      eril_.rcx.getLayout().chooseCompressionRows(eril_.rcx, fracV, fracH, null, true, eril_.loModKeys, useEmptyRows, useEmptyCols, eril_.monitor);
-      eril_.rcx.getLayout().compress(eril_.rcx, useEmptyRows, useEmptyCols, null, null, null, null, eril_.monitor, eFrac3, eFrac4);
+      eril_.rcx.getCurrentLayout().chooseCompressionRows(eril_.rcx, fracV, fracH, null, true, eril_.loModKeys, useEmptyRows, useEmptyCols, eril_.monitor);
+      eril_.rcx.getCurrentLayout().compress(eril_.rcx, useEmptyRows, useEmptyCols, null, null, null, null, eril_.monitor, eFrac3, eFrac4);
     }
     
     //
     // Line up with root:
     //
     
-    Layout rootLayout = eril_.rcx.lSrc.getRootLayout();
-    eril_.rcx.getLayout().alignToLayout(rootLayout, eril_.rcx, false, null, null, eril_.padNeeds);
+    Layout rootLayout = eril_.rcx.getLayoutSource().getRootLayout();
+    eril_.rcx.getCurrentLayout().alignToLayout(rootLayout, eril_.rcx, false, null, null, eril_.padNeeds);
     
     return;
   }    
@@ -1033,7 +1031,7 @@ public class LayoutRubberStamper {
   ** Answers if the model set can be synchronized by direct copy
   */
   
-  public boolean directCopyOptionAllowed(DataAccessContext rcx) {
+  public boolean directCopyOptionAllowed(StaticDataAccessContext rcx) {
     Iterator<GenomeInstance> git = rcx.getGenomeSource().getInstanceIterator();
     while (git.hasNext()) {
       GenomeInstance gi = git.next();
@@ -1058,7 +1056,7 @@ public class LayoutRubberStamper {
   ** Look for exact link layout matches
   */
   
-  private boolean foldInExactMatch(DataAccessContext rcxR, Map<String, String> placedByInstance,
+  private boolean foldInExactMatch(StaticDataAccessContext rcxR, Map<String, String> placedByInstance,
                                    LayoutDataSource slds, LayoutDataSource tlds, Map<LayoutDataSource, Layout> scaledLayouts, 
                                    Linkage link, String src, String trg, Set<String> orphanedLinks,
                                    PadCalculatorToo.UpwardPadSyncData upsd)  {
@@ -1067,10 +1065,10 @@ public class LayoutRubberStamper {
     String linkID = link.getID();
     if (fd != null) { 
       Layout sslo = scaledLayouts.get(slds);   
-      Layout lo = (sslo == null) ? rcxR.lSrc.getLayoutForGenomeKey(slds.getModelID()) : sslo;
+      Layout lo = (sslo == null) ? rcxR.getLayoutSource().getLayoutForGenomeKey(slds.getModelID()) : sslo;
       upsd.setForSource(src, fd.giLink.getLaunchPad(), 1); 
       upsd.setForTarget(linkID, trg, fd.giLink.getLandingPad());          
-      foldInLinkMatch(rcxR, lo, fd.iid, fd.giLinkSrc, link, src, trg, orphanedLinks);
+      foldInLinkMatch(rcxR, lo, fd.iid, fd.giLinkSrc, link, src, orphanedLinks);
       return (true);
     }
     return (false);
@@ -1194,20 +1192,20 @@ public class LayoutRubberStamper {
   ** is maintained, we can use a link instance from some other model layout
   */
   
-  private boolean foldInRelativeMatch(DataAccessContext rcxRt,
+  private boolean foldInRelativeMatch(StaticDataAccessContext rcxRt,
                                       LayoutDerivation ld, Map<LayoutDataSource, Layout> scaledLayouts,                                    
                                       Linkage link, String src, String trg, Set<String> orphanedLinks,
                                       PadCalculatorToo.UpwardPadSyncData upsd)  {
 
 
-    FoldDirections fd = findFoldInRelativeMatch(rcxRt.getGenomeSource(), rcxRt.lSrc, rcxRt.getLayout(), null, ld, link, src, trg);
+    FoldDirections fd = findFoldInRelativeMatch(rcxRt.getGenomeSource(), rcxRt.getLayoutSource(), rcxRt.getCurrentLayout(), null, ld, link, src, trg);
     String linkID = link.getID();
     if (fd != null) { 
       Layout slo = scaledLayouts.get(fd.lds);
-      Layout lo = (slo == null) ? rcxRt.lSrc.getLayoutForGenomeKey(fd.lds.getModelID()) : slo;
+      Layout lo = (slo == null) ? rcxRt.getLayoutSource().getLayoutForGenomeKey(fd.lds.getModelID()) : slo;
       upsd.setForSource(src, fd.giLink.getLaunchPad(), 1); 
       upsd.setForTarget(linkID, trg, fd.giLink.getLandingPad());          
-      foldInLinkMatch(rcxRt, lo, fd.iid, fd.giLinkSrc, link, src, trg, orphanedLinks);
+      foldInLinkMatch(rcxRt, lo, fd.iid, fd.giLinkSrc, link, src, orphanedLinks);
       return (true);
     }
     return (false);    
@@ -1218,7 +1216,7 @@ public class LayoutRubberStamper {
   ** Recover links from the original layout
   */
   
-  private boolean recoverFromOldLayout(DataAccessContext rcx, Layout origLayout,
+  private boolean recoverFromOldLayout(StaticDataAccessContext rcx, Layout origLayout,
                                        Linkage link, String src, String trg, Set<String> orphanedLinks,
                                        PadCalculatorToo.UpwardPadSyncData upsd)  {
 
@@ -1231,9 +1229,9 @@ public class LayoutRubberStamper {
     Point2D origStartLoc = osnp.getLocation();
     Point2D origEndLoc = otnp.getLocation();    
  
-    NodeProperties nsnp = rcx.getLayout().getNodeProperties(src);
+    NodeProperties nsnp = rcx.getCurrentLayout().getNodeProperties(src);
     Point2D newStartLoc = nsnp.getLocation();
-    NodeProperties ntnp = rcx.getLayout().getNodeProperties(trg);
+    NodeProperties ntnp = rcx.getCurrentLayout().getNodeProperties(trg);
     Point2D newEndLoc = ntnp.getLocation();
     Vector2D origOffset = new Vector2D(origEndLoc, origStartLoc); 
     Vector2D newOffset = new Vector2D(newEndLoc, newStartLoc);    
@@ -1252,7 +1250,7 @@ public class LayoutRubberStamper {
       upsd.setForTarget(linkID, trg, link.getLandingPad());
     }
    
-    rcx.getLayout().foldInNewProperty(link, spTree, rcx);
+    rcx.getCurrentLayout().foldInNewProperty(link, spTree, rcx);
     if (orphanedLinks != null) {
       orphanedLinks.remove(linkID);
     }
@@ -1306,13 +1304,13 @@ public class LayoutRubberStamper {
   ** Recover link geometry from the original layout
   */
   
-  private CrossLinkRecovery extractRecoveryPathsFromOldLayout(DataAccessContext rcxB, Set<String> todo,
+  private CrossLinkRecovery extractRecoveryPathsFromOldLayout(StaticDataAccessContext rcxB, Set<String> todo,
                                                               GenericBPSource bps, Map<String, Set<String>> exemptions, 
                                                               Map<String, Map<String, EdgeMove>> chopDeparts, 
                                                               Map<String, Map<String, EdgeMove>> chopArrives) {
     
     if (bps == null) {
-      bps = new GenericBPSource(rcxB.getLayout());
+      bps = new GenericBPSource(rcxB.getCurrentLayout());
     }
     Vector2D offset = new Vector2D(0.0, 0.0);
     HashSet<String> recoveredLinks = new HashSet<String>();
@@ -1320,7 +1318,7 @@ public class LayoutRubberStamper {
     HashMap<String, PerSrcData> perSrcMap = new HashMap<String, PerSrcData>();
     while (tdit.hasNext()) {
       String linkID = tdit.next();
-      Linkage link = rcxB.getGenome().getLinkage(linkID);
+      Linkage link = rcxB.getCurrentGenome().getLinkage(linkID);
       String src = link.getSource();
       String trg = link.getTarget();
       BusProperties bp = bps.getLinkProperties(linkID);
@@ -1331,8 +1329,8 @@ public class LayoutRubberStamper {
         continue;
       }
       
-      NodeProperties osnp = rcxB.getLayout().getNodeProperties(src);
-      NodeProperties otnp = rcxB.getLayout().getNodeProperties(trg);
+      NodeProperties osnp = rcxB.getCurrentLayout().getNodeProperties(src);
+      NodeProperties otnp = rcxB.getCurrentLayout().getNodeProperties(trg);
       if ((osnp == null) || (otnp == null)) {
         continue;
       }
@@ -1365,9 +1363,9 @@ public class LayoutRubberStamper {
   ** Fold in a link layout match
   */
   
-  private void foldInLinkMatch(DataAccessContext rcxRoot, Layout lo,        
+  private void foldInLinkMatch(StaticDataAccessContext rcxRoot, Layout lo,        
                                String iid, String giLinkSrc, 
-                               Linkage link, String src, String trg, Set<String> orphanedLinks)  {
+                               Linkage link, String src, Set<String> orphanedLinks)  {
     
  
     String linkID = link.getID();
@@ -1375,13 +1373,13 @@ public class LayoutRubberStamper {
     BusProperties bp = lo.getLinkProperties(iid);
     LinkBusDrop keepDrop = bp.getTargetDrop(iid);
     NodeProperties np = lo.getNodeProperties(giLinkSrc);
-    NodeProperties rnps = rcxRoot.getLayout().getNodeProperties(src);
+    NodeProperties rnps = rcxRoot.getCurrentLayout().getNodeProperties(src);
     Point2D startLoc = rnps.getLocation();   
     Vector2D offset = new Vector2D(np.getLocation(), startLoc);       
     BusProperties spTree = new BusProperties(bp, (BusDrop)keepDrop);
     spTree = new BusProperties(spTree, src, linkID, offset);
     
-    rcxRoot.getLayout().foldInNewProperty(link, spTree, rcxRoot);
+    rcxRoot.getCurrentLayout().foldInNewProperty(link, spTree, rcxRoot);
     orphanedLinks.remove(linkID);
     return;
   }
@@ -1407,7 +1405,7 @@ public class LayoutRubberStamper {
     usedGroupsForGI.add(groupID);
 
     GenomeInstance gi = (GenomeInstance)rcx.getGenomeSource().getGenome(modelID);   
-    Layout lo = rcx.lSrc.getLayoutForGenomeKey(modelID);
+    Layout lo = rcx.getLayoutSource().getLayoutForGenomeKey(modelID);
 
     HashMap<String, String> nodeMap = new HashMap<String, String>(); 
     if (lds.isNodeSpecific()) {  // Hardwired to a set of nodes
@@ -1464,13 +1462,13 @@ public class LayoutRubberStamper {
   ** Scale layout if needed, else return the original:
   */
   
-  private Layout scaleLayout(LayoutDataSource lds, DataAccessContext rcx,
+  private Layout scaleLayout(LayoutDataSource lds, StaticDataAccessContext rcx,
                             Map<LayoutDataSource, Layout> scaledLayouts, BTProgressMonitor monitor, 
                              double startFrac, double maxFrac) throws AsynchExitRequestException {
     
     
-    DataAccessContext rcxR = new DataAccessContext(rcx);
-    Layout retval = rcx.getLayout();
+    StaticDataAccessContext rcxR = new StaticDataAccessContext(rcx);
+    Layout retval = rcx.getCurrentLayout();
 
     int xOff = lds.getXOffset();
     int yOff = lds.getYOffset();
@@ -1480,7 +1478,7 @@ public class LayoutRubberStamper {
     if ((xOff != 0) || (yOff != 0)) {
       retval = new Layout(retval);
       rcxR.setLayout(retval);
-      rcxR.getLayout().shiftLayout(new Vector2D(xOff, yOff), null, rcxR);
+      rcxR.getCurrentLayout().shiftLayout(new Vector2D(xOff, yOff), null, rcxR);
       scaledLayouts.put(lds, retval);
     }  
 
@@ -1535,7 +1533,7 @@ public class LayoutRubberStamper {
     
     int overlayOption = rsd_.options.overlayOption;    
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) {     
-      rsd_.instRcx.getLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
     }
 
     //
@@ -1543,12 +1541,12 @@ public class LayoutRubberStamper {
     //
 
     HashMap<String, String> nodeMap = new HashMap<String, String>();    
-    Iterator<Node> nit = rsd_.instRcx.getGenome().getAllNodeIterator();
+    Iterator<Node> nit = rsd_.instRcx.getCurrentGenome().getAllNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
       String nodeID = node.getID();
       String baseID = GenomeItemInstance.getBaseID(nodeID);
-      NodeProperties np = rsd_.rootRcx.getLayout().getNodeProperties(baseID);
+      NodeProperties np = rsd_.rootRcx.getCurrentLayout().getNodeProperties(baseID);
       if (np == null) {  // for partial layouts...
         continue;
       }
@@ -1556,12 +1554,12 @@ public class LayoutRubberStamper {
     }
     
     HashMap<String, String> linkMap = new HashMap<String, String>();
-    Iterator<Linkage> glit = rsd_.instRcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> glit = rsd_.instRcx.getCurrentGenome().getLinkageIterator();
     while (glit.hasNext()) {
       Linkage link = glit.next();
       String linkID = link.getID();
       String baseID = GenomeItemInstance.getBaseID(linkID);        
-      BusProperties lp = rsd_.rootRcx.getLayout().getLinkProperties(baseID);
+      BusProperties lp = rsd_.rootRcx.getCurrentLayout().getLinkProperties(baseID);
       if (lp == null) {  // for partial layouts...
         continue;
       }
@@ -1574,14 +1572,14 @@ public class LayoutRubberStamper {
     // null maps provided for overlay transfer directives:
     //
     
-    rsd_.instRcx.getLayout().extractPartialLayout(nodeMap, linkMap, null,null, null, null, false, true, null, rsd_.instRcx, rsd_.rootRcx);
+    rsd_.instRcx.getCurrentLayout().extractPartialLayout(nodeMap, linkMap, null,null, null, null, false, true, null, rsd_.instRcx, rsd_.rootRcx);
     
     //
     // Move module shapes around:
     //
     
     if ((rsd_.moduleShapeRecovery != null) && (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
-      rsd_.instRcx.getLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
     }     
  
     if (rsd_.monitor != null) {
@@ -1621,7 +1619,7 @@ public class LayoutRubberStamper {
     
     int overlayOption = rsd_.options.overlayOption;  
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) {     
-      rsd_.instRcx.getLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
     }
   
     //
@@ -1639,7 +1637,7 @@ public class LayoutRubberStamper {
     HashSet<String> crossRegion = new HashSet<String>();
     HashSet<String> allGroups = new HashSet<String>();
     HashMap<String, Link> crossTuples = new HashMap<String, Link>();
-    SortedMap<Integer, List<String>> regionsByColumn = doGroupOrdering((GenomeInstance)rsd_.instRcx.getGenome(), crossRegion, allGroups, crossTuples);
+    SortedMap<Integer, List<String>> regionsByColumn = doGroupOrdering((GenomeInstance)rsd_.instRcx.getCurrentGenome(), crossRegion, allGroups, crossTuples);
     //
     // Build separate layouts for each:
     //
@@ -1651,12 +1649,12 @@ public class LayoutRubberStamper {
     
     // Note these are not squashed even if we are squashing:
     // Extraction of overlay info is pointless going down from root to instance:
-    DataAccessContext rcx2m = new DataAccessContext(rsd_.instRcx);
-    rcx2m.setLayout(rsd_.rootRcx.getLayout());
+    StaticDataAccessContext rcx2m = new StaticDataAccessContext(rsd_.instRcx);
+    rcx2m.setLayout(rsd_.rootRcx.getCurrentLayout());
     buildGroupLayouts(rcx2m, layouts, loBounds, allGroups, rsd_.loModKeys, 
                       true, false, null, null, moduleLinkFragShifts, false, rsd_.monitor, rsd_.startFrac, eFrac1);
-    DataAccessContext rcxul = new DataAccessContext(rsd_.instRcx);
-    rcxul.setLayout((rsd_.options.inheritanceSquash) ? new Layout(rsd_.instRcx.getLayout()) : rsd_.instRcx.getLayout());       
+    StaticDataAccessContext rcxul = new StaticDataAccessContext(rsd_.instRcx);
+    rcxul.setLayout((rsd_.options.inheritanceSquash) ? new Layout(rsd_.instRcx.getCurrentLayout()) : rsd_.instRcx.getCurrentLayout());       
     LinkRouter.RoutingResult res = iterativeFreshMerge(rcxul, crossRegion, loBounds, layouts, regionsByColumn,
                                                        rsd_.options, linkColors, rsd_.loModKeys, moduleLinkFragShifts,
                                                        rsd_.monitor, eFrac1, eFrac2, rsd_.rememberProps, strictOKGroups);
@@ -1675,7 +1673,7 @@ public class LayoutRubberStamper {
         new HashMap<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>>();
       
       int numG = allGroups.size();
-      double fracInc = frac3 / (double)numG;
+      double fracInc = frac3 / numG;
       double cFrac = eFrac2;
       double cfrac1 = fracInc * 0.33;
       double ceFrac1 = cFrac + cfrac1;
@@ -1686,12 +1684,12 @@ public class LayoutRubberStamper {
       Iterator<String> agit = allGroups.iterator();
       while (agit.hasNext()) {
         String grpID = agit.next();
-        DataAccessContext rcxss = new DataAccessContext(rsd_.instRcx);
-        rcxss.setLayout(new Layout(rcxul.getLayout())); 
+        StaticDataAccessContext rcxss = new StaticDataAccessContext(rsd_.instRcx);
+        rcxss.setLayout(new Layout(rcxul.getCurrentLayout())); 
         // Don't want useless corners to mess up the squash:
-        rcxss.getLayout().dropUselessCorners(rcxss, null, cFrac, ceFrac1, rsd_.monitor);
+        rcxss.getCurrentLayout().dropUselessCorners(rcxss, null, cFrac, ceFrac1, rsd_.monitor);
         Rectangle bounds = loBounds.get(grpID);
-        boundedSquash(rcxss, bounds, loBounds, rsd_.monitor, ceFrac1, ceFrac2);
+        boundedSquash(rcxss, bounds, rsd_.monitor, ceFrac1, ceFrac2);
         oneGroup.clear();
         oneGroup.add(grpID);
         // Am keeping overlay info.  Is this what we want?
@@ -1712,8 +1710,8 @@ public class LayoutRubberStamper {
       // Merge separate layouts into one:
       // 
       
-      DataAccessContext rcxtl = new DataAccessContext(rsd_.instRcx);
-      rcxtl.setLayout(new Layout(rsd_.instRcx.getLayout())); 
+      StaticDataAccessContext rcxtl = new StaticDataAccessContext(rsd_.instRcx);
+      rcxtl.setLayout(new Layout(rsd_.instRcx.getCurrentLayout())); 
       LinkRouter.RoutingResult res2 = iterativeFreshMerge(rcxtl, crossRegion, newLoBounds, newLayouts, regionsByColumn,
                                                           rsd_.options, linkColors, rsd_.loModKeys, moduleLinkFragShifts,
                                                           rsd_.monitor, eFrac3, rsd_.maxFrac, rsd_.rememberProps, strictOKGroups);
@@ -1721,9 +1719,9 @@ public class LayoutRubberStamper {
       if (((res2.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) ||
           ((res.linkResult & LinkRouter.LAYOUT_PROBLEM) != 0x00)) {
      // if ((res2.linkResult == LinkRouter.LAYOUT_OK) || (res.linkResult != LinkRouter.LAYOUT_OK)) {
-        rsd_.instRcx.getLayout().replaceContents(rcxtl.getLayout());
+        rsd_.instRcx.getCurrentLayout().replaceContents(rcxtl.getCurrentLayout());
       } else {
-        rsd_.instRcx.getLayout().replaceContents(rcxul.getLayout());       
+        rsd_.instRcx.getCurrentLayout().replaceContents(rcxul.getCurrentLayout());       
       }      
     }
     
@@ -1732,25 +1730,12 @@ public class LayoutRubberStamper {
     //
     
     if ((rsd_.moduleShapeRecovery != null) && (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
-      rsd_.instRcx.getLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
     } 
     
-    Layout.PadNeedsForLayout padNeedsForLayout = rsd_.globalPadNeeds.get(rsd_.instRcx.getLayoutID());
-    rsd_.instRcx.getLayout().alignToLayout(rsd_.rootRcx.getLayout(), rsd_.instRcx, false, null, null, padNeedsForLayout);
+    Layout.PadNeedsForLayout padNeedsForLayout = rsd_.globalPadNeeds.get(rsd_.instRcx.getCurrentLayoutID());
+    rsd_.instRcx.getCurrentLayout().alignToLayout(rsd_.rootRcx.getCurrentLayout(), rsd_.instRcx, false, null, null, padNeedsForLayout);
     
-    //
-    // We do not reassign colors, but check for link overlaps:
-    // 
-    /*
-    ColorAssigner ca= new ColorAssigner();
-    int caRet = ca.assignColors(genome, lo, routerGrid, colorMap, 
-                                true, true, needColors);
-    if (caRet != ColorAssigner.COLORING_OK) {
-      retval.linkResult |= LinkRouter.COLOR_PROBLEM;
-      retval.colorResult = caRet;
-    } 
-     
-     */
     return (res);
   }
   
@@ -1806,7 +1791,7 @@ public class LayoutRubberStamper {
     // Topo sort the groups:
     //
     
-    SortedMap<Integer, List<String>> regionsByColumn = sortRegions(allGroups, crossTuples, gi);
+    SortedMap<Integer, List<String>> regionsByColumn = sortRegions(allGroups, crossTuples);
     return (regionsByColumn);
   }
  
@@ -1833,7 +1818,7 @@ public class LayoutRubberStamper {
     
     int overlayOption = rsd_.options.overlayOption;   
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) {     
-      rsd_.instRcx.getLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
     }     
  
     HashMap<String, String> linkColors = new HashMap<String, String>();
@@ -1844,7 +1829,7 @@ public class LayoutRubberStamper {
     HashSet<String> allGroups = new HashSet<String>();
     HashMap<String, Link> crossTuples = new HashMap<String, Link>();
     // Want the link info, but don't care about the ordering....
-    doGroupOrdering((GenomeInstance)rsd_.instRcx.getGenome(), crossRegion, allGroups, crossTuples); 
+    doGroupOrdering((GenomeInstance)rsd_.instRcx.getCurrentGenome(), crossRegion, allGroups, crossTuples); 
        
     //
     // Build separate layouts for each region.  Do this for the root layout and the
@@ -1860,7 +1845,7 @@ public class LayoutRubberStamper {
     Iterator<String> agit = allGroups.iterator();
     while (agit.hasNext()) {
       String grpID = agit.next();
-      GroupProperties gp = rsd_.instRcx.getLayout().getGroupProperties(grpID);
+      GroupProperties gp = rsd_.instRcx.getCurrentLayout().getGroupProperties(grpID);
       if (gp != null) {
         existingGroups.add(grpID);
         gpMemory.put(grpID, new GroupProperties(gp));
@@ -1876,8 +1861,8 @@ public class LayoutRubberStamper {
     Point2D origin = new Point2D.Double(0.0, 0.0);
     
     
-    DataAccessContext rcx2m = new DataAccessContext(rsd_.instRcx);
-    rcx2m.setLayout(rsd_.rootRcx.getLayout());  
+    StaticDataAccessContext rcx2m = new StaticDataAccessContext(rsd_.instRcx);
+    rcx2m.setLayout(rsd_.rootRcx.getCurrentLayout());  
     buildGroupLayouts(rcx2m, layoutsFromRoot, loFrRtBounds, 
                       allGroups, rsd_.loModKeys, true, rsd_.options.inheritanceSquash, gpMemory, null, 
                       null, false, rsd_.monitor, rsd_.startFrac, eFrac1);
@@ -1902,23 +1887,23 @@ public class LayoutRubberStamper {
      
     HashMap<String, Rectangle> newRegionBounds = new HashMap<String, Rectangle>();
     int numG = allGroups.size();
-    double fracInc = (numG == 0) ? frac3 : (frac3 / (double)numG);
+    double fracInc = (numG == 0) ? frac3 : (frac3 / numG);
     double cFrac = eFrac2;    
     agit = allGroups.iterator();
     while (agit.hasNext()) {
       String grpID = agit.next();
-      Group grp = ((GenomeInstance)rsd_.instRcx.getGenome()).getGroup(grpID);    
+      Group grp = ((GenomeInstance)rsd_.instRcx.getCurrentGenome()).getGroup(grpID);    
       Layout grloRoot = layoutsFromRoot.get(grpID);
-      DataAccessContext rcxli = new DataAccessContext(rsd_.instRcx);
+      StaticDataAccessContext rcxli = new StaticDataAccessContext(rsd_.instRcx);
       rcxli.setLayout(layoutsFromInstance.get(grpID));
-      if (rcxli.getLayout() == null) {
-        rcxli.setLayout(new Layout(appState_, "junkID", rsd_.instRcx.getGenomeID()));
-        layoutsFromInstance.put(grpID, rcxli.getLayout());
+      if (rcxli.getCurrentLayout() == null) {
+        rcxli.setLayout(new Layout("junkID", rsd_.instRcx.getCurrentGenomeID()));
+        layoutsFromInstance.put(grpID, rcxli.getCurrentLayout());
       }
       addNewProperties(grloRoot, rcxli, grp, origin, rsd_.options,
                        linkColors, rsd_.monitor, cFrac, cFrac + fracInc, rsd_.rememberProps, strictOKGroups);
       cFrac += fracInc; 
-      Rectangle grpBounds = rcxli.getLayout().getLayoutBoundsForGroup(grp, rcxli, true, true);
+      Rectangle grpBounds = rcxli.getCurrentLayout().getLayoutBoundsForGroup(grp, rcxli, true, true);
       newRegionBounds.put(grpID, grpBounds);
     }
     
@@ -1931,7 +1916,7 @@ public class LayoutRubberStamper {
     //
     LinkRouter router = new LinkRouter();
     HashSet<String> useNodes = new HashSet<String>();
-    Iterator<Node> ncit = rsd_.instRcx.getGenome().getNodeIterator();
+    Iterator<Node> ncit = rsd_.instRcx.getCurrentGenome().getNodeIterator();
     while (ncit.hasNext()) {
       Node node = ncit.next();
       String nodeID = node.getID();
@@ -1940,7 +1925,7 @@ public class LayoutRubberStamper {
       }
     }
     HashSet<String> skipLinks = new HashSet<String>();
-    Iterator<Linkage> lit = rsd_.instRcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rsd_.instRcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
@@ -1948,7 +1933,7 @@ public class LayoutRubberStamper {
         skipLinks.add(linkID);
       }
     }
-    DataAccessContext rcx2o = new DataAccessContext(rsd_.instRcx);
+    StaticDataAccessContext rcx2o = new StaticDataAccessContext(rsd_.instRcx);
     rcx2o.setLayout(rsd_.origLayout);  
     LinkPlacementGrid exceptionGrid = router.initLimitedGrid(rcx2o, useNodes, skipLinks, INodeRenderer.STRICT);    
     Map<String, Set<String>> exempt = exceptionGrid.buildExemptions();          
@@ -1968,7 +1953,7 @@ public class LayoutRubberStamper {
     //
     
     if ((rsd_.moduleShapeRecovery != null) && (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
-      rsd_.instRcx.getLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
     } 
     
     return (retval);
@@ -2003,14 +1988,14 @@ public class LayoutRubberStamper {
     
     int overlayOption = rsd_.options.overlayOption;    
     if (overlayOption == NetOverlayProperties.RELAYOUT_TO_MEMBER_ONLY) { 
-      rsd_.instRcx.getLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().convertAllModulesToMemberOnly(rsd_.loModKeys, rsd_.instRcx);
     }
     
     HashSet<String> crossRegion = new HashSet<String>();
     HashSet<String> allGroups = new HashSet<String>();
     HashMap<String, Link> crossTuples = new HashMap<String, Link>();
     // Want the link info, but don't care about the ordering....
-    doGroupOrdering((GenomeInstance)rsd_.instRcx.getGenome(), crossRegion, allGroups, crossTuples); 
+    doGroupOrdering((GenomeInstance)rsd_.instRcx.getCurrentGenome(), crossRegion, allGroups, crossTuples); 
        
     //
     // Build separate layouts for each region.  Do this for the root layout.
@@ -2038,8 +2023,8 @@ public class LayoutRubberStamper {
     // using that selection, and apply the same compression results to the recovered cross-links!
     //
     
-    DataAccessContext rcxRLGI = new DataAccessContext(rsd_.instRcx);
-    rcxRLGI.setLayout(rsd_.rootRcx.getLayout());
+    StaticDataAccessContext rcxRLGI = new StaticDataAccessContext(rsd_.instRcx);
+    rcxRLGI.setLayout(rsd_.rootRcx.getCurrentLayout());
     
     HashMap<String, Empties> emptiesForGroup = null;
     
@@ -2070,9 +2055,9 @@ public class LayoutRubberStamper {
    
     HashMap<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> moduleLinkFragShifts = 
       new HashMap<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>>();
-    DataAccessContext rcxOLGI = new DataAccessContext(rsd_.instRcx);
+    StaticDataAccessContext rcxOLGI = new StaticDataAccessContext(rsd_.instRcx);
     rcxOLGI.setLayout(rsd_.origLayout); // <--- The "origLayout" here is a copy from the database. So need to provide a layout source wrapper for it.
-    rcxOLGI.lSrc = new LocalLayoutSource(rsd_.origLayout, rsd_.instRcx.getGenomeSource());
+    rcxOLGI.setLayoutSource(new LocalLayoutSource(rsd_.origLayout, rsd_.instRcx.getGenomeSource()));
     buildGroupLayouts(rcxOLGI, layoutsToUse, loBounds, 
                       allGroups, rsd_.loModKeys, false, false, null, null, 
                       moduleLinkFragShifts, true, rsd_.monitor, eFrac1, eFrac2);        
@@ -2112,7 +2097,7 @@ public class LayoutRubberStamper {
     //
     
     if ((rsd_.moduleShapeRecovery != null) && (overlayOption != NetOverlayProperties.RELAYOUT_NO_CHANGE)) {
-      rsd_.instRcx.getLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
+      rsd_.instRcx.getCurrentLayout().shiftModuleShapesPerParams(rsd_.loModKeys, rsd_.moduleShapeRecovery, rsd_.instRcx);
     }    
     
     return (retval);
@@ -2167,7 +2152,7 @@ public class LayoutRubberStamper {
   ** Map LSIDs into a list of points.
   */
   
-  private List<Point2D> lsidToPointList(LinkSegmentID lsid, LinkProperties bp, DataAccessContext rcx) {
+  private List<Point2D> lsidToPointList(LinkSegmentID lsid, LinkProperties bp, StaticDataAccessContext rcx) {
     if (bp.isDirect() || lsid.isForEndDrop()) {
       throw new IllegalArgumentException();
     }
@@ -2215,7 +2200,7 @@ public class LayoutRubberStamper {
   ** form the best place to cut them for gluing into the recovery tree.
   */
   
-  private Set<LinkSegmentID> getTargetChopSegments(DataAccessContext rcx, LinkProperties bp,
+  private Set<LinkSegmentID> getTargetChopSegments(StaticDataAccessContext rcx, LinkProperties bp,
                                                    Rectangle bounds, Set<String> linksToTarg) {
     
 
@@ -2318,8 +2303,7 @@ public class LayoutRubberStamper {
                                                       Set<String> linksForSource, 
                                                       Map<String, Rectangle> allBounds, 
                                                       Set<String> targRegions, 
-                                                      DataAccessContext rcx) {  //GenomeInstance gi, Layout lo) {
-
+                                                      StaticDataAccessContext rcx) {
     //
     // For each point on the source tree that is outside the target region, parameterize
     // it in terms of RegionBasedPositions
@@ -2387,7 +2371,7 @@ public class LayoutRubberStamper {
   ** Merge the two trees together
   */
   
-  private void doTreeMerge(String srcID, DataAccessContext rcx, LinkProperties origBp,
+  private void doTreeMerge(String srcID, StaticDataAccessContext rcx, LinkProperties origBp,
                            Map<String, Map<LinkSegmentID, TreeSpliceData>> mergedSegsPerSource, Map<String, TreeMergePerRegion> allTmprs) {
   
     Map<LinkSegmentID, TreeSpliceData> mergedSegs = mergedSegsPerSource.get(srcID);
@@ -2437,7 +2421,7 @@ public class LayoutRubberStamper {
         }
         LinkSegment lseg = origBp.getSegmentGeometryForID(dswhipSeg.segID, rcx, false);
         String aLinkID = tmpr.linksToTarg.iterator().next();
-        Linkage aLink = rcx.getGenome().getLinkage(aLinkID);
+        Linkage aLink = rcx.getCurrentGenome().getLinkage(aLinkID);
         String aTrgID = aLink.getTarget();
         //
         // 9/13/12: Crash: lseg here is zero length, null run!  Make sure we have no null ptr,
@@ -2461,7 +2445,7 @@ public class LayoutRubberStamper {
     // so we don't chop off pieces needed by the next stubs...
     //
     
-    origBp.mergeReplacementSubTreesToTreeAtSegment(glueJobs, rcx.getGenome());
+    origBp.mergeReplacementSubTreesToTreeAtSegment(glueJobs, rcx.getCurrentGenome());
     int numGlue = glueJobs.size();
     for (int i = 0; i < numGlue; i++) {
       BusProperties.GlueJob glueJob = glueJobs.get(i);
@@ -2539,9 +2523,8 @@ public class LayoutRubberStamper {
   ** region into the layout as a whole.
   */
   
-  private void synthMergedTrees(DataAccessContext rcx, //GenomeInstance gi, 
+  private void synthMergedTrees(StaticDataAccessContext rcx,
                                 Map<String, Link> crossTuples, Set<String> srcsToDo, 
-                                //Layout origLayout, 
                                 Map<String, Layout> targetLayouts, Map<String, Rectangle> rootBounds,
                                 Map<String, Rectangle> targetBounds, Map<String, LinkProperties> synthLayouts, 
                                 Map<String, Map<LinkSegmentID, TreeSpliceData>> mergedSegsPerSource) {
@@ -2563,9 +2546,9 @@ public class LayoutRubberStamper {
       //
       linksToTargForTarg.clear();
       
-      Set<String> linksForSource = rcx.getGenome().getOutboundLinks(srcID);
+      Set<String> linksForSource = rcx.getCurrentGenome().getOutboundLinks(srcID);
       
-      LinkProperties origBp = rcx.getLayout().getBusForSource(srcID).clone();
+      LinkProperties origBp = rcx.getCurrentLayout().getBusForSource(srcID).clone();
       if (origBp.isDirect()) {
         // Gotta have SOME point to work with if the link in direct.  Since we are working
         // here with a clone, this crappy kludge is to just split the bus in half.  
@@ -2576,7 +2559,7 @@ public class LayoutRubberStamper {
       Iterator<String> grit = targetLayouts.keySet().iterator();  // target groups
       while (grit.hasNext()) {
         String trgGrpID = grit.next();
-        Set<String> linksToTarg = linksIntoTargetRegion((GenomeInstance)rcx.getGenome(), srcID, crossTuples, trgGrpID);
+        Set<String> linksToTarg = linksIntoTargetRegion((GenomeInstance)rcx.getCurrentGenome(), srcID, crossTuples, trgGrpID);
         if (linksToTarg.isEmpty()) {
           continue;
         }
@@ -2591,12 +2574,12 @@ public class LayoutRubberStamper {
       while (glrit.hasNext()) {
         String trgGrpID = glrit.next();
         Set<String> linksToTarg = linksToTargForTarg.get(trgGrpID);
-        DataAccessContext rcx4TR = new DataAccessContext(rcx);
+        StaticDataAccessContext rcx4TR = new StaticDataAccessContext(rcx);
         rcx4TR.setLayout(targetLayouts.get(trgGrpID));
         Rectangle rootBoundsForTrgReg = rootBounds.get(trgGrpID);
         Rectangle targBoundsForTrgReg = targetBounds.get(trgGrpID);
         String aLinkID = linksToTarg.iterator().next();
-        LinkProperties bp = rcx4TR.getLayout().getLinkProperties(aLinkID);
+        LinkProperties bp = rcx4TR.getCurrentLayout().getLinkProperties(aLinkID);
         //
         // Quick fix for BT-12-03-09:1.  If we have multiple instances of an inbound
         // link from multiple instances of the source, only one instance is present.
@@ -2624,7 +2607,7 @@ public class LayoutRubberStamper {
         // Find the best place to splice, and chop up the whips.  We get back a list of best point per stub:
         //
         Map<LinkSegmentID, Point2D> dicePts = sliceAndDiceWhips(origBp, sourceWhips, targStubs, rcx);
-        TreeMergePerRegion tmpr = new TreeMergePerRegion(bp, dicePts, targStubs, trgGrpID, linksToTarg);
+        TreeMergePerRegion tmpr = new TreeMergePerRegion(bp, dicePts, targStubs, linksToTarg);
         allTmprs.put(trgGrpID, tmpr);
       }     
       // Find the closest whip to each stub; glue them together:
@@ -2641,7 +2624,7 @@ public class LayoutRubberStamper {
   */
   
   private Map<LinkSegmentID, Point2D> sliceAndDiceWhips(LinkProperties bp, List<WhipCandidate> sourceWhips, 
-                                                        Map<LinkSegmentID, RegionBasedPosition> targStubs, DataAccessContext rcx) { //GenomeInstance gi, Layout lo) { 
+                                                        Map<LinkSegmentID, RegionBasedPosition> targStubs, StaticDataAccessContext rcx) {
     
     HashMap<LinkSegmentID, Point2D> retval = new HashMap<LinkSegmentID, Point2D>();
     Iterator<LinkSegmentID> stubit = targStubs.keySet().iterator();
@@ -2673,7 +2656,7 @@ public class LayoutRubberStamper {
   */
   
   private LinkRouter.RoutingResult iterativeIncrementalMerge( // Get this arg list back under control! Sheesh!
-                                                             DataAccessContext rcxI,
+                                                             StaticDataAccessContext rcxI,
                                                              Set<String> crossRegion,
                                                              Map<String, Link> crossTuples,
                                                              Map<String, Rectangle> newRegionBounds,
@@ -2705,9 +2688,9 @@ public class LayoutRubberStamper {
     Iterator<String> ctit = crossRegion.iterator();
     while (ctit.hasNext()) {
       String linkID = ctit.next();
-      if (rcxI.getLayout().getLinkProperties(linkID) == null) {
+      if (rcxI.getCurrentLayout().getLinkProperties(linkID) == null) {
         todo.add(linkID);
-        Linkage link = rcxI.getGenome().getLinkage(linkID);
+        Linkage link = rcxI.getCurrentGenome().getLinkage(linkID);
         srcsToDo.add(link.getSource());
       }
     }
@@ -2720,7 +2703,7 @@ public class LayoutRubberStamper {
     // This is where we deal with whips and stubs!
     //
     
-    DataAccessContext rcxO = new DataAccessContext(rcxI);
+    StaticDataAccessContext rcxO = new StaticDataAccessContext(rcxI);
     rcxO.setLayout(origLayout);
     
     GenericBPSource gbps = null;
@@ -2730,7 +2713,7 @@ public class LayoutRubberStamper {
       mergedSegsPerSource = new HashMap<String, Map<LinkSegmentID, TreeSpliceData>>();
       synthMergedTrees(rcxO, crossTuples, srcsToDo, syncLayouts, 
                        rootRegionBounds, savedRegionBounds, synthLayouts, mergedSegsPerSource);
-      gbps = new GenericBPSource(synthLayouts, rcxI.getGenome());
+      gbps = new GenericBPSource(synthLayouts, rcxI.getCurrentGenome());
     } 
     
     CrossLinkRecovery recovery = extractRecoveryPathsFromOldLayout(rcxO, crossTuples.keySet(), gbps, exemptions, null, null);
@@ -2774,7 +2757,7 @@ public class LayoutRubberStamper {
     int numPasses = 1; // passes[0].length;  THIS is a fast way to eliminate the iteration...
 
     double currProg = startFrac;
-    double progInc = (endFrac - startFrac) / (double)numPasses;
+    double progInc = (endFrac - startFrac) / numPasses;
     
     //
     // Loop to change bordersize:
@@ -2789,10 +2772,10 @@ public class LayoutRubberStamper {
       //
       // Get temporary copies for layout and bounds:
       //
-      DataAccessContext rcxU = new DataAccessContext(rcxI);
-      rcxU.setLayout(new Layout(appState_, "temp", rcxI.getGenomeID()));
+      StaticDataAccessContext rcxU = new StaticDataAccessContext(rcxI);
+      rcxU.setLayout(new Layout("temp", rcxI.getCurrentGenomeID()));
       HashMap<String, Rectangle> useBounds = new HashMap<String, Rectangle>();
-      copyResultsBack(rcxI.getLayout(), rcxU.getLayout(), newRegionBounds, useBounds); 
+      copyResultsBack(rcxI.getCurrentLayout(), rcxU.getCurrentLayout(), newRegionBounds, useBounds); 
 
       int border = passes[passNum][0];
       int mult = passes[passNum][1]; 
@@ -2811,23 +2794,23 @@ public class LayoutRubberStamper {
         // so see if it is the case.
         if (basePass) {
           basePass = false;
-          Set<String> targCollide = rcxI.getGenome().hasLinkTargetPadCollisions();
+          Set<String> targCollide = rcxI.getCurrentGenome().hasLinkTargetPadCollisions();
           if (!targCollide.isEmpty()) {
-            copyResultsBack(rcxU.getLayout(), rcxI.getLayout(), useBounds, newRegionBounds);
+            copyResultsBack(rcxU.getCurrentLayout(), rcxI.getCurrentLayout(), useBounds, newRegionBounds);
             return (res);
           } else {
-            holdFirstLayout = rcxU.getLayout();
+            holdFirstLayout = rcxU.getCurrentLayout();
             holdFirstBounds = useBounds;
             holdFirstRes = res;
           }
         } 
       } else {
-        copyResultsBack(rcxU.getLayout(), rcxI.getLayout(), useBounds, newRegionBounds);
+        copyResultsBack(rcxU.getCurrentLayout(), rcxI.getCurrentLayout(), useBounds, newRegionBounds);
         return (res);
       }
     }
 
-    copyResultsBack(holdFirstLayout, rcxI.getLayout(), holdFirstBounds, newRegionBounds); // zero-expansion version...
+    copyResultsBack(holdFirstLayout, rcxI.getCurrentLayout(), holdFirstBounds, newRegionBounds); // zero-expansion version...
     return (holdFirstRes);    
   } 
   
@@ -2841,7 +2824,7 @@ public class LayoutRubberStamper {
                                                      Set<String> todo, 
                                                      Map<String, Link> crossTuples, 
                                                      int boundary, int mult, 
-                                                     DataAccessContext rcxB, 
+                                                     StaticDataAccessContext rcxB, 
                                                      Layout origLayout, 
                                                      Map<String, Rectangle> newRegionBounds,
                                                      Map<String, Rectangle> savedRegionBounds,
@@ -2891,14 +2874,14 @@ public class LayoutRubberStamper {
       Set<String> lfiSet = layoutsFromInstance.keySet();
       int size = lfiSet.size();
       double currProg = startFrac;
-      double progInc = frac1 / (double)size;      
+      double progInc = frac1 / size;      
       Iterator<String> lit = lfiSet.iterator();
       while (lit.hasNext()) {
         String gpID = lit.next();
-        Group grp = ((GenomeInstance)rcxB.getGenome()).getGroup(gpID);   
-        DataAccessContext rcxET = new DataAccessContext(rcxB);
+        Group grp = ((GenomeInstance)rcxB.getCurrentGenome()).getGroup(gpID);   
+        StaticDataAccessContext rcxET = new StaticDataAccessContext(rcxB);
         rcxET.setLayout(new Layout(layoutsFromInstance.get(gpID)));
-        useLayouts.put(gpID, rcxET.getLayout());
+        useLayouts.put(gpID, rcxET.getCurrentLayout());
         Rectangle bounds = newRegionBounds.get(gpID);
         useBounds.put(gpID, bounds);
         if (false /* FIX ME: gpID not a target or source*/) {
@@ -2907,11 +2890,11 @@ public class LayoutRubberStamper {
         TreeSet<Integer> insertRows = new TreeSet<Integer>();
         TreeSet<Integer> insertCols = new TreeSet<Integer>();
      
-        rcxET.getLayout().chooseExpansionRows(rcxET, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
-        rcxET.getLayout().expand(rcxET, insertRows, insertCols, mult, true, null, moduleLinkFragShifts, gpID, monitor, currProg, currProg + progInc);
-        expandOrCompressRecoveryPaths(true, rcxET.getLayout(), gpID, insertRows, insertCols, mult, recovery);     
+        rcxET.getCurrentLayout().chooseExpansionRows(rcxET, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
+        rcxET.getCurrentLayout().expand(rcxET, insertRows, insertCols, mult, true, null, moduleLinkFragShifts, gpID, monitor, currProg, currProg + progInc);
+        expandOrCompressRecoveryPaths(true, rcxET.getCurrentLayout(), gpID, insertRows, insertCols, mult, recovery);     
         currProg += progInc;
-        bounds = rcxET.getLayout().getLayoutBoundsForGroup(grp, rcxET, true, true);        
+        bounds = rcxET.getCurrentLayout().getLayoutBoundsForGroup(grp, rcxET, true, true);        
         useBounds.put(gpID, bounds);  
       }                                                    
     }
@@ -2927,7 +2910,7 @@ public class LayoutRubberStamper {
     // 
     
     ArrayList<PlacementElement> fixedElements = new ArrayList<PlacementElement>(); 
-    Map<Object, Vector2D> deltas = mergeExpandedGroupLayouts(rcxB.getLayout(), useBounds, 
+    Map<Object, Vector2D> deltas = mergeExpandedGroupLayouts(rcxB.getCurrentLayout(), useBounds, 
                                                              savedRegionBounds, useLayouts, useBoundaries, fixedElements, 
                                                              moduleLinkFragShifts, false, null);
     
@@ -2940,7 +2923,7 @@ public class LayoutRubberStamper {
     while (lit.hasNext()) {
       String gpID = lit.next();
       Vector2D delta = deltas.get(gpID);
-      pinUnchangedRecoveryPaths(rcxB.getLayout(), gpID, recovery, delta);
+      pinUnchangedRecoveryPaths(rcxB.getCurrentLayout(), gpID, recovery, delta);
     }
     
     
@@ -2972,7 +2955,7 @@ public class LayoutRubberStamper {
     ArrayList<Link> links = new ArrayList<Link>(crossTuples.values());
     rfit.placeElements(fixedElements, floatingElems, links, boundary, monitor);
 
-    int baseGroupOrder = rcxB.getLayout().getTopGroupOrder(); 
+    int baseGroupOrder = rcxB.getCurrentLayout().getTopGroupOrder(); 
     int flnum = floatingElems.size();
     for (int i = 0; i < flnum; i++) {
       PlacementElement pe = floatingElems.get(i);
@@ -2981,7 +2964,7 @@ public class LayoutRubberStamper {
       double deltaY = UiUtil.forceToGridValue(pe.rect.y - preShift.y, UiUtil.GRID_SIZE);
       Vector2D delta = new Vector2D(deltaX, deltaY);
       Layout currLO = useLayouts.get(pe.id);
-      rcxB.getLayout().mergeLayoutOfRegion(currLO, delta, false, false, baseGroupOrder, moduleLinkFragShifts, pe.id);
+      rcxB.getCurrentLayout().mergeLayoutOfRegion(currLO, delta, false, false, baseGroupOrder, moduleLinkFragShifts, pe.id);
     } 
     
     // If there are no cross-region links, we are done without needing to do layouts
@@ -3008,7 +2991,7 @@ public class LayoutRubberStamper {
     Iterator<String> fit = res1.failedLinks.iterator();
     while (fit.hasNext()) {
       String failID = fit.next();
-      rcxB.getLayout().removeLinkProperties(failID);
+      rcxB.getCurrentLayout().removeLinkProperties(failID);
     }
     stillToDo.addAll(res1.failedLinks);
        
@@ -3026,7 +3009,7 @@ public class LayoutRubberStamper {
   ** same.  But for syncing with root VfG layout, differences could be huge.
   */
   
-  private void recoveryMerge(CrossLinkRecovery recovery, DataAccessContext rcxB, Layout origLayout,
+  private void recoveryMerge(CrossLinkRecovery recovery, StaticDataAccessContext rcxB, Layout origLayout,
                              Map<Object, Vector2D> deltas, Set<String> changingGroups, GenericBPSource bps) {
     
     //
@@ -3046,7 +3029,7 @@ public class LayoutRubberStamper {
         PerPointData ppd = psd.perPointMap.get(lsid);
         if (ppd.fixedLinkID != null) {
           Point2D oldLoc;
-          LinkProperties nbp = rcxB.getLayout().getLinkProperties(ppd.fixedLinkID);
+          LinkProperties nbp = rcxB.getCurrentLayout().getLinkProperties(ppd.fixedLinkID);
           //
           // Fix for BT-03-19-10:1.  Cannot use origianl properties if we have run through
           // a synth trees step.  Use that instead!
@@ -3084,7 +3067,7 @@ public class LayoutRubberStamper {
             ppd.refNodeID = srcID;  // FIX ME!!! Maybe better re: target!
             ppd.offset = new Vector2D(osnp.getLocation(), movedLoc);
             ppd.fixedLinkID = null;
-            Group grp = ((GenomeInstance)rcxB.getGenome()).getGroupForNode(srcID, GenomeInstance.ALWAYS_MAIN_GROUP);
+            Group grp = ((GenomeInstance)rcxB.getCurrentGenome()).getGroupForNode(srcID, GenomeInstance.ALWAYS_MAIN_GROUP);
             ppd.regionID = grp.getID();
             psd.assocRegions.add(grp.getID());
           }
@@ -3104,7 +3087,7 @@ public class LayoutRubberStamper {
   ** layout interregion links.
   */
   
-  private LinkRouter.RoutingResult iterativeFreshMerge(DataAccessContext rcxI,
+  private LinkRouter.RoutingResult iterativeFreshMerge(StaticDataAccessContext rcxI,
                                                        Set<String> crossRegion,
                                                        Map<String, Rectangle> loBounds,
                                                        Map<String, Layout> layouts,
@@ -3127,7 +3110,7 @@ public class LayoutRubberStamper {
     Iterator<String> ctit = crossRegion.iterator();
     while (ctit.hasNext()) {
       String linkID = ctit.next();
-      if (rcxI.getLayout().getLinkProperties(linkID) == null) {
+      if (rcxI.getCurrentLayout().getLinkProperties(linkID) == null) {
         todo.add(linkID);
       }
     }
@@ -3163,7 +3146,7 @@ public class LayoutRubberStamper {
    
     
     double currProg = startFrac;
-    double progInc = (endFrac - startFrac) / (double)numPasses;    
+    double progInc = (endFrac - startFrac) / numPasses;    
     
     //
     // Try growing the borders first to see if that does the trick (FIX ME: better
@@ -3191,10 +3174,10 @@ public class LayoutRubberStamper {
       //
       // Get temporary copies for layout and bounds:
       //
-      DataAccessContext rcxU = new DataAccessContext(rcxI);
-      rcxU.setLayout(new Layout(appState_, "temp", rcxI.getGenomeID()));
+      StaticDataAccessContext rcxU = new StaticDataAccessContext(rcxI);
+      rcxU.setLayout(new Layout("temp", rcxI.getCurrentGenomeID()));
       HashMap<String, Rectangle> useBounds = new HashMap<String, Rectangle>();
-      copyResultsBack(rcxI.getLayout(), rcxU.getLayout(), loBounds, useBounds); 
+      copyResultsBack(rcxI.getCurrentLayout(), rcxU.getCurrentLayout(), loBounds, useBounds); 
       
     
       int border = passes[passNum][0];
@@ -3213,23 +3196,23 @@ public class LayoutRubberStamper {
         // so see if it is the case.
         if (basePass) {
           basePass = false;
-          Set<String> targCollide = rcxI.getGenome().hasLinkTargetPadCollisions();
+          Set<String> targCollide = rcxI.getCurrentGenome().hasLinkTargetPadCollisions();
           if (!targCollide.isEmpty()) {
-            copyResultsBack(rcxU.getLayout(), rcxI.getLayout(), useBounds, loBounds);
+            copyResultsBack(rcxU.getCurrentLayout(), rcxI.getCurrentLayout(), useBounds, loBounds);
             return (res);
           } else {
-            holdFirstLayout = rcxU.getLayout();
+            holdFirstLayout = rcxU.getCurrentLayout();
             holdFirstBounds = useBounds;
             holdFirstRes = res;
           }
         } 
       } else {
-        copyResultsBack(rcxU.getLayout(), rcxI.getLayout(), useBounds, loBounds);
+        copyResultsBack(rcxU.getCurrentLayout(), rcxI.getCurrentLayout(), useBounds, loBounds);
         return (res);
       }
     }
     
-    copyResultsBack(holdFirstLayout, rcxI.getLayout(), holdFirstBounds, loBounds); // zero-expansion version...
+    copyResultsBack(holdFirstLayout, rcxI.getCurrentLayout(), holdFirstBounds, loBounds); // zero-expansion version...
     return (holdFirstRes);    
   }      
   
@@ -3239,7 +3222,7 @@ public class LayoutRubberStamper {
   */
   
   private LinkRouter.RoutingResult freshMerges(Set<String> todo, int boundary, int mult, 
-                                               DataAccessContext rcxO, 
+                                               StaticDataAccessContext rcxO, 
                                                Map<String, Rectangle> loBounds, 
                                                Map<String, Layout> layouts,
                                                SortedMap<Integer, List<String>> regionsByColumn,
@@ -3272,15 +3255,15 @@ public class LayoutRubberStamper {
       Set<String> lSet = layouts.keySet();
       int size = lSet.size();
       double currProg = startFrac;
-      double progInc = frac1 / (double)size;    
+      double progInc = frac1 / size;    
       
       Iterator<String> lit = lSet.iterator();
       while (lit.hasNext()) {
         String gpID = lit.next();
-        Group grp = ((GenomeInstance)rcxO.getGenome()).getGroup(gpID);
-        DataAccessContext rcxE = new DataAccessContext(rcxO);
+        Group grp = rcxO.getCurrentGenomeAsInstance().getGroup(gpID);
+        StaticDataAccessContext rcxE = new StaticDataAccessContext(rcxO);
         rcxE.setLayout(new Layout(layouts.get(gpID)));
-        useLayouts.put(gpID, rcxE.getLayout());
+        useLayouts.put(gpID, rcxE.getCurrentLayout());
         Rectangle bounds = loBounds.get(gpID);
         useBounds.put(gpID, bounds);
         if (false /* FIX ME: gpID not a target or source*/) {
@@ -3289,10 +3272,10 @@ public class LayoutRubberStamper {
         TreeSet<Integer> insertRows = new TreeSet<Integer>();
         TreeSet<Integer> insertCols = new TreeSet<Integer>();
         
-        rcxE.getLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
-        rcxE.getLayout().expand(rcxE, insertRows, insertCols, mult, true, null, moduleLinkFragShifts, gpID, monitor, currProg, currProg + progInc);
+        rcxE.getCurrentLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
+        rcxE.getCurrentLayout().expand(rcxE, insertRows, insertCols, mult, true, null, moduleLinkFragShifts, gpID, monitor, currProg, currProg + progInc);
         currProg += progInc;
-        bounds = rcxE.getLayout().getLayoutBoundsForGroup(grp, rcxE, true, true);        
+        bounds = rcxE.getCurrentLayout().getLayoutBoundsForGroup(grp, rcxE, true, true);        
         useBounds.put(gpID, bounds);        
       }                                                    
     }                   
@@ -3303,7 +3286,7 @@ public class LayoutRubberStamper {
     // links will be maintained.
     // 
     
-    mergeGroupLayouts(rcxO.getLayout(), regionsByColumn, useLayouts, useBounds, moduleLinkFragShifts, boundary, monitor);
+    mergeGroupLayouts(rcxO.getCurrentLayout(), regionsByColumn, useLayouts, useBounds, moduleLinkFragShifts, boundary, monitor);
     
     // If there are no cross-region links, we are done without needing to do layouts
     if (todo.isEmpty()) {
@@ -3326,12 +3309,12 @@ public class LayoutRubberStamper {
   ** Remember link colors for when we redraw them.
   */
   
-  private void buildLinkColorsMap(DataAccessContext rcx, Map<String, String> colorMap) {
+  private void buildLinkColorsMap(StaticDataAccessContext rcx, Map<String, String> colorMap) {
 
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
-      BusProperties lp = rcx.getLayout().getLinkProperties(link.getID());
+      BusProperties lp = rcx.getCurrentLayout().getLinkProperties(link.getID());
       if (lp != null) {
         colorMap.put(link.getID(), lp.getColorName());
       }
@@ -3345,7 +3328,7 @@ public class LayoutRubberStamper {
   ** Modify original cross-link geometry to handle growth
   */
   
-  private Map<String, LinkPlacementGrid.RecoveryDataForSource> modifyCrossLinksForGrowthOrShrinkage(DataAccessContext rcxB, CrossLinkRecovery recovery, 
+  private Map<String, LinkPlacementGrid.RecoveryDataForSource> modifyCrossLinksForGrowthOrShrinkage(StaticDataAccessContext rcxB, CrossLinkRecovery recovery, 
                                                                                                     Map<String, Rectangle> newRegionBounds, 
                                                                                                     Map<Object, Vector2D> deltas, Map<String, Integer> paddings) {
 
@@ -3374,7 +3357,7 @@ public class LayoutRubberStamper {
         LinkSegmentID lsid = ppit.next();
         PerPointData ppd = psd.perPointMap.get(lsid);
         if (ppd.fixedLinkID != null) {
-          BusProperties bp = rcxB.getLayout().getLinkProperties(ppd.fixedLinkID);
+          BusProperties bp = rcxB.getCurrentLayout().getLinkProperties(ppd.fixedLinkID);
           if (ppd.newRef != null) {
             lsid = ppd.newRef;  // Using a fixed-up split in the new layout
           }
@@ -3416,7 +3399,7 @@ public class LayoutRubberStamper {
             guaranteed.put(ppd.regionID, guarBds);
           }
          
-          NodeProperties np = rcxB.getLayout().getNodeProperties(ppd.refNodeID);
+          NodeProperties np = rcxB.getCurrentLayout().getNodeProperties(ppd.refNodeID);
           Point2D loc = np.getLocation();
           Point2D newLoc = ppd.offset.add(loc);
           guarBds.add(newLoc);
@@ -3447,12 +3430,12 @@ public class LayoutRubberStamper {
           if (ppd.regionBased.partialDefinitionByNodeID != null) {
             String nodeID = ppd.regionBased.partialDefinitionByNodeID;
             int padNum = ppd.regionBased.partialPadDefinition;
-            NodeProperties np = rcxB.getLayout().getNodeProperties(nodeID); 
+            NodeProperties np = rcxB.getCurrentLayout().getNodeProperties(nodeID); 
             Vector2D lpo;
             if (ppd.regionBased.partialIsLaunch) {
-              lpo =  np.getRenderer().getLaunchPadOffset(padNum, rcxB.getGenome().getNode(nodeID), rcxB);
+              lpo =  np.getRenderer().getLaunchPadOffset(padNum, rcxB.getCurrentGenome().getNode(nodeID), rcxB);
             } else {
-              lpo =  np.getRenderer().getLandingPadOffset(padNum, rcxB.getGenome().getNode(nodeID), Linkage.NONE, rcxB);
+              lpo =  np.getRenderer().getLandingPadOffset(padNum, rcxB.getCurrentGenome().getNode(nodeID), Linkage.NONE, rcxB);
             }
             partialPos = lpo.add(np.getLocation());
           } else if (ppd.regionBased.partialDefinition != null) {
@@ -3556,7 +3539,7 @@ public class LayoutRubberStamper {
   ** Figure out who we associate each cross path point with:
   */
   
-  private void buildCrossPathRegionAssociations(DataAccessContext rcx, 
+  private void buildCrossPathRegionAssociations(StaticDataAccessContext rcx, 
                                                 Map<String, Rectangle> oldRegionBounds, 
                                                 Map<String, Link> crossTuples, 
                                                 CrossLinkRecovery recovery, 
@@ -3577,7 +3560,7 @@ public class LayoutRubberStamper {
   ** Figure out who we associate each cross path point with:
   */
   
-  private void buildClaimedCrossPathRegionAssociations(DataAccessContext rcx, 
+  private void buildClaimedCrossPathRegionAssociations(StaticDataAccessContext rcx, 
                                                        Map<String, Rectangle> oldRegionBounds, 
                                                        Map<String, Link> crossTuples, 
                                                        CrossLinkRecovery recovery, 
@@ -3596,7 +3579,7 @@ public class LayoutRubberStamper {
         Link cfl = crossTuples.get(linkID);  // Src, Trg actually region IDs!
         String srcRegID = cfl.getSrc();
         String trgRegID = cfl.getTrg();
-        Linkage linkage = rcx.getGenome().getLinkage(linkID);
+        Linkage linkage = rcx.getCurrentGenome().getLinkage(linkID);
         String linkSrc = linkage.getSource();
         String linkTrg = linkage.getTarget();
         PerLinkData pld = psd.perLinkMap.get(linkID);
@@ -3716,7 +3699,7 @@ public class LayoutRubberStamper {
   ** Figure out who we associate each cross path point with:
   */
   
-  private void buildRemainingCrossPathRegionAssociations(DataAccessContext rcx, 
+  private void buildRemainingCrossPathRegionAssociations(StaticDataAccessContext rcx, 
                                                          Map<String, Rectangle> oldRegionBounds, 
                                                          Map<String, Link> crossTuples, CrossLinkRecovery recovery) {
     
@@ -3883,7 +3866,7 @@ public class LayoutRubberStamper {
   ** segment.
   */
   
-  private void fixDoFIfPossible(String src, LinkSegmentID lsid, PerSrcData psd, PerPointData myPpd, DataAccessContext rcx) {
+  private void fixDoFIfPossible(String src, LinkSegmentID lsid, PerSrcData psd, PerPointData myPpd, StaticDataAccessContext rcx) {
 
     List<LinkSegmentID> kidSegs = psd.fullTree.getChildSegs(lsid);
     int numKs = kidSegs.size();
@@ -3896,7 +3879,7 @@ public class LayoutRubberStamper {
             ((kidRun.getX() == 0.0) && (myPpd.regionBased.regionBasedApprox == Approx.X_APPROX_))) {
           if (nextSeg.isForEndDrop()) {
             String linkID = nextSeg.getEndDropLinkRef(); 
-            Linkage link = rcx.getGenome().getLinkage(linkID);              
+            Linkage link = rcx.getCurrentGenome().getLinkage(linkID);              
             myPpd.regionBased.partialDefinitionByNodeID = link.getTarget();
             myPpd.regionBased.partialPadDefinition = link.getLandingPad();
             myPpd.regionBased.partialIsLaunch = false;
@@ -3917,7 +3900,7 @@ public class LayoutRubberStamper {
             ((myRun.getX() == 0.0) && (myPpd.regionBased.regionBasedApprox == Approx.X_APPROX_))) {
           if (lsid.isForStartDrop()) {
             myPpd.regionBased.partialDefinitionByNodeID = src;   
-            myPpd.regionBased.partialPadDefinition = rcx.getGenome().getSourcePad(src).intValue();
+            myPpd.regionBased.partialPadDefinition = rcx.getCurrentGenome().getSourcePad(src).intValue();
             myPpd.regionBased.partialIsLaunch = true;
           } else {
             myPpd.regionBased.partialDefinition = psd.fullTree.getSegmentIDForParent(lsid);
@@ -4226,79 +4209,10 @@ public class LayoutRubberStamper {
   
   /***************************************************************************
   **
-  ** Handle shrink of region.
-
-  
-  private Map calcRegionShrinkOffsets(GenomeInstance gi, Map newRegionBounds, 
-                                      Map savedRegionBounds, int newPadding) {
-
-    //
-    // Figure out how much each region needs to shrink, and calculate the shrinkage 
-    //
-    
-    ArrayList gridElements = new ArrayList();
-    Iterator nrbit = newRegionBounds.keySet().iterator();
-    while (nrbit.hasNext()) {
-      String nextKey = (String)nrbit.next();
-      Rectangle newBounds = (Rectangle)newRegionBounds.get(nextKey);
-      Rectangle savedBounds = (Rectangle)savedRegionBounds.get(nextKey);  // FIX ME: need old->new ID mapping?
-      int hDiff = newBounds.height - savedBounds.height;
-      int wDiff = newBounds.width - savedBounds.width;
-      if (hDiff > 0) hDiff = 0;
-      if (wDiff > 0) wDiff = 0;
-      hDiff += (2 * newPadding);
-      wDiff += (2 * newPadding);
-      GridElement ge = new GridElement(savedBounds, nextKey, wDiff, hDiff);
-      gridElements.add(ge);
-    }
-    
-    GridShrinker shrinker = new GridShrinker();    
-    List shrunk = shrinker.shrinkGrid(gridElements, GridShrinker.GAPS_ONLY);
-    
-    HashMap retval = new HashMap();
-    
-    int geSize = gridElements.size();
-    for (int i = 0; i < geSize; i++) {
-      GridElement origGe = (GridElement)gridElements.get(i);
-      GridElement newGe = (GridElement)shrunk.get(i);
-      Group grp = gi.getGroup(origGe.id);
-      double deltaX = UiUtil.forceToGridValue(newGe.rect.getX() - origGe.rect.getX(), UiUtil.GRID_SIZE);      
-      double deltaY = UiUtil.forceToGridValue(newGe.rect.getY() - origGe.rect.getY(), UiUtil.GRID_SIZE);
-      Vector2D delta = new Vector2D(deltaX, deltaY);
-      retval.put(grp.getID(), delta);
-    }
-    
-    return (retval);
-  }   
-
-  /***************************************************************************
-  **
-  ** Handle growth of region.
- 
-  
-  private void handleRegionGrowth(Layout instanceLayout, GenomeInstance gi, 
-                                  Map newRegionBounds, Map savedRegionBounds,
-                                  List fixedElements, Map newBounds) {
-
-    Map deltas = calcRegionGrowthOffsets(gi, newRegionBounds, savedRegionBounds, fixedElements, newBounds);   
-    
-    Iterator kit = deltas.keySet().iterator();
-    while (kit.hasNext()) {
-      String key = (String)kit.next();
-      Vector2D delta = (Vector2D)deltas.get(key);
-      Group grp = gi.getGroup(key);
-      instanceLayout.shiftContentsOfRegion(gi, grp, delta);
-    }
-    
-    return;
-  } 
-  
-  /***************************************************************************
-  **
   ** Sort the regions based on cross region links
   */
   
-  private SortedMap<Integer, List<String>> sortRegions(Set<String> allGroups, Map<String, Link> linkTuples, GenomeInstance gi) {   
+  private SortedMap<Integer, List<String>> sortRegions(Set<String> allGroups, Map<String, Link> linkTuples) {   
   
     HashSet<String> regs = new HashSet<String>(allGroups);
     HashSet<Link> links = new HashSet<Link>();    
@@ -4330,7 +4244,7 @@ public class LayoutRubberStamper {
   ** Squash the layout for the group
   */
   
-  private void squash(DataAccessContext rcx,  //Layout instanceLayout, GenomeInstance gi,
+  private void squash(StaticDataAccessContext rcx,
                       Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> moduleLinkFragShifts, 
                       String grpID, 
                       BTProgressMonitor monitor, double startFrac, double endFrac) throws AsynchExitRequestException { 
@@ -4339,7 +4253,7 @@ public class LayoutRubberStamper {
     LinkPlacementGrid routerGrid = router.initGrid(rcx, null, INodeRenderer.STRICT, monitor); 
     SortedSet<Integer> emptyRows = routerGrid.getEmptyRows(null, false, monitor);
     SortedSet<Integer> emptyCols = routerGrid.getEmptyColumns(null, false, monitor);      
-    rcx.getLayout().compress(rcx, emptyRows, emptyCols, null, null, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);  
+    rcx.getCurrentLayout().compress(rcx, emptyRows, emptyCols, null, null, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);  
     return;
   }
   
@@ -4349,8 +4263,7 @@ public class LayoutRubberStamper {
   ** more efficient
   */
   
-  private void boundedSquash(DataAccessContext rcx,
-                             Rectangle bounds, Map<String, Rectangle> allBounds, BTProgressMonitor monitor, 
+  private void boundedSquash(StaticDataAccessContext rcx, Rectangle bounds, BTProgressMonitor monitor, 
                              double startFrac, double endFrac) throws AsynchExitRequestException {
         
     LinkRouter router = new LinkRouter();
@@ -4369,7 +4282,7 @@ public class LayoutRubberStamper {
       emptyCols = routerGrid.getEmptyColumns(null, false, monitor);      
     }
     
-    rcx.getLayout().compress(rcx, emptyRows, emptyCols, bounds, null, null, null, monitor, startFrac, endFrac);
+    rcx.getCurrentLayout().compress(rcx, emptyRows, emptyCols, bounds, null, null, null, monitor, startFrac, endFrac);
     return;
   }  
   
@@ -4437,7 +4350,7 @@ public class LayoutRubberStamper {
   ** inbound links!
   */
   
-  private void chooseReducedRootCompression(DataAccessContext rcxRLGI,// Layout rootLayout, GenomeInstance gi, 
+  private void chooseReducedRootCompression(StaticDataAccessContext rcxRLGI,
                                             String grpID,
                                             SortedSet<Integer> useEmptyRows, SortedSet<Integer> useEmptyCols,
                                             BTProgressMonitor monitor)
@@ -4446,8 +4359,8 @@ public class LayoutRubberStamper {
     // Build separate layouts for each:
     //
    
-    Genome rootGenome = rcxRLGI.getGenomeSource().getGenome();
-    GenomeInstance gi = (GenomeInstance)rcxRLGI.getGenome();
+    Genome rootGenome = rcxRLGI.getGenomeSource().getRootDBGenome();
+    GenomeInstance gi = (GenomeInstance)rcxRLGI.getCurrentGenome();
     
  //   String giID = gi.getID(); Wrong! Not needed!
     HashMap<String, String> nodeMap = new HashMap<String, String>();
@@ -4493,10 +4406,10 @@ public class LayoutRubberStamper {
     // See issue BT-08-07-09:1
     //
     
-    Layout newLayout = new Layout(appState_, "junkID", rootGenome.getID()); // Was giID); , but I think that is wrong....
-    DataAccessContext rcx = new DataAccessContext(rcxRLGI, rootGenome, newLayout); // appState_, rootGenome, loForGrp);     
-    rcx.getLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, false, null, rcx, rcxRLGI);     
-    rcx.getLayout().chooseCompressionRows(rcx, 1.0, 1.0, null, false, null, useEmptyRows, useEmptyCols, monitor, ignoreNodes);
+    Layout newLayout = new Layout("junkID", rootGenome.getID()); // Was giID); , but I think that is wrong....
+    StaticDataAccessContext rcx = new StaticDataAccessContext(rcxRLGI, rootGenome, newLayout);
+    rcx.getCurrentLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, false, null, rcx, rcxRLGI);     
+    rcx.getCurrentLayout().chooseCompressionRows(rcx, 1.0, 1.0, null, false, null, useEmptyRows, useEmptyCols, monitor, ignoreNodes);
     return;   
   }
   
@@ -4505,30 +4418,30 @@ public class LayoutRubberStamper {
   ** Figure out how modules are sliced up by group boundaries.
   */
   
-  private void sliceAndDiceModulesForGroups(DataAccessContext rcx,
+  private void sliceAndDiceModulesForGroups(StaticDataAccessContext rcx,
                                             Set<String> allGroups, Layout.OverlayKeySet loModKeys, 
                                             Map<String, Map<NetModule.FullModuleKey, Layout.DicedModuleInfo>> claimedSlices, 
                                             Map<NetModule.FullModuleKey, Layout.DicedModuleInfo> unclaimedSlices, 
                                             Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> moduleLinkFragShifts) {
       
-    Point2D center = rcx.getLayout().getLayoutCenter(rcx, false, null, null, null, null);
+    Point2D center = rcx.getCurrentLayout().getLayoutCenter(rcx, false, null, null, null, null);
        
     //
     // Gather up group bounds:
     //
     
-    GenomeInstance gi = (GenomeInstance)rcx.getGenome();
+    GenomeInstance gi = (GenomeInstance)rcx.getCurrentGenome();
     HashMap<String, Rectangle> forcedBounds = new HashMap<String, Rectangle>();
     HashMap<String, Integer> groupZOrder = new HashMap<String, Integer>();
     Iterator<String> agit = allGroups.iterator(); 
     while (agit.hasNext()) {
       String grpID = agit.next();
-      groupZOrder.put(grpID, new Integer(rcx.getLayout().getGroupProperties(grpID).getOrder()));
+      groupZOrder.put(grpID, new Integer(rcx.getCurrentLayout().getGroupProperties(grpID).getOrder()));
       Group grp = gi.getGroup(grpID);
       if (grp.isASubset(gi)) { 
         throw new IllegalArgumentException(); // should not happen
       }
-      Rectangle bounds = rcx.getLayout().getLayoutBoundsForGroup(grp, rcx, false, true);
+      Rectangle bounds = rcx.getCurrentLayout().getLayoutBoundsForGroup(grp, rcx, false, true);
       if (bounds != null) {
         UiUtil.forceToGrid(bounds, UiUtil.GRID_SIZE);
         forcedBounds.put(grpID, bounds);     
@@ -4542,7 +4455,7 @@ public class LayoutRubberStamper {
     //
 
     Map<NetModule.FullModuleKey, NetModuleProperties.SliceResult> sliceResults = 
-      rcx.getLayout().sliceModulesByAllBounds(forcedBounds, groupZOrder, loModKeys, rcx);
+      rcx.getCurrentLayout().sliceModulesByAllBounds(forcedBounds, groupZOrder, loModKeys, rcx);
  
     // Bundle up per-group ownership and unclaimed:
     
@@ -4599,7 +4512,7 @@ public class LayoutRubberStamper {
     //
         
     if (moduleLinkFragShifts != null) {
-      moduleLinkFragShifts.putAll(rcx.getLayout().sliceModuleLinksByAllBounds(forcedBounds, groupZOrder, loModKeys));
+      moduleLinkFragShifts.putAll(rcx.getCurrentLayout().sliceModuleLinksByAllBounds(forcedBounds, groupZOrder, loModKeys));
     }
  
     return;
@@ -4611,7 +4524,7 @@ public class LayoutRubberStamper {
   ** Build separate layouts for each group from a master layout
   */
   
-  private ClaimedAndUnclaimed buildGroupLayouts(DataAccessContext rcxB,
+  private ClaimedAndUnclaimed buildGroupLayouts(StaticDataAccessContext rcxB,
                                                 Map<String, Layout> layouts, Map<String, Rectangle> loBounds, 
                                                 Set<String> allGroups, Layout.OverlayKeySet loModKeys,
                                                 boolean baseIsRoot, boolean doSquash,
@@ -4621,7 +4534,7 @@ public class LayoutRubberStamper {
                                                 BTProgressMonitor monitor, double startFrac, double endFrac)
                                                   throws AsynchExitRequestException {
 
-    FullGenomeHierarchyOracle fgho = new FullGenomeHierarchyOracle(appState_);
+    FullGenomeHierarchyOracle fgho = rcxB.getFGHO();
     
     //
     // Slice and dice the modules at the group boundaries so they can be manipulated and
@@ -4641,7 +4554,7 @@ public class LayoutRubberStamper {
     // Build separate layouts for each:
     //    
 
-    GenomeInstance gi = (GenomeInstance)rcxB.getGenome();
+    GenomeInstance gi = (GenomeInstance)rcxB.getCurrentGenome();
     HashMap<String, Integer> desiredOrders = new HashMap<String, Integer>();
     TreeSet<Integer> seenOrders = new TreeSet<Integer>();
     String giID = gi.getID();
@@ -4662,7 +4575,7 @@ public class LayoutRubberStamper {
         GroupMember mem = mit.next();
         String nodeID = mem.getID();
         String baseID = (baseIsRoot) ? GenomeItemInstance.getBaseID(nodeID) : nodeID;
-        NodeProperties np = rcxB.getLayout().getNodeProperties(baseID);
+        NodeProperties np = rcxB.getCurrentLayout().getNodeProperties(baseID);
         if (np == null) {  // for partial layouts...
           continue;
         }
@@ -4681,7 +4594,7 @@ public class LayoutRubberStamper {
         Linkage link = glit.next();
         String linkID = link.getID();
         String baseID = (baseIsRoot) ? GenomeItemInstance.getBaseID(linkID) : linkID;        
-        BusProperties lp = rcxB.getLayout().getLinkProperties(baseID);
+        BusProperties lp = rcxB.getCurrentLayout().getLinkProperties(baseID);
         if (lp == null) {  // for partial layouts...
           continue;
         }
@@ -4714,11 +4627,11 @@ public class LayoutRubberStamper {
       // Start building the layout:
       //
   
-      DataAccessContext rcx4G = new DataAccessContext(rcxB);
-      rcx4G.setLayout(new Layout(appState_, "junkID", giID));
+      StaticDataAccessContext rcx4G = new StaticDataAccessContext(rcxB);
+      rcx4G.setLayout(new Layout("junkID", giID));
       GroupProperties newProp = null;
       if (baseIsRoot) {
-        newProp = new GroupProperties(count++, grpID, center, 0, rcxB.cRes);
+        newProp = new GroupProperties(count++, grpID, center, 0, rcxB.getColorResolver());
         if (gpMemory != null) {
           GroupProperties memory = gpMemory.get(grpID);
           if (memory != null) {
@@ -4732,7 +4645,7 @@ public class LayoutRubberStamper {
           }
         }
       } else {
-        GroupProperties baseProp = rcxB.getLayout().getGroupProperties(grpID);
+        GroupProperties baseProp = rcxB.getCurrentLayout().getGroupProperties(grpID);
         if (baseProp != null) {
           newProp = new GroupProperties(baseProp);
           Integer wantOrder = new Integer(newProp.getOrder());
@@ -4741,10 +4654,10 @@ public class LayoutRubberStamper {
             seenOrders.add(wantOrder);
           }
         } else {
-          newProp = new GroupProperties(count++, grpID, center, 0, rcxB.cRes);
+          newProp = new GroupProperties(count++, grpID, center, 0, rcxB.getColorResolver());
         }
       }
-      rcx4G.getLayout().setGroupProperties(grpID, newProp);
+      rcx4G.getCurrentLayout().setGroupProperties(grpID, newProp);
 
       //
       // Transfer properties for subgroups if they are needed:
@@ -4757,18 +4670,18 @@ public class LayoutRubberStamper {
         String subGrpID = asit.next();
         GroupProperties newSubProp = null;
         if (baseIsRoot) {
-          newSubProp = new GroupProperties(subGrpID, rcx4G.getLayout(), 1, center, newProp.getOrder(), rcx4G.cRes);
+          newSubProp = new GroupProperties(subGrpID, 1, center, newProp.getOrder(), rcx4G.getColorResolver());
         } else {
-          GroupProperties subProp = rcxB.getLayout().getGroupProperties(subGrpID);
+          GroupProperties subProp = rcxB.getCurrentLayout().getGroupProperties(subGrpID);
           newSubProp = new GroupProperties(subProp);
           newSubProp.setOrder(newProp.getOrder());
         }
-        rcx4G.getLayout().setGroupProperties(subGrpID, newSubProp);
+        rcx4G.getCurrentLayout().setGroupProperties(subGrpID, newSubProp);
       }
       Map<NetModule.FullModuleKey, Layout.DicedModuleInfo> diceMap = (claimedSlices == null) ? null : claimedSlices.get(grpID);
       // true arg preserves previous semantics, but do we want that if baseIsRoot?
      
-      rcx4G.getLayout().extractPartialLayout(nodeMap, linkMap, null, keyMap, modLinkIDMap, diceMap, true, false, null, rcx4G, rcxB);
+      rcx4G.getCurrentLayout().extractPartialLayout(nodeMap, linkMap, null, keyMap, modLinkIDMap, diceMap, true, false, null, rcx4G, rcxB);
       // 7/28/08: Why squash with no accomodation for cross links??
       // 9/19/08: Because this is currently used to squash new incremental additions in that mode.
       // Else, we use the columns and rows provided to squash, which do account for cross links
@@ -4778,7 +4691,7 @@ public class LayoutRubberStamper {
           squash(rcx4G, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);
         } else {
           Empties empties = emptiesForGroups.get(grpID);
-          rcx4G.getLayout().compress(rcx4G, empties.emptyRows, empties.emptyCols, null, null, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);  
+          rcx4G.getCurrentLayout().compress(rcx4G, empties.emptyRows, empties.emptyCols, null, null, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);  
         }
       }
 
@@ -4788,11 +4701,11 @@ public class LayoutRubberStamper {
       
       
       if (baseIsRoot) {
-        rcx4G.getLayout().groupTagToCorner(grp, rcx4G, true);
+        rcx4G.getCurrentLayout().groupTagToCorner(grp, rcx4G, true);
       }
            
-      layouts.put(grpID, rcx4G.getLayout());
-      Rectangle bounds = rcx4G.getLayout().getLayoutBoundsForGroup(grp, rcx4G, true, true);
+      layouts.put(grpID, rcx4G.getCurrentLayout());
+      Rectangle bounds = rcx4G.getCurrentLayout().getLayoutBoundsForGroup(grp, rcx4G, true, true);
       
       if (bounds != null) {
         UiUtil.forceToGrid(bounds, UiUtil.GRID_SIZE);
@@ -4825,7 +4738,7 @@ public class LayoutRubberStamper {
   ** root.  Build the layouts to support this:
   */
   
-  private void buildCrossLinkLayouts(DataAccessContext rcxRLI,  //Layout rootLayout, GenomeInstance gi,
+  private void buildCrossLinkLayouts(StaticDataAccessContext rcxRLI,
                                      Map<String, Layout> layouts, Map<String, Link> crossTuples, 
                                      Set<String> targetGroups, Map<String, Rectangle> loBounds,
                                      boolean doSquash, Map<String, Empties> emptiesForGroups,
@@ -4836,7 +4749,7 @@ public class LayoutRubberStamper {
     // Build separate layouts for each:
     //
     
-    GenomeInstance gi = rcxRLI.getGenomeAsInstance();
+    GenomeInstance gi = rcxRLI.getCurrentGenomeAsInstance();
     String giID = gi.getID();
     
     Iterator<String> tgit = targetGroups.iterator();
@@ -4873,20 +4786,20 @@ public class LayoutRubberStamper {
       // in the child models!
       // See issue BT-08-07-09:1
       //
-      Layout newLayout = new Layout(appState_, "junkID", giID);
-      DataAccessContext rcx4g = new DataAccessContext(rcxRLI, gi, newLayout);
+      Layout newLayout = new Layout("junkID", giID);
+      StaticDataAccessContext rcx4g = new StaticDataAccessContext(rcxRLI, gi, newLayout);
        
-      rcx4g.getLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, false, null, rcx4g, rcxRLI);
+      rcx4g.getCurrentLayout().extractPartialLayout(nodeMap, linkMap, null, null, null, null, false, false, null, rcx4g, rcxRLI);
       // Need to squash to match region squashing      
       if (doSquash) {
         if ((emptiesForGroups == null) || (emptiesForGroups.get(trgGroup) == null)) {
           squash(rcx4g, null, null, monitor, startFrac, endFrac);
         } else {
           Empties empties = emptiesForGroups.get(trgGroup);
-          rcx4g.getLayout().compress(rcx4g, empties.emptyRows, empties.emptyCols, null, null, null, null, monitor, startFrac, endFrac);  
+          rcx4g.getCurrentLayout().compress(rcx4g, empties.emptyRows, empties.emptyCols, null, null, null, null, monitor, startFrac, endFrac);  
         }
       }
-      layouts.put(trgGroup, rcx4g.getLayout()); 
+      layouts.put(trgGroup, rcx4g.getCurrentLayout()); 
       
       //
       // Generate a set of bounds around the target nodes and intralinks.  Note
@@ -4912,17 +4825,17 @@ public class LayoutRubberStamper {
           trgLinks.add(GenomeItemInstance.getBaseID(link.getID()));
         }
       }
-      Genome genome = rcxRLI.getGenomeSource().getGenome();
-      DataAccessContext rcx2 = new DataAccessContext(rcxRLI, genome, rcxRLI.getLayout());
+      Genome genome = rcxRLI.getGenomeSource().getRootDBGenome();
+      StaticDataAccessContext rcx2 = new StaticDataAccessContext(rcxRLI, genome, rcxRLI.getCurrentLayout());
      
       if (doSquash && (emptiesForGroups != null) && (emptiesForGroups.get(trgGroup) != null)) {
-        rcx2.setLayout(new Layout(rcxRLI.getLayout()));
+        rcx2.setLayout(new Layout(rcxRLI.getCurrentLayout()));
         Empties empties = emptiesForGroups.get(trgGroup);
-        rcx2.getLayout().compress(rcx2, empties.emptyRows, empties.emptyCols, null, null, null, null, monitor, endFrac, endFrac); 
+        rcx2.getCurrentLayout().compress(rcx2, empties.emptyRows, empties.emptyCols, null, null, null, null, monitor, endFrac, endFrac); 
       } else {
-        rcx2.setLayout(rcxRLI.getLayout());
+        rcx2.setLayout(rcxRLI.getCurrentLayout());
       }
-      Rectangle bounds = rcx2.getLayout().getPartialBounds(rootTrgNodes, true, true, trgLinks, null, false, rcx2);
+      Rectangle bounds = rcx2.getCurrentLayout().getPartialBounds(rootTrgNodes, true, true, trgLinks, null, false, rcx2);
       if (bounds != null) {
         UiUtil.forceToGrid(bounds, UiUtil.GRID_SIZE);
         loBounds.put(trgGroup, bounds);
@@ -4937,9 +4850,8 @@ public class LayoutRubberStamper {
   ** Add new properties for a group for incremental layout
   */
   
-  private void addNewProperties(Layout groupLayout, DataAccessContext rcxTLGI, //GenomeInstance gi, 
+  private void addNewProperties(Layout groupLayout, StaticDataAccessContext rcxTLGI,
                                 Group group,
-                              //  Layout targetLayout, 
                                 Point2D origin,
                                 LayoutOptions options,
                                 Map<String, String> linkColors,
@@ -4956,12 +4868,11 @@ public class LayoutRubberStamper {
     //
     
     String grpID = group.getID();
-    GroupProperties gprop = rcxTLGI.getLayout().getGroupProperties(grpID);
+    GroupProperties gprop = rcxTLGI.getCurrentLayout().getGroupProperties(grpID);
     Point2D labLoc;
     if (gprop == null) {
       // FIX ME!  Never called??
-      rcxTLGI.getLayout().setGroupProperties(grpID, new GroupProperties(count++, grpID, rcxTLGI.getLayout(), 
-                                                                   origin, rcxTLGI.getLayout().getTopGroupOrder() + 1, rcxTLGI.cRes));
+      rcxTLGI.getCurrentLayout().setGroupProperties(grpID, new GroupProperties(count++, grpID, origin, rcxTLGI.getCurrentLayout().getTopGroupOrder() + 1, rcxTLGI.getColorResolver()));
       labLoc = origin;
     } else {
       labLoc = gprop.getLabelLocation();
@@ -4979,7 +4890,7 @@ public class LayoutRubberStamper {
     while (mit.hasNext()) {
       GroupMember mem = mit.next();
       String nodeID = mem.getID();
-      if (rcxTLGI.getLayout().getNodeProperties(nodeID) == null) {
+      if (rcxTLGI.getCurrentLayout().getNodeProperties(nodeID) == null) {
         missingNodes.add(nodeID);
       } else {
         refNodes.add(nodeID);
@@ -5001,7 +4912,7 @@ public class LayoutRubberStamper {
       Vector2D labelTotal;
       if (refNodes.size() != 0) {
         Vector2D shiftCentroid = shiftNewNodesWithPolarCoords(refNodes, missingNodes, newCentroid, 
-                                                              groupLayout, rcxTLGI.getLayout());
+                                                              groupLayout, rcxTLGI.getCurrentLayout());
         shiftCentroid.forceToGrid(UiUtil.GRID_SIZE);
 
         //
@@ -5020,7 +4931,7 @@ public class LayoutRubberStamper {
         labelTotal.forceToGrid(UiUtil.GRID_SIZE);
         double xmov = labelTotal.getX();
         double ymov = labelTotal.getY();
-        rcxTLGI.getLayout().moveGroup(grpID, xmov, ymov);                
+        rcxTLGI.getCurrentLayout().moveGroup(grpID, xmov, ymov);                
       }
 
       //
@@ -5035,12 +4946,12 @@ public class LayoutRubberStamper {
         Point2D shift = finalShift.add(orig);
         UiUtil.forceToGrid(shift.getX(), shift.getY(), shift, UiUtil.GRID_SIZE);
         props.setLocation(shift);
-        rcxTLGI.getLayout().setNodeProperties(nodeID, props);
+        rcxTLGI.getCurrentLayout().setNodeProperties(nodeID, props);
       }
     } else {  // have exactly the same set of points
       if (refNodes.size() > 0) {
         Point2D oldCentroid = getCentroid(refNodes, groupLayout); 
-        Point2D newCentroid = getCentroid(refNodes, rcxTLGI.getLayout()); 
+        Point2D newCentroid = getCentroid(refNodes, rcxTLGI.getCurrentLayout()); 
         finalShift = new Vector2D(oldCentroid, newCentroid);
         finalShift.forceToGrid(UiUtil.GRID_SIZE);
       } else {
@@ -5075,20 +4986,19 @@ public class LayoutRubberStamper {
   ** Inherit consistent links
   */
   
-  private void inheritConsistentLinks(DataAccessContext rcxTLGI, //GenomeInstance gi, 
+  private void inheritConsistentLinks(StaticDataAccessContext rcxTLGI,
                                       Group group, Layout groupLayout,
-                                  //    Layout targetLayout, 
                                       Set<String> missingLinks, 
                                       Set<String> missingNodes, Vector2D shift) {
 
     LinkRouter router = new LinkRouter();
-    DataAccessContext rcxGL = new DataAccessContext(rcxTLGI);
+    StaticDataAccessContext rcxGL = new StaticDataAccessContext(rcxTLGI);
     rcxGL.setLayout(groupLayout);
         
-    DataAccessContext rcxLK = new DataAccessContext(rcxTLGI);
-    rcxLK.setLayout(new Layout(appState_, "bogus", rcxTLGI.getGenomeID()));
+    StaticDataAccessContext rcxLK = new StaticDataAccessContext(rcxTLGI);
+    rcxLK.setLayout(new Layout("bogus", rcxTLGI.getCurrentGenomeID()));
     // Don't care about overlay property transfer, so we have the triple-null map
-    rcxLK.getLayout().extractPartialLayoutForGroup(group, null, rcxLK, rcxTLGI, null, null, null);
+    rcxLK.getCurrentLayout().extractPartialLayoutForGroup(group, null, rcxLK, rcxTLGI, null, null, null);
     LinkPlacementGrid routerGrid;
     try {
       routerGrid = router.initGrid(rcxLK, null, INodeRenderer.STRICT, null);
@@ -5107,7 +5017,7 @@ public class LayoutRubberStamper {
     Iterator<String> mlit = missingLinks.iterator();
     while (mlit.hasNext()) {
       String linkID = mlit.next();
-      Linkage link = rcxTLGI.getGenome().getLinkage(linkID);
+      Linkage link = rcxTLGI.getCurrentGenome().getLinkage(linkID);
       Vector2D checkShift = nodesOkForLinkInherit(link, rcxLK, groupLayout, missingNodes, shift);
       String src = link.getSource();
       if (checkShift == null) {
@@ -5155,7 +5065,7 @@ public class LayoutRubberStamper {
       while (lsit.hasNext()) {
         String linkID = lsit.next();
         if (props.haveTargetDrop(linkID)) {
-          rcxLK.getLayout().setLinkProperties(linkID, (BusProperties)props);
+          rcxLK.getCurrentLayout().setLinkProperties(linkID, (BusProperties)props);
           survivingLinks.add(linkID);
         }
       }
@@ -5165,7 +5075,7 @@ public class LayoutRubberStamper {
 
       if (render.canRenderToPlacementGrid(props, routerGrid, dropSet, null, rcxLK)) {
         mergeInheritedLinks(survivingLinks, srcID, props, rcxTLGI);
-        routerGrid.dropLink(srcID, rcxLK.getGenome(), null);
+        routerGrid.dropLink(srcID, rcxLK.getCurrentGenome(), null);
         render.renderToPlacementGrid(props, routerGrid, null, null, rcxLK);
       } 
     }
@@ -5177,17 +5087,17 @@ public class LayoutRubberStamper {
   ** Merge inherited links
   */
   
-  private void mergeInheritedLinks(Set<String> linkSet, String srcID, LinkProperties props, DataAccessContext rcx) {
+  private void mergeInheritedLinks(Set<String> linkSet, String srcID, LinkProperties props, StaticDataAccessContext rcx) {
        
     Iterator<String> lsit = linkSet.iterator();
     while (lsit.hasNext()) {
       String linkID = lsit.next();
-      Linkage currLink = rcx.getGenome().getLinkage(linkID);
+      Linkage currLink = rcx.getCurrentGenome().getLinkage(linkID);
       LinkBusDrop keepDrop = props.getTargetDrop(linkID);
       BusProperties spTree = new BusProperties((BusProperties)props, (BusDrop)keepDrop);
       Vector2D offset = new Vector2D(0.0, 0.0);
       spTree = new BusProperties(spTree, srcID, linkID, offset);   
-      rcx.getLayout().foldInNewProperty(currLink, spTree, rcx);
+      rcx.getCurrentLayout().foldInNewProperty(currLink, spTree, rcx);
     }
     return;
   }
@@ -5197,7 +5107,7 @@ public class LayoutRubberStamper {
   ** Check if we can inherit
   */
   
-  private Vector2D nodesOkForLinkInherit(Linkage link, DataAccessContext rcx,
+  private Vector2D nodesOkForLinkInherit(Linkage link, StaticDataAccessContext rcx,
                                          Layout sourceLayout, 
                                          Set<String> missingNodes, Vector2D shift) {
                                        
@@ -5227,7 +5137,7 @@ public class LayoutRubberStamper {
     if (srcMissing) {
       finalSrcPos = shift.add(origSrcPos);
     } else {
-      finalSrcPos = rcx.getLayout().getNodeProperties(src).getLocation();
+      finalSrcPos = rcx.getCurrentLayout().getNodeProperties(src).getLocation();
     }
     
     np = sourceLayout.getNodeProperties(trg);
@@ -5237,7 +5147,7 @@ public class LayoutRubberStamper {
     if (trgMissing) {
       finalTrgPos = shift.add(origTrgPos);
     } else {
-      finalTrgPos = rcx.getLayout().getNodeProperties(trg).getLocation();
+      finalTrgPos = rcx.getCurrentLayout().getNodeProperties(trg).getLocation();
     }    
         
     Vector2D origDelta = new Vector2D(origSrcPos, origTrgPos);
@@ -5279,13 +5189,13 @@ public class LayoutRubberStamper {
   ** Determine the link properties we are lacking in the given group
   */
   
-  private Set<String> getNeededLinksForGroup(DataAccessContext rcx, Group group) {
+  private Set<String> getNeededLinksForGroup(StaticDataAccessContext rcx, Group group) {
     HashSet<String> retval = new HashSet<String>();
-    Set<String> allLinks = getAllLinksForGroup((GenomeInstance)rcx.getGenome(), group);
+    Set<String> allLinks = getAllLinksForGroup((GenomeInstance)rcx.getCurrentGenome(), group);
     Iterator<String> alit = allLinks.iterator();
     while (alit.hasNext()) {
       String linkID = alit.next();
-      if (rcx.getLayout().getLinkProperties(linkID) == null) {
+      if (rcx.getCurrentLayout().getLinkProperties(linkID) == null) {
         retval.add(linkID);
       }
     }
@@ -5297,13 +5207,13 @@ public class LayoutRubberStamper {
   ** Determine the link properties existing in the given group
   */
   
-  private Set<String> getExistingLinksForGroup(DataAccessContext rcx, Group group) {
+  private Set<String> getExistingLinksForGroup(StaticDataAccessContext rcx, Group group) {
     HashSet<String> retval = new HashSet<String>();
-    Set<String> allLinks = getAllLinksForGroup((GenomeInstance)rcx.getGenome(), group);
+    Set<String> allLinks = getAllLinksForGroup((GenomeInstance)rcx.getCurrentGenome(), group);
     Iterator<String> alit = allLinks.iterator();
     while (alit.hasNext()) {
       String linkID = alit.next();
-      if (rcx.getLayout().getLinkProperties(linkID) != null) {
+      if (rcx.getCurrentLayout().getLinkProperties(linkID) != null) {
         retval.add(linkID);
       }
     }
@@ -5440,33 +5350,6 @@ public class LayoutRubberStamper {
 
     HashMap<String, Integer> retval = new HashMap<String, Integer>();
     
-    /*
-    HashSet seen = new HashSet();
-    
-    Iterator lit = crossTuples.values().iterator();    
-    while (lit.hasNext()) {
-      Link tuple = (Link)lit.next();
-      if (seen.contains(tuple)) {
-        continue;
-      }
-      seen.add(tuple);
-      String srcGrp = tuple.getSrc();
-      Integer countObj = (Integer)retval.get(srcGrp);
-      if (countObj == null) {
-        retval.put(srcGrp, new Integer(padPerLink));
-      } else {
-        retval.put(srcGrp, new Integer(countObj.intValue() + padPerLink));
-      }
-      String trgGrp = tuple.getTrg();
-      countObj = (Integer)retval.get(trgGrp);
-      if (countObj == null) {
-        retval.put(trgGrp, new Integer(padPerLink));
-      } else {
-        retval.put(trgGrp, new Integer(countObj.intValue() + padPerLink));
-      }      
-    }
-     */
-    
     //
     // We need to provide new paddings when an inbound link segment gains
     // a "kink".  This should be done iteratively, since the padding can
@@ -5584,8 +5467,7 @@ public class LayoutRubberStamper {
   ** Add some links
   */
   
-  private LinkRouter.RoutingResult layoutSomeLinks(Set<String> toDo, DataAccessContext rcxT, //Layout targLayout, 
-                                                   //GenomeInstance gi, 
+  private LinkRouter.RoutingResult layoutSomeLinks(Set<String> toDo, StaticDataAccessContext rcxT,
                                                    LayoutOptions options,
                                                    Map<String, String> linkColors, 
                                                    BTProgressMonitor monitor,
@@ -5627,23 +5509,23 @@ public class LayoutRubberStamper {
     // not going to help (failure due to target pad collisions).
     //
     
-    Map<String, Layout.OverlayKeySet> allKeys = (new FullGenomeHierarchyOracle(appState_)).fullModuleKeysPerLayout(); 
-    Layout.OverlayKeySet loModKeys = allKeys.get(rcxT.getLayoutID());       
+    Map<String, Layout.OverlayKeySet> allKeys = rcxT.getFGHO().fullModuleKeysPerLayout(); 
+    Layout.OverlayKeySet loModKeys = allKeys.get(rcxT.getCurrentLayoutID());       
     
-    DataAccessContext rcxTe = new DataAccessContext(rcxT);
-    rcxTe.setLayout(new Layout(rcxT.getLayout()));
+    StaticDataAccessContext rcxTe = new StaticDataAccessContext(rcxT);
+    rcxTe.setLayout(new Layout(rcxT.getCurrentLayout()));
     LinkRouter.RoutingResult res = 
       layoutSomeLinksCore(toDo, rcxTe, options, linkColors, 
                           monitor, startFrac, eFrac1, rememberProps, null, strictOKGroups);
     if ((res.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) {
     //if (res.linkResult == LinkRouter.LAYOUT_OK) {
-      rcxT.getLayout().replaceContents(rcxTe.getLayout());
+      rcxT.getCurrentLayout().replaceContents(rcxTe.getCurrentLayout());
       return (res);
     }
     
-    Set<String> targCollide = rcxT.getGenome().hasLinkTargetPadCollisions();
+    Set<String> targCollide = rcxT.getCurrentGenome().hasLinkTargetPadCollisions();
     if (!targCollide.isEmpty()) {
-      rcxT.getLayout().replaceContents(rcxTe.getLayout());
+      rcxT.getCurrentLayout().replaceContents(rcxTe.getCurrentLayout());
       return (res);
     }    
 
@@ -5654,18 +5536,18 @@ public class LayoutRubberStamper {
  
     int maxPasses = 3;  // magic number; too big, and we can run out of memory   
     double currProg = eFrac1;
-    double progFrac = frac2 / (double)maxPasses;
+    double progFrac = frac2 / maxPasses;
     double progFracFrac = progFrac / 2.0;
     
     
     
     for (int mult = 1; mult <= maxPasses; mult++) {
-      DataAccessContext rcxE = new DataAccessContext(rcxT);
-      rcxE.setLayout(new Layout(rcxT.getLayout()));
+      StaticDataAccessContext rcxE = new StaticDataAccessContext(rcxT);
+      rcxE.setLayout(new Layout(rcxT.getCurrentLayout()));
       TreeSet<Integer> insertRows = new TreeSet<Integer>();
       TreeSet<Integer> insertCols = new TreeSet<Integer>();
-      rcxE.getLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, true, monitor);
-      Layout.ExpansionReversal er = rcxE.getLayout().expand(rcxE, insertRows, insertCols, mult, 
+      rcxE.getCurrentLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, true, monitor);
+      Layout.ExpansionReversal er = rcxE.getCurrentLayout().expand(rcxE, insertRows, insertCols, mult, 
                                                        true, null, null, null, monitor, currProg, currProg + progFracFrac);
       currProg += progFracFrac;
       
@@ -5675,8 +5557,8 @@ public class LayoutRubberStamper {
                                                           rememberProps, null, strictOKGroups);
       currProg += progFracFrac;
       if ((eres.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) { 
-        rcxE.getLayout().reverseExpansion(rcxE, er, monitor, currProg, eFrac3);
-        rcxT.getLayout().replaceContents(rcxE.getLayout());
+        rcxE.getCurrentLayout().reverseExpansion(rcxE, er, monitor, currProg, eFrac3);
+        rcxT.getCurrentLayout().replaceContents(rcxE.getCurrentLayout());
         return (eres);
       }
     }    
@@ -5686,28 +5568,28 @@ public class LayoutRubberStamper {
     //
     
     currProg = eFrac2;
-    progFrac = frac3 / (double)maxPasses;
+    progFrac = frac3 / maxPasses;
     progFracFrac = progFrac / 2.0;
     
     for (int mult = 1; mult <= maxPasses; mult++) {
-      DataAccessContext rcxE = new DataAccessContext(rcxT);
-      rcxE.setLayout(new Layout(rcxT.getLayout()));
+      StaticDataAccessContext rcxE = new StaticDataAccessContext(rcxT);
+      rcxE.setLayout(new Layout(rcxT.getCurrentLayout()));
       TreeSet<Integer> insertRows = new TreeSet<Integer>();
       TreeSet<Integer> insertCols = new TreeSet<Integer>();
-      rcxE.getLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
-      rcxE.getLayout().expand(rcxE, insertRows, insertCols, mult, false, null, null, null, monitor, currProg, currProg + progFracFrac);
+      rcxE.getCurrentLayout().chooseExpansionRows(rcxE, 1.0, 1.0, null, loModKeys, insertRows, insertCols, false, monitor);
+      rcxE.getCurrentLayout().expand(rcxE, insertRows, insertCols, mult, false, null, null, null, monitor, currProg, currProg + progFracFrac);
       currProg += progFracFrac;
       LinkRouter.RoutingResult eres = layoutSomeLinksCore(toDo, rcxE, options,
                                                           linkColors, monitor, currProg, currProg + progFracFrac,
                                                           rememberProps, null, strictOKGroups);
       currProg += progFracFrac;
       if ((eres.linkResult & LinkRouter.LAYOUT_PROBLEM) == 0x00) {        
-        rcxT.getLayout().replaceContents(rcxE.getLayout());
+        rcxT.getCurrentLayout().replaceContents(rcxE.getCurrentLayout());
         return (eres);
       }
     }
 
-    rcxT.getLayout().replaceContents(rcxTe.getLayout()); // zero-expansion version...
+    rcxT.getCurrentLayout().replaceContents(rcxTe.getCurrentLayout()); // zero-expansion version...
     return (res);  
   }
   
@@ -5716,7 +5598,7 @@ public class LayoutRubberStamper {
   ** Add some links
   */
   
-  private LinkRouter.RoutingResult layoutSomeLinksCore(Set<String> toDo, DataAccessContext rcxT,
+  private LinkRouter.RoutingResult layoutSomeLinksCore(Set<String> toDo, StaticDataAccessContext rcxT,
                                                        LayoutOptions options,
                                                        Map<String, String> linkColors, 
                                                        BTProgressMonitor monitor,
@@ -5739,7 +5621,7 @@ public class LayoutRubberStamper {
     Iterator<String> xrit = toDo.iterator();
     while (xrit.hasNext()) {
       String linkID = xrit.next();
-      LayoutLinkSupport.autoAddCrudeLinkProperties(appState_, rcxT, linkID, null, rememberProps);
+      LayoutLinkSupport.autoAddCrudeLinkProperties(rcxT, linkID, null, rememberProps);
     }
     
     //
@@ -5761,7 +5643,7 @@ public class LayoutRubberStamper {
           continue;
         }
       }
-      BusProperties lp = rcxT.getLayout().getLinkProperties(linkID);
+      BusProperties lp = rcxT.getCurrentLayout().getLinkProperties(linkID);
       lp.setColor(linkCol);
     }
  
@@ -5963,18 +5845,17 @@ public class LayoutRubberStamper {
   ** Find a nearby location that does not collide with the existing layout
   */
   
-  private Vector2D placeWithGrid(DataAccessContext rcxTLGI, //GenomeInstance gi, 
+  private Vector2D placeWithGrid(StaticDataAccessContext rcxTLGI,
                                  Layout groupLayout, Set<String> missingNodes, Set<String> refNodes,
-                               //  Layout targetLayout, 
                                  Vector2D seedVec) {
 
     LinkRouter router = new LinkRouter();
     HashSet<String> skipLinks = new HashSet<String>();
-    Iterator<Linkage> lit = rcxTLGI.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcxTLGI.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
-      if (rcxTLGI.getLayout().getLinkProperties(linkID) == null) {
+      if (rcxTLGI.getCurrentLayout().getLinkProperties(linkID) == null) {
         skipLinks.add(linkID);
       }
     }
@@ -5982,7 +5863,7 @@ public class LayoutRubberStamper {
     LinkPlacementGrid targLinkGrid = router.initLimitedGrid(rcxTLGI, refNodes, skipLinks, INodeRenderer.STRICT);
     PatternGrid targGrid = targLinkGrid.extractPatternGrid(true);
     
-    DataAccessContext rcxGL = new DataAccessContext(rcxTLGI);
+    StaticDataAccessContext rcxGL = new StaticDataAccessContext(rcxTLGI);
     rcxGL.setLayout(groupLayout);
     PatternGrid newGrid = groupLayout.partialFillPatternGridWithNodes(rcxGL, missingNodes);
     Pattern pat = newGrid.generatePattern();
@@ -6021,7 +5902,7 @@ public class LayoutRubberStamper {
   
   public static class ERILData { 
   
-    DataAccessContext rcx;
+    StaticDataAccessContext rcx;
     Set<String> groups;
     RegionExpander regExp;
     Set<String> ultimateFailures; 
@@ -6035,7 +5916,7 @@ public class LayoutRubberStamper {
  
     
     // For compression
-    public ERILData(DataAccessContext rcx,
+    public ERILData(StaticDataAccessContext rcx,
                     Set<String> groups,
                     RegionExpander regExp,
                     Set<String> ultimateFailures, 
@@ -6058,7 +5939,7 @@ public class LayoutRubberStamper {
       this.endFrac = endFrac;  
     }
     
-    public ERILData(DataAccessContext rcx,
+    public ERILData(StaticDataAccessContext rcx,
                     Set<String> groups,
                     Layout.PadNeedsForLayout padNeeds, 
                     Layout.OverlayKeySet loModKeys, 
@@ -6087,9 +5968,8 @@ public class LayoutRubberStamper {
   
   public static class RSData { 
     
-    DataAccessContext rootRcx;
-    DataAccessContext instRcx;
-       
+    StaticDataAccessContext rootRcx;
+    StaticDataAccessContext instRcx;
     LayoutOptions options;
     Layout.OverlayKeySet loModKeys; 
     Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery;
@@ -6102,7 +5982,7 @@ public class LayoutRubberStamper {
     Map<String, BusProperties.RememberProps> rememberProps; 
     Map<String, Layout.PadNeedsForLayout> globalPadNeeds;
  
-    public RSData(DataAccessContext rootRcx, DataAccessContext instRcx, LayoutOptions options,
+    public RSData(StaticDataAccessContext rootRcx, StaticDataAccessContext instRcx, LayoutOptions options,
                   Layout.OverlayKeySet loModKeys, 
                   Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery,
                   BTProgressMonitor monitor, Map<String, Rectangle> savedRegionBounds, 
@@ -6134,11 +6014,10 @@ public class LayoutRubberStamper {
   
   public static abstract class RegionExpander {
    
-    protected DataAccessContext rcx;
+    protected StaticDataAccessContext rcx;
     protected Map<String, Rectangle> oldRegionBounds; 
     protected Map<String, Map<String, Map<String, List<NetModuleProperties.TaggedShape>>>> oldToNewShapes; 
     protected Map<String, Layout> layouts;
-    protected BTState appState;
     protected Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> moduleLinkFragShifts; 
     protected Layout.OverlayKeySet loModKeys; 
     protected CrossLinkRecovery recovery; 
@@ -6163,12 +6042,11 @@ public class LayoutRubberStamper {
     protected TreeSet<Integer> insertRows;
     protected TreeSet<Integer> insertCols;
         
-    public void setup(BTState appState, DataAccessContext rcx, Map<String, Rectangle> oldRegionBounds, 
+    public void setup(StaticDataAccessContext rcx, Map<String, Rectangle> oldRegionBounds, 
                       Map<String, Map<String, Map<String, List<NetModuleProperties.TaggedShape>>>> oldToNewShapes, 
                       Map<String, Layout> layouts, 
                       Map<String, Map<String, Map<String, LinkProperties.LinkFragmentShifts>>> moduleLinkFragShifts, 
                       Layout.OverlayKeySet loModKeys, CrossLinkRecovery recovery, BTProgressMonitor monitor) { 
-      this.appState = appState;
       this.rcx = rcx; 
       this.oldRegionBounds = oldRegionBounds;
       this.oldToNewShapes = oldToNewShapes;
@@ -6276,20 +6154,20 @@ public class LayoutRubberStamper {
    
     protected void customExpandTheRegion(String grpID, double startFrac, double endFrac) throws AsynchExitRequestException {
       
-      rcx.getLayout().chooseExpansionRows(rcx, fracV_, fracH_, oldBounds, loModKeys, insertRows, insertCols, false, monitor);
-      DataAccessContext rcxG = new DataAccessContext(rcx); 
+      rcx.getCurrentLayout().chooseExpansionRows(rcx, fracV_, fracH_, oldBounds, loModKeys, insertRows, insertCols, false, monitor);
+      StaticDataAccessContext rcxG = new StaticDataAccessContext(rcx); 
       rcxG.setLayout(grpLo);
-      rcxG.getLayout().expand(rcxG, insertRows, insertCols, 1, false, oldToNewShapesPerGroup, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);
+      rcxG.getCurrentLayout().expand(rcxG, insertRows, insertCols, 1, false, oldToNewShapesPerGroup, moduleLinkFragShifts, grpID, monitor, startFrac, endFrac);
       return;
     }
     
     public Rectangle getGroupBounds(String grpID) {
    
-      Group grp = ((GenomeInstance)rcx.getGenome()).getGroup(grpID);
+      Group grp = ((GenomeInstance)rcx.getCurrentGenome()).getGroup(grpID);
       grpLo = layouts.get(grpID);
-      DataAccessContext rcxG = new DataAccessContext(rcx);
+      StaticDataAccessContext rcxG = new StaticDataAccessContext(rcx);
       rcxG.setLayout(grpLo);
-      return (rcxG.getLayout().getLayoutBoundsForGroup(grp, rcxG, true, true));
+      return (rcxG.getCurrentLayout().getLayoutBoundsForGroup(grp, rcxG, true, true));
     }
   }
    
@@ -6470,7 +6348,7 @@ public class LayoutRubberStamper {
       } else {
         boolean goClock = goClockwise(other);
         double dist = (this.isOnCorner()) ? this.cornerDot(!goClock) : this.alongEdge(!goClock);
-        dist += (double)(bin - 1);
+        dist += (bin - 1);
         dist += (other.isOnCorner()) ? other.cornerDot(goClock) : other.alongEdge(goClock);
         return (dist);
       }
@@ -6764,7 +6642,7 @@ public class LayoutRubberStamper {
     Set<String> linksToTarg;
     
     TreeMergePerRegion(LinkProperties bp, Map<LinkSegmentID, Point2D> dicePts, 
-                       Map<LinkSegmentID, RegionBasedPosition> targStubs, String trgGrpID, Set<String> linksToTarg) {
+                       Map<LinkSegmentID, RegionBasedPosition> targStubs, Set<String> linksToTarg) {
       this.bp = bp;
       this.dicePts = dicePts;
       this.targStubs = targStubs;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,7 +36,8 @@ import java.util.List;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.FixedJButton;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -55,7 +56,8 @@ public class RegionRestrictionDialog extends JDialog {
   private String regionResult_;
   private List notAllowed_;  
   private boolean haveResult_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -70,11 +72,12 @@ public class RegionRestrictionDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public RegionRestrictionDialog(BTState appState, List existingChoices, List notAllowed, String chosen) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("regRestrict.title"), true);
-    appState_ = appState;
+  public RegionRestrictionDialog(UIComponentSource uics, DataAccessContext dacx, List existingChoices, List notAllowed, String chosen) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("regRestrict.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     notAllowed_ = notAllowed;
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 200);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -114,7 +117,7 @@ public class RegionRestrictionDialog extends JDialog {
             RegionRestrictionDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -126,7 +129,7 @@ public class RegionRestrictionDialog extends JDialog {
           RegionRestrictionDialog.this.setVisible(false);
           RegionRestrictionDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -141,7 +144,7 @@ public class RegionRestrictionDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, 2, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
 
 
@@ -194,8 +197,8 @@ public class RegionRestrictionDialog extends JDialog {
       // FIX ME??? Is the selection sometimes not taking when we edit it?  Use this?
       // regionSelection = (String)regionCombo_.getEditor().getItem();
       if ((regionSelection == null) || regionSelection.trim().equals("")) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("regRestrict.emptyName"), 
                                       rMan.getString("regRestrict.emptyNameTitle"),
                                       JOptionPane.ERROR_MESSAGE); 
@@ -203,8 +206,8 @@ public class RegionRestrictionDialog extends JDialog {
       } 
       
       if (notAllowed_.contains(regionSelection)) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("regRestrict.dupName"), 
                                       rMan.getString("regRestrict.dupNameTitle"),
                                       JOptionPane.ERROR_MESSAGE); 

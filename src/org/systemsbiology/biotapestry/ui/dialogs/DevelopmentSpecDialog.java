@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,11 +39,11 @@ import javax.swing.table.DefaultTableCellRenderer;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.analysis.CycleFinder;
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
@@ -71,13 +71,14 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
   private EditableTable est_;
   private boolean haveResult_;
-  private Map mapping_;
-  private Map regAndTimes_;
+  private Map<String, String> mapping_;
+  private Map<String, Integer> regAndTimes_;
   private ArrayList<String> regionList_;
-  private List parentList_;
+  private List<EnumCell> parentList_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -92,14 +93,15 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** Constructor 
   */ 
   
-  public DevelopmentSpecDialog(BTState appState, Map<String, Integer> regAndTimes) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("devSpec.title"), true);
-    appState_ = appState;
+  public DevelopmentSpecDialog(UIComponentSource uics, Map<String, Integer> regAndTimes, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("devSpec.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     haveResult_ = false;
     regAndTimes_ = regAndTimes;
     regionList_ =  new ArrayList<String>(regAndTimes.keySet());
     Collections.sort(regionList_, String.CASE_INSENSITIVE_ORDER);
-    parentList_ = buildParentEnum(regionList_);
+    parentList_ = buildParentEnum(regionList_, dacx);
           
     setSize(400, 500);
     JPanel cp = (JPanel)getContentPane();
@@ -111,24 +113,24 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
     // Build the values table tabs.
     //
 
-    est_ = new EditableTable(appState_, new RegionParentTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new RegionParentTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.tableIsUnselectable = true;
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.singleSelectOnly = true;
     etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(RegionParentTableModel.PARENT_), new EditableTable.EnumCellInfo(false, parentList_));  
+    etp.perColumnEnums.put(new Integer(RegionParentTableModel.PARENT_), new EditableTable.EnumCellInfo(false, parentList_, EnumCell.class));  
     JPanel tablePan = est_.buildEditableTable(etp);
     // FIX ME, MAKE AVAILABLE FROM SUPERCLASS
     ((DefaultTableCellRenderer)est_.getTable().getDefaultRenderer(String.class)).setHorizontalAlignment(JLabel.CENTER);
     UiUtil.gbcSet(gbc, 0, 0, 1, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 8, 1, false, true);
-    setLocationRelativeTo(appState_.getTopFrame());
-    displayProperties();
+    setLocationRelativeTo(uics_.getTopFrame());
+    displayProperties(dacx);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -233,8 +235,8 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
       }
     }
   
-    RegionParentTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    RegionParentTableModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"devSpec.region",
                                 "devSpec.parent"};
       colClasses_ = new Class[] {String.class,
@@ -257,7 +259,7 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
       super.extractValues(prsList);
       Iterator<TableRow> rit = prsList.iterator();
       while (rit.hasNext()) { 
-        TableRow ent = (TableRow)rit.next();
+        TableRow ent = rit.next();
         ent.toCols();
       }
       return;
@@ -276,11 +278,11 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */  
   
-  public static boolean assembleAndApplyHierarchy(BTState appState, DataAccessContext dacx) {
+  public static boolean assembleAndApplyHierarchy(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
 
     TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
     Map<String, Integer> regAndTimes = tcd.getRegionsWithMinTimes();
-    DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(appState, regAndTimes);
+    DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(uics, regAndTimes, dacx);
     dsd.setVisible(true);
     if (!dsd.haveResult()) {
       return (false);
@@ -290,14 +292,14 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
     // Build data structure to submit:
     //
     
-    HashSet regionRoots = new HashSet();
-    HashMap regionParents = new HashMap();
+    HashSet<String> regionRoots = new HashSet<String>();
+    HashMap<String, String> regionParents = new HashMap<String, String>();
     
-    Map pMap = dsd.getParentMapping();
-    Iterator rit = regAndTimes.keySet().iterator();
+    Map<String, String> pMap = dsd.getParentMapping();
+    Iterator<String> rit = regAndTimes.keySet().iterator();
     while (rit.hasNext()) {
-      String region = (String)rit.next();
-      String parentReg = (String)pMap.get(region);
+      String region = rit.next();
+      String parentReg = pMap.get(region);
       if (parentReg == null) {
         regionRoots.add(region);
       } else {
@@ -307,9 +309,9 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
  
     // Submit:
     
-    UndoSupport support = new UndoSupport(appState, "undo.applyRegionHierarchy");
+    UndoSupport support = uFac.provideUndoSupport("undo.applyRegionHierarchy", dacx);
     TimeCourseChange tcc = tcd.setRegionHierarchy(regionParents, regionRoots, true);
-    support.addEdit(new TimeCourseChangeCmd(appState, dacx, tcc));
+    support.addEdit(new TimeCourseChangeCmd(dacx, tcc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();          
   
@@ -328,8 +330,8 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */
   
-  private void displayProperties() {
-    List entries = tableEntries();
+  private void displayProperties(DataAccessContext dacx) {
+    List<RegionParentTableModel.TableRow> entries = tableEntries(dacx);
     est_.getModel().extractValues(entries);
     return;
   }
@@ -340,16 +342,16 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */
   
-  private ArrayList buildParentEnum(List regionList) {
-    ArrayList retval = new ArrayList();
-    ResourceManager rMan = appState_.getRMan();
+  private ArrayList<EnumCell> buildParentEnum(List<String> regionList, DataAccessContext dacx) {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    ResourceManager rMan = dacx.getRMan();
     String noParent = rMan.getString("devSpec.noParent");
     retval.add(new EnumCell(noParent, null, 0, 0));
     int count = 1;
     
     int numReg = regionList.size();
     for (int i = 0; i < numReg; i++) {
-      String regName = (String)regionList.get(i);          
+      String regName = regionList.get(i);          
       retval.add(new EnumCell(regName, regName, count, count));
       count++;
     }
@@ -387,10 +389,9 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */ 
    
-  private List tableEntries() {
-    ArrayList retval = new ArrayList();
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData();
+  private List<RegionParentTableModel.TableRow> tableEntries(DataAccessContext dacx) {
+    ArrayList<RegionParentTableModel.TableRow> retval = new ArrayList<RegionParentTableModel.TableRow>();
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
     RegionParentTableModel rpt = (RegionParentTableModel)est_.getModel();  
  
     //
@@ -398,10 +399,10 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
     // option added at the top.
     //
 
-    Iterator rlit = regionList_.iterator();
+    Iterator<String> rlit = regionList_.iterator();
     int numPar = parentList_.size();
     while (rlit.hasNext()) {
-      String entry = (String)rlit.next();
+      String entry = rlit.next();
       RegionParentTableModel.TableRow tr = rpt.new TableRow();
       int useIndex = 0;
       tr.region = entry;
@@ -413,7 +414,7 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
         } else {
           String parentRegion = tcd.getParentRegion(entry);
           for (int i = 1; i < numPar; i++) {
-            EnumCell ecp = (EnumCell)parentList_.get(i);
+            EnumCell ecp = parentList_.get(i);
             if (parentRegion.equals(ecp.internal)) {
               useIndex = i;
               break;
@@ -424,7 +425,7 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
           }
         }
       }
-      tr.parent = new EnumCell((EnumCell)parentList_.get(useIndex));
+      tr.parent = new EnumCell(parentList_.get(useIndex));
       retval.add(tr);
     }
     return (retval);
@@ -436,26 +437,26 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */
    
-  private boolean checkValues(List vals) {
+  private boolean checkValues(List<RegionParentTableModel.TableRow> vals) {
     //
     // Make sure that there are no loops in the parenting.  Make sure
     // somebody has a null parent.  Kids cannot appear before the parent.
     //
 
-    HashSet nodeSet = new HashSet();
-    HashSet linkSet = new HashSet();
+    HashSet<String> nodeSet = new HashSet<String>();
+    HashSet<Link> linkSet = new HashSet<Link>();
     boolean atLeastOne = false;
     int num = vals.size();
     for (int i = 0; i < num; i++) {
-      RegionParentTableModel.TableRow tr = (RegionParentTableModel.TableRow)vals.get(i);
+      RegionParentTableModel.TableRow tr = vals.get(i);
       String region = tr.region;
       EnumCell parent = tr.parent;
       if (parent.internal != null) {
-        Integer parentMin = (Integer)regAndTimes_.get(parent.internal);
-        Integer kidMin = (Integer)regAndTimes_.get(region);
+        Integer parentMin = regAndTimes_.get(parent.internal);
+        Integer kidMin = regAndTimes_.get(region);
         if (kidMin.intValue() < parentMin.intValue()) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("devSpec.kidBeforeParent"),
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("devSpec.kidBeforeParent"),
                                         rMan.getString("devSpec.kidBeforeParentTitle"),
                                         JOptionPane.ERROR_MESSAGE);
           return (false);
@@ -468,8 +469,8 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
     }
 
     if (!atLeastOne) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("devSpec.hasNoRoot"),
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("devSpec.hasNoRoot"),
                                     rMan.getString("devSpec.HasNoRootTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (false);
@@ -477,8 +478,8 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
 
     CycleFinder cf = new CycleFinder(nodeSet, linkSet);
     if (cf.hasACycle()) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("devSpec.hasCycle"),
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("devSpec.hasCycle"),
                                     rMan.getString("devSpec.hasCycleTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (false);
@@ -492,14 +493,14 @@ public class DevelopmentSpecDialog extends JDialog implements DialogSupport.Dial
   ** 
   */ 
      
-  private Map buildResult(List vals) {
-    HashMap retval = new HashMap();
+  private Map<String, String> buildResult(List<RegionParentTableModel.TableRow> vals) {
+    HashMap<String, String> retval = new HashMap<String, String>();
     int num = vals.size();
     //
     // Build the map.  No entry for regions without parents
     //
     for (int i = 0; i < num; i++) {
-      RegionParentTableModel.TableRow tr = (RegionParentTableModel.TableRow)vals.get(i);
+      RegionParentTableModel.TableRow tr = vals.get(i);
       String region = tr.region;
       EnumCell parent = tr.parent;
       if (parent.internal != null) {

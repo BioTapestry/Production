@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -59,7 +59,9 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableCellRenderer;
 import javax.swing.table.TableColumn;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -70,8 +72,6 @@ import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
 import org.systemsbiology.biotapestry.cmd.instruct.InstructionRegions;
 import org.systemsbiology.biotapestry.cmd.instruct.LoneNodeBuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.SignalBuildInstruction;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -95,6 +95,7 @@ import org.systemsbiology.biotapestry.util.TextEditor;
 import org.systemsbiology.biotapestry.util.TextEditorTracker;
 import org.systemsbiology.biotapestry.util.TextFinishedTracker;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 
 /****************************************************************************
@@ -136,14 +137,14 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     List<EnumCellSign> signList = buildSignList();
     List<EnumCellGeneralSign> genSignList = buildGeneralSignList();
     List<EnumCellSignalType> sigTypes = buildSignalTypeList();
-    Vector<String> showLevs = buildShowLevels(dniba.getGenome(), dniba.parentGenome);
-    boolean doRegions = !dniba.getGenome().getID().equals(cfh.getDataAccessContext().getGenomeSource().getGenome().getID());
+    Vector<String> showLevs = buildShowLevels(dniba.parentGenome);
+    boolean doRegions = !dniba.getGenome().getID().equals(cfh.getDataAccessContext().getGenomeSource().getRootDBGenome().getID());
     Vector<String> compLevs = buildComplexityLevels(doRegions);
     
     switch(platform.getPlatform()) {
       case DESKTOP:
         return (new DesktopDialog(cfh, dniba.getGenome(), dniba.parentGenome, dniba.workingRegions, dniba.instruct, 
-                                  signList, genSignList, sigTypes, showLevs, compLevs, doRegions));  
+                                  signList, genSignList, sigTypes, showLevs, compLevs, doRegions, cfh.getUndoFactory()));  
       case WEB:
       default:
         throw new IllegalArgumentException("The platform is not supported: " + platform.getPlatform());
@@ -162,7 +163,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   */
 
   private List<EnumCellSignalType> buildSignalTypeList() {    
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     ArrayList<EnumCellSignalType> retval = new ArrayList<EnumCellSignalType>();
     StringBuffer buf = new StringBuffer();
     for (int i = 0; i < SignalBuildInstruction.NUM_SIGNAL_TYPES; i++) {
@@ -181,7 +182,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   */
    
   private List<EnumCellSign> buildSignList() {
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     ArrayList<EnumCellSign> retval = new ArrayList<EnumCellSign>();
     StringBuffer buf = new StringBuffer();
     int index = 0;
@@ -203,7 +204,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   */
    
   private List<EnumCellGeneralSign> buildGeneralSignList() {
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     ArrayList<EnumCellGeneralSign> retval = new ArrayList<EnumCellGeneralSign>();
     StringBuffer buf = new StringBuffer();
     for (int i = 0; i < GeneralBuildInstruction.NUM_SIGN_TYPES; i++) {
@@ -222,8 +223,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   ** 
   */
  
-  private Vector<String> buildShowLevels(Genome genome, Genome vfgParent) {  
-    ResourceManager rMan = appState.getRMan();
+  private Vector<String> buildShowLevels(Genome vfgParent) {  
+    ResourceManager rMan = dacx.getRMan();
     Vector<String> levels = new Vector<String>();
     levels.add(rMan.getString("buildNetwork.showLevelShowAll"));
     levels.add(rMan.getString("buildNetwork.showLevelShowSelected"));
@@ -241,7 +242,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   */
  
   private Vector<String> buildComplexityLevels(boolean doRegions) {
-    ResourceManager rMan = appState.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     Vector<String> levels = new Vector<String>();
     levels.add(rMan.getString((doRegions) ? "buildNetwork.chooseSimple" : "buildNetwork.chooseSimpleRoot"));
     levels.add(rMan.getString((doRegions) ? "buildNetwork.chooseMedium" : "buildNetwork.chooseMediumRoot"));
@@ -263,7 +264,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     List<InstanceInstructionSet.RegionInfo> workingRegions; 
     List<BuildInstruction> instruct;
           
-    public BuildArgs(Genome genome, Genome parentGenome, 
+    public BuildArgs(Genome genome, Genome parentGenome,
                      List<InstanceInstructionSet.RegionInfo> workingRegions, List<BuildInstruction> instruct) {
       super(genome);
       this.parentGenome = parentGenome;
@@ -271,6 +272,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       this.instruct = instruct;
     }
 
+    @Override
     public Genome getGenome() {
       return (genome);
     }
@@ -350,14 +352,17 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     private String genomeID_;
     private HashMap<String, EnumCellNodeType> typeTracker_;
     private EnumCellNodeType geneEnumType_;
-    private BTState appState_;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext dacx_;
+    private UIComponentSource uics_;
+    private UndoFactory uFac_;
+    
     private JLabel lccLabel_;
     private SpecialtyLayoutEngineParams holdParams_;
     
     private ServerControlFlowHarness scfh_;
     private ClientControlFlowHarness cfh_;
     private RegionInfoRequest request_;
+    private RememberSource rSrc_;
     
     private static final long serialVersionUID = 1L;
     
@@ -376,14 +381,16 @@ public class BuildNetworkDialogFactory extends DialogFactory {
                    List<InstanceInstructionSet.RegionInfo> workingRegions, List<BuildInstruction> instruct,  
                    List<EnumCellSign> signList, List<EnumCellGeneralSign> genSignList, 
                    List<EnumCellSignalType> sigTypes, Vector<String> showLevs, Vector<String> compLevs, 
-                   boolean doRegions) {
+                   boolean doRegions, UndoFactory uFac) {
           
-      super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("buildNetwork.title"), true);
+      super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("buildNetwork.title"), true);
       scfh_ = cfh;
+      uFac_ = uFac;
       cfh_ = cfh.getClientHarness();
-      appState_ = cfh.getBTState();
       dacx_ = cfh.getDataAccessContext();
-      ResourceManager rMan = appState_.getRMan();
+      uics_ = cfh.getUI();
+      rSrc_ = cfh.getMemorySource();
+      ResourceManager rMan = dacx_.getRMan();
       typeTracker_ = new HashMap<String, EnumCellNodeType>();
       genomeID_ = genome.getID();
       doRegions_ = doRegions;
@@ -440,8 +447,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               boolean doInherit = false;
               ArrayList<InstanceInstructionSet.RegionInfo> parentList = null;
               if (parentID_ != null) {
-                Database db = appState_.getDB();
-                InstanceInstructionSet piis = db.getInstanceInstructionSet(parentID_);
+                InstanceInstructionSet piis = dacx_.getInstructSrc().getInstanceInstructionSet(parentID_);
                 parentList = new ArrayList<InstanceInstructionSet.RegionInfo>();
                 if (piis != null) {
                   Iterator<InstanceInstructionSet.RegionInfo> prit = piis.getRegionIterator();  
@@ -450,8 +456,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
                   }
                 }
                 if (!parentList.isEmpty()) {
-                  ResourceManager rMan = appState_.getRMan();
-                  int result = JOptionPane.showOptionDialog(appState_.getTopFrame(), rMan.getString("buildNetwork.chooseRegEdit"),
+                  ResourceManager rMan = dacx_.getRMan();
+                  int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), rMan.getString("buildNetwork.chooseRegEdit"),
                                                                      rMan.getString("buildNetwork.chooseRegEditTitle"),
                                                                      JOptionPane.DEFAULT_OPTION, 
                                                                      JOptionPane.QUESTION_MESSAGE, 
@@ -469,7 +475,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               
               if (doInherit) {
                 RegionInheritDialogFactory.BuildArgs ba = 
-                  new RegionInheritDialogFactory.BuildArgs(appState_.getDB().getGenome(genomeID_), parentList, workingRegions_);
+                  new RegionInheritDialogFactory.BuildArgs(dacx_.getGenomeSource().getGenome(genomeID_), parentList, workingRegions_);
                 RegionInheritDialogFactory mddf = new RegionInheritDialogFactory(scfh_);
                 RegionInheritDialogFactory.DesktopDialog rsd = mddf.getStashDialog(ba);
                 rsd.setVisible(true);
@@ -479,7 +485,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
                 updateRegions(rsd.getRegions(), true);
               } else {
                 RegionSetupDialogFactory.BuildArgs ba = 
-                  new RegionSetupDialogFactory.BuildArgs(appState_.getDB().getGenome(genomeID_), workingRegions_);
+                  new RegionSetupDialogFactory.BuildArgs(dacx_.getGenomeSource().getGenome(genomeID_), workingRegions_);
                 RegionSetupDialogFactory mddf = new RegionSetupDialogFactory(scfh_);
                 RegionSetupDialogFactory.DesktopDialog rsd = mddf.getStashDialog(ba);
                 rsd.setVisible(true);
@@ -489,7 +495,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
                 updateRegions(rsd.getRegions(), false);
               }
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -509,7 +515,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               stopTheEditing();
               setShowLevel(showLevelCombo_.getSelectedIndex());
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
           }
         });
@@ -544,7 +550,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             stopTheEditing();
             changeComplexity(complexityCombo_.getSelectedIndex());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -564,15 +570,15 @@ public class BuildNetworkDialogFactory extends DialogFactory {
        
       tabPane_ = new JTabbedPane();    
       if (complexityLevel_ == ONLY_GENES_INTRA_REGION_) {
-        simplePanel_ = buildSimpleTab(appState_.getTopFrame(), doRegions_, instruct);
+        simplePanel_ = buildSimpleTab(uics_.getTopFrame(), doRegions_, instruct);
         tabPane_.addTab(rMan.getString("buildNetwork.standard"), simplePanel_);
         currTd_ = td_;
       } else if (complexityLevel_ == ALL_TYPES_INTRA_REGION_) {
-        mediumPanel_ = buildMediumTab(appState_.getTopFrame(), doRegions_, instruct);
+        mediumPanel_ = buildMediumTab(uics_.getTopFrame(), doRegions_, instruct);
         tabPane_.addTab(rMan.getString("buildNetwork.standard"), mediumPanel_);
         currTd_ = mtd_;
       } else {
-        complexPanel_ = buildComplexTab(appState_.getTopFrame(), doRegions_, instruct);
+        complexPanel_ = buildComplexTab(uics_.getTopFrame(), doRegions_, instruct);
         tabPane_.addTab(rMan.getString("buildNetwork.standard"), complexPanel_);
         currTd_ = ctd_;
       }
@@ -585,8 +591,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       allCurrTabData_[1] = std_;
       allCurrTabData_[2] = ltd_;
   
-      tabPane_.addTab(rMan.getString("buildNetwork.signals"), buildSignalTab(appState_.getTopFrame(), doRegions_, instruct));
-      tabPane_.addTab(rMan.getString("buildNetwork.loneNodes"), buildLoneNodeTab(appState_.getTopFrame(), doRegions_, instruct));
+      tabPane_.addTab(rMan.getString("buildNetwork.signals"), buildSignalTab(uics_.getTopFrame(), doRegions_, instruct));
+      tabPane_.addTab(rMan.getString("buildNetwork.loneNodes"), buildLoneNodeTab(uics_.getTopFrame(), doRegions_, instruct));
   
       UiUtil.gbcSet(gbc, 0, 1, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
       tablePanel.add(tabPane_, gbc);
@@ -601,7 +607,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           try {
             stopTheEditing();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });         
@@ -631,12 +637,12 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             lccLabel_.setEnabled(enableOps);
             buttonParam_.setEnabled(enableOps);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
       
-      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(appState_, true);    
+      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(dacx_, true);    
       layoutChoiceCombo_ = new JComboBox(layoutChoices);        
       lccLabel_ = new JLabel(rMan.getString("buildNetwork.layoutChoice"));     
       UiUtil.gbcSet(gbc, 2, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);    
@@ -650,7 +656,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           try {
             stopTheEditing();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
@@ -667,7 +673,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             stopTheEditing();
             getLOParamsFromUser();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -691,7 +697,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               cfh_.sendUserInputs(request_);
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });     
@@ -707,7 +713,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               DesktopDialog.this.dispose();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });     
@@ -719,7 +725,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             DesktopDialog.this.setVisible(false);
             DesktopDialog.this.dispose();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -736,7 +742,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       UiUtil.gbcSet(gbc, 0, rowNum, 10, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
       cp.add(buttonPanel, gbc);
-      setLocationRelativeTo(appState_.getTopFrame());
+      setLocationRelativeTo(uics_.getTopFrame());
       // This is already done in the building process
       //displayProperties(doRegions_, instruct);
         
@@ -753,6 +759,10 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       tabPane_.setSelectedIndex(selIndex);    
     }
     
+    public boolean dialogIsModal() {
+      return (true);
+    }   
+     
     /***************************************************************************
     **
     ** Disable the dialog controls
@@ -889,7 +899,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       RemoteRequest.Result dbres = cfh_.routeRemoteRequest(daBomb);
       List<BuildInstructionProcessor.MatchChecker> mismatch = (List<BuildInstructionProcessor.MatchChecker>)dbres.getObjAnswer("instMismatch");
       if (mismatch.size() > 0) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("buildNetwork.cannotReduceComplexity");
         String title = rMan.getString("buildNetwork.cannotReduceComplexityTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
@@ -903,7 +913,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       int needComplexity = requiredComplexity(buildCmds);
       if (desiredLevel < needComplexity) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("buildNetwork.cannotReduceComplexity");
         String title = rMan.getString("buildNetwork.cannotReduceComplexityTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
@@ -933,7 +943,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       JPanel desiredPanel;
       if (desiredLevel == ONLY_GENES_INTRA_REGION_) {
         if (simplePanel_ == null) {
-          simplePanel_ = buildSimpleTab(appState_.getTopFrame(), doRegions_, buildCmds);
+          simplePanel_ = buildSimpleTab(uics_.getTopFrame(), doRegions_, buildCmds);
         } else {
           td_.tm.extractValues(doRegions_, buildCmds);
         }
@@ -944,7 +954,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
         currTd_ = td_;
       } else if (desiredLevel == ALL_TYPES_INTRA_REGION_) {
         if (mediumPanel_ == null) {
-          mediumPanel_ = buildMediumTab(appState_.getTopFrame(), doRegions_, buildCmds);
+          mediumPanel_ = buildMediumTab(uics_.getTopFrame(), doRegions_, buildCmds);
         } else {
           mtd_.tm.extractValues(doRegions_, buildCmds);
         }
@@ -955,7 +965,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
         currTd_ = mtd_;
       } else {
         if (complexPanel_ == null) {
-          complexPanel_ = buildComplexTab(appState_.getTopFrame(), doRegions_, buildCmds);
+          complexPanel_ = buildComplexTab(uics_.getTopFrame(), doRegions_, buildCmds);
         } else {
           ctd_.tm.extractValues(doRegions_, buildCmds);
         }
@@ -970,7 +980,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       int selIndex = tabPane_.getSelectedIndex();
       allCurrTabData_[0] = currTd_;
       complexityLevel_ = desiredLevel;
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       int index = tabPane_.indexOfTab(rMan.getString("buildNetwork.standard"));
       tabPane_.removeTabAt(index);    
       tabPane_.insertTab(rMan.getString("buildNetwork.standard"), null, desiredPanel, null, index);
@@ -988,7 +998,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */ 
     
     private JPanel buildSimpleTab(JFrame parent, boolean doRegions, List<BuildInstruction> instruct) {       
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       GridBagConstraints gbc = new GridBagConstraints();
          
       JPanel retval = new JPanel();
@@ -1007,19 +1017,19 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       // Set the specialty editors and renderers:
       //
           
-      TextEditor textEdit = new TextEditor(appState_);
-      new TextEditorTracker(textEdit, td_.tm, td_.tm, appState_);
+      TextEditor textEdit = new TextEditor(uics_.getHandlerAndManagerSource());
+      new TextEditorTracker(textEdit, td_.tm, td_.tm, uics_.getHandlerAndManagerSource());
       td_.jt.setDefaultEditor(String.class, textEdit);
-      UiUtil.installDefaultCellRendererForPlatform(td_.jt, String.class, true, appState_);
+      UiUtil.installDefaultCellRendererForPlatform(td_.jt, String.class, true, uics_.getHandlerAndManagerSource());
       
       SignEditor signEdit = new SignEditor(signList_);
-      new ComboBoxEditorTracker(signEdit, td_.tm, appState_);
+      new ComboBoxEditorTracker(signEdit, td_.tm, uics_.getHandlerAndManagerSource());
       td_.jt.setDefaultEditor(EnumCellSign.class, signEdit); 
       td_.jt.setDefaultRenderer(EnumCellSign.class, new NoEditRenderer(signList_));
       
       if (doRegions) {
-        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, appState_);
-        mceTracker_ = new MultiChoiceEditorTracker(regionEdit, td_.tm, appState_);
+        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, uics_.getHandlerAndManagerSource());
+        mceTracker_ = new MultiChoiceEditorTracker(regionEdit, td_.tm, uics_.getHandlerAndManagerSource());
         td_.jt.setDefaultEditor(MultiChoiceEditor.ChoiceEntrySet.class, regionEdit); 
         td_.jt.setDefaultRenderer(MultiChoiceEditor.ChoiceEntrySet.class, new MultiChoiceRenderer(regionSet_));   
       }        
@@ -1043,7 +1053,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               td_.jt.revalidate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1064,7 +1074,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             td_.tracker.setButtonState();
             td_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1080,7 +1090,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             td_.jt.getSelectionModel().setSelectionInterval(td_.selectedRows[0], td_.selectedRows[0]);
             td_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1096,7 +1106,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             td_.jt.getSelectionModel().setSelectionInterval(td_.selectedRows[0], td_.selectedRows[0]);
             td_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1205,7 +1215,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */ 
     
     private JPanel buildMediumTab(JFrame parent, boolean doRegions, List<BuildInstruction> instruct) {       
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       GridBagConstraints gbc = new GridBagConstraints();
          
       JPanel retval = new JPanel();
@@ -1225,23 +1235,23 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       
       NodeTypeEditor nodeTypeEdit = new NodeTypeEditor(nodeTypeList_);
-      new ComboBoxEditorTracker(nodeTypeEdit, mtd_.tm, (ComboFinishedTracker)mtd_.tm, appState_);
+      new ComboBoxEditorTracker(nodeTypeEdit, mtd_.tm, (ComboFinishedTracker)mtd_.tm, uics_.getHandlerAndManagerSource());
       mtd_.jt.setDefaultEditor(EnumCellNodeType.class, nodeTypeEdit); 
       mtd_.jt.setDefaultRenderer(EnumCellNodeType.class, new NoEditRenderer(nodeTypeList_));
       
-      TextEditor textEdit = new TextEditor(appState_);
-      new TextEditorTracker(textEdit, mtd_.tm, mtd_.tm, appState_);
+      TextEditor textEdit = new TextEditor(uics_.getHandlerAndManagerSource());
+      new TextEditorTracker(textEdit, mtd_.tm, mtd_.tm, uics_.getHandlerAndManagerSource());
       mtd_.jt.setDefaultEditor(String.class, textEdit);
-      UiUtil.installDefaultCellRendererForPlatform(mtd_.jt, String.class, true, appState_);
+      UiUtil.installDefaultCellRendererForPlatform(mtd_.jt, String.class, true, uics_.getHandlerAndManagerSource());
       
       GeneralSignEditor signEdit = new GeneralSignEditor(generalSignList_);
-      new ComboBoxEditorTracker(signEdit, mtd_.tm, appState_);
+      new ComboBoxEditorTracker(signEdit, mtd_.tm, uics_.getHandlerAndManagerSource());
       mtd_.jt.setDefaultEditor(EnumCellGeneralSign.class, signEdit); 
       mtd_.jt.setDefaultRenderer(EnumCellGeneralSign.class, new NoEditRenderer(generalSignList_));    
       
       if (doRegions) {
-        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, appState_);
-        mceTrackerMed_ = new MultiChoiceEditorTracker(regionEdit, mtd_.tm, appState_);
+        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, uics_.getHandlerAndManagerSource());
+        mceTrackerMed_ = new MultiChoiceEditorTracker(regionEdit, mtd_.tm, uics_.getHandlerAndManagerSource());
         mtd_.jt.setDefaultEditor(MultiChoiceEditor.ChoiceEntrySet.class, regionEdit); 
         mtd_.jt.setDefaultRenderer(MultiChoiceEditor.ChoiceEntrySet.class, new MultiChoiceRenderer(regionSet_));   
       }        
@@ -1265,7 +1275,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               mtd_.jt.revalidate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1286,7 +1296,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             mtd_.tracker.setButtonState();
             mtd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1302,7 +1312,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             mtd_.jt.getSelectionModel().setSelectionInterval(mtd_.selectedRows[0], mtd_.selectedRows[0]);
             mtd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1318,7 +1328,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             mtd_.jt.getSelectionModel().setSelectionInterval(mtd_.selectedRows[0], mtd_.selectedRows[0]);
             mtd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1427,7 +1437,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */ 
     
     private JPanel buildSignalTab(JFrame parent, boolean doRegions, List<BuildInstruction> instruct) {       
-      ResourceManager rMan = appState_.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       GridBagConstraints gbc = new GridBagConstraints();
       
       //
@@ -1458,19 +1468,19 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       // Set the specialty editors and renderers:
       //
          
-      TextEditor textEdit = new TextEditor(appState_);
-      new TextEditorTracker(textEdit, std_.tm, std_.tm, appState_);
+      TextEditor textEdit = new TextEditor(uics_.getHandlerAndManagerSource());
+      new TextEditorTracker(textEdit, std_.tm, std_.tm, uics_.getHandlerAndManagerSource());
       std_.jt.setDefaultEditor(String.class, textEdit);
-      UiUtil.installDefaultCellRendererForPlatform(std_.jt, String.class, true, appState_);
+      UiUtil.installDefaultCellRendererForPlatform(std_.jt, String.class, true, uics_.getHandlerAndManagerSource());
       
       SignalTypeEditor signalEdit = new SignalTypeEditor(signalTypeList_);
-      new ComboBoxEditorTracker(signalEdit, std_.tm, appState_);
+      new ComboBoxEditorTracker(signalEdit, std_.tm, uics_.getHandlerAndManagerSource());
       std_.jt.setDefaultEditor(EnumCellSignalType.class, signalEdit); 
       std_.jt.setDefaultRenderer(EnumCellSignalType.class, new NoEditRenderer(signalTypeList_)); 
       
       if (doRegions) {
         RegionEditor regionEdit = new RegionEditor(regionList_);
-        new ComboBoxEditorTracker(regionEdit, std_.tm, appState_);
+        new ComboBoxEditorTracker(regionEdit, std_.tm, uics_.getHandlerAndManagerSource());
         std_.jt.setDefaultEditor(EnumCellRegionType.class, regionEdit); 
         std_.jt.setDefaultRenderer(EnumCellRegionType.class, new NoEditRenderer(regionList_));    
       }
@@ -1493,7 +1503,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               std_.jt.revalidate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1514,7 +1524,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             std_.tracker.setButtonState();
             std_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1530,7 +1540,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             std_.jt.getSelectionModel().setSelectionInterval(std_.selectedRows[0], std_.selectedRows[0]);
             std_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1546,7 +1556,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             std_.jt.getSelectionModel().setSelectionInterval(std_.selectedRows[0], std_.selectedRows[0]);
             std_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1642,7 +1652,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */ 
     
     private JPanel buildComplexTab(JFrame parent, boolean doRegions, List<BuildInstruction> instruct) {       
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       GridBagConstraints gbc = new GridBagConstraints();
       
       //
@@ -1664,23 +1674,23 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       
       NodeTypeEditor nodeTypeEdit = new NodeTypeEditor(nodeTypeList_);
-      new ComboBoxEditorTracker(nodeTypeEdit, ctd_.tm, (ComboFinishedTracker)ctd_.tm, appState_);
+      new ComboBoxEditorTracker(nodeTypeEdit, ctd_.tm, (ComboFinishedTracker)ctd_.tm, uics_.getHandlerAndManagerSource());
       ctd_.jt.setDefaultEditor(EnumCellNodeType.class, nodeTypeEdit); 
       ctd_.jt.setDefaultRenderer(EnumCellNodeType.class, new NoEditRenderer(nodeTypeList_));
       
-      TextEditor textEdit = new TextEditor(appState_);
-      new TextEditorTracker(textEdit, ctd_.tm, ctd_.tm, appState_);
+      TextEditor textEdit = new TextEditor(uics_.getHandlerAndManagerSource());
+      new TextEditorTracker(textEdit, ctd_.tm, ctd_.tm, uics_.getHandlerAndManagerSource());
       ctd_.jt.setDefaultEditor(String.class, textEdit);
-      UiUtil.installDefaultCellRendererForPlatform(ctd_.jt, String.class, true, appState_);
+      UiUtil.installDefaultCellRendererForPlatform(ctd_.jt, String.class, true, uics_.getHandlerAndManagerSource());
       
       GeneralSignEditor signEdit = new GeneralSignEditor(generalSignList_);
-      new ComboBoxEditorTracker(signEdit, ctd_.tm, appState_);
+      new ComboBoxEditorTracker(signEdit, ctd_.tm, uics_.getHandlerAndManagerSource());
       ctd_.jt.setDefaultEditor(EnumCellGeneralSign.class, signEdit); 
       ctd_.jt.setDefaultRenderer(EnumCellGeneralSign.class, new NoEditRenderer(generalSignList_));
       
       if (doRegions) {
         RegionEditor regionEdit = new RegionEditor(regionList_);
-        new ComboBoxEditorTracker(regionEdit, ctd_.tm, appState_);
+        new ComboBoxEditorTracker(regionEdit, ctd_.tm, uics_.getHandlerAndManagerSource());
         ctd_.jt.setDefaultEditor(EnumCellRegionType.class, regionEdit); 
         ctd_.jt.setDefaultRenderer(EnumCellRegionType.class, new NoEditRenderer(regionList_));    
       }    
@@ -1703,7 +1713,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               ctd_.jt.revalidate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1724,7 +1734,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ctd_.tracker.setButtonState();
             ctd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1740,7 +1750,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ctd_.jt.getSelectionModel().setSelectionInterval(ctd_.selectedRows[0], ctd_.selectedRows[0]);
             ctd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1756,7 +1766,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ctd_.jt.getSelectionModel().setSelectionInterval(ctd_.selectedRows[0], ctd_.selectedRows[0]);
             ctd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1864,7 +1874,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */ 
     
     private JPanel buildLoneNodeTab(JFrame parent, boolean doRegions, List<BuildInstruction> instruct) {       
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       GridBagConstraints gbc = new GridBagConstraints();
       
       //
@@ -1886,18 +1896,18 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       
       NodeTypeEditor nodeTypeEdit = new NodeTypeEditor(nodeTypeList_);
-      new ComboBoxEditorTracker(nodeTypeEdit, ltd_.tm, (ComboFinishedTracker)ltd_.tm, appState_);
+      new ComboBoxEditorTracker(nodeTypeEdit, ltd_.tm, (ComboFinishedTracker)ltd_.tm, uics_.getHandlerAndManagerSource());
       ltd_.jt.setDefaultEditor(EnumCellNodeType.class, nodeTypeEdit); 
       ltd_.jt.setDefaultRenderer(EnumCellNodeType.class, new NoEditRenderer(nodeTypeList_));
       
-      TextEditor textEdit = new TextEditor(appState_);
-      new TextEditorTracker(textEdit, ltd_.tm, ltd_.tm, appState_);
+      TextEditor textEdit = new TextEditor(uics_.getHandlerAndManagerSource());
+      new TextEditorTracker(textEdit, ltd_.tm, ltd_.tm, uics_.getHandlerAndManagerSource());
       ltd_.jt.setDefaultEditor(String.class, textEdit);
-      UiUtil.installDefaultCellRendererForPlatform(ltd_.jt, String.class, true, appState_);
+      UiUtil.installDefaultCellRendererForPlatform(ltd_.jt, String.class, true, uics_.getHandlerAndManagerSource());
   
       if (doRegions) {
-        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, appState_);
-        mceTrackerLn_ = new MultiChoiceEditorTracker(regionEdit, ltd_.tm, appState_);
+        MultiChoiceEditor regionEdit = new MultiChoiceEditor(regionSet_, uics_.getHandlerAndManagerSource());
+        mceTrackerLn_ = new MultiChoiceEditorTracker(regionEdit, ltd_.tm, uics_.getHandlerAndManagerSource());
         ltd_.jt.setDefaultEditor(MultiChoiceEditor.ChoiceEntrySet.class, regionEdit); 
         ltd_.jt.setDefaultRenderer(MultiChoiceEditor.ChoiceEntrySet.class, new MultiChoiceRenderer(regionSet_));   
       }         
@@ -1920,7 +1930,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               ltd_.jt.revalidate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1941,7 +1951,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ltd_.tracker.setButtonState();
             ltd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1957,7 +1967,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ltd_.jt.getSelectionModel().setSelectionInterval(ltd_.selectedRows[0], ltd_.selectedRows[0]);
             ltd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -1973,7 +1983,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             ltd_.jt.getSelectionModel().setSelectionInterval(ltd_.selectedRows[0], ltd_.selectedRows[0]);
             ltd_.jt.revalidate();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -2098,7 +2108,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       private static final long serialVersionUID = 1L;  
       protected ArrayList<Integer> rowMapping_;
       protected int rowCount_;
-      protected ArrayList<String> hiddenIDColumn_;      
+      protected ArrayList<String> hiddenIDColumn_;
        
       abstract void deleteRows(int[] rows);
       abstract boolean addRow();
@@ -2199,13 +2209,13 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           }
           rowCount_ = rowMapping_.size();
         } else if (level == SHOW_PARENTS_) {          
-          GenomeInstance myGenome = (GenomeInstance)appState_.getDB().getGenome(genomeID_);
+          GenomeInstance myGenome = (GenomeInstance)dacx_.getGenomeSource().getGenome(genomeID_);
           GenomeInstance vfgParent = myGenome.getVfgParent();
           if (vfgParent == null) {
             throw new IllegalStateException();
           } 
-          BuildInstructionProcessor bip = new BuildInstructionProcessor(appState_);
-          DataAccessContext dacxI = new DataAccessContext(dacx_, vfgParent);
+          BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, dacx_, uFac_);
+          StaticDataAccessContext dacxI = new StaticDataAccessContext(dacx_, vfgParent);
           List<BuildInstruction> parentList = bip.getInstructions(dacxI);
           int plSize = parentList.size();
           rowMapping_.clear();
@@ -2393,7 +2403,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       public String getColumnName(int c) {
         try {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           switch (c) {
             case 0:
               return (rMan.getString("buildNetwork.inputGene"));
@@ -2409,7 +2419,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -2431,7 +2441,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -2454,7 +2464,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -2495,7 +2505,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       } 
@@ -2522,7 +2532,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             continue;
           }
           if (srcBlank || trgBlank) {          
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, 
                                           rMan.getString("buildNetwork.cannotBeBlank"), 
                                           rMan.getString("buildNetwork.errorTitle"),
@@ -2534,7 +2544,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             inconDesc = checkMismatch(ect, dummyList_, 0, nodeTypes);
           }
           if (inconDesc != null) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, inconDesc,
                                           rMan.getString("buildNetwork.errorTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -2905,7 +2915,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       public String getColumnName(int c) {
         try {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           switch (c) {
             case 0:
               return (rMan.getString("buildNetwork.input"));
@@ -2925,7 +2935,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -2951,7 +2961,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -2978,7 +2988,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -3034,7 +3044,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       } 
@@ -3061,7 +3071,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             continue;
           }
           if (srcBlank || trgBlank) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, 
                                           rMan.getString("buildNetwork.cannotBeBlank"), 
                                           rMan.getString("buildNetwork.errorTitle"),
@@ -3073,7 +3083,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             inconDesc = checkMismatch(ect, trgTypeColumn_, i, nodeTypes);
           }
           if (inconDesc != null) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, inconDesc,
                                           rMan.getString("buildNetwork.errorTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -3408,7 +3418,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       public String getColumnName(int c) {
         try {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           switch (c) {
             case 0:
               return (rMan.getString("buildNetwork.signalInputGene"));          
@@ -3432,7 +3442,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -3458,7 +3468,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -3489,7 +3499,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -3546,7 +3556,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       } 
@@ -3575,7 +3585,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             continue;
           }
           if (srcBlank || trgBlank || trfBlank) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, 
                                           rMan.getString("buildNetwork.cannotBeBlank"), 
                                           rMan.getString("buildNetwork.errorTitle"),
@@ -3590,7 +3600,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             inconDesc = checkMismatch(ectr, dummyList_, 0, nodeTypes);
           }        
           if (inconDesc != null) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, inconDesc,
                                           rMan.getString("buildNetwork.errorTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -3602,7 +3612,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             EnumCellRegionType trg = trgRegionColumn_.get(i);          
             if (((src.value != 0) && (trg.value == 0)) ||
                 ((src.value == 0) && (trg.value != 0))) {
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = dacx_.getRMan();
               JOptionPane.showMessageDialog(parent_, rMan.getString("buildNetwork.missingSrcTrgRegion"),
                                             rMan.getString("buildNetwork.errorTitle"),
                                             JOptionPane.ERROR_MESSAGE);
@@ -3964,7 +3974,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       public String getColumnName(int c) {
         try {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           switch (c) {
             case 0:
               return (rMan.getString("buildNetwork.input"));
@@ -3990,7 +4000,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4018,7 +4028,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4051,7 +4061,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4115,7 +4125,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       } 
@@ -4142,7 +4152,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             continue;
           }
           if (srcBlank || trgBlank) {          
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, 
                                           rMan.getString("buildNetwork.cannotBeBlank"), 
                                           rMan.getString("buildNetwork.errorTitle"),
@@ -4154,7 +4164,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             inconDesc = checkMismatch(ect, trgTypeColumn_, i, nodeTypes);
           }
           if (inconDesc != null) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, inconDesc,
                                           rMan.getString("buildNetwork.errorTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -4166,7 +4176,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             EnumCellRegionType trg = trgRegionColumn_.get(i);          
             if (((src.value != 0) && (trg.value == 0)) ||
                 ((src.value == 0) && (trg.value != 0))) {
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = dacx_.getRMan();
               JOptionPane.showMessageDialog(parent_, rMan.getString("buildNetwork.missingSrcTrgRegion"),
                                             rMan.getString("buildNetwork.errorTitle"),
                                             JOptionPane.ERROR_MESSAGE);
@@ -4486,7 +4496,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       }
       public String getColumnName(int c) {
         try {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           switch (c) {
             case 0:
               return (rMan.getString("buildNetwork.loneName"));
@@ -4501,7 +4511,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4522,7 +4532,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4544,7 +4554,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (null);
       }
@@ -4580,7 +4590,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
               throw new IllegalArgumentException();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       } 
@@ -4605,7 +4615,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
             continue;
           }
           if (srcBlank) { 
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, 
                                           rMan.getString("buildNetwork.cannotBeBlank"), 
                                           rMan.getString("buildNetwork.errorTitle"),
@@ -4614,7 +4624,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           }
           String inconDesc = checkMismatch(ecs, srcTypeColumn_, i, nodeTypes);
           if (inconDesc != null) {
-            ResourceManager rMan = appState_.getRMan();
+            ResourceManager rMan = dacx_.getRMan();
             JOptionPane.showMessageDialog(parent_, inconDesc,
                                           rMan.getString("buildNetwork.errorTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -4810,7 +4820,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           MultiChoiceEditor.ChoiceEntrySet ces = (MultiChoiceEditor.ChoiceEntrySet)value;  
           toBoxes(ces);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (this);             
       }
@@ -4852,7 +4862,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           }
           setSelectedIndex(((EnumCell)value).value);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return (this);             
       }
@@ -4871,7 +4881,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       protected List<EnumCell> backing_;
       
       BackedEditor(List<? extends EnumCell> values) {
-        super(values, appState_);
+        super(values, uics_.getHandlerAndManagerSource());
       }
           
       public void valueFill(Object valueObject) {
@@ -4996,7 +5006,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           }
           setButtonState();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;             
       }
@@ -5108,7 +5118,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       for (int i = 0; i < numMis; i++) {
         BuildInstructionProcessor.MatchChecker mc = mismatch.get(i);
-        InstructionMismatchChoicesDialog imcd = new InstructionMismatchChoicesDialog(appState_, appState_.getTopFrame(), mc);
+        InstructionMismatchChoicesDialog imcd = new InstructionMismatchChoicesDialog(uics_, dacx_, uics_.getTopFrame(), mc);
         imcd.setVisible(true);
         if (!imcd.haveResult()) {
           return (false);
@@ -5145,7 +5155,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       
       if (bChanges.haveNewDuplicates) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("buildNetwork.duplicateWarning");
         String title = rMan.getString("buildNetwork.duplicateWarningTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -5160,7 +5170,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       //
       
       if (bChanges.haveNewLoneDuplicates) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("buildNetwork.loneDuplicateWarning");
         String title = rMan.getString("buildNetwork.loneDuplicateWarningTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -5176,8 +5186,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       
       br.globalDelete = false;
       if (bChanges.needDeletionType) {
-        ResourceManager rMan = appState_.getRMan();
-        int result = JOptionPane.showOptionDialog(appState_.getTopFrame(), rMan.getString("buildNetwork.deleteTypeMessage"),
+        ResourceManager rMan = dacx_.getRMan();
+        int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), rMan.getString("buildNetwork.deleteTypeMessage"),
                                                   rMan.getString("buildNetwork.deleteTypeMessageTitle"),
                                                   JOptionPane.DEFAULT_OPTION, 
                                                   JOptionPane.QUESTION_MESSAGE, 
@@ -5264,8 +5274,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     private boolean issueChangeMessage(BuildInstructionProcessor.BuildChanges bChanges) {
       
   
-      ResourceManager rMan = appState_.getRMan();
-      Database db = appState_.getDB();    
+      ResourceManager rMan = dacx_.getRMan();
   
       String message = rMan.getString("buildNetwork.baseChange");
       Set<String> cpi = bChanges.changedParentInstances;
@@ -5278,7 +5287,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       if ((cpi != null) && !cpi.isEmpty()) {
         int size = cpi.size();
         String firstID = cpi.iterator().next();
-        Genome gi = db.getGenome(firstID);
+        Genome gi = dacx_.getGenomeSource().getGenome(firstID);
         String name = gi.getName();
         String form = (size == 1) ? rMan.getString("buildNetwork.oneParentChange")
                                   : rMan.getString("buildNetwork.multiParentChange");
@@ -5290,7 +5299,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       if ((cci != null) && !cci.isEmpty()) {
         int size = cci.size();
         String firstID = cci.iterator().next();
-        Genome gi = db.getGenome(firstID);
+        Genome gi = dacx_.getGenomeSource().getGenome(firstID);
         String name = gi.getName();
         String form = (size == 1) ? rMan.getString("buildNetwork.oneChildChange")
                                   : rMan.getString("buildNetwork.multiChildChange");
@@ -5302,7 +5311,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       if ((csci != null) && !csci.isEmpty()) {
         int size = csci.size();
         String firstID = csci.iterator().next();
-        Genome gi = db.getGenome(firstID);
+        Genome gi = dacx_.getGenomeSource().getGenome(firstID);
         String name = gi.getName();
         String form = (size == 1) ? rMan.getString("buildNetwork.oneCousinSiblingChange")
                                   : rMan.getString("buildNetwork.multiCousinSiblingChange");
@@ -5313,7 +5322,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
   
       if (doit) {
         message = message + "<br><br>" + rMan.getString("buildNetwork.changeSuffix") + "</center></html>";
-        int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), message, 
+        int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), message, 
                                                rMan.getString("buildNetwork.changeWarningTitle"),
                                                JOptionPane.YES_NO_OPTION);
         if (ok != JOptionPane.YES_OPTION) {
@@ -5350,7 +5359,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       if (oldType == null) {
         oldTypes.put(norm, newType);
       } else if (!nType.equals(extractIntValue(oldType.internal))) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String desc = MessageFormat.format(rMan.getString("buildNetwork.inconsistentTypes"), 
                                            new Object[] {nodeName, oldType.display, newType.display}); 
         return (desc);
@@ -5466,7 +5475,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */
     
     private int buildNodeTypeList(List<EnumCellNodeType> fillIt) {    
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       StringBuffer buf = new StringBuffer();
       int index = 0;
       int retval = -1;
@@ -5525,7 +5534,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */
     
     private List<EnumCellRegionType> buildRegionList(List<InstanceInstructionSet.RegionInfo> regions) {    
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       ArrayList<EnumCellRegionType> retval = new ArrayList<EnumCellRegionType>();
       int index = 0;
       String display = rMan.getString("buildInstruction.noRegionChosen");
@@ -5650,10 +5659,10 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */  
   
     private boolean confirmRowDeletion() {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String message = rMan.getString("buildNetwork.confirmRowDelete");
       // FYI: the last string is the client key for tracking answer, not a rMan key!
-      return (YesNoShutupDialog.launchIfNeeded(appState_, appState_.getTopFrame(), "buildNetwork.confirmDeleteTitle", 
+      return (YesNoShutupDialog.launchIfNeeded(uics_, dacx_, rSrc_, uics_.getTopFrame(), "buildNetwork.confirmDeleteTitle", 
                                                message, "BuildNetworkDialog.rowDelete"));
     }
     
@@ -5722,11 +5731,11 @@ public class BuildNetworkDialogFactory extends DialogFactory {
         return (true);
       }
      
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String form = rMan.getString("buildNetwork.chooseTypeChange");                               
       String desc = MessageFormat.format(form, new Object[] {nodeName, newType.display});        
       
-      int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+      int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              desc,
                                              rMan.getString("buildNetwork.chooseTypeChangeTitle"),
                                              JOptionPane.YES_NO_OPTION);
@@ -5788,8 +5797,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
         canChangeType = canChangeType && allCurrTabData_[i].tm.canChangeType(nodeName, newType);
       }
       if (!canChangeType) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("buildNetwork.cannotChangeType"), 
                                       rMan.getString("buildNetwork.cannotChangeTypeTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -5805,8 +5814,8 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     */
     
     private void cannotUseEnteredName(String nodeName, EnumCellNodeType newType) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("buildNetwork.cannotUseNameTypeMismatch"), 
                                     rMan.getString("buildNetwork.cannotUseNameTypeMismatchTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -5952,6 +5961,10 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }  
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean isForApply() {
       return (forApply_);
     } 

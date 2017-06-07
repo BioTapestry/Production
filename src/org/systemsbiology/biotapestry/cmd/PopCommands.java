@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,19 +27,20 @@ import java.util.Set;
 import javax.swing.AbstractAction;
 import javax.swing.Action;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.move.Mover;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.LinkSegment;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
@@ -57,13 +58,17 @@ public class PopCommands {
   //
   ////////////////////////////////////////////////////////////////////////////
     
-  private BTState appState_;
   private Point2D popupPoint_;  
   private Intersection intersected_;
   private Point absScreen_;
   private Set<String> genes_;
   private Set<String> nodes_;
   private Set<String> links_;
+  private UIComponentSource uics_;
+  private DynamicDataAccessContext ddacx_;
+  private FlowMeister flom_;
+  private HarnessBuilder hBld_;
+  private CmdSource cSrc_;
 
   private boolean singleSeg_;
   private boolean canSplit_;
@@ -79,8 +84,12 @@ public class PopCommands {
   ** Constructor
   */
  
-  public PopCommands(BTState appState) {
-    appState_ = appState.setPopCmds(this);
+  public PopCommands(UIComponentSource uics, CmdSource cSrc, DynamicDataAccessContext ddacx, HarnessBuilder hBld) {
+    cSrc_ = cSrc;
+    flom_ = cSrc_.getFloM();
+    uics_ = uics;
+    ddacx_ = ddacx;
+    hBld_ = hBld;   
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -138,9 +147,9 @@ public class PopCommands {
   ** Do setup for main-menu selection of a link!
    */
   
-  public void setupRemoteLinkSelection(DataAccessContext rcx, Linkage link) {    
+  public void setupRemoteLinkSelection(StaticDataAccessContext rcx, Linkage link) {    
     String objID = link.getID();
-    BusProperties linkProps = rcx.getLayout().getLinkProperties(objID);
+    BusProperties linkProps = rcx.getCurrentLayout().getLinkProperties(objID);
     LinkSegmentID[] segIDs = intersected_.segmentIDsFromIntersect();
     singleSeg_ = ((segIDs != null) && (segIDs.length == 1));
     Point viewPoint = null;
@@ -149,7 +158,7 @@ public class PopCommands {
       LinkSegment geomOnly = linkProps.getSegmentGeometryForID(segID, rcx, false);
       if (geomOnly.getLength() >= (UiUtil.GRID_SIZE * 3.0)) {
         Point2D segSplit  = geomOnly.pointAtFraction(0.5);
-        viewPoint = appState_.getZoomTarget().pointToViewport(new Point((int)segSplit.getX(), (int)segSplit.getY()));        
+        viewPoint = rcx.getZoomTarget().pointToViewport(new Point((int)segSplit.getX(), (int)segSplit.getY()));        
         setPopup(viewPoint);
       }
     }
@@ -182,19 +191,18 @@ public class PopCommands {
   
   public PopAction getAction(FlowMeister.PopFlow key, ControlFlow.OptArgs args) {  
     PopAction retval; 
-    FlowMeister flom = appState_.getFloM();
     switch (key) {  
       case SELECT_LINKS_TOGGLE:
       case SELECT_QUERY_NODE_TOGGLE:
       case APPEND_TO_CURRENT_SELECTION_TOGGLE:
-        retval = new ToggleFlowPopAction((ControlFlow.FlowForPopToggle)flom.getControlFlow(key, args));
+        retval = new ToggleFlowPopAction((ControlFlow.FlowForPopToggle)flom_.getControlFlow(key, args));
         break;
       case MOVE_NET_MODULE_REGION:
-        retval = new PopAction(flom.getControlFlow(key, args));
+        retval = new PopAction(flom_.getControlFlow(key, args));
         retval.setEnabled(((Mover.MoveNetModuleRegionArgs)args).getIsEnabled());
         break; 
       default:
-        retval = new PopAction(flom.getControlFlow(key, args));
+        retval = new PopAction(flom_.getControlFlow(key, args));
         break;
     }
     return (retval);
@@ -237,7 +245,7 @@ public class PopCommands {
     private Character mNem_;
 
     public PopAction(ControlFlow theFlow) {   
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = ddacx_.getRMan();
       name_ = rMan.getString(theFlow.getName());
       putValue(Action.NAME, name_);
       String mnem = theFlow.getMnem();
@@ -266,9 +274,8 @@ public class PopCommands {
         if (!preCheck()) {
           return;
         }
-        DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame())); 
-        DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-        DialogAndInProcessCmd.CmdState pre = myControlFlow.getEmptyStateForPreload(dacx);
+        HarnessBuilder.PreHarness pH = hBld_.buildHarness(myControlFlow);
+        DialogAndInProcessCmd.CmdState pre = pH.getCmdState();
         if (pre instanceof DialogAndInProcessCmd.PopupCmdState) {
           DialogAndInProcessCmd.PopupCmdState pcs = (DialogAndInProcessCmd.PopupCmdState)pre;
           pcs.setIntersection(intersected_);
@@ -286,17 +293,16 @@ public class PopCommands {
           mscs.setMultiSelections(genes_, nodes_, links_);
         }
         
-        dcf.initFlow(myControlFlow, dacx);
-        dcf.runFlow(pre);     
+        hBld_.runHarness(pH);     
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
      
     public boolean isValid() {
-      DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
-      return (myControlFlow.isValid(intersected_, singleSeg_, canSplit_, rcx));       
+      StaticDataAccessContext rcx = new StaticDataAccessContext(ddacx_);
+      return (myControlFlow.isValid(intersected_, singleSeg_, canSplit_, rcx, uics_));       
     }   
    }
    
@@ -321,7 +327,7 @@ public class PopCommands {
     }      
 
     public boolean shouldCheck() {
-      return (((ControlFlow.FlowForPopToggle)myControlFlow).shouldCheck());
+      return (((ControlFlow.FlowForPopToggle)myControlFlow).shouldCheck(cSrc_));
     }
     
     public void setToUpdate(boolean ignore) {

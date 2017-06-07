@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.CardLayout;
-import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridBagLayout;
@@ -401,7 +400,7 @@ public class CisModuleEditDialogFactory extends DialogFactory {
             currReg_ = (DBGeneRegion)((TrueObjChoiceContent)chooseRegCombo_.getSelectedItem()).val;
             setUIForModule();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
@@ -422,7 +421,7 @@ public class CisModuleEditDialogFactory extends DialogFactory {
             currOp_ = (String)((TrueObjChoiceContent)chooseOpCombo_.getSelectedItem()).val;
             setUIForCommand(currOp_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
@@ -452,10 +451,25 @@ public class CisModuleEditDialogFactory extends DialogFactory {
 
     ////////////////////////////////////////////////////////////////////////////
     //
-    // PROTECTED METHODS
+    // PUBLIC METHODS
     //
     ////////////////////////////////////////////////////////////////////////////
 
+    /***************************************************************************
+    **
+    ** Gotta say
+    */
+    
+    public boolean dialogIsModal() {
+      return true;
+    }
+  
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // PROTECTED METHODS
+    //
+    ////////////////////////////////////////////////////////////////////////////
+    
     /***************************************************************************
     **
     ** Handle UI change for current module choice.
@@ -986,6 +1000,7 @@ public class CisModuleEditDialogFactory extends DialogFactory {
           return;  
         }
       }
+      UiUtil.fixMePrintout("Keep or restore?");
       Thread.dumpStack();
       //throw new IllegalStateException();
     } 
@@ -1293,7 +1308,7 @@ public class CisModuleEditDialogFactory extends DialogFactory {
           }
 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }
@@ -1326,7 +1341,7 @@ public class CisModuleEditDialogFactory extends DialogFactory {
             updateSizeLabel();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }
@@ -1379,7 +1394,13 @@ public class CisModuleEditDialogFactory extends DialogFactory {
      }   
      public boolean haveResults() {
        return (haveResult);
-     }       
+     }
+     
+     public void setHasResults() {
+       this.haveResult = true;
+       return;
+     }
+     
      public boolean isForApply() {
        return (false);
      }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,8 +29,7 @@ import java.util.Iterator;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -260,12 +259,11 @@ public class DBInternalLogic implements Cloneable {
   ** Get a simulation parameter.  If we do not have a local value, just use the
   ** default.
   */
-  public String getSimulationParam(BTState appState, String name, int nodeType) {
+  public String getSimulationParam(DataAccessContext dacx, String name, int nodeType) {
     String retval = params_.get(name);
     if (retval == null) {
       String root = SbmlSupport.extractRootIdFromParam(name);
-      Database db = appState.getDB();
-      retval = db.getSimulationDefaultValue(root, nodeType, funcType_);
+      retval = dacx.getSimParamSource().getSimulationDefaultValue(root, nodeType, funcType_);
     }
     return (retval);
   }
@@ -370,8 +368,7 @@ public class DBInternalLogic implements Cloneable {
   **
   */
   
-  public static DBInternalLogic buildFromXML(Genome genome, String elemName,
-                                             Attributes attrs) throws IOException {
+  public static DBInternalLogic buildFromXML(String elemName, Attributes attrs) throws IOException {
     if (!elemName.equals("simulationLogic")) {
       return (null);
     }                                           

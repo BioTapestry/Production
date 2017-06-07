@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,8 +32,7 @@ import java.util.Vector;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -86,6 +85,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   protected int nodeType_;
   protected Double activityLevel_;  // will be null unless activity is variable
   protected int activity_;
+  protected Double simulationLevel_; // will be null unless simulation level is installed
   protected String nameOverride_;
   protected String description_;
   protected ArrayList<String> urls_;
@@ -105,6 +105,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     super(other);
     this.nodeType_ = other.nodeType_;
     this.activityLevel_ = other.activityLevel_;
+    this.simulationLevel_ = other.simulationLevel_;
     this.activity_ = other.activity_;    
     this.nameOverride_ = other.nameOverride_;
     this.description_ = other.description_;
@@ -120,6 +121,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     super(other, instance);
     this.nodeType_ = other.nodeType_;
     this.activityLevel_ = other.activityLevel_;
+    this.simulationLevel_ = other.simulationLevel_;
     this.activity_ = other.activity_;
     this.nameOverride_ = other.nameOverride_;
     this.description_ = other.description_;
@@ -131,11 +133,12 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** For UI-based creation
   */
 
-  public NodeInstance(BTState appState, DBGenomeItem backing, int nodeType, 
+  public NodeInstance(DataAccessContext dacx, DBGenomeItem backing, int nodeType, 
                       int instance, Double activityLevel, int activity) {
-    super(appState, backing, instance);
+    super(dacx, backing, instance);
     nodeType_ = nodeType;
     activityLevel_ = activityLevel;
+    simulationLevel_ = null;
     activity_ = activity;
     nameOverride_ = null;  // FIX ME?
     description_ = null;
@@ -147,10 +150,10 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** For XML-based creation
   */
 
-  public NodeInstance(BTState appState, DBGenomeItem backing, String elemName, 
+  public NodeInstance(DataAccessContext dacx, DBGenomeItem backing, String elemName, 
                       String instance, String activityLevel, 
                       String activityType, String nameOverride) throws IOException {
-    super(appState, backing, instance);
+    super(dacx, backing, instance);
     nameOverride_ = nameOverride;
     try {
       // Type may be set later (when used as super() by gene)
@@ -179,6 +182,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
       activityLevel_ = null;
     }
     
+    simulationLevel_ = null;
     description_ = null;
     urls_ = new ArrayList<String>();
   }
@@ -227,7 +231,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   
   public ActivityTracking calcActivityBounds(GenomeInstance gi) {
 
-    Database db = appState_.getDB();    
+    GenomeSource gs = dacx_.getGenomeSource();   
     ActivityTracking retval = new ActivityTracking();
     
     retval.parentActivity = null;
@@ -253,7 +257,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     // Child bounds.  We cannot be any inconsistent with any of our children.
     //
    
-    Iterator<GenomeInstance> git = db.getInstanceIterator();
+    Iterator<GenomeInstance> git = gs.getInstanceIterator();
     while (git.hasNext()) {
       GenomeInstance giKid = git.next();
       if (giKid == gi) {
@@ -287,6 +291,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** Clone
   */
 
+  @Override
   public NodeInstance clone() {
     NodeInstance retval = (NodeInstance)super.clone();
     retval.urls_ = new ArrayList<String>(this.urls_);
@@ -300,8 +305,8 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   */
   
   public DBGenomeItem getBacking() {
-    GenomeSource gSrc = (altSrc_ == null) ? appState_.getDB() : altSrc_;
-    DBGenomeItem retval = (DBGenomeItem)gSrc.getGenome().getNode(myItemID_);
+    GenomeSource gSrc = (altSrc_ == null) ? dacx_.getGenomeSource() : altSrc_;
+    DBGenomeItem retval = (DBGenomeItem)gSrc.getRootDBGenome().getNode(myItemID_);
     if (retval == null) {
       throw new IllegalStateException();
       // May just be held in temporary holding storage:
@@ -409,6 +414,27 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     }
     return (activityLevel_.doubleValue());
   }
+  
+  /***************************************************************************
+  **
+  ** Answers the simulation activity level. May be null.
+  ** 
+  */
+  
+  public Double getSimulationLevel() {
+    return (simulationLevel_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Set the simulation activity level. May be null.
+  ** 
+  */
+  
+  public void setSimulationLevel(Double level) {
+    simulationLevel_ = level;
+    return;
+  }
 
   /***************************************************************************
   **
@@ -487,7 +513,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
 
   public String getDisplayString(Genome genome, boolean typePreface) {
     GenomeInstance gi = (GenomeInstance)genome;
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     GroupMembership member = gi.getNodeGroupMembership(this);
     String groupID = (member.mainGroups.isEmpty()) ? null : (String)member.mainGroups.iterator().next();
     String groupName = (groupID == null) ? "" : gi.getGroup(groupID).getInheritedDisplayName(gi);    
@@ -506,7 +532,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     GroupMembership member = gi.getNodeGroupMembership(this);
     String groupID = (member.mainGroups.isEmpty()) ? null : (String)member.mainGroups.iterator().next();
     String groupName = (groupID == null) ? "" : gi.getGroup(groupID).getInheritedDisplayName(gi);    
-    String format = appState_.getRMan().getString("ncreate.importFormatForInstanceGroup");
+    String format = dacx_.getRMan().getString("ncreate.importFormatForInstanceGroup");
     String nodeMsg = MessageFormat.format(format, new Object[] {groupName});    
     return (nodeMsg);
   }  
@@ -562,6 +588,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("NodeInstance: type = " + mapToElem(nodeType_) + " backing = " + getBacking() +
             " instance = " + instanceID_ + " activity = " + activityLevel_ + " activity = " + activity_+
@@ -620,7 +647,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   **
   */
   
-  public static NodeInstance buildFromXML(BTState appState, Genome rootGenome, Genome genome, String elemName,
+  public static NodeInstance buildFromXML(DataAccessContext dacx, Genome rootGenome, String elemName,
                                           Attributes attrs) throws IOException {
 
     String ref = null;
@@ -652,7 +679,7 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     }
     
     DBNode backing = (DBNode)rootGenome.getNode(ref);
-    return (new NodeInstance(appState, backing, elemName, instance, activityLevelStr, activity, name));
+    return (new NodeInstance(dacx, backing, elemName, instance, activityLevelStr, activity, name));
   }  
 
   /***************************************************************************
@@ -697,10 +724,10 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** Return possible activity choices values
   */
   
-  public static Vector<ChoiceContent> getActivityChoices(BTState appState) {
+  public static Vector<ChoiceContent> getActivityChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_ACTIVITY_LEVELS_; i++) {
-      retval.add(activityTypeForCombo(appState, i));
+      retval.add(activityTypeForCombo(dacx, i));
     }
     return (retval);
   }
@@ -710,8 +737,8 @@ public class NodeInstance extends GenomeItemInstance implements Node {
   ** Get a combo box element
   */
   
-  public static ChoiceContent activityTypeForCombo(BTState appState, int activityType) {
-    return (new ChoiceContent(appState.getRMan().getString("nprop." + mapActivityTypes(activityType)), activityType));
+  public static ChoiceContent activityTypeForCombo(DataAccessContext dacx, int activityType) {
+    return (new ChoiceContent(dacx.getRMan().getString("nprop." + mapActivityTypes(activityType)), activityType));
   }
 
   ////////////////////////////////////////////////////////////////////////////

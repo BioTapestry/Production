@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -47,7 +47,8 @@ import javax.swing.JRadioButton;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -115,14 +116,10 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
     
     buildImportMaps(dniba.rootGenome, occ, toName, toType);
   
-    String rootGenomeID = dniba.rootGenome.getID();
-    String genomeInstanceID = dniba.tgi.getID();
-    String rootLayoutID = appState.getLayoutMgr().getLayout(rootGenomeID);
-    String instanceLayoutID = appState.getLayoutMgr().getLayout(genomeInstanceID);
-    
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
       return (new DesktopDialog(cfh, dniba.defaultName, dniba.overlayKey, dniba.modKeys, occ, 
-                                rootGenomeID, genomeInstanceID, rootLayoutID, instanceLayoutID, toName, toType));
+                                dniba.rootGenomeID, dniba.genomeInstanceID, 
+                                dniba.rootLayoutID, dniba.instanceLayoutID, toName, toType));
     }
     throw new IllegalArgumentException();
   }
@@ -235,14 +232,24 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
     String defaultName;
     String overlayKey; 
     Set<String> modKeys;
-          
-    public BuildArgs(DBGenome rootGenome, GenomeInstance tgi, String defaultName, String overlayKey, Set<String> modKeys) {
-      super(tgi);
-      this.rootGenome = rootGenome;
-      this.tgi = tgi;
-      this.defaultName = defaultName;
+    String rootGenomeID; 
+    String genomeInstanceID;
+    String rootLayoutID;
+    String instanceLayoutID;
+ 
+    public BuildArgs(DataAccessContext dacx, String overlayKey, Set<String> modKeys) {
+      super(dacx.getCurrentGenomeAsInstance());
+      this.rootGenome = dacx.getDBGenome();
+      this.tgi = dacx.getCurrentGenomeAsInstance();
+      this.defaultName = rootGenome.getUniqueNodeName();
       this.overlayKey = overlayKey;
-      this.modKeys = modKeys;    
+      this.modKeys = modKeys;  
+      
+      this.rootGenomeID = rootGenome.getID();
+      this.genomeInstanceID = tgi.getID();
+      this.rootLayoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(rootGenomeID);
+      this.instanceLayoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeInstanceID);
+   
     } 
   }
    
@@ -283,8 +290,9 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
     
     private Map<String, String> toName_;
     private Map<String, Integer> toType_;
-    private BTState appState_;
-    private DataAccessContext rcx_;
+    private DataAccessContext dacx_;
+    private StaticDataAccessContext rcx_;
+    private UIComponentSource uics_;
       
     private static final long serialVersionUID = 1L;
     
@@ -305,10 +313,11 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
                   String rootLayoutID, String instanceLayoutID, 
                   Map<String, String> toName, Map<String, Integer> toType) {
       
-      super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("nicreate.title"), true);
-      appState_ = cfh.getBTState();
-      parent_ = appState_.getTopFrame();
-      ResourceManager rMan = appState_.getRMan();
+      super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("nicreate.title"), true);
+      uics_ = cfh.getUI();
+      dacx_ = cfh.getDataAccessContext();
+      parent_ = uics_.getTopFrame();
+      ResourceManager rMan = dacx_.getRMan();
       setSize(800, 500);
       JPanel cp = (JPanel)getContentPane();
       cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -379,6 +388,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
       nameField_.selectAll();
       
       addWindowListener(new WindowAdapter() {
+        @Override
         public void windowOpened(WindowEvent e) {
           nameField_.requestFocus();
         }
@@ -417,13 +427,13 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
       }    
   
       // Note this is NOT legit, hitting the database from a dialog!
-      rcx_ = new DataAccessContext(appState_, (String)null, (Layout)null);
+      rcx_ = new StaticDataAccessContext(dacx_, (String)null, (Layout)null);
             
       //
       // Build the position panel:
       //
   
-      ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, rcx_);
+      ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, rcx_);
       msp_ = mvpwz.getModelView();
    
       UiUtil.gbcSet(gbc, 0, rowNum, 4, 5, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
@@ -444,7 +454,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
               DesktopDialog.this.dispose();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });     
@@ -457,7 +467,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
             DesktopDialog.this.setVisible(false);
             DesktopDialog.this.dispose();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -486,11 +496,15 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
       try { 
         updateNodeDisplay(false);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }    
     
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // INNER CLASSES
@@ -504,7 +518,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
           setActiveFields(isDrawNew); 
           updateNodeDisplay(isDrawNew);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }
@@ -545,7 +559,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
       String genomeID = (isRoot) ? rootGenomeID_ : genomeInstanceID_;    
       String loKey = (isRoot) ? rootLayoutID_ : instanceLayoutID_;    
       rcx_.setGenome(rcx_.getGenomeSource().getGenome(genomeID));
-      rcx_.setLayout(rcx_.lSrc.getLayout(loKey));
+      rcx_.setLayout(rcx_.getLayoutSource().getLayout(loKey));
   
       HashSet<String> nodes = new HashSet<String>();
       nodes.add(nodeID);
@@ -582,7 +596,7 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
           //
           int numImp = imports_.size();
           for (int i = 0; i < numImp; i++) {
-            ObjChoiceContent occ = (ObjChoiceContent)imports_.get(i);
+            ObjChoiceContent occ = imports_.get(i);
             String name = toName_.get(occ.val);
             if (name == null) {
               continue;
@@ -714,6 +728,11 @@ public class DrawNodeInstanceCreationDialogFactory extends DialogFactory {
      public boolean haveResults() {
        return (haveResult);
      }  
+ 	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
+     
      public boolean isForApply() {
        return (false);
      } 

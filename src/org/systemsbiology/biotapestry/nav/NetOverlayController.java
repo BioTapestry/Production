@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,6 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -40,14 +39,15 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.ListModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.NavigationChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
-import org.systemsbiology.biotapestry.cmd.flow.view.Zoom;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.NavigationChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayDisplayChangeCmd;
@@ -55,7 +55,6 @@ import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.StartupView;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
@@ -63,7 +62,6 @@ import org.systemsbiology.biotapestry.genome.NetworkOverlayChange;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.NetOverlayControlPanel;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleAlphaBuilder;
 import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
@@ -75,6 +73,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TaggedSet;
 import org.systemsbiology.biotapestry.util.TaggedString;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -100,8 +99,11 @@ public class NetOverlayController {
   //
   //////////////////////////////////////////////////////////////////////////// 
 
-  private BTState appState_;
   private DynamicDataAccessContext dacxDyn_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private UndoFactory uFac_;
+  private HarnessBuilder hBu_;
   
   private JComboBox netOverlaysCombo_;
   private CheckBoxList netModuleChoices_;
@@ -157,9 +159,18 @@ public class NetOverlayController {
   ** Constructor 
   */ 
   
-  public NetOverlayController(BTState appState, DynamicDataAccessContext dacx) {
-    appState_ = appState.setNetOverlayController(this);
-    dacxDyn_ = dacx;  
+  public NetOverlayController(DynamicDataAccessContext dacxDyn, UIComponentSource uics, 
+                              CmdSource cSrc, UndoFactory uFac, HarnessBuilder hBu) {
+    uics_ = uics;
+    cSrc_ = cSrc;
+    uFac_ = uFac;
+    hBu_ = hBu;
+    
+    //
+    // YES! As a UI component, we need to have a DynamicDataAccessContext so when user presses buttons,
+    // the Actions will refer to the current state of the world.
+    //
+    dacxDyn_ = dacxDyn;  
     ovrEnabled_ = false;
     downStrEnabled_ = false;
     pushed_ = false;
@@ -171,15 +182,15 @@ public class NetOverlayController {
     // and let the UI component use them, if there IS a UI component.
     //
     alphaCalc_ = new NetModuleAlphaBuilder();
-    appState_.installCurrentSettings(new NetModuleFree.CurrentSettings());
+    dacxDyn_.getOverlayWriter().installCurrentSettings(new NetModuleFree.CurrentSettings());
     
     lastSeenOverlayPerOwner_ = new HashMap<String, TaggedString>();
     lastSeenModulePerOverlay_ = new HashMap<String, TaggedSet>(); 
     lastSeenRevealedPerOverlay_ = new HashMap<String, TaggedSet>(); 
     buttonStat_ = new HashMap<FlowMeister.FlowKey, Boolean>();
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       // nocp_ is gonna be null in headless mode!
-      init(dacx);
+      init(dacxDyn);
     }
   }
   
@@ -219,7 +230,7 @@ public class NetOverlayController {
   */
   
   public boolean aModelHasOverlays(DataAccessContext dacx) {
-    return (dacx.fgho.overlayExists());
+    return (dacx.getFGHO().overlayExists());
   }
   
   /***************************************************************************
@@ -239,9 +250,9 @@ public class NetOverlayController {
   */
   
   public void checkForChanges(DataAccessContext dacx) {
-    syncControlState(true, dacx.oso.getCurrentOverlay(), 
-                     true, new TaggedSet(dacx.oso.getCurrentNetModules()),
-                           new TaggedSet(dacx.oso.getRevealedModules()), null, dacx);
+    syncControlState(true, dacx.getOSO().getCurrentOverlay(), 
+                     true, new TaggedSet(dacx.getOSO().getCurrentNetModules()),
+                           new TaggedSet(dacx.getOSO().getRevealedModules()), null, dacx);
     return;
   }
   
@@ -252,7 +263,7 @@ public class NetOverlayController {
   ** 
   */
   
-  public void checkMaskState(boolean maybeMasking, DataAccessContext dacx) {
+  public void checkMaskState(boolean maybeMasking, DynamicDataAccessContext dacx) {
     activeRevControls_ = maybeMasking;
     Boolean pushedLevel = (pushed_) ? new Boolean(pushedAllowLevel_) : null;
     downstreamSetEnabled(downStrEnabled_ && !pushed_, pushedLevel, dacx);
@@ -331,7 +342,7 @@ public class NetOverlayController {
     }
     OdcAndSccBundle oasb = setFullStateGuts(useOvrKey, modsForOvr, revsForOvr, odc, dacx); 
     if ((oasb != null) && (support != null) && (oasb.odc != null)) {
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, oasb.odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, oasb.odc);
       support.addEdit(nodcc);
       if ((oasb.bundle != null) && (oasb.bundle.cmd != null)) {
         support.addEdit(oasb.bundle.cmd);
@@ -369,7 +380,7 @@ public class NetOverlayController {
     } else {
       useOvrKey = null;
     } 
-    return (new StartupView(genomeID, useOvrKey, modsForOvr, revsForOvr)); 
+    return (new StartupView(genomeID, useOvrKey, modsForOvr, revsForOvr, null)); 
   } 
   
   /***************************************************************************
@@ -422,7 +433,7 @@ public class NetOverlayController {
  
       if (changed) {
         OverlayDisplayChange odc = getDisplayChangeForLastSeen(ovrKey, mods, newMods, revs, newRevs); 
-        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
         support.addEdit(nodcc);
       }
     }
@@ -432,16 +443,16 @@ public class NetOverlayController {
     // the current display:
     //
     
-    String currOvr = dacx.oso.getCurrentOverlay();
+    String currOvr = dacx.getOSO().getCurrentOverlay();
     Set<String> lostModForOvr = lostModules.get(currOvr);
     if (lostModForOvr != null) {
-      TaggedSet currMods = dacx.oso.getCurrentNetModules();
+      TaggedSet currMods = dacx.getOSO().getCurrentNetModules();
       HashSet<String> intersect = new HashSet<String>(lostModForOvr);
       intersect.retainAll(currMods.set);
-      TaggedSet currRevs = dacx.oso.getRevealedModules();
+      TaggedSet currRevs = dacx.getOSO().getRevealedModules();
       HashSet<String> intersectRev = new HashSet<String>(lostModForOvr);
       intersectRev.retainAll(currRevs.set);
-           
+       
       // Showing a deleted module? clear it.  
       if (!intersect.isEmpty()) {
         currMods = currMods.clone();
@@ -494,11 +505,10 @@ public class NetOverlayController {
     // (possibly) move off the path. 
     //
     
-    UserTreePathController utpc = appState_.getPathController();
+    UserTreePathController utpc = uics_.getPathController();
     NavigationChange nc = new NavigationChange();
-    nc.commonView = appState_.getCommonView();
     if (utpc.syncPathControls(nc, dacx)) { 
-      support.addEdit(new NavigationChangeCmd(appState_, dacx, nc));
+      support.addEdit(new NavigationChangeCmd(dacx, nc));
     }
     return;
   }
@@ -512,7 +522,7 @@ public class NetOverlayController {
     OdcAndSccBundle oasb = setFullStateGuts(ovrKey, modKeys, revealedKeys, null, dacx);
     if ((oasb != null) && (oasb.odc != null) && (support != null)) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, oasb.odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, oasb.odc);
       support.addEdit(nodcc);
       if ((oasb.bundle != null) && (oasb.bundle.cmd != null)) {
         support.addEdit(oasb.bundle.cmd);
@@ -532,7 +542,7 @@ public class NetOverlayController {
     if (oasb != null) {
       if (oasb.odc != null) {
         syncPathController(support, dacx);
-        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, oasb.odc);
+        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, oasb.odc);
         support.addEdit(nodcc);
         support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE));
         if ((oasb.bundle != null) && (oasb.bundle.cmd != null)) {
@@ -554,7 +564,7 @@ public class NetOverlayController {
     if (oasb != null) {
       if (oasb.odc != null) {
         syncPathController(support, dacx);
-        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, oasb.odc);
+        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, oasb.odc);
         support.addEdit(nodcc);
         support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE));
         if ((oasb.bundle != null) && (oasb.bundle.cmd != null)) {
@@ -575,14 +585,14 @@ public class NetOverlayController {
     //
     // Adding a module to the current display has no effect on current visibility set
     //
-    TaggedSet currMods = dacx.oso.getCurrentNetModules();
+    TaggedSet currMods = dacx.getOSO().getCurrentNetModules();
     currMods = currMods.clone();
     currMods.set.add(modKey);
-    TaggedSet currRev = dacx.oso.getRevealedModules();
+    TaggedSet currRev = dacx.getOSO().getRevealedModules();
     OverlayDisplayChange odc = setCurrentModuleGuts(currMods, currRev, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
       support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
     }    
@@ -595,16 +605,16 @@ public class NetOverlayController {
   */ 
     
   public void dropACurrentModule(String modKey, UndoSupport support, DataAccessContext dacx) {
-    TaggedSet currMods = dacx.oso.getCurrentNetModules();
+    TaggedSet currMods = dacx.getOSO().getCurrentNetModules();
     currMods = currMods.clone();
     currMods.set.remove(modKey);
-    TaggedSet currRev = dacx.oso.getRevealedModules();
+    TaggedSet currRev = dacx.getOSO().getRevealedModules();
     currRev = currRev.clone();
     currRev.set.remove(modKey);
     OverlayDisplayChange odc = setCurrentModuleGuts(currMods, currRev, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
       support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
     }    
@@ -622,11 +632,11 @@ public class NetOverlayController {
     //
     TaggedSet currMods = new TaggedSet();
     currMods.set.add(modKey);
-    TaggedSet currRev = dacx.oso.getRevealedModules();
+    TaggedSet currRev = dacx.getOSO().getRevealedModules();
     OverlayDisplayChange odc = setCurrentModuleGuts(currMods, currRev, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
       support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
     }    
@@ -640,14 +650,14 @@ public class NetOverlayController {
   */
     
   public void updateModuleOptions(UndoSupport support, DataAccessContext dacx) {
-    TaggedSet currMods = dacx.oso.getCurrentNetModules();
+    TaggedSet currMods = dacx.getOSO().getCurrentNetModules();
     currMods = currMods.clone();
-    TaggedSet currRev = dacx.oso.getRevealedModules();
+    TaggedSet currRev = dacx.getOSO().getRevealedModules();
     currRev = currRev.clone();
     OverlayDisplayChange odc = setCurrentModuleGuts(currMods, currRev, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
       support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
     }    
@@ -660,7 +670,7 @@ public class NetOverlayController {
   */  
   
   public void toggleModContentDisplay(String modID, UndoSupport support, DataAccessContext dacx) {
-    TaggedSet revealed = dacx.oso.getRevealedModules();
+    TaggedSet revealed = dacx.getOSO().getRevealedModules();
     TaggedSet updated = revealed.clone();
     if (revealed.set.contains(modID)) {
       updated.set.remove(modID);
@@ -680,7 +690,7 @@ public class NetOverlayController {
     OverlayDisplayChange odc = setCurrentRevealedGuts(revealedKeys, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
     }    
     return;
@@ -731,7 +741,7 @@ public class NetOverlayController {
   ** 
   */
   
-  public JPanel getNetOverlayNavigator(DataAccessContext dacx) {
+  public JPanel getNetOverlayNavigator(DynamicDataAccessContext dacx) {
     if (ovrPanel_ != null) {
       return (ovrPanel_);
     }
@@ -739,7 +749,7 @@ public class NetOverlayController {
     ovrPanel_ = new JPanel();
     ovrPanel_.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
         
     ovrLabel_ = new JLabel(rMan.getString("netOverlayController.chooseOverlay"));
     
@@ -857,15 +867,15 @@ public class NetOverlayController {
   ** Set the current display state as the first viewed for the model.
   */ 
     
-  public void setCurrentAsFirst(DataAccessContext dacx) {
-    UndoSupport support = new UndoSupport(appState_, "undo.setCurrOverlayFirst");
-    String genomeID = dacx.getGenomeID();
+  public void setCurrentAsFirst(StaticDataAccessContext dacx) {
+    UndoSupport support = uFac_.provideUndoSupport("undo.setCurrOverlayFirst", dacx);
+    String genomeID = dacx.getCurrentGenomeID();
     NetOverlayOwner owner = dacx.getCurrentOverlayOwner();
     String ownID = owner.getID();
     int ownMode = owner.overlayModeForOwner();
-    String ovrKey = dacx.oso.getCurrentOverlay();
-    TaggedSet currMods = new TaggedSet(dacx.oso.getCurrentNetModules());
-    TaggedSet currRevs = new TaggedSet(dacx.oso.getRevealedModules());
+    String ovrKey = dacx.getOSO().getCurrentOverlay();
+    TaggedSet currMods = new TaggedSet(dacx.getOSO().getCurrentNetModules());
+    TaggedSet currRevs = new TaggedSet(dacx.getOSO().getRevealedModules());
     currRevs = normalizedRevealedModules(dacx, genomeID, ovrKey, currMods, currRevs);    
     Iterator<NetworkOverlay> noit = owner.getNetworkOverlayIterator();
     boolean didIt = false;
@@ -891,7 +901,7 @@ public class NetOverlayController {
         noc = no.clearAsFirstView(ownID, ownMode);  
       }  
       if (noc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, dacx, noc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(dacx, noc);
         support.addEdit(gcc);
         didIt = true;
       }
@@ -917,7 +927,7 @@ public class NetOverlayController {
   public static TaggedSet normalizedRevealedModules(DataAccessContext dacx, String genomeID, String ovrKey, 
                                                     TaggedSet currMods, TaggedSet revealed) {
 
-    Layout lo = dacx.lSrc.getLayoutForGenomeKey(genomeID);
+    Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(genomeID);
     if (ovrKey == null) {
       return (new TaggedSet());
     }
@@ -935,9 +945,9 @@ public class NetOverlayController {
   ** Answer if the given view state will obscure links or possibly nodes:
   */ 
      
-  public static int hasObscuredElements(DataAccessContext dacx, StartupView sv) {
+  public static int hasObscuredElements(StaticDataAccessContext dacx, StartupView sv) {
     int retval = NO_HIDING;
-    Layout lo = dacx.lSrc.getLayoutForGenomeKey(sv.getModel());
+    Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(sv.getModel());
     String ovrKey = sv.getOverlay();
     if (ovrKey == null) {
       return (retval);
@@ -958,23 +968,23 @@ public class NetOverlayController {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-
   /***************************************************************************
   **
   ** Set the full state
   ** 
   */
   
-  OdcAndSccBundle setFullStateGuts(String ovrKey, TaggedSet modKeys, TaggedSet revealedKeys, OverlayDisplayChange odc, DataAccessContext dacx) {
+  OdcAndSccBundle setFullStateGuts(String ovrKey, TaggedSet modKeys, TaggedSet revealedKeys, 
+                                   OverlayDisplayChange odc, DataAccessContext dacx) {
 
     if (odc == null) {
       odc = new OverlayDisplayChange();
-      odc.oldGenomeID = dacx.getGenomeID();
-      odc.oldOvrKey = dacx.oso.getCurrentOverlay();
-      odc.oldModKeys = new TaggedSet(dacx.oso.getCurrentNetModules());
-      odc.oldRevealedKeys = new TaggedSet(dacx.oso.getRevealedModules());
+      odc.oldGenomeID = dacx.getCurrentGenomeID();
+      odc.oldOvrKey = dacx.getOSO().getCurrentOverlay();
+      odc.oldModKeys = new TaggedSet(dacx.getOSO().getCurrentNetModules());
+      odc.oldRevealedKeys = new TaggedSet(dacx.getOSO().getRevealedModules());
     }
-    odc.newGenomeID = dacx.getGenomeID();
+    odc.newGenomeID = dacx.getCurrentGenomeID();
     odc.newOvrKey = ovrKey;
     odc.newModKeys = new TaggedSet(modKeys);
     odc.newRevealedKeys = new TaggedSet(revealedKeys);
@@ -997,8 +1007,8 @@ public class NetOverlayController {
     OdcAndSccBundle retval = new OdcAndSccBundle();
     retval.odc = new OverlayDisplayChange();
     
-    String genomeID = dacx.getGenomeID();
-    String currOvrKey = dacx.oso.getCurrentOverlay();
+    String genomeID = dacx.getCurrentGenomeID();
+    String currOvrKey = dacx.getOSO().getCurrentOverlay();
     if (currOvrKey == null) {
       if (ovrKey == null) {
         return (null);
@@ -1022,8 +1032,8 @@ public class NetOverlayController {
       revsForOvr = new TaggedSet();
     }    
         
-    TaggedSet currModKeys = dacx.oso.getCurrentNetModules();
-    TaggedSet currRevKeys = dacx.oso.getRevealedModules();
+    TaggedSet currModKeys = dacx.getOSO().getCurrentNetModules();
+    TaggedSet currRevKeys = dacx.getOSO().getRevealedModules();
     retval.odc.oldGenomeID = genomeID;
     retval.odc.newGenomeID = genomeID;
     retval.odc.oldOvrKey = currOvrKey;
@@ -1047,11 +1057,11 @@ public class NetOverlayController {
   OverlayDisplayChange setCurrentModuleGuts(TaggedSet modKeys, TaggedSet revKeys, DataAccessContext dacx) {
     OverlayDisplayChange retval = new OverlayDisplayChange();
     
-    TaggedSet currModKeys = dacx.oso.getCurrentNetModules();
-    TaggedSet currRevKeys = dacx.oso.getRevealedModules();
+    TaggedSet currModKeys = dacx.getOSO().getCurrentNetModules();
+    TaggedSet currRevKeys = dacx.getOSO().getRevealedModules();
 
-    String currOvrKey = dacx.oso.getCurrentOverlay();
-    retval.oldGenomeID = dacx.getGenomeID();
+    String currOvrKey = dacx.getOSO().getCurrentOverlay();
+    retval.oldGenomeID = dacx.getCurrentGenomeID();
     retval.newGenomeID = retval.oldGenomeID;
     retval.oldOvrKey = currOvrKey;
     retval.newOvrKey = currOvrKey;
@@ -1075,15 +1085,15 @@ public class NetOverlayController {
   OverlayDisplayChange setCurrentRevealedGuts(TaggedSet revealed, DataAccessContext dacx) {
     OverlayDisplayChange retval = new OverlayDisplayChange();
     
-    TaggedSet currModKeys = dacx.oso.getCurrentNetModules();
-    TaggedSet currRevKeys = dacx.oso.getRevealedModules();
+    TaggedSet currModKeys = dacx.getOSO().getCurrentNetModules();
+    TaggedSet currRevKeys = dacx.getOSO().getRevealedModules();
     
     if (currRevKeys.set.equals(revealed.set) && (currRevKeys.tag == revealed.tag)) {
       return (null);
     }
     
-    String currOvrKey = dacx.oso.getCurrentOverlay();
-    retval.oldGenomeID = dacx.getGenomeID();
+    String currOvrKey = dacx.getOSO().getCurrentOverlay();
+    retval.oldGenomeID = dacx.getCurrentGenomeID();
     retval.newGenomeID = retval.oldGenomeID;
     retval.oldOvrKey = currOvrKey;
     retval.newOvrKey = currOvrKey;
@@ -1113,7 +1123,7 @@ public class NetOverlayController {
     OverlayDisplayChange odc = setCurrentModuleGuts(modKeys, revKeys, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
     }    
     return;
@@ -1142,7 +1152,7 @@ public class NetOverlayController {
   
   private void downstreamSetEnabled(boolean enabled, Boolean allowLevelSetting, DataAccessContext dacx) {
    
-    activeRevControls_ = alphaCalc_.modContentsMasked(dacx.oso.getCurrentOverlaySettings());
+    activeRevControls_ = alphaCalc_.modContentsMasked(dacx.getOSO().getCurrentOverlaySettings());
     
     if (netModuleChoices_ != null) {
       netModuleChoices_.setEnabled(enabled);
@@ -1212,15 +1222,16 @@ public class NetOverlayController {
   private SelectionChangeCmd.Bundle pushCore(boolean doOvr, String ovrKey, boolean doModAndRev, 
                                              TaggedSet modKeys, TaggedSet revealed, boolean forUndo, DataAccessContext dacx) {
     SelectionChangeCmd.Bundle bundle = null;
-    if (doOvr) {      
-      bundle = appState_.setCurrentOverlay(ovrKey, forUndo);
+    if (doOvr) {
+      // Note that OverlayStateOracle has no setter....
+      bundle = dacx.getOverlayWriter().setCurrentOverlay(ovrKey, forUndo);
     }
     if (doModAndRev) {
-      appState_.setCurrentNetModules(modKeys, forUndo);
-      appState_.setRevealedModules(revealed, forUndo);
+      dacx.getOverlayWriter().setCurrentNetModules(modKeys, forUndo);
+      dacx.getOverlayWriter().setRevealedModules(revealed, forUndo);
     }
 
-    appState_.getSUPanel().drawModel(false);
+    uics_.getSUPanel().drawModel(false);
     return (bundle);
   }  
    
@@ -1233,7 +1244,7 @@ public class NetOverlayController {
   private void syncControlState(boolean doOvr, String ovrKey, 
                                 boolean doModAndRev, TaggedSet modKeys, TaggedSet revealedKeys,
                                 String undoGenomeID, DataAccessContext dacx) {
-    String genomeID = (undoGenomeID == null) ? dacx.getGenomeID() : undoGenomeID;
+    String genomeID = (undoGenomeID == null) ? dacx.getCurrentGenomeID() : undoGenomeID;
     if (doOvr) updateNetOverlayOptions(genomeID, dacx);
     if (doModAndRev) updateNetModuleOptions(genomeID, ovrKey, modKeys, dacx);
     
@@ -1399,7 +1410,7 @@ public class NetOverlayController {
     managingOverlayControls_ = true;
     Vector<ObjChoiceContent> overlayChoices = getOverlayChoices(genomeID, dacx);
     int numOV = overlayChoices.size();
-    String noOverlay =  dacx.rMan.getString("netOverlayController.noOverlay");     
+    String noOverlay =  dacx.getRMan().getString("netOverlayController.noOverlay");     
         
     if (netOverlaysCombo_ != null) {
       netOverlaysCombo_.removeAllItems();
@@ -1426,7 +1437,7 @@ public class NetOverlayController {
     
     showingRevControls_ = false;
     if ((genomeID != null) && (ovrKey != null)) {
-      Layout lo = dacx.lSrc.getLayoutForGenomeKey(genomeID);
+      Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(genomeID);
       NetOverlayProperties nop = lo.getNetOverlayProperties(ovrKey);
       showingRevControls_ = (nop.getType() == NetOverlayProperties.OvrType.OPAQUE);
     }
@@ -1453,13 +1464,13 @@ public class NetOverlayController {
   ** Wrap undo around operations
   */ 
     
-  private void unDoableSetOverlay(String ovKey, DataAccessContext dacx) {         
-    UndoSupport support = new UndoSupport(appState_, "undo.setCurrentNetOverlay");
+  private void unDoableSetOverlay(String ovKey, DynamicDataAccessContext dacx) {         
+    UndoSupport support = uFac_.provideUndoSupport("undo.setCurrentNetOverlay", dacx);
     OdcAndSccBundle oasb = setCurrentOverlayGuts(ovKey, dacx);
     if (oasb != null) {
       if (oasb.odc != null) {
         syncPathController(support, dacx);
-        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, oasb.odc);
+        NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, oasb.odc);
         support.addEdit(nodcc);
         support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
         if ((oasb.bundle != null) && (oasb.bundle.cmd != null)) {
@@ -1477,15 +1488,15 @@ public class NetOverlayController {
   ** Wrap undo around operations
   */ 
     
-  private void unDoableSetModules(TaggedSet modKeys, TaggedSet revKeys, DataAccessContext dacx) {    
-    UndoSupport support = new UndoSupport(appState_, "undo.setCurrentNetModule");
+  private void unDoableSetModules(TaggedSet modKeys, TaggedSet revKeys, DynamicDataAccessContext dacx) {    
+    UndoSupport support = uFac_.provideUndoSupport("undo.setCurrentNetModule", dacx);
     // This is called during checkbox click or "all" or "clear" button clicks.
     // Should the argument be false (no normalization)?  I believe so; we
     // want the revealed state to carry across these interactions:
     OverlayDisplayChange odc = setCurrentModuleGuts(modKeys, revKeys, dacx);
     if (odc != null) {
       syncPathController(support, dacx);
-      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(appState_, dacx, odc);
+      NetOverlayDisplayChangeCmd nodcc = new NetOverlayDisplayChangeCmd(dacx, odc);
       support.addEdit(nodcc);
       support.addEvent(new OverlayDisplayChangeEvent(OverlayDisplayChangeEvent.MODULE_SELECTION_CHANGE)); 
       support.finish();
@@ -1498,10 +1509,10 @@ public class NetOverlayController {
   ** Init the controller
   */ 
     
-  private void init(DataAccessContext dacx) {  
+  private void init(DynamicDataAccessContext dacx) {  
 
-    ResourceManager rMan = dacx.rMan;
-    nocp_ = new NetOverlayControlPanel(appState_, alphaCalc_);
+    ResourceManager rMan = dacx.getRMan();
+    nocp_ = new NetOverlayControlPanel(uics_, alphaCalc_, dacx);
     netOverlaysCombo_ = new FixedJComboBox(250);
     
     //
@@ -1518,7 +1529,7 @@ public class NetOverlayController {
           String ovKey = (occ == null) ? null : occ.val;
           unDoableSetOverlay(ovKey, dacxDyn_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -1548,11 +1559,11 @@ public class NetOverlayController {
           zoomCanShow_ = somebodyChecked;
           unDoableSetModules(modKeys, revKeys, dacxDyn_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
-    }, true, true, appState_);
+    }, true, true, uics_.getHandlerAndManagerSource());
     netModuleChoices_.setToolTipText(rMan.getString("netOverlayController.mainTip"), 
                                      rMan.getString("netOverlayController.subTip"));
     
@@ -1567,13 +1578,13 @@ public class NetOverlayController {
     revAllButton_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          TaggedSet useChoices = dacxDyn_.oso.getCurrentNetModules();
-          TaggedSet currRevs = dacxDyn_.oso.getRevealedModules();
+          TaggedSet useChoices = dacxDyn_.getOSO().getCurrentNetModules();
+          TaggedSet currRevs = dacxDyn_.getOSO().getRevealedModules();
           TaggedSet useRevs = useChoices.clone();
           useRevs.set.addAll(currRevs.set);
           unDoableSetModules(useChoices, useRevs, dacxDyn_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1583,13 +1594,13 @@ public class NetOverlayController {
     hideAllButton_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          TaggedSet useChoices = dacxDyn_.oso.getCurrentNetModules();
-          TaggedSet currRevs = dacxDyn_.oso.getRevealedModules();
+          TaggedSet useChoices = dacxDyn_.getOSO().getCurrentNetModules();
+          TaggedSet currRevs = dacxDyn_.getOSO().getRevealedModules();
           TaggedSet useRevs = currRevs.clone();
           useRevs.set.removeAll(useChoices.set);
           unDoableSetModules(useChoices, useRevs, dacxDyn_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -1620,8 +1631,8 @@ public class NetOverlayController {
     //
     // Enable/disable overlay actions:
     //
-    boolean headless = appState_.isHeadless();
-    MainCommands mcmd = appState_.getMainCmds();
+    boolean headless = uics_.isHeadless();
+    MainCommands mcmd = cSrc_.getMainCmds();
     
     //
     // Enable/disable path actions based on path limits:
@@ -1676,7 +1687,7 @@ public class NetOverlayController {
       // Nice to do checking, but it requires that the flow classes be available, which is undesirable
       // in the web viewer. Make the checks editor only:
       //
-      boolean doChecks = appState_.getIsEditor();
+      boolean doChecks = uics_.getIsEditor();
       
       if (doChecks) { 
         ControlFlow rnoFlow = mcmd.getCachedFlow(FlowMeister.MainFlow.REMOVE_CURR_NETWORK_OVERLAY);
@@ -1738,13 +1749,11 @@ public class NetOverlayController {
    
   private class ZoomActor implements ActionListener {    
     public void actionPerformed(ActionEvent e) {
-      try {  
-        DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame())); 
-        ControlFlow cf = new Zoom(appState_, Zoom.ZoomAction.ZOOM_CURRENT_MOD);
-        dcf.initFlow(cf, dacxDyn_);
-        dcf.runFlow();
+      try {
+         // A Hack. Current signature for Static only; the Flow will create a dynamic context.
+        hBu_.buildAndRunHarness(FlowMeister.MainFlow.ZOOM_TO_CURRENT_NETWORK_MODULE, new StaticDataAccessContext(dacxDyn_)); 
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
@@ -1753,12 +1762,12 @@ public class NetOverlayController {
   private class AllActor implements ActionListener {
     public void actionPerformed(ActionEvent ev) {
       try {
-        String currOvrKey = dacxDyn_.oso.getCurrentOverlay();
-        TaggedSet useChoices = getAllModuleChoiceSet(getModuleChoices(dacxDyn_.getGenomeID(), currOvrKey, dacxDyn_));
-        TaggedSet useRevs = dacxDyn_.oso.getRevealedModules();
+        String currOvrKey = dacxDyn_.getOSO().getCurrentOverlay();
+        TaggedSet useChoices = getAllModuleChoiceSet(getModuleChoices(dacxDyn_.getCurrentGenomeID(), currOvrKey, dacxDyn_));
+        TaggedSet useRevs = dacxDyn_.getOSO().getRevealedModules();
         unDoableSetModules(useChoices, useRevs, dacxDyn_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }
@@ -1771,7 +1780,7 @@ public class NetOverlayController {
         TaggedSet useRevs = new TaggedSet();
         unDoableSetModules(useChoices, useRevs, dacxDyn_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }  

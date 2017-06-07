@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,8 +39,8 @@ import javax.swing.table.AbstractTableModel;
 import javax.swing.table.JTableHeader;
 
 import org.systemsbiology.biotapestry.analysis.Link;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
 import org.systemsbiology.biotapestry.db.LocalWorkspaceSource;
@@ -48,10 +48,8 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
 import org.systemsbiology.biotapestry.ui.dialogs.ModelViewPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.ModelViewPanelWithZoom;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -93,8 +91,8 @@ public class ChartStackableModelView extends JPanel {
   // STILL trying to track down the Object types here:
   private Map<Link, Map<String, List<Object>>> currBatchVals_;
   private Genome currGenome_;
-  private BTState appState_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext rcx_;
+  private UIComponentSource uics_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -107,9 +105,9 @@ public class ChartStackableModelView extends JPanel {
   ** Null constructor
   */
   
-  public ChartStackableModelView(BTState appState) {
-    appState_ = appState;
+  public ChartStackableModelView(UIComponentSource uics, DataAccessContext dacx) {
     managingBatches_ = false;
+    uics_ = uics;
     setLayout(new GridBagLayout());    
     GridBagConstraints gbc = new GridBagConstraints();
     int rowNum = 0;
@@ -118,16 +116,9 @@ public class ChartStackableModelView extends JPanel {
     // Build the network view
     //
     
-    // Note this is NOT legit, hitting the database from a dialog!
-    Database db = appState_.getDB();
-    rcx_ = new DataAccessContext(null, null, false, false, 0.0,
-                                appState_.getFontMgr(), appState_.getDisplayOptMgr(), 
-                                appState_.getFontRenderContext(), db, db, false, 
-                                new FullGenomeHierarchyOracle(db, db), appState_.getRMan(), 
-                                new LocalGroupSettingSource(), db, db,
-                                new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), db, db
-    );   
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, rcx_);
+    // Note this is NOT legit, hitting the database from a dialog under the covers
+    rcx_ = StaticDataAccessContext.getCustomDACX8(dacx);
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics, null, rcx_);
     msp_ = mvpwz.getModelView();
     tipGen_ = new CSTipGen();
     msp_.setToolTipGenerator(tipGen_);
@@ -148,7 +139,7 @@ public class ChartStackableModelView extends JPanel {
         try {
           setTheBatch();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
         return;
       }
@@ -202,13 +193,13 @@ public class ChartStackableModelView extends JPanel {
     List<TrueObjChoiceContent> bSel = getBatchSelections(batchData);
     installBatchSelections(bSel);
     rcx_.setGenomeSource(src);
-    currGenome_ = src.getGenome();
+    currGenome_ = src.getRootDBGenome();
     String genomeID = currGenome_.getID();
     rcx_.setGenome(currGenome_);
-    rcx_.lSrc = layoutSrc;
-    rcx_.setLayout(rcx_.lSrc.getLayoutForGenomeKey(genomeID));
-    rcx_.fgho = new FullGenomeHierarchyOracle(src, layoutSrc);
-    rcx_.wSrc = new LocalWorkspaceSource();
+    rcx_.setLayoutSource(layoutSrc);
+    rcx_.setLayout(rcx_.getLayoutSource().getLayoutForGenomeKey(genomeID));
+    rcx_.setFGHO(new FullGenomeHierarchyOracle(rcx_));
+    rcx_.setWorkspaceSource(new LocalWorkspaceSource());
     tipGen_.setBatchSource(batchData);
     msp_.fixCenterPoint(false, null, false);
    // msp_.showFullModel();
@@ -347,7 +338,7 @@ public class ChartStackableModelView extends JPanel {
   
   private List<TrueObjChoiceContent> getBatchSelections(Map<Link, Map<String, List<Object>>> batchMap) {
     ArrayList<TrueObjChoiceContent> retval = new ArrayList<TrueObjChoiceContent>();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     TreeSet<String> batchIDs = new TreeSet<String>();
     Iterator<Map<String, List<Object>>> vit = batchMap.values().iterator();
     while (vit.hasNext()) {
@@ -415,6 +406,7 @@ public class ChartStackableModelView extends JPanel {
       throw new IllegalStateException();
     }
     
+    @Override
     public boolean isCellEditable(int r, int c) {
       return (false);
     }        
@@ -432,7 +424,7 @@ public class ChartStackableModelView extends JPanel {
             throw new IllegalArgumentException();
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }
@@ -452,14 +444,14 @@ public class ChartStackableModelView extends JPanel {
             throw new IllegalArgumentException();
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }    
 
     public String getColumnName(int c) {
       try {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = rcx_.getRMan();
         switch (c) {
           case 0:
             return (rMan.getString("batchTab.source"));
@@ -471,7 +463,7 @@ public class ChartStackableModelView extends JPanel {
             throw new IllegalArgumentException();
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (null);
     }

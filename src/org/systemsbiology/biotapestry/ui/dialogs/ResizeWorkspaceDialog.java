@@ -34,9 +34,9 @@ import javax.swing.JTextField;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 
@@ -82,13 +82,14 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public ResizeWorkspaceDialog(BTState appState, int padding) { 
-    super(appState, "resizeWork.title", new Dimension(500, 250), 2);
-    
-    Dimension currDims = appState.getCanvasSize();
-    double aspectRatio = appState.getCanvasAspectRatio();
-    Rectangle modelSize = appState.getZoomTarget().getAllModelBounds();
-    Point2D currentCenter = appState.getZoomTarget().getRawCenterPoint();
+  public ResizeWorkspaceDialog(UIComponentSource uics, DataAccessContext dacx, int padding) { 
+    super(uics, dacx, "resizeWork.title", new Dimension(500, 250), 2);
+   
+    Workspace wsp = dacx_.getWorkspaceSource().getWorkspace();
+    Dimension currDims = wsp.getCanvasSize();
+    double aspectRatio = wsp.getCanvasAspectRatio();
+    Rectangle modelSize = dacx_.getZoomTarget().getAllModelBounds();
+    Point2D currentCenter = dacx_.getZoomTarget().getRawCenterPoint();
     
     currDims_ = new Workspace.FixedAspectDim(currDims, aspectRatio);
     modelDims_ = Workspace.calcBoundedFit(modelSize, padding, aspectRatio);
@@ -127,13 +128,13 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
         try {
           fitToModel();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     }); 
-    if (appState_.getDB().getGenome().isEmpty() && !(new FullGenomeHierarchyOracle(appState_)).overlayExists()) {
+    if (dacx.getDBGenome().isEmpty() && !dacx.getFGHO().overlayExists()) {
       buttonM.setEnabled(false);
     }
     
@@ -151,8 +152,8 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
       return (null);
     }
     
-    int x = (int)Math.round(currentCenter_.getX() - ((double)currDims_.getWidth() / 2.0));
-    int y = (int)Math.round(currentCenter_.getY() - ((double)currDims_.getHeight() / 2.0));    
+    int x = (int)Math.round(currentCenter_.getX() - (currDims_.getWidth() / 2.0));
+    int y = (int)Math.round(currentCenter_.getY() - (currDims_.getHeight() / 2.0));    
     
     return (new Rectangle(x, y, currDims_.getWidth(), currDims_.getHeight()));
   }
@@ -445,18 +446,18 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
       try {
         processVal(true, whichVal_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }
     public void caretUpdate(CaretEvent evt) {
       try {
         processVal(false, whichVal_);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }
     public void focusGained(FocusEvent evt) {
@@ -465,9 +466,9 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
       try {
         fixVals();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }        
   } 

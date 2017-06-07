@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2013 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,8 @@ import javax.swing.JOptionPane;
 import javax.swing.ListModel;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.CheckBoxList;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -63,7 +64,8 @@ public class BuildListUtil {
   private BuildListResult targResult_;
   private boolean forceDrops_;
   private JFrame parent_; 
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   private static final ImageIcon greenIcon_;
  
   ////////////////////////////////////////////////////////////////////////////
@@ -88,8 +90,9 @@ public class BuildListUtil {
   ** Constructor 
   */
   
-  public BuildListUtil(BTState appState, JFrame parent, String nodeName, List clonedCurrEntries, Vector targCand, boolean forceDrops) { 
-    appState_ = appState;
+  public BuildListUtil(UIComponentSource uics, DataAccessContext dacx, JFrame parent, String nodeName, List clonedCurrEntries, Vector targCand, boolean forceDrops) { 
+    uics_ = uics;
+    dacx_ = dacx;
     parent_ = parent; 
     if (clonedCurrEntries == null) {
       newEntries_ = new ArrayList();
@@ -98,7 +101,7 @@ public class BuildListUtil {
     }
     forceDrops_ = forceDrops;
     targResult_ = buildCheckBoxList(newEntries_, targCand, nodeName);    
-    lw_ = new CheckBoxList(targResult_.listElements, appState_);
+    lw_ = new CheckBoxList(targResult_.listElements, uics_.getHandlerAndManagerSource());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -140,9 +143,9 @@ public class BuildListUtil {
   ** 
   */
 
-  public static JPanel buildMessagePanel(BTState appState, List<BuildListResult> buildListResults) {
+  public static JPanel buildMessagePanel(DataAccessContext dacx, List<BuildListResult> buildListResults) {
     
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     JPanel messagePanel = new JPanel();
     messagePanel.setBorder(new EtchedBorder());
@@ -297,7 +300,7 @@ public class BuildListUtil {
         }
       }
     }
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     //
     // FIX ME??  Consider modifying this to give clearer instructions when
     // a maternal or zygotic channel has been selected instead of the default!

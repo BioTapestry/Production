@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.ProxyChange;
@@ -52,8 +51,8 @@ public class ProxyChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public ProxyChangeCmd(BTState appState, DataAccessContext dacx, ProxyChange pChange) {
-    super(appState, dacx);
+  public ProxyChangeCmd(DataAccessContext dacx, ProxyChange pChange) {
+    super(dacx);
     pChange_ = pChange;
   }
 

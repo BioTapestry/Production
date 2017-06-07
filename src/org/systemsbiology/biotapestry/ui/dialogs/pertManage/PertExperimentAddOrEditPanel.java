@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.ConditionDictionary;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
@@ -73,8 +73,8 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   
   private Experiment expResult_;
   private PerturbationData pd_;
-  private ArrayList pertSrcList_;
-  private ArrayList investList_;
+  private ArrayList<EnumCell> pertSrcList_;
+  private ArrayList<EnumCell> investList_;
   
   private JTextField timeFieldForEdit_;
   private JTextField legacyMaxTimeFieldForEdit_;
@@ -90,10 +90,10 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   private EditableTable estSrcForMerge_;
   
   private String currKey_;
-  private HashSet allMerge_;
+  private HashSet<String> allMerge_;
   private PertManageHelper pmh_;
-  private TreeSet timeOptions_;
-  private TreeSet legMaxTimeOptions_;
+  private TreeSet<String> timeOptions_;
+  private TreeSet<String> legMaxTimeOptions_;
   
   private static final long serialVersionUID = 1L;
    
@@ -108,14 +108,14 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertExperimentAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd,
+  public PertExperimentAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd,
                                       PendingEditTracker pet, String myKey, 
                                       int legacyModes) {
-    super(appState, dacx, parent, pet, myKey, 2);
+    super(uics, dacx, parent, pet, myKey, 2);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, parent, pd, rMan_, gbc_, pet_);   
-    pertSrcList_ = new ArrayList();
-    investList_ = new ArrayList();
+    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);   
+    pertSrcList_ = new ArrayList<EnumCell>();
+    investList_ = new ArrayList<EnumCell>();
     
     //
     // Edit version:
@@ -210,17 +210,17 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  public String setExperimentsForMerge(List joinKeys) {
+  public String setExperimentsForMerge(List<String> joinKeys) {
     mode_ = MERGE_MODE;
-    allMerge_ = new HashSet(joinKeys);
+    allMerge_ = new HashSet<String>(joinKeys);
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map refCounts = da.getAllExperimentReferenceCounts();
+    Map<String, Integer> refCounts = da.getAllExperimentReferenceCounts();
     currKey_ = pmh_.getMostUsedKey(refCounts, joinKeys);
-    timeOptions_ = new TreeSet();
-    legMaxTimeOptions_ = new TreeSet();
+    timeOptions_ = new TreeSet<String>();
+    legMaxTimeOptions_ = new TreeSet<String>();
     int numk = joinKeys.size();
     for (int i = 0; i < numk; i++) {
-      String nextJk = (String)joinKeys.get(i);
+      String nextJk = joinKeys.get(i);
       Experiment exp = pd_.getExperiment(nextJk);
       timeOptions_.add(Integer.toString(exp.getTime()));
       int legMax = exp.getLegacyMaxTime();
@@ -246,6 +246,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Clear out the editor:
   */  
    
+  @Override
   public void closeAction() {
     if (mode_ == MERGE_MODE) {
       estSrcForMerge_.stopTheEditing(false);
@@ -281,28 +282,28 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   
   protected void updateOptions() {
     pertSrcList_ = buildPertSourceEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_, EnumCell.class));      
     EditableTable useTable = (mode_ == MERGE_MODE) ? estSrcForMerge_ : estSrcForEdit_;
     useTable.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)useTable.getModel()).setCurrentEnums(pertSrcList_);
        
     investList_ = buildInvestEnum();
-    perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, investList_));      
+    perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, investList_, EnumCell.class));      
     EditableTable useInvTable = (mode_ == MERGE_MODE) ? estInvForMerge_ : estInvForEdit_;
     useInvTable.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)useInvTable.getModel()).setCurrentEnums(investList_);      
             
     ConditionDictionary cd = pd_.getConditionDictionary();
-    Vector condTypes = cd.getExprConditionsOptions();
+    Vector<TrueObjChoiceContent> condTypes = cd.getExprConditionsOptions();
     JComboBox useCombo = (mode_ == MERGE_MODE) ? condsComboForMerge_ : condsComboForEdit_;
     UiUtil.replaceComboItems(useCombo, condTypes);
        
     if (mode_ == MERGE_MODE) {
-      UiUtil.replaceComboItems(timeCombo_, new Vector(timeOptions_));
+      UiUtil.replaceComboItems(timeCombo_, new Vector<String>(timeOptions_));
       if (legacyMaxTimeCombo_ != null) {
-        UiUtil.replaceComboItems(legacyMaxTimeCombo_, new Vector(legMaxTimeOptions_));
+        UiUtil.replaceComboItems(legacyMaxTimeCombo_, new Vector<String>(legMaxTimeOptions_));
       }
     }
 
@@ -375,7 +376,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
       return (false);
     }
     
-    ArrayList srcsResult = (sit.hasNext()) ? new ArrayList() : null;
+    ArrayList<String> srcsResult = (sit.hasNext()) ? new ArrayList<String>() : null;
     while (sit.hasNext()) {
       EditableTable.OneEnumTableModel.TableRow ent = (EditableTable.OneEnumTableModel.TableRow)sit.next();
       EnumCell ec = ent.enumChoice;
@@ -391,7 +392,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     
     EditableTable useInvTable = (mode_ == MERGE_MODE) ? estInvForMerge_ : estInvForEdit_;    
     Iterator ivit = useInvTable.getModel().getValuesFromTable().iterator();
-    ArrayList invResult = (ivit.hasNext()) ? new ArrayList() : null;
+    ArrayList<String> invResult = (ivit.hasNext()) ? new ArrayList<String>() : null;
     while (ivit.hasNext()) {
       EditableTable.OneEnumTableModel.TableRow ent = (EditableTable.OneEnumTableModel.TableRow)ivit.next();
       EnumCell ec = ent.enumChoice;
@@ -410,12 +411,12 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
         
     if ((currKey_ == null) || (mode_ == DUP_MODE)) {  // true for dup mode too
       String nextKey = pd_.getNextDataKey();
-      expResult_ = new Experiment(appState_, nextKey, srcs, timeVal, invResult, expCoKey);
+      expResult_ = new Experiment(dacx_, nextKey, srcs, timeVal, invResult, expCoKey);
       if ((mode_ == DUP_MODE) && (maxLegVal != Experiment.NO_TIME)) {
         expResult_.setLegacyMaxTime(maxLegVal);
       }      
     } else {
-      expResult_ = (Experiment)pd_.getExperiment(currKey_).clone();
+      expResult_ = pd_.getExperiment(currKey_).clone();
       expResult_.setTime(timeVal);
       expResult_.setInvestigators(invResult);
       expResult_.setLegacyMaxTime(maxLegVal);
@@ -444,10 +445,10 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     
     final EditableTable useSrcTable;
     if (!forMerge) {
-      estSrcForEdit_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "peaep.perturb", pertSrcList_), parent_);
+      estSrcForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), parent_);
       useSrcTable = estSrcForEdit_;
     } else {
-      estSrcForMerge_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "peaep.perturb", pertSrcList_), parent_);
+      estSrcForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), parent_);
       useSrcTable = estSrcForMerge_;
     }
 
@@ -457,8 +458,8 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
     etp.singleSelectOnly = true;
     etp.buttonsOnSide = true;
-    etp.perColumnEnums = new HashMap();
-    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_));  
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, pertSrcList_, EnumCell.class));  
     JPanel srcTablePan = useSrcTable.buildEditableTable(etp);
     JPanel srcTableWithButton = pmh_.addEditButton(srcTablePan, "peaep.srcEdit", true, new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
@@ -466,17 +467,17 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
           String who = pmh_.getSelectedEnumVal(useSrcTable);
           pet_.jumpToRemoteEdit(PertSrcDefsManagePanel.MANAGER_KEY, PertSrcDefsManagePanel.PERT_DEF_KEY, who);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
        
     final EditableTable useInvTable;
     if (!forMerge) {
-      estInvForEdit_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "peaep.invest", investList_), parent_);
+      estInvForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.invest", investList_), parent_);
       useInvTable = estInvForEdit_;
     } else {
-      estInvForMerge_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "peaep.invest", investList_), parent_);
+      estInvForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.invest", investList_), parent_);
       useInvTable = estInvForMerge_;
     }   
     etp = new EditableTable.TableParams();
@@ -485,8 +486,8 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     etp.cancelEditOnDisable = false;
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
     etp.tableIsUnselectable = false;
-    etp.perColumnEnums = new HashMap();
-    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, investList_));   
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, investList_, EnumCell.class));   
     etp.colWidths = null;
     etp.buttonsOnSide = true;
     JPanel invTablePan = useInvTable.buildEditableTable(etp);
@@ -496,7 +497,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
           String who = pmh_.getSelectedEnumVal(useInvTable);        
           pet_.jumpToRemoteEdit(PertInvestManagePanel.MANAGER_KEY, PertInvestManagePanel.INVEST_KEY, who);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -570,7 +571,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     //
     
     JLabel condLabel = new JLabel(rMan_.getString("peaep.setCondition"));
-    Vector condTypes = pd_.getConditionDictionary().getExprConditionsOptions();
+    Vector<TrueObjChoiceContent> condTypes = pd_.getConditionDictionary().getExprConditionsOptions();
     final JComboBox useCombo;
     if (!forMerge) {
       condsComboForEdit_ = new JComboBox(condTypes);
@@ -588,7 +589,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertExpSetupManagePanel.MANAGER_KEY,
                                 PertExpSetupManagePanel.EXC_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });   
@@ -614,9 +615,9 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     EditableTable useSrcTable = (mode_ == MERGE_MODE) ? estSrcForMerge_ : estSrcForEdit_;   
     EditableTable useInvTable = (mode_ == MERGE_MODE) ? estInvForMerge_ : estInvForEdit_;   
      
-    List srcRows = buildSourceDisplayList();
+    List<EditableTable.OneEnumTableModel.TableRow> srcRows = buildSourceDisplayList();
     useSrcTable.updateTable(true, srcRows);        
-    List invRows = buildInvestDisplayList();
+    List<EditableTable.OneEnumTableModel.TableRow> invRows = buildInvestDisplayList();
     useInvTable.updateTable(true, invRows);
     
     if (currKey_ == null) {  // Gotta be edit mode...
@@ -670,12 +671,12 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  private ArrayList buildPertSourceEnum() {
-    ArrayList retval = new ArrayList();
-    Iterator sdkit = pd_.getSourceDefKeys();
+  private ArrayList<EnumCell> buildPertSourceEnum() {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    Iterator<String> sdkit = pd_.getSourceDefKeys();
     int count = 0;
     while (sdkit.hasNext()) {
-      String key = (String)sdkit.next();
+      String key = sdkit.next();
       PertSource ps = pd_.getSourceDef(key);
       String display = ps.getDisplayValueWithFootnotes(pd_, false);
       retval.add(new EnumCell(display, key, count, count));
@@ -690,12 +691,12 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  private ArrayList buildInvestEnum() {
-    ArrayList retval = new ArrayList();
-    Iterator ikit = pd_.getInvestigatorKeys();
+  private ArrayList<EnumCell> buildInvestEnum() {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    Iterator<String> ikit = pd_.getInvestigatorKeys();
     int count = 0;
     while (ikit.hasNext()) {
-      String key = (String)ikit.next();
+      String key = ikit.next();
       String invest = pd_.getInvestigator(key);
       retval.add(new EnumCell(invest, key, count, count));
       count++;
@@ -708,25 +709,25 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Get the source display list
   */
   
-  private List buildSourceDisplayList() {
+  private List<EditableTable.OneEnumTableModel.TableRow> buildSourceDisplayList() {
     if (currKey_ == null) {
-      return (new ArrayList());
+      return (new ArrayList<EditableTable.OneEnumTableModel.TableRow>());
     }    
     if (allMerge_ == null) {
       Experiment exp = pd_.getExperiment(currKey_);
       PertSources pss = exp.getSources(); 
-      Iterator psit = pss.getSources();
+      Iterator<String> psit = pss.getSources();
       return (buildSourceDisplayListCore(psit, false));
     } else {
-      HashSet merged = new HashSet();
-      Iterator amit = allMerge_.iterator();
+      HashSet<String> merged = new HashSet<String>();
+      Iterator<String> amit = allMerge_.iterator();
       while (amit.hasNext()) {
-        String nextKey = (String)amit.next();
+        String nextKey = amit.next();
         Experiment exp = pd_.getExperiment(nextKey);
         PertSources pss = exp.getSources(); 
-        Iterator psit = pss.getSources();
+        Iterator<String> psit = pss.getSources();
         while (psit.hasNext()) {
-          String psID = (String)psit.next();
+          String psID = psit.next();
           merged.add(psID);
         }
       }
@@ -739,8 +740,8 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Get the source display list
   */
   
-  private List buildSourceDisplayListCore(Iterator psit, boolean forHotUpdate) {
-    ArrayList retval = new ArrayList();
+  private List<EditableTable.OneEnumTableModel.TableRow> buildSourceDisplayListCore(Iterator psit, boolean forHotUpdate) {
+    ArrayList<EditableTable.OneEnumTableModel.TableRow> retval = new ArrayList<EditableTable.OneEnumTableModel.TableRow>();
     EditableTable useTable = (mode_ == MERGE_MODE) ? estSrcForMerge_ : estSrcForEdit_;   
     EditableTable.OneEnumTableModel rpt = (EditableTable.OneEnumTableModel)useTable.getModel();  
     int count = 0;
@@ -769,7 +770,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
           throw new IllegalStateException();
         }
       }
-      tr.enumChoice = new EnumCell((EnumCell)pertSrcList_.get(useIndex));
+      tr.enumChoice = new EnumCell(pertSrcList_.get(useIndex));
       retval.add(tr);
     }
     return (retval);
@@ -780,26 +781,26 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Get the investigator display list
   */
   
-  private List buildInvestDisplayList() {
+  private List<EditableTable.OneEnumTableModel.TableRow> buildInvestDisplayList() {
     if (currKey_ == null) {
-      return (new ArrayList());
+      return (new ArrayList<EditableTable.OneEnumTableModel.TableRow>());
     }    
 
     if (allMerge_ == null) {
       Experiment exp = pd_.getExperiment(currKey_);
-      List invests = exp.getInvestigators();
-      Iterator iit = invests.iterator();
+      List<String> invests = exp.getInvestigators();
+      Iterator<String> iit = invests.iterator();
       return (buildInvestDisplayListCore(iit, false));
     } else {
-      HashSet merged = new HashSet();
-      Iterator amit = allMerge_.iterator();
+      HashSet<String> merged = new HashSet<String>();
+      Iterator<String> amit = allMerge_.iterator();
       while (amit.hasNext()) {
-        String nextKey = (String)amit.next();
+        String nextKey = amit.next();
         Experiment exp = pd_.getExperiment(nextKey);
-        List invests = exp.getInvestigators();
-        Iterator iit = invests.iterator();
+        List<String> invests = exp.getInvestigators();
+        Iterator<String> iit = invests.iterator();
         while (iit.hasNext()) {
-          String invID = (String)iit.next();
+          String invID = iit.next();
           merged.add(invID);
         }
       }
@@ -812,8 +813,8 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Get the investigator display list
   */
   
-  private List buildInvestDisplayListCore(Iterator iit, boolean forHotUpdate) {
-    ArrayList retval = new ArrayList();
+  private List<EditableTable.OneEnumTableModel.TableRow> buildInvestDisplayListCore(Iterator iit, boolean forHotUpdate) {
+    ArrayList<EditableTable.OneEnumTableModel.TableRow> retval = new ArrayList<EditableTable.OneEnumTableModel.TableRow>();
     EditableTable useTable = (mode_ == MERGE_MODE) ? estInvForMerge_ : estInvForEdit_;   
     EditableTable.OneEnumTableModel rpt = (EditableTable.OneEnumTableModel)useTable.getModel(); 
 

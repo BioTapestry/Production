@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,11 +34,8 @@ import java.util.TreeSet;
 
 import org.systemsbiology.biotapestry.analysis.ClusterBuilder;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 
 /****************************************************************************
@@ -48,10 +45,13 @@ import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 
 public class RowBuilder {
 
-  private BTState appState_;
+  /***************************************************************************
+  **
+  ** Null constructor
+  */
+  
    
-  public RowBuilder(BTState appState) {
-    appState_ = appState;
+  public RowBuilder() {
   }
   
     
@@ -152,7 +152,7 @@ public class RowBuilder {
         seenPerDepth.put(depth, new Integer(newPerDepth));
         keyOffset = newPerDepth / maxSize;
       }
-      Integer keyBase = (Integer)baseKeys.get(depth);
+      Integer keyBase = baseKeys.get(depth);
       int keyValue = keyBase.intValue() + keyOffset;
       Integer keyValueObj = new Integer(keyValue);
       List<GeneAndSatelliteCluster> perLev = retval.get(keyValueObj);
@@ -172,16 +172,15 @@ public class RowBuilder {
   ** Assign rows by first expression time
   */
   
-  public SortedMap<Integer, List<GeneAndSatelliteCluster>> assignRowsByTime(List<GeneAndSatelliteCluster> geneClusters, int max, Integer startKey) {  
+  public SortedMap<Integer, List<GeneAndSatelliteCluster>> assignRowsByTime(DataAccessContext dacx, List<GeneAndSatelliteCluster> geneClusters, int max, Integer startKey) {  
   
-    Database db = appState_.getDB();
-    TimeCourseData tcd = db.getTimeCourseData();
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
     TreeMap<Integer, List<GeneAndSatelliteCluster>> tClustRows = new TreeMap<Integer, List<GeneAndSatelliteCluster>>();
     
     int numTClust = geneClusters.size();
     for (int i = 0; i < numTClust; i++) {
       GeneAndSatelliteCluster tc = geneClusters.get(i); 
-      int firstTime = tcd.getFirstExpressionTime(tc.getCoreID());
+      int firstTime = tcd.getFirstExpressionTime(tc.getCoreID(), dacx);
       Integer rowObj = new Integer(firstTime);
       List<GeneAndSatelliteCluster> perTime = tClustRows.get(rowObj);
       if (perTime == null) {
@@ -588,7 +587,7 @@ public class RowBuilder {
     Collections.reverse(revList);
     int numRev = revList.size();
     for (int i = 0; i < numRev; i++) {
-      Integer scObj = (Integer)revList.get(i);
+      Integer scObj = revList.get(i);
       List<ClusterBuilder.IntAnnotatedList> cand = bySize.get(scObj);
       int numCand = cand.size();
       for (int j = 0; j < numCand; j++) {

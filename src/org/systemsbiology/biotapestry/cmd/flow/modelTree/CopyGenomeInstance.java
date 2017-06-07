@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,10 +30,12 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -43,11 +45,10 @@ import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -59,10 +60,11 @@ import org.systemsbiology.biotapestry.nav.XPlatModelNode;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
-import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.DataLocator;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.dialogs.GenomeInstanceCopyDialog;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -72,7 +74,6 @@ import org.systemsbiology.biotapestry.util.UndoSupport;
 
 public class CopyGenomeInstance extends AbstractControlFlow {
 
- 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -84,8 +85,7 @@ public class CopyGenomeInstance extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public CopyGenomeInstance(BTState appState) {
-    super(appState);    
+  public CopyGenomeInstance() {
     name = "treePopup.CopyInstance";
     desc = "treePopup.CopyInstance";     
     mnem = "treePopup.CopyInstanceMnem";
@@ -104,8 +104,8 @@ public class CopyGenomeInstance extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx) {
-    if (!appState_.getIsEditor() || (key == null)) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx, UIComponentSource uics) {
+    if (!uics.getIsEditor() || (key == null)) {
       return (false);
     } else if (key.modType == XPlatModelNode.ModelType.DB_GENOME) {
       return (false);
@@ -120,8 +120,8 @@ public class CopyGenomeInstance extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(dacx);
      return (retval);
    }
  
@@ -139,6 +139,7 @@ public class CopyGenomeInstance extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("copyGenomeInstance")) {
           next = ans.copyGenomeInstance();      
         } else {
@@ -157,39 +158,32 @@ public class CopyGenomeInstance extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.ModelTreeCmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-    private TreeSupport treeSupp_;
-    private Genome popupTarget_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.ModelTreeCmdState {
+        
     private TreeNode popupNode_;
-    private DataAccessContext dacx_;
+    private XPlatModelNode.NodeKey key_;
+    private NavTree.NavNode popupNavNode_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "copyGenomeInstance";
-      treeSupp_ = new TreeSupport(appState_);
-      dacx_ = dacx;
     }
      
     /***************************************************************************
     **
     ** for preload
     */ 
-        
-    public void setPreload(Genome popupTarget, TreeNode popupNode) {
-      popupTarget_ = popupTarget;
+   
+    public void setPreload(Genome popupModel, Genome popupModelAncestor, TreeNode popupNode) {
       popupNode_ = popupNode;
+      NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
+      key_ = nt.treeNodeToXPlatKey((DefaultMutableTreeNode)popupNode_, dacx_);
+      popupNavNode_ = new NavTree.NavNode(nt.getNodeIDObj(popupNode_), key_, nt.getNodeName(popupNode_), nt.getNodeIDObj(popupNode_.getParent()), dacx_);
       return;
     }
  
@@ -200,73 +194,25 @@ public class CopyGenomeInstance extends AbstractControlFlow {
        
     private DialogAndInProcessCmd copyGenomeInstance() { 
    
-      if (!(popupTarget_ instanceof GenomeInstance)) {
+      XPlatModelNode.ModelType modType = key_.getModType();
+      
+      if ((modType == XPlatModelNode.ModelType.SUPER_ROOT) || (modType == XPlatModelNode.ModelType.DB_GENOME)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
+      
       if (dacx_.getInstructSrc().haveBuildInstructions()) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                      dacx_.rMan.getString("instructWarning.message"), 
-                                      dacx_.rMan.getString("instructWarning.title"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
+                                      dacx_.getRMan().getString("instructWarning.message"), 
+                                      dacx_.getRMan().getString("instructWarning.title"),
                                         JOptionPane.WARNING_MESSAGE);
-        }
+      }
  
-        GenomeInstance gi = (GenomeInstance)popupTarget_;
-        String origName = gi.getName();
-        
-        //
-      // See if we are dealing with a dynamic proxy:
-      //
+     
+      NavTree nt = dacx_.getGenomeSource().getModelHierarchy();  
+      String origName = nt.getNodeName(popupNode_);  
+      boolean hasKids = (popupNode_.getChildCount() != 0);
       
-      DynamicInstanceProxy popupDip = null;
-      if (popupTarget_ instanceof DynamicGenomeInstance) {
-        DynamicGenomeInstance dgi = (DynamicGenomeInstance)popupTarget_;
-        popupDip = dacx_.getGenomeSource().getDynamicProxy(dgi.getProxyID());
-        origName = popupDip.getName();
-      }
-      
-      //
-      // See if we have kids:
-      //
-      
-      boolean hasKids = false;
-      if (popupDip == null) {   // static checks        
-        Iterator<GenomeInstance> iit = dacx_.getGenomeSource().getInstanceIterator();
-        while (iit.hasNext()) {
-          GenomeInstance testGi = iit.next();
-          if (gi == testGi) {
-            continue;
-          }
-          if (gi.isAncestor(testGi)) {
-            hasKids = true;
-            break;
-          }
-        }        
-      }
-      
-      if (!hasKids) {  // still looking, go to dynamic checks  
-        Iterator<DynamicInstanceProxy> dit = dacx_.getGenomeSource().getDynamicProxyIterator();
-        while (dit.hasNext()) {
-          DynamicInstanceProxy dip = dit.next();
-          if (popupDip != null) { // copy base is dynamic
-            if (popupDip == dip) {
-              continue;
-            }
-            if (dip.proxyIsAncestor(popupDip.getID())) {
-              hasKids = true;
-              break;
-            }
-          } else {
-            if (dip.instanceIsAncestor(gi)) {
-              hasKids = true;
-              break;
-            }
-          }
-        }
-      }
-           
-      GenomeInstanceCopyDialog gicd = new GenomeInstanceCopyDialog(appState_, origName, hasKids);             
-      
-      
+      GenomeInstanceCopyDialog gicd = new GenomeInstanceCopyDialog(uics_, dacx_, origName, hasKids);   
       gicd.setVisible(true);
       if (!gicd.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
@@ -278,8 +224,10 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, "undo.copyGenomeToSibling");
-      copyGenomeInstanceToNewSibling(newName, doRecursive, popupDip, support);
+      UndoSupport support = uFac_.provideUndoSupport("undo.copyGenomeToSibling", dacx_);
+      copyGenomeInstanceToNewSibling(newName, doRecursive, support);
+      // FIX ME??? Use events instead of direct calls.
+      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
       support.finish();
     
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this)); 
@@ -290,12 +238,9 @@ public class CopyGenomeInstance extends AbstractControlFlow {
     ** Guts of copying genome instance
     */
     
-    private void copyGenomeInstanceToNewSibling(String newName, boolean doRecursive, 
-                                                DynamicInstanceProxy proxyBase, UndoSupport support) {
+    private void copyGenomeInstanceToNewSibling(String newName, boolean doRecursive, UndoSupport support) {
    
-      VirtualModelTree vmTree = appState_.getTree();
-      
-      GenomeInstance vfg = (GenomeInstance)popupTarget_;
+      VirtualModelTree vmTree = uics_.getTree();
       
       //
       // Record the pre-change tree expansion state, and hold onto a copy of the expansion
@@ -304,61 +249,48 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
   
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-      ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
       int sibIndex = nt.getNewSiblingIndex(popupNode_);
           
       //
       // Figure out the set of instances to copy:
       //
-  
-      HashMap<String, List<String>> children = new HashMap<String, List<String>>();
-      children.put(vfg.getID(), new ArrayList<String>());
+      
+      UiUtil.fixMePrintout("Seeing non-recursive copy placing copied vfa BELOW itself.");
+      HashMap<NavTree.NavNode, List<NavTree.NavNode>> children = new HashMap<NavTree.NavNode, List<NavTree.NavNode>>();
+         
+      children.put(popupNavNode_, new ArrayList<NavTree.NavNode>());
       if (doRecursive) {
-        List<String> ordered = nt.getPreorderListing(popupNode_, dacx_);
-        Iterator<String> oit = ordered.iterator();    
+        List<NavTree.NavNode> pnl = nt.getPreorderNodeListing(popupNode_);
+        Iterator<NavTree.NavNode> oit = pnl.iterator();    
         while (oit.hasNext()) {
-          String gkey = oit.next();
-          GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(gkey);
-          if (gi == vfg) {
+          NavTree.NavNode navNode = oit.next();
+          if (navNode.equals(popupNavNode_)) {
             continue;
           }
-          GenomeInstance currParent = gi.getVfgParent();
-          String currParentID = currParent.getID();
-          List<String> kids = children.get(currParentID);
+          NavTree.NodeID ntnid = navNode.getParent();
+          NavTree.NavNode parNode = nt.navNodeForNodeID(ntnid, dacx_);
+          List<NavTree.NavNode> kids = children.get(parNode);
           if (kids == null) {
-            kids = new ArrayList<String>();
-            children.put(currParentID, kids);
+            kids = new ArrayList<NavTree.NavNode>();
+            children.put(parNode, kids);
           }
-          kids.add(gkey);
+          kids.add(navNode);
         }
       }
   
       //
-      // Do the copying.
+      // Do the copying. First set up ID maps.
       //
       
+      NavTree.NavNode parNode = nt.navNodeForNodeID(nt.getNodeIDObj(popupNode_.getParent()), dacx_);      
       ArrayList<NavTreeChange> navTreeChanges = new ArrayList<NavTreeChange>();
-      GenomeInstance parent = vfg.getVfgParent();
-      HashMap<String, String> groupIDMap = new HashMap<String, String>();
-      HashMap<String, String> modelIDMap = new HashMap<String, String>();
-      HashMap<String, String> noteIDMap = new HashMap<String, String>();
-      HashMap<String, String> ovrIDMap = new HashMap<String, String>();
-      HashMap<String, String> modIDMap = new HashMap<String, String>();
-      HashMap<String, String> modLinkIDMap = new HashMap<String, String>();
-    
-      String topCopy = null;
-      if (proxyBase == null) {
-        topCopy = recursiveGenomeInstanceCopy(vfg, parent, newName, children, nt, ec, true, 
-                                              navTreeChanges, groupIDMap, modelIDMap, noteIDMap, 
-                                              ovrIDMap, modIDMap, modLinkIDMap, new Integer(sibIndex), support);
-      } else {
-        recursiveDynamicProxyCopy(proxyBase, parent, newName, children, nt, ec, true, 
-                                  navTreeChanges, groupIDMap, modelIDMap, noteIDMap, 
-                                  ovrIDMap, modIDMap, modLinkIDMap, new Integer(sibIndex), support);
-      }
+      HashMap<String, IDMaps> mapsPerRootInstance = new HashMap<String, IDMaps>();
          
+      recursiveSingleNodeCopy(parNode, popupNavNode_, children, nt, ec, true, navTreeChanges,  mapsPerRootInstance, new Integer(sibIndex), newName, support);
+      
       //
       // Tell the world our node structure has changed, make sure we select the
       // parent of the new submodel and expand the path to it.
@@ -386,113 +318,229 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
   
       NavTreeChange ntc = navTreeChanges.get(navTreeChanges.size() - 1);
-      ec = treeSupp_.buildExpansionChange(false, dacx_);
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
       ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
           
       //
-      // The new models need to have group maps duplicated:
+      // The new models need to have region maps duplicated. Before group nodes appeared, the user
+      // was either duplicating one top level instance, or models below it. With group nodes, we 
+      // now might be duplicating multiple top-level instances.
       //
       
-      TemporalInputRangeData tird = dacx_.getExpDataSrc().getTemporalInputRangeData();
-      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
-      
-      boolean isRoot = vfg.isRootInstance();
-      GenomeInstance rootInstance = (isRoot) ? vfg : vfg.getVfgParentRoot();
-      Iterator<Group> grit = rootInstance.getGroupIterator();
-      while (grit.hasNext()) {
-        Group origGroup = grit.next();
-        String oldID = origGroup.getID();
-        String newID = groupIDMap.get(oldID);
-        if (newID == null) {
-          newID = oldID;
-        }
-        TemporalInputChange tic = tird.copyTemporalRangeGroupMapForDuplicateGroup(oldID, newID, modelIDMap);
-        if (tic != null) {
-          support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));      
-        }
-        TimeCourseChange tcc = tcd.copyTimeCourseGroupMapForDuplicateGroup(oldID, newID, modelIDMap);
-        if (tcc != null) {
-          support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));      
-        }            
+      GenomeSource src = dacx_.getGenomeSource();
+      Iterator<String> riit = mapsPerRootInstance.keySet().iterator();
+      while (riit.hasNext()) {
+        String gid = riit.next();
+        postRootInstanceMapOperations(mapsPerRootInstance.get(gid), (GenomeInstance)src.getGenome(gid), support);
       }
-      
+     
       //
       // Layouts need to have note properties either augmented or replaced to handle new
       // note IDs.  Augmented if we are copying below the root, which doubles the number
       // of notes we need to create.  Need to do the same to overlays
       //
       
-      boolean doAdd = !isRoot;
-      String loTarg = (isRoot) ? topCopy : rootInstance.getID();
-          
-      Iterator<Layout> loit = dacx_.lSrc.getLayoutIterator();
-      while (loit.hasNext()) {
-        Layout lo = loit.next();
-        if (lo.getTarget().equals(loTarg)) {
-          Layout.PropChange[] changes = lo.mapNoteProperties(noteIDMap, doAdd);
-          if (changes.length > 0) {
-            support.addEdit(new PropChangeCmd(appState_, dacx_, changes));
-          }
-          DataAccessContext rcx = new DataAccessContext(appState_, loTarg, lo);
-          changes = lo.mapOverlayProperties(ovrIDMap, modIDMap, modLinkIDMap, doAdd, rcx);
-          if (changes.length > 0) {
-            support.addEdit(new PropChangeCmd(appState_, rcx, changes));
-          }        
-          new DataLocator(appState_, dacx_).setTitleLocation(support, vfg.getID(), newName);        
-        }
-      }    
-     
-      // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
-     
+      riit = mapsPerRootInstance.keySet().iterator();
+      while (riit.hasNext()) {
+        String gid = riit.next();
+        postLayoutOperations(mapsPerRootInstance.get(gid), (GenomeInstance)src.getGenome(gid), newName, support);
+      }
       return;     
     }  
     
     /***************************************************************************
     **
+    ** With possible duplications of multiple root instances now that we have group nodes,
+    ** stuff that was done only once needs to be done for each copied instance.
+    ** 
+    */
+    
+    private void postRootInstanceMapOperations(IDMaps maps, GenomeInstance rootInstance, UndoSupport support) {
+    
+      //
+      // The new models need to have region maps duplicated. Before group nodes appeared, the user
+      // was either duplicating one top level instance, or models below it. With group nodes, we 
+      // now might be duplicating multiple top-level instances.
+      //
+      
+      TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
+      TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, rootInstance.getID());
+      
+      Iterator<Group> grit = rootInstance.getGroupIterator();
+      while (grit.hasNext()) {
+        Group origGroup = grit.next();
+        String oldID = origGroup.getID();
+        String newID = maps.groupIDMap.get(oldID);
+        if (newID == null) {
+          newID = oldID;
+        }
+        TemporalInputChange tic = tird.copyTemporalRangeGroupMapForDuplicateGroup(oldID, newID, maps.modelIDMap);
+        if (tic != null) {
+          support.addEdit(new TemporalInputChangeCmd(rcx, tic));      
+        }
+        TimeCourseChange tcc = tcdm.copyTimeCourseGroupMapForDuplicateGroup(oldID, newID, maps.modelIDMap);
+        if (tcc != null) {
+          support.addEdit(new TimeCourseChangeCmd(rcx, tcc));      
+        }            
+      }
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** With possible duplications of multiple root instances now that we have group nodes,
+    ** stuff that was done only once needs to be done for each copied instance.
+    ** 
+    */
+    
+    private void postLayoutOperations(IDMaps maps, GenomeInstance rootInstance, String newName, UndoSupport support) {
+      //
+      // Layouts need to have note properties either augmented or replaced to handle new
+      // note IDs.  Augmented if we are copying below the root, which doubles the number
+      // of notes we need to create.  Need to do the same to overlays
+      //
+      
+      UiUtil.fixMePrintout("Logic here is screwed up. Notes not copying OK");
+      boolean doAdd = !maps.topModelIsRoot;
+      String loTarg = rootInstance.getID();
+          
+      Iterator<Layout> loit = dacx_.getLayoutSource().getLayoutIterator();
+      while (loit.hasNext()) {
+        Layout lo = loit.next();
+        if (lo.getTarget().equals(loTarg)) {
+          StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, loTarg);
+          Layout.PropChange[] changes = lo.mapNoteProperties(maps.noteIDMap, doAdd);
+          if (changes.length > 0) {
+            support.addEdit(new PropChangeCmd(rcx, changes));
+          }
+
+          changes = lo.mapOverlayProperties(maps.ovrIDMap, maps.modIDMap, maps.modLinkIDMap, doAdd, rcx);
+          if (changes.length > 0) {
+            support.addEdit(new PropChangeCmd(rcx, changes));
+          }        
+          new DataLocator(uics_.getGenomePresentation(), rcx).setTitleLocation(support, loTarg, newName);        
+        }
+      }   
+      return;
+    }
+ 
+    /***************************************************************************
+    **
     ** Support for genome instance copy
     */
     
-    private String recursiveGenomeInstanceCopy(GenomeInstance vfg, GenomeInstance newParent, 
-                                               String newName,
-                                               Map<String, List<String>> children, NavTree nt, ExpansionChange ec, 
-                                               boolean isFirst, List<NavTreeChange> navTreeChanges, Map<String, String> groupIDMap, 
-                                               Map<String, String> modelIDMap, Map<String, String> noteIDMap, 
-                                               Map<String, String> ovrIDMap, Map<String, String> modIDMap, Map<String, String> modLinkIDMap,
-                                               Integer sibIndex, UndoSupport support) {    
-      String currToCopy = vfg.getID();
-      String newParentID = (newParent == null) ? null : newParent.getID();
+    private String recursiveGenomeInstanceCopy(NavTree.NavNode targetParent, NavTree.NavNode nodeToDup,
+                                               Map<NavTree.NavNode, List<NavTree.NavNode>> children, 
+                                               NavTree nt, ExpansionChange ec, 
+                                               boolean isFirst, List<NavTreeChange> navTreeChanges, 
+                                               Map<String, IDMaps> mapsPerRootInstance, 
+                                               Integer sibIndex, String nameReplace, UndoSupport support) { 
+      
+      
+      NavTree.Kids nodeType = nodeToDup.getType();
+      if ((nodeType != NavTree.Kids.ROOT_INSTANCE) && (nodeType != NavTree.Kids.STATIC_CHILD_INSTANCE)) {
+        throw new IllegalArgumentException();
+      }
+      
+      String currToCopy = nodeToDup.getModelID();  
+      GenomeInstance oldGI = (GenomeInstance)dacx_.getGenomeSource().getGenome(currToCopy);
+      String oldParentID = nt.getGenomeModelAncestorID(nt.nodeForNodeIDObj(nodeToDup.getNodeID()).getParent());
+      if (oldParentID == null) {
+        throw new IllegalStateException();
+      }
+      GenomeInstance oldRootGI = oldGI.getVfgParentRoot();
+      oldRootGI = (oldRootGI == null) ? oldGI : oldRootGI;
+     
+      String newParentID = nt.getGenomeModelAncestorID(nt.nodeForNodeIDObj(targetParent.getNodeID()));
+      if (newParentID == null) {
+        throw new IllegalStateException();
+      }
+      Genome newParGen = dacx_.getGenomeSource().getGenome(newParentID);
+      GenomeInstance newParGI = (newParGen instanceof GenomeInstance) ? (GenomeInstance)newParGen : null;
+      
+      IDMaps maps;
+      
+      //
+      // Three possible cases:
+      // 1) Root instance is being copied, and this is the root instance
+      // 2) Root instance is being copied, but this is below the root instance
+      // 3) Root instance is not being copied, and this is below the root instance
+      //
+      int casenum;
+      String oldRootGIID = oldRootGI.getID();
+      if (oldRootGIID.equals(currToCopy)) {
+        casenum = 1;
+      } else {
+        maps = mapsPerRootInstance.get(oldRootGIID);
+        if (maps != null) {
+          if (maps.topModelIsRoot) {
+            casenum = 2;
+          } else {
+            casenum = 3;
+          }
+        } else {
+          casenum = 3;
+        }
+      }
+      
+      switch (casenum) {
+        case 1:
+          if (newParGI != null) {
+            throw new IllegalStateException();
+          }
+          newParentID = null;
+          maps = new IDMaps();
+          maps.topModelIsRoot = true;
+          mapsPerRootInstance.put(currToCopy, maps);
+          break;
+        case 2:
+          maps = mapsPerRootInstance.get(oldRootGIID);
+          if (maps == null) {
+            throw new IllegalStateException();
+          }
+
+          break;  
+        case 3:
+          maps = new IDMaps();
+          maps.topModelIsRoot = false;
+          mapsPerRootInstance.put(oldParentID, maps);      
+          break;
+        default:
+          throw new IllegalStateException();
+      }      
+      
       String nextKey = dacx_.getGenomeSource().getNextKey();
       ArrayList<ImageChange> imageChanges = new ArrayList<ImageChange>();
-      GenomeInstance gi = new GenomeInstance(vfg, newName, newParentID, 
-                                             nextKey, groupIDMap, noteIDMap, 
-                                             ovrIDMap, modIDMap, modLinkIDMap, imageChanges);
-  
-      
-      modelIDMap.put(currToCopy, nextKey);
+      String newName = (nameReplace == null) ? oldGI.getName() : nameReplace;
+      GenomeInstance gi = new GenomeInstance(oldGI, newName, newParentID, 
+                                             nextKey, maps.groupIDMap,  maps.noteIDMap, 
+                                             maps.ovrIDMap,  maps.modIDMap, maps.modLinkIDMap, imageChanges, uics_.getImageMgr());
+        
+      maps.modelIDMap.put(currToCopy, nextKey);
       DatabaseChange dc = dacx_.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
-      support.addEvent(new ModelChangeEvent(gi.getID(), ModelChangeEvent.MODEL_ADDED));       
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.MODEL_ADDED));       
       if (newParentID == null) { // Root instance needs a new layout
         ArrayList<Layout> newLayouts = new ArrayList<Layout>();
-        Iterator<Layout> loit = dacx_.lSrc.getLayoutIterator();
+        Iterator<Layout> loit = dacx_.getLayoutSource().getLayoutIterator();
         while (loit.hasNext()) {
           Layout lo = loit.next();
           if (lo.getTarget().equals(currToCopy)) {
             String nextloKey = dacx_.getGenomeSource().getNextKey();
             // Notes in layout will be fixed by top caller using note ID map!
             // Same with overlays and modules!
-            Layout nlo = new Layout(lo, nextloKey, nextKey, groupIDMap);
+            Layout nlo = new Layout(lo, nextloKey, nextKey, maps.groupIDMap);
             newLayouts.add(nlo);
           }
         }
         int numNew = newLayouts.size();
         for (int i = 0; i < numNew; i++) {
           Layout lo = newLayouts.get(i);
-          dc = dacx_.lSrc.addLayout(lo.getID(), lo);
-          support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));        
+          dc = dacx_.getLayoutSource().addLayout(lo.getID(), lo);
+          support.addEdit(new DatabaseChangeCmd(dacx_, dc));        
         }
       }
       
@@ -503,18 +551,16 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       for (int i = 0; i < numIC; i++) {
         ImageChange ic = imageChanges.get(i);
         if (ic != null) {
-          support.addEdit(new ImageChangeCmd(appState_, dacx_, ic));
+          support.addEdit(new ImageChangeCmd(dacx_, ic));
         }
       }    
       
-      NavTreeChange ntc;
-      if (sibIndex == null) {
-        ntc = nt.addNode(newName, newParentID, nextKey);
-      } else {
-        ntc = nt.addNodeAtIndex(newName, newParentID, nextKey, sibIndex.intValue());
-      }
-      support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
-      navTreeChanges.add(ntc);
+      NavTree.Kids kidType = (newParentID == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
+      
+      TreeNode parNode = nt.nodeForNodeIDObj(targetParent.getNodeID());
+      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, parNode, new NavTree.ModelID(gi.getID()), null, sibIndex, dacx_); 
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
+      navTreeChanges.add(nac.ntc);
       
       //
       // Note that these changes are now being made to the ExpansionChange that has already
@@ -522,63 +568,79 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
       
       if (isFirst) {
-        ec.expanded = nt.mapAllPaths(ec.expanded, ntc, true);
-        ec.selected = nt.mapAPath(ec.selected, ntc, true);
+        ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);
+        ec.selected = nt.mapAPath(ec.selected, nac.ntc, true);
         isFirst = false;
       }
      
-      List<String> kidsToCopy = children.get(currToCopy);
-      if (kidsToCopy != null) {
-        int numKtC = kidsToCopy.size();
-        for (int i = 0; i < numKtC; i++) {
-          String kidID = kidsToCopy.get(i);
-          if (DynamicInstanceProxy.isDynamicInstance(kidID)) {
-            String proxKey = DynamicInstanceProxy.extractProxyID(kidID);
-            DynamicInstanceProxy kidDP = dacx_.getGenomeSource().getDynamicProxy(proxKey);
-            String newKidName = kidDP.getName(); // same as the old name below the top level
-            recursiveDynamicProxyCopy(kidDP, gi, newKidName, children, nt, ec, isFirst, 
-                                      navTreeChanges, groupIDMap, modelIDMap, noteIDMap, 
-                                      ovrIDMap, modIDMap, modLinkIDMap, null, support);
-          } else {
-            GenomeInstance kidGI = (GenomeInstance)dacx_.getGenomeSource().getGenome(kidID);
-            String newKidName = kidGI.getName(); // same as the old name below the top level
-            recursiveGenomeInstanceCopy(kidGI, gi, newKidName, children, nt, ec, isFirst, 
-                                        navTreeChanges, groupIDMap, modelIDMap, noteIDMap, 
-                                        ovrIDMap, modIDMap, modLinkIDMap, null, support);    
-          }
-        }
-      }
+      NavTree.NavNode newTarg = nt.navNodeForNodeID(nt.getNodeIDObj(nac.node), dacx_);
+      recursiveKidsCopy(newTarg, nodeToDup, children, nt, ec, navTreeChanges,  mapsPerRootInstance, support);
+      
       return (nextKey);
     }
-    
     
     /***************************************************************************
     **
     ** Support for dynamic proxy duplication
     */
     
-    private void recursiveDynamicProxyCopy(DynamicInstanceProxy dip, GenomeInstance newParent, 
-                                           String newName,
-                                           Map<String, List<String>> children, NavTree nt, ExpansionChange ec, 
-                                           boolean isFirst, List<NavTreeChange> navTreeChanges, Map<String, String> groupIDMap, 
-                                           Map<String, String> modelIDMap, Map<String, String> noteIDMap, 
-                                           Map<String, String> ovrIDMap, Map<String, 
-                                           String> modIDMap, Map<String, String> modLinkIDMap,
-                                           Integer sibIndex, UndoSupport support) { 
-          
-      String currToCopy = dip.getID();
-      String newVfgParentID = newParent.getID();
+    private void recursiveDynamicProxyCopy(NavTree.NavNode targetParent, NavTree.NavNode nodeToDup,
+                                           Map<NavTree.NavNode, List<NavTree.NavNode>> children, 
+                                           NavTree nt, ExpansionChange ec, 
+                                           boolean isFirst, List<NavTreeChange> navTreeChanges, 
+                                           Map<String, IDMaps> mapsPerRootInstance,
+                                           Integer sibIndex, String nameReplace, UndoSupport support) { 
+      
+      NavTree.Kids nodeType = nodeToDup.getType();
+      if ((nodeType != NavTree.Kids.DYNAMIC_SUM_INSTANCE) && (nodeType != NavTree.Kids.DYNAMIC_SLIDER_INSTANCE)) {
+        throw new IllegalArgumentException();
+      }
+     
+      String currToCopy = nodeToDup.getProxyID();
+      DynamicInstanceProxy dipToCopy = dacx_.getGenomeSource().getDynamicProxy(currToCopy);
+      GenomeInstance oldLowestStatic = dipToCopy.getStaticVfgParent();
+      GenomeInstance oldRootInstance = oldLowestStatic.getVfgParentRoot();
+      oldRootInstance = (oldRootInstance == null) ? oldLowestStatic : oldRootInstance;
+      
+      IDMaps maps = mapsPerRootInstance.get(oldRootInstance.getID());
+      if (maps == null) {
+        maps = new IDMaps();
+        maps.topModelIsRoot = false;
+        mapsPerRootInstance.put(oldRootInstance.getID(), maps);
+      }  
+       
+      String parentModelID;
+      NavTree.Kids targParType = targetParent.getType();     
+      switch (targParType) {
+        case ROOT_INSTANCE: 
+        case STATIC_CHILD_INSTANCE:
+          parentModelID = targetParent.getModelID();
+          break;
+        case DYNAMIC_SUM_INSTANCE:
+          parentModelID = dacx_.getGenomeSource().getDynamicProxy(targetParent.getProxyID()).getAnInstance().getID();
+          break;
+        case GROUP_NODE:
+          parentModelID = nt.getGenomeModelAncestorID(nt.nodeForNodeIDObj(targetParent.getNodeID()));
+          break;
+        case HIDDEN_ROOT:
+        case ROOT_MODEL: 
+        case DYNAMIC_SLIDER_INSTANCE:
+        default:
+          throw new IllegalStateException();
+      }
+      
       String nextKey = dacx_.getGenomeSource().getNextKey();
       ArrayList<ImageChange> imageChanges = new ArrayList<ImageChange>();
       
+      String newName = (nameReplace == null) ? dipToCopy.getName() : nameReplace;
       DynamicInstanceProxy dipCopy = 
-         new DynamicInstanceProxy(dip, newName, newVfgParentID, nextKey, groupIDMap, noteIDMap, 
-                                  ovrIDMap, modIDMap, modLinkIDMap, imageChanges);
+         new DynamicInstanceProxy(dipToCopy, newName, parentModelID, nextKey, maps.groupIDMap, maps.noteIDMap, 
+                                  maps.ovrIDMap, maps.modIDMap, maps.modLinkIDMap, imageChanges, uics_.getImageMgr());
   
   
-      modelIDMap.put(currToCopy, nextKey);
+      maps.modelIDMap.put(currToCopy, nextKey);
       DatabaseChange dc = dacx_.getGenomeSource().addDynamicProxyExistingLabel(nextKey, dipCopy);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc)); 
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc)); 
       // Can't do this here; need to have note locations defined first:
       //new DataLocator(cView_.getSUPanel()).setTitleLocation(support, newVfgParentID, newName);
       
@@ -591,31 +653,24 @@ public class CopyGenomeInstance extends AbstractControlFlow {
         ImageChange ic = imageChanges.get(i);
         if (ic != null) {
           ic.proxyKey = nextKey;
-          support.addEdit(new ImageChangeCmd(appState_, dacx_, ic));
+          support.addEdit(new ImageChangeCmd(dacx_, ic));
         }
       }    
       
-      NavTreeChange ntc;
-      if (dipCopy.isSingle()) {
+      NavTree.NodeAndChanges nac;
+      TreeNode parNode = nt.nodeForNodeIDObj(targetParent.getNodeID());    
+      if (nodeType == NavTree.Kids.DYNAMIC_SUM_INSTANCE) {
         List<String> newNodes = dipCopy.getProxiedKeys();
         if (newNodes.size() != 1) {
           throw new IllegalStateException();
         }
         String key = newNodes.iterator().next();
-        if (sibIndex == null) {
-          ntc = nt.addNode(dipCopy.getProxiedInstanceName(key), newVfgParentID, key);
-        } else {
-          ntc = nt.addNodeAtIndex(dipCopy.getProxiedInstanceName(key), newVfgParentID, key, sibIndex.intValue());
-        }
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipCopy.getProxiedInstanceName(key), parNode,new NavTree.ModelID(key), null, sibIndex, dacx_);
       } else {
-        if (sibIndex == null) {
-          ntc = nt.addProxyNode(dipCopy.getName(), newVfgParentID, dipCopy.getID());    
-        } else {
-          ntc = nt.addProxyNodeAtIndex(dipCopy.getName(), newVfgParentID, dipCopy.getID(), sibIndex.intValue());
-        }
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipCopy.getName(), parNode, null, dipCopy.getID(), sibIndex, dacx_);
       }
-      support.addEdit(new NavTreeChangeCmd(appState_, dacx_, ntc));
-      navTreeChanges.add(ntc);
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
+      navTreeChanges.add(nac.ntc);
          
       //
       // Note that these changes are now being made to the ExpansionChange that has already
@@ -623,26 +678,155 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
       
       if (isFirst) {
-        ec.expanded = nt.mapAllPaths(ec.expanded, ntc, true);
-        ec.selected = nt.mapAPath(ec.selected, ntc, true);
+        ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);
+        ec.selected = nt.mapAPath(ec.selected, nac.ntc, true);
         isFirst = false;
       }
-     
-      List<String> kidsToCopy = children.get(dip.getFirstProxiedKey());
-      if (kidsToCopy != null) {
-        GenomeInstance par = dipCopy.getAnInstance();
-        int numKtC = kidsToCopy.size();
-        for (int i = 0; i < numKtC; i++) {
-          String kidID = kidsToCopy.get(i);
-          String proxKey = DynamicInstanceProxy.extractProxyID(kidID);
-          DynamicInstanceProxy kidDIP = dacx_.getGenomeSource().getDynamicProxy(proxKey);
-          String newKidName = kidDIP.getName(); // same as the old name below the top level
-          recursiveDynamicProxyCopy(kidDIP, par, newKidName, children, nt, ec, isFirst, 
-                                    navTreeChanges, groupIDMap, modelIDMap, noteIDMap, 
-                                    ovrIDMap, modIDMap, modLinkIDMap, null, support);    
-        }
-      }
+   
+      NavTree.NavNode newTarg = nt.navNodeForNodeID(nt.getNodeIDObj(nac.node), dacx_);      
+      recursiveKidsCopy(newTarg, nodeToDup, children, nt, ec, navTreeChanges,  mapsPerRootInstance, support);
       return;
     }      
+
+    /***************************************************************************
+    **
+    ** Support for group node copy
+    */
+    
+    private void recursiveGroupNodeCopy(NavTree.NavNode targetParent, NavTree.NavNode nodeToDup,
+                                        Map<NavTree.NavNode, List<NavTree.NavNode>> children, 
+                                        NavTree nt, ExpansionChange ec, 
+                                        boolean isFirst, List<NavTreeChange> navTreeChanges, 
+                                        Map<String, IDMaps> mapsPerRootInstance, 
+                                        Integer sibIndex, String nameReplace, UndoSupport support) { 
+      
+      
+      NavTree.Kids nodeType = nodeToDup.getType();
+      if (nodeType != NavTree.Kids.GROUP_NODE) {
+        throw new IllegalArgumentException();
+      }
+      TreeNode parNode = nt.nodeForNodeIDObj(targetParent.getNodeID());
+      // Images are not copied here:
+      String newName = (nameReplace == null) ? nodeToDup.getName() : nameReplace;
+      
+      TreeNode groupNodeToCopy = nt.resolveNavNode(nodeToDup);
+      NavTree.NodeAndChanges nac = nt.copyGroupNode(newName, groupNodeToCopy, parNode, sibIndex);
+      support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
+      navTreeChanges.add(nac.ntc);
+      
+      UiUtil.fixMePrintout("Gotta copy map entries for group node: MTGNNNONOtesMoreSubPreDupPoDupOK.btp");
+            
+      int numIC = nac.icsl.size();
+      for (int i = 0; i < numIC; i++) {
+        ImageChange ic = nac.icsl.get(i);
+        if (ic != null) {
+          support.addEdit(new ImageChangeCmd(dacx_, ic));
+        }
+      }    
+     
+      //
+      // Note that these changes are now being made to the ExpansionChange that has already
+      // been entered into the UndoSupport!
+      //
+      
+      if (isFirst) {
+        ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);
+        ec.selected = nt.mapAPath(ec.selected, nac.ntc, true);
+        isFirst = false;
+      }
+    
+      NavTree.NavNode newTarg = nt.navNodeForNodeID(nt.getNodeIDObj(nac.node), dacx_);    
+      recursiveKidsCopy(newTarg, nodeToDup, children, nt, ec, navTreeChanges,  mapsPerRootInstance, support);
+ 
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** Apply correct recursion function to all child nodes:
+    */
+    
+    private void recursiveKidsCopy(NavTree.NavNode targetParent, NavTree.NavNode navNode, Map<NavTree.NavNode, List<NavTree.NavNode>> children, 
+                                   NavTree nt, ExpansionChange ec, 
+                                   List<NavTreeChange> navTreeChanges, 
+                                   Map<String, IDMaps> mapsPerRootInstance,
+                                   UndoSupport support) { 
+
+ 
+      List<NavTree.NavNode> kidsToCopy = children.get(navNode);
+      if (kidsToCopy != null) {
+        int numKtC = kidsToCopy.size();
+        for (int i = 0; i < numKtC; i++) {
+          NavTree.NavNode kidNode = kidsToCopy.get(i);
+          recursiveSingleNodeCopy(targetParent, kidNode, children, nt, ec, false, navTreeChanges, mapsPerRootInstance, null, null, support);
+        }
+      } 
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** Apply correct recursion function to a node:
+    */
+    
+    private void recursiveSingleNodeCopy(NavTree.NavNode targetParent, NavTree.NavNode nodeToDup, 
+                                         Map<NavTree.NavNode, List<NavTree.NavNode>> children, 
+                                         NavTree nt, ExpansionChange ec, 
+                                         boolean isFirst, List<NavTreeChange> navTreeChanges, 
+                                         Map<String, IDMaps> mapsPerRootInstance,
+                                         Integer sibIndex, String nameReplace, UndoSupport support) { 
+
+      switch (nodeToDup.getType()) {
+        case ROOT_INSTANCE:
+        case STATIC_CHILD_INSTANCE:
+          recursiveGenomeInstanceCopy(targetParent, nodeToDup, children, nt, ec, isFirst, 
+                                      navTreeChanges, mapsPerRootInstance, sibIndex, nameReplace, support);   
+          break;
+        case DYNAMIC_SUM_INSTANCE: // Can be under a static model
+        case DYNAMIC_SLIDER_INSTANCE:
+          recursiveDynamicProxyCopy(targetParent, nodeToDup, children, nt, ec, isFirst, 
+                                    navTreeChanges, mapsPerRootInstance, sibIndex, nameReplace, support);
+          
+          break;
+        case GROUP_NODE:
+          recursiveGroupNodeCopy(targetParent, nodeToDup, children, nt, ec, isFirst, 
+                                 navTreeChanges, mapsPerRootInstance, sibIndex, nameReplace, support);  
+          break;
+        case HIDDEN_ROOT:
+        case ROOT_MODEL:  
+        default:
+          throw new IllegalStateException();
+      }
+      return;
+    }
   }
+  
+  /***************************************************************************
+  **
+  ** Bundle up maps for cleaner signatures
+  */
+  
+  
+  private static class IDMaps {
+    
+    boolean topModelIsRoot;
+    HashMap<String, String> groupIDMap;
+    HashMap<String, String> modelIDMap;
+    HashMap<String, String> noteIDMap;
+    HashMap<String, String> ovrIDMap;
+    HashMap<String, String> modIDMap;
+    HashMap<String, String> modLinkIDMap;
+     
+    IDMaps() {
+      topModelIsRoot = false;
+      groupIDMap = new HashMap<String, String>();
+      modelIDMap = new HashMap<String, String>();
+      noteIDMap = new HashMap<String, String>();
+      ovrIDMap = new HashMap<String, String>();
+      modIDMap = new HashMap<String, String>();
+      modLinkIDMap = new HashMap<String, String>();
+    }
+  }
+  
+  
 }

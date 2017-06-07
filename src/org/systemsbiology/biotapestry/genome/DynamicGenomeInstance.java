@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,11 +28,12 @@ import java.util.Iterator;
 import java.io.PrintWriter;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.ImageChange;
+import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseGene;
 import org.systemsbiology.biotapestry.timeCourse.ExpressionEntry;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
@@ -41,6 +42,7 @@ import org.systemsbiology.biotapestry.timeCourse.InputTimeRange;
 import org.systemsbiology.biotapestry.timeCourse.RegionAndRange;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.NameValuePair;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -58,6 +60,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   private boolean initialized_;
   private HashSet<Integer> times_;
   private String proxyID_;
+  private String simKey_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -70,14 +73,15 @@ public class DynamicGenomeInstance extends GenomeInstance {
   ** Constructor
   */
 
-  public DynamicGenomeInstance(BTState appState, String name, String id, 
-                               GenomeInstance vfgParent, String proxyID, String imgKey) {
-    super(appState, name, id, (vfgParent == null) ? null : vfgParent.getID());
+  public DynamicGenomeInstance(DataAccessContext dacx, String name, String id, 
+                               GenomeInstance vfgParent, String proxyID, String imgKey, String simKey) {
+    super(dacx, name, id, (vfgParent == null) ? null : vfgParent.getID());
     initialized_ = false;
     times_ = new HashSet<Integer>();
     longName_ = name_;    
     proxyID_ = proxyID;
     imgKey_ = imgKey;
+    simKey_ = simKey;
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -86,7 +90,17 @@ public class DynamicGenomeInstance extends GenomeInstance {
   //
   ////////////////////////////////////////////////////////////////////////////
   
- /***************************************************************************
+  /***************************************************************************
+  **
+  ** Set a simulation comparison key. Can be null to stop a simulation comparison.
+  */
+  
+  public void setSimKey(String key) {
+    simKey_ = key;
+    return;
+  }
+  
+  /***************************************************************************
   **
   ** Get the ProxyID
   */
@@ -101,9 +115,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
 
   @Override
-  public String getNextNoteKey() {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+  public String getNextNoteKey() {   
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     String next = dip.getNextKey();
     return (next);
   }
@@ -116,8 +129,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   @Override
   protected void noteChangeUndo(GenomeChange undo) {
     super.noteChangeUndo(undo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);    
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);    
     dip.undoNoteChange(undo);
     return;
   }
@@ -130,8 +142,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   @Override
   protected void noteChangeRedo(GenomeChange undo) {
     super.noteChangeRedo(undo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.redoNoteChange(undo);
     return;
   }
@@ -143,9 +154,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   protected void groupChangeUndo(GenomeChange undo) {
-    super.groupChangeUndo(undo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);    
+    super.groupChangeUndo(undo);   
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);    
     dip.undoGroupChange(undo);
     return;
   }
@@ -157,9 +167,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   protected void groupChangeRedo(GenomeChange undo) {
-    super.groupChangeRedo(undo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    super.groupChangeRedo(undo);  
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.redoGroupChange(undo);
     return;
   }  
@@ -194,11 +203,10 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public ImageChange[] setGenomeImage(String imgKey) {
+  public ImageChange[] setGenomeImage(ImageManager mgr, String imgKey) {
     initialize();
-    ImageChange[] retval = super.setGenomeImage(imgKey);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    ImageChange[] retval = super.setGenomeImage(mgr, imgKey);   
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.setGenomeImage(imgKey, getID());
     return (retval);
   }  
@@ -210,11 +218,10 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public ImageChange dropGenomeImage() {
+  public ImageChange dropGenomeImage(ImageManager mgr) {
     initialize();
-    ImageChange retval = super.dropGenomeImage();
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    ImageChange retval = super.dropGenomeImage(mgr);  
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     retval.timeKey = dip.dropGenomeImage(getID());
     return (retval);
   } 
@@ -225,12 +232,11 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public void imageChangeUndo(ImageChange undo) {
+  public void imageChangeUndo(ImageManager mgr, ImageChange undo) {
     initialize();
-    super.imageChangeUndo(undo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
-    dip.imageChangeUndo(undo);
+    super.imageChangeUndo(mgr, undo);  
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
+    dip.imageChangeUndo(mgr, undo);
     return;
   }  
     
@@ -241,12 +247,11 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public void imageChangeRedo(ImageChange redo) {   
+  public void imageChangeRedo(ImageManager mgr, ImageChange redo) {   
     initialize();
-    super.imageChangeRedo(redo);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
-    dip.imageChangeRedo(redo);
+    super.imageChangeRedo(mgr, redo);    
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
+    dip.imageChangeRedo(mgr, redo);
     return;
   }  
   
@@ -509,9 +514,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public GenomeChange addGroup(Group group) {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);    
+  public GenomeChange addGroup(Group group) {    
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);    
     dip.addGroup(group);
     return (super.addGroup(group));
   }
@@ -523,9 +527,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public GenomeChange addGroupWithExistingLabel(Group group) {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);    
+  public GenomeChange addGroupWithExistingLabel(Group group) { 
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);    
     dip.addGroup(group);
     return (super.addGroupWithExistingLabel(group));
   }
@@ -537,9 +540,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public GenomeChange[] removeEmptyGroup(String key) {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+  public GenomeChange[] removeEmptyGroup(String key) {   
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     GenomeChange[] retval = super.removeEmptyGroup(key);
     dip.removeGroup(key);
     return (retval);
@@ -552,9 +554,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public GenomeChange[] removeSubGroup(String key) {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+  public GenomeChange[] removeSubGroup(String key) {   
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     GenomeChange[] retval = super.removeSubGroup(key);
     dip.removeSubGroup(key);
     return (retval);
@@ -567,9 +568,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   */
   
   @Override
-  public GenomeChange[] activateSubGroup(String parentKey, String subKey) {
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+  public GenomeChange[] activateSubGroup(String parentKey, String subKey) { 
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     GenomeChange[] retval = super.activateSubGroup(parentKey, subKey);  // Handles ADDING the group
     // This is EVIL!!!!  FIX ME!!!:
     int parentIndex = (retval[1].grOrig == null) ? 0 : 1;
@@ -646,9 +646,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   @Override
   public GenomeChange addNoteWithExistingLabel(Note note) {
     initialize();    
-    GenomeChange retval = super.addNoteWithExistingLabel(note);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    GenomeChange retval = super.addNoteWithExistingLabel(note);  
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.addNoteWithExistingLabel(note);
     return (retval);
   }
@@ -662,9 +661,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   @Override
   public GenomeChange changeNote(Note note, String newLabel, String newText, boolean isInteractive) {
     initialize();
-    GenomeChange retval = super.changeNote(note, newLabel, newText, isInteractive);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    GenomeChange retval = super.changeNote(note, newLabel, newText, isInteractive);    
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.changeNote(retval.ntOrig, retval.ntNew);
     return (retval);
   }
@@ -678,9 +676,8 @@ public class DynamicGenomeInstance extends GenomeInstance {
   @Override
   public GenomeChange removeNote(String key) {
     initialize();
-    GenomeChange retval = super.removeNote(key);
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    GenomeChange retval = super.removeNote(key);  
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.removeNote(key);
     return (retval);
   }
@@ -761,7 +758,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetworkOverlayOwnerChange addNetworkOverlay(NetworkOverlay nmView) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.addNetworkOverlay(nmView));
   }
 
@@ -773,7 +770,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public void addNetworkOverlayAndKey(NetworkOverlay nmView) throws IOException {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.addNetworkOverlayAndKey(nmView);
     return;
   } 
@@ -786,7 +783,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public void addNetworkModuleAndKey(String overlayKey, NetModule module) throws IOException {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.addNetworkModuleAndKey(overlayKey, module);
     return;
   } 
@@ -799,7 +796,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public void addNetworkModuleLinkageAndKey(String overlayKey, NetModuleLinkage linkage) throws IOException {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.addNetworkModuleLinkageAndKey(overlayKey, linkage);    
     return;
   }    
@@ -812,7 +809,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetworkOverlayOwnerChange removeNetworkOverlay(String key) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.removeNetworkOverlay(key));
   }
   
@@ -824,7 +821,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetworkOverlay getNetworkOverlay(String key) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.getNetworkOverlay(key));
   }
   
@@ -836,7 +833,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public Iterator<NetworkOverlay> getNetworkOverlayIterator() {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.getNetworkOverlayIterator());
   }  
   
@@ -848,7 +845,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
  
   @Override
   public int getNetworkOverlayCount() {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.getNetworkOverlayCount());
   }
   
@@ -860,7 +857,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public int getNetworkModuleCount() {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.getNetworkModuleCount());
   }  
   
@@ -872,7 +869,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetworkOverlayChange addNetworkModule(String overlayKey, NetModule module) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.addNetworkModule(overlayKey, module));
   } 
   
@@ -884,7 +881,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetworkOverlayChange[] removeNetworkModule(String overlayKey, String moduleKey) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.removeNetworkModule(overlayKey, moduleKey));    
   }
     
@@ -896,7 +893,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetModuleChange addMemberToNetworkModule(String overlayKey, NetModule module, String nodeID) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.addMemberToNetworkModule(overlayKey, module, nodeID));
   } 
   
@@ -908,7 +905,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public NetModuleChange deleteMemberFromNetworkModule(String overlayKey, NetModule module, String nodeID) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.deleteMemberFromNetworkModule(overlayKey, module, nodeID));
   } 
 
@@ -920,7 +917,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public Map<String, Set<String>> findMatchingNetworkModules(int searchMode, String key, NameValuePair nvPair) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (dip.findMatchingNetworkModules(searchMode, key, nvPair));
   }
   
@@ -933,7 +930,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public Map<String, Set<String>> findModulesOwnedByGroup(String groupID) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     return (ovrops_.findModulesOwnedByGroupGuts(groupID, dip.getNetworkOverlayMap()));
   }  
  
@@ -955,7 +952,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public void overlayChangeUndo(NetworkOverlayOwnerChange undo) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.overlayChangeUndo(undo);
     return;
   }
@@ -967,7 +964,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
   
   @Override
   public void overlayChangeRedo(NetworkOverlayOwnerChange redo) {
-    DynamicInstanceProxy dip = appState_.getDB().getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     dip.overlayChangeRedo(redo);
     return;  
   }      
@@ -993,8 +990,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
     // Do groups first, so they are available during calls below
     //
 
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     Iterator<Group> grit = dip.getGroupIterator();
     while (grit.hasNext()) {
       Group grp = grit.next();
@@ -1017,20 +1013,23 @@ public class DynamicGenomeInstance extends GenomeInstance {
     // time, and add if it is.  Do the same for each link.
     //
  
-    TimeCourseData tcd = db.getTimeCourseData();
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
     if (tcd == null) {
       return;
     }
     GenomeInstance parent = getVfgParent();
 
     HashSet<String> caught = new HashSet<String>();
-    initCore(tcd, parent, caught);
+    initCore(tcd, parent, caught, simKey_);
 
-    TemporalInputRangeData trd = db.getTemporalInputRangeData();
+    TemporalInputRangeData trd = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     if (trd == null) {
       return;
     }
     lazyLinkInit(parent, trd);
+    if (simKey_ != null) {
+      simLinkInit(parent);
+    }
 
     //
     // FIX ME!  This misses the lack of Lim in v2 endoderm at 30 hours, because
@@ -1079,12 +1078,12 @@ public class DynamicGenomeInstance extends GenomeInstance {
   ** Lazy initialization
   */
 
-  private void initCore(TimeCourseData tcd, GenomeInstance parent, Set<String> caught) {
+  private void initCore(TimeCourseData tcd, GenomeInstance parent, Set<String> caught, String simKey) {
         
-    Database db = appState_.getDB();    
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);
+    TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
-    double weakLevel = appState_.getDisplayOptMgr().getDisplayOptions().getWeakExpressionLevel();
+    double weakLevel = dacx_.getDisplayOptsSource().getDisplayOptions().getWeakExpressionLevel();
     
     Iterator<Node> it = parent.getAllNodeIterator();
     while (it.hasNext()) {
@@ -1115,7 +1114,7 @@ public class DynamicGenomeInstance extends GenomeInstance {
         trueName = group.getInheritedTrueName(this);
       }
       List<GroupUsage> groupKeys = 
-        tcd.getTimeCourseGroupKeysWithDefault(Group.getBaseID(gid), trueName); 
+        tcdm.getTimeCourseGroupKeysWithDefault(Group.getBaseID(gid), trueName); 
       if (groupKeys == null) {
         continue;
       }
@@ -1128,12 +1127,12 @@ public class DynamicGenomeInstance extends GenomeInstance {
           continue;
         }
         String baseID = GenomeItemInstance.getBaseID(node.getID());        
-        List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(baseID);
+        List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseID, dacx_.getGenomeSource());
         // If no data is available, the keys list is null (6/17/04 not anymore!)
         // if (dataKeys == null) continue;
-        Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
+        Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
         while (dkit.hasNext() && keepLooking) {
-          TimeCourseData.TCMapping tcm = dkit.next();
+          TimeCourseDataMaps.TCMapping tcm = dkit.next();
           TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
           if (tcg == null) {
             // FIX ME?? Used to throw illegal state exception: now not valid with default keys
@@ -1141,15 +1140,24 @@ public class DynamicGenomeInstance extends GenomeInstance {
           }
           Iterator<Integer> hit = times_.iterator();
           boolean addIt = false;
+          double simValMaxDiff = 0.0;             
           boolean partialLevel = true;
           double partialMax = 0.0;
           while (hit.hasNext()) {
             int time = hit.next().intValue();
+            Double simVal = null;
+            if (simKey != null) {
+              UiUtil.fixMePrintout("Still knotty issues");
+              int simExp = tcg.getExpressionLevelForSimulation(simKey, groupUse.mappedGroup, time, varLev);
+              simVal = ExpressionEntry.discreteToVar(simExp, (simExp == ExpressionEntry.VARIABLE) ? Double.valueOf(varLev.level) : null, weakLevel);
+            }
             int expression = tcg.getExpressionLevelForSource(groupUse.mappedGroup, time, tcm.channel, varLev);
             if (expression == ExpressionEntry.EXPRESSED) {
               addIt = true;
               partialLevel = false;
-              break;
+              if (simKey == null) {
+                break;
+              }
             } else if (expression == ExpressionEntry.WEAK_EXPRESSION) {
               addIt = true;
               partialMax = Math.max(partialMax, weakLevel);
@@ -1160,9 +1168,20 @@ public class DynamicGenomeInstance extends GenomeInstance {
               addIt = true;
               partialMax = Math.max(partialMax, level);
             }
+            // Sim key comparison
+            if (simKey != null) {
+              Double oVal = ExpressionEntry.discreteToVar(expression, (expression == ExpressionEntry.VARIABLE) ? Double.valueOf(varLev.level) : null, weakLevel);
+              if ((simVal != null) && (oVal != null)) {
+                double diff = Math.abs(simVal.doubleValue() - oVal.doubleValue());
+                if (diff > simValMaxDiff) {
+                  simValMaxDiff = diff;
+                  addIt = true;
+                }
+              }
+            }
           }
           if (addIt) {
-            NodeInstance newNode = node.clone();
+            NodeInstance newNode = node.clone();          
             //
             // Here is where we now make weak nodes show up as partially active:
             //
@@ -1174,6 +1193,12 @@ public class DynamicGenomeInstance extends GenomeInstance {
               } else if (parentActivity == NodeInstance.VARIABLE) {
                 newNode.setActivityLevel(Math.min(partialMax, node.getActivityLevel()));
               }
+              if (simKey != null) {
+                UiUtil.fixMePrintout("Note this reflects true diff not parent-clamped diff! OK?");
+                newNode.setSimulationLevel(simValMaxDiff);
+              }
+            } else if (simKey != null) {
+              newNode.setSimulationLevel(simValMaxDiff);
             }
             if (node.getNodeType() == Node.GENE) {
               this.genes_.put(newNode.getID(), (GeneInstance)newNode);
@@ -1201,22 +1226,19 @@ public class DynamicGenomeInstance extends GenomeInstance {
     // mapping, see if we come up with temporal input data.  If
     // we do, get the mappings for the source, and see if any
     // source shows up.  If yes, take the resulting data and
-    // find out if it is expressed at the time.  If we do not
-    // find a source, we need to start looking at non-cyclic
-    // ancestors through slashes, bubbles, and intercells.
+    // find out if it is expressed at the time.
 
-    Database db = appState_.getDB();
-    DynamicInstanceProxy dip = db.getDynamicProxy(proxyID_);    
+    DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxyID_);    
     Iterator<Linkage> lit = parent.getLinkageIterator();
     while (lit.hasNext()) {
       LinkageInstance link = (LinkageInstance)lit.next();
       String target = link.getTarget();
       String baseID = GenomeItemInstance.getBaseID(target);
-      List<String> rangeKeys = trd.getTemporalInputRangeEntryKeysWithDefault(baseID);
+      List<String> rangeKeys = trd.getTemporalInputRangeEntryKeysWithDefault(baseID, dacx_.getGenomeSource());
       if (rangeKeys == null) continue;
       String source = link.getSource();
       String srcBaseID = GenomeItemInstance.getBaseID(source);
-      List<String> srcKeys = trd.getTemporalInputRangeSourceKeysWithDefault(srcBaseID);
+      List<String> srcKeys = trd.getTemporalInputRangeSourceKeysWithDefault(srcBaseID, dacx_.getGenomeSource());
       if (srcKeys == null) continue;
       // Find out the groups we are in
       // Build this into an acceptable list of target groups
@@ -1359,9 +1381,6 @@ public class DynamicGenomeInstance extends GenomeInstance {
                       newLink.setActivityLevel(Math.min(dynLevel, currActivity));
                     }
                     links_.put(newLink.getID(), newLink);
-                   // if (hopID != null) {
-                   //   installNeededLink(parent, hopID, source);
-                   // }
                     break;
                   }
                 }
@@ -1371,6 +1390,45 @@ public class DynamicGenomeInstance extends GenomeInstance {
           }
         }
       }
+    }  
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Link init for simulation comparison.
+  */
+
+  private void simLinkInit(GenomeInstance parent) {
+    //
+    // When doing simulation comparison, we need to make sure that links with active 
+    // sources get included, regardless of the results of lazyLinkInit and whether
+    // the TemporalInputRangeData has anything to say about the link. So this serves
+    // as a second pass.
+    //
+
+    Iterator<Linkage> lit = parent.getLinkageIterator();
+    while (lit.hasNext()) {
+      LinkageInstance parLink = (LinkageInstance)lit.next();
+      String source = parLink.getSource();
+      // Get MY source node; may not be there...
+      NodeInstance srcNode = (NodeInstance)getNode(source);
+      if (srcNode == null) {
+        continue;
+      }
+      String targ = parLink.getTarget();
+      // Get MY targ node; may not be there...
+      NodeInstance trgNode = (NodeInstance)getNode(targ);
+      if (trgNode == null) {
+        continue;
+      }
+      LinkageInstance myLink = (LinkageInstance)this.getLinkage(parLink.getID());
+      if (myLink == null) {
+        myLink = new LinkageInstance(parLink); 
+        links_.put(myLink.getID(), myLink);
+      }
+      Double simLev = srcNode.getSimulationLevel();
+      myLink.setSimulationLevel(simLev);
     }  
     return;
   }

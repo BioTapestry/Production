@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,10 +24,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -36,6 +38,7 @@ import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 
 /****************************************************************************
 **
@@ -54,7 +57,7 @@ public class EmbeddedViewerInventory {
   private ArrayList<String> orderedModels_;
   private HashMap<String, List<ExternalInventoryNode>> modelNodes_;
   private HashMap<String, List<ExternalInventoryLink>> modelLinks_;
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,42 +70,48 @@ public class EmbeddedViewerInventory {
   ** Constructor 
   */ 
   
-  EmbeddedViewerInventory(BTState appState)  {
+  EmbeddedViewerInventory(DynamicDataAccessContext dacx)  {
    
-    appState_ = appState;
+    ddacx_ = dacx;
     modelNodes_ = new HashMap<String, List<ExternalInventoryNode>>();
     modelLinks_ = new HashMap<String, List<ExternalInventoryLink>>();
     modelInfo_ = new HashMap<String, ExternalModelInfo>();
     orderedModels_ = new ArrayList<String>();
     
-    Database db = appState_.getDB();
-    NavTree navTree = db.getModelHierarchy();
-    TimeCourseData tcd = db.getTimeCourseData();
     
-    List<String> pol = navTree.getFullTreePreorderListing(new DataAccessContext(appState_));
-    Iterator<String> it = pol.iterator();
-    while (it.hasNext()) {
-      String id = it.next();
-      Genome gen = db.getGenome(id);
-      orderedModels_.add(id);
-      List<String> names = gen.getNamesToRoot();
-      boolean canSelect = true;
-      if (gen instanceof DynamicGenomeInstance) {
-        DynamicGenomeInstance dgi = (DynamicGenomeInstance)gen;
-        DynamicInstanceProxy dprox = db.getDynamicProxy(dgi.getProxyID());
-        if (!dprox.isSingle()) {
-          names.set(names.size() - 1, dprox.getName());
+    
+    Map<String, TabPinnedDynamicDataAccessContext> tabCons = ddacx_.getTabContexts();
+    for (String tabKey : tabCons.keySet()) {
+      TabPinnedDynamicDataAccessContext tdacx = tabCons.get(tabKey);
+      GenomeSource gs = tdacx.getGenomeSource();
+      NavTree navTree = gs.getModelHierarchy();
+      TimeCourseData tcd = tdacx.getExpDataSrc().getTimeCourseData();
+      
+      List<String> pol = navTree.getFullTreePreorderListing(new StaticDataAccessContext(tdacx).getContextForRoot());
+      Iterator<String> it = pol.iterator();
+      while (it.hasNext()) {
+        String id = it.next();
+        Genome gen = gs.getGenome(id);
+        orderedModels_.add(id);
+        List<String> names = gen.getNamesToRoot();
+        boolean canSelect = true;
+        if (gen instanceof DynamicGenomeInstance) {
+          DynamicGenomeInstance dgi = (DynamicGenomeInstance)gen;
+          DynamicInstanceProxy dprox = gs.getDynamicProxy(dgi.getProxyID());
+          if (!dprox.isSingle()) {
+            names.set(names.size() - 1, dprox.getName());
+          }
+          canSelect = false;
         }
-        canSelect = false;
-      }
-      String[] modelNameChain = (String[])names.toArray(new String[names.size()]);
-      modelInfo_.put(id, new ExternalModelInfo(id, modelNameChain, canSelect));
-      ArrayList<ExternalInventoryNode> nodes = new ArrayList<ExternalInventoryNode>();
-      ArrayList<ExternalInventoryLink> links = new ArrayList<ExternalInventoryLink>();
-      modelLinks_.put(id, links);
-      modelNodes_.put(id, nodes);
-      if (!(gen instanceof DynamicGenomeInstance)) {
-        inventoryForModel(gen, nodes, links, tcd);
+        String[] modelNameChain = names.toArray(new String[names.size()]);
+        modelInfo_.put(id, new ExternalModelInfo(id, modelNameChain, canSelect));
+        ArrayList<ExternalInventoryNode> nodes = new ArrayList<ExternalInventoryNode>();
+        ArrayList<ExternalInventoryLink> links = new ArrayList<ExternalInventoryLink>();
+        modelLinks_.put(id, links);
+        modelNodes_.put(id, nodes);
+        if (!(gen instanceof DynamicGenomeInstance)) {
+          inventoryForModel(tabKey, gen, nodes, links, tdacx.getDataMapSrc().getTimeCourseDataMaps(), tcd, tdacx);
+        }
       }
     }
   }
@@ -160,10 +169,10 @@ public class EmbeddedViewerInventory {
   ** Build model inventory
   */ 
   
-  private void inventoryForModel(Genome gen, List<ExternalInventoryNode> nodes, List<ExternalInventoryLink> links, TimeCourseData tcd)  {
+  private void inventoryForModel(String tabID, Genome gen, List<ExternalInventoryNode> nodes, List<ExternalInventoryLink> links, 
+                                 TimeCourseDataMaps tcdm, TimeCourseData tcd, TabPinnedDynamicDataAccessContext dacx)  {
     String genomeKey = gen.getID();
     
-
     //
     // All nodes:
     //
@@ -173,9 +182,9 @@ public class EmbeddedViewerInventory {
       Node node = git.next();
       String nodeID = node.getID();
       String baseID = GenomeItemInstance.getBaseID(nodeID);
-      List<TimeCourseData.TCMapping> customs = tcd.getCustomTCMTimeCourseDataKeys(baseID);
-      boolean internalOnly = tcd.isAllInternalForNode(baseID);
-      ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, genomeKey, nodeID, false);
+      List<TimeCourseDataMaps.TCMapping> customs = tcdm.getCustomTCMTimeCourseDataKeys(baseID);
+      boolean internalOnly = tcdm.isAllInternalForNode(tcd, baseID, dacx.getGenomeSource());
+      ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(dacx, tabID, genomeKey, nodeID, false);
       ExternalInventoryItem.ArgsForExternalNode afen = new ExternalInventoryItem.ArgsForExternalNode(ba);
       ExternalInventoryNode ens = new ExternalInventoryNode(ba, afen, customs, internalOnly);
       nodes.add(ens);
@@ -191,7 +200,7 @@ public class EmbeddedViewerInventory {
       String linkID = link.getID();
       int sign = link.getSign();
            
-      ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, genomeKey, linkID, true);
+      ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(dacx, tabID, genomeKey, linkID, true);
       ExternalInventoryItem.ArgsForExternalLink afel = new ExternalInventoryItem.ArgsForExternalLink(ba);
       ExternalInventoryLink els = new ExternalInventoryLink(ba, afel, sign);
       links.add(els);    

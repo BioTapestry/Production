@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,6 +38,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeMap;
 
+import org.systemsbiology.biotapestry.db.ColorGenerator;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalShapeContainer;
@@ -978,7 +979,7 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
         
     double padRadius = (padWidth / 2.0) + 1.0;
@@ -1027,7 +1028,7 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
       throw new IllegalStateException();
     }
     ArrayList<Intersection.PadVal> retval = new ArrayList<Intersection.PadVal>();
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double padRadius = (padWidth / 2.0) + 1.0;
     double prSq = padRadius * padRadius;
@@ -1109,7 +1110,7 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   protected void fillBoundsArrayTextLabel(ArrayList<ModelObjectCache.ModalShape> targetArray, DataAccessContext rcx, float x, float y, 
                                        String text, boolean hideName,
                                        int fontType, FontManager.FontOverride fo, String breakDef, FontManager fmgr) {
-  	MultiLineRenderSupport.fillBoundsArrayTextLabel(targetArray, x, y, text, hideName, fontType, breakDef, rcx.getFrc(), rcx.fmgr);
+  	MultiLineRenderSupport.fillBoundsArrayTextLabel(targetArray, x, y, text, hideName, fontType, breakDef, rcx.getFrc(), rcx.getFontManager());
   }
 
   /***************************************************************************
@@ -1128,7 +1129,7 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   */
   
   protected Rectangle getExtraPadNonExpansionRegion(GenomeItem item, DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double minX = origin.getX();
     double minY = origin.getY();
@@ -1139,12 +1140,12 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
     // Disallow any expansion between occupied launch and landing pads
     //
     
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     String myId = item.getID();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       // This introduces diagonals on recompression following link additions.
-      if (rcx.getLayout().getLinkProperties(link.getID()) == null) {  // can use on incomplete layouts...
+      if (rcx.getCurrentLayout().getLinkProperties(link.getID()) == null) {  // can use on incomplete layouts...
         continue;
       }
       String src = link.getSource();
@@ -1181,17 +1182,26 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   ** Get a variable activity color
   */
   
-  protected Color getVariableActivityColor(GenomeItem item, Color col, boolean forText, DisplayOptions dopt) {
+  protected Color getVariableActivityColor(GenomeItem item, Color col, boolean forText, DisplayOptions dopt, IRenderer.Mode mode) {
     
     if (item instanceof DBNode) {  // Root items don't do variable activity
       return (col);
     }
-   
+    
+    if (mode == IRenderer.Mode.DELTA) {
+      NodeInstance ni = (NodeInstance)item;    
+      Double activity = ni.getSimulationLevel();
+      if ((activity != null) && (activity.doubleValue() > 0.0)) {
+        return (Color.red);
+      }
+      return ((new ColorGenerator()).modulateColor(0.25, col, dopt));
+    }
+    
     NodeInstance ni = (NodeInstance)item;    
     int activity = ni.getActivity();
     switch (activity) {
       case NodeInstance.INACTIVE:
-        return (dopt.getInactiveGray());
+        return ((new ColorGenerator()).inactiveColor(dopt));
       case NodeInstance.ACTIVE:
         return (col);
       case NodeInstance.VARIABLE:
@@ -1201,15 +1211,10 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
         }
         if (!dopt.changeNodeColorForActivity()) {
           return (col);
-        } 
-        float[] colHSB = new float[3];    
-        Color.RGBtoHSB(col.getRed(), col.getGreen(), col.getBlue(), colHSB);
+        }     
         double level = (activity == NodeInstance.VESTIGIAL) ? 0.0 : ni.getActivityLevel();
-        float[] iag = dopt.getInactiveGrayHSV();
-        // Hue stays the same:
-        colHSB[1] = iag[1] + ((float)level * (colHSB[1] - iag[1])); 
-        colHSB[2] = iag[2] + ((float)level * (colHSB[2] - iag[2]));         
-        return (Color.getHSBColor(colHSB[0], colHSB[1], colHSB[2]));        
+        // Hue stays the same:       
+        return ((new ColorGenerator()).modulateColor(level, col, dopt));
       default:
         throw new IllegalStateException();
     }    

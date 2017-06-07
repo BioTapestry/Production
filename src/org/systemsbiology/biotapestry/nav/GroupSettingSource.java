@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,11 @@
 
 package org.systemsbiology.biotapestry.nav;
 
+import java.util.Set;
+
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
 **
@@ -34,6 +38,22 @@ public interface GroupSettingSource {
   */
 
   public GroupSettings.Setting getGroupVisibility(String viewName, String groupName, DataAccessContext dacx);
+  
+  
+  /***************************************************************************
+  ** 
+  ** Set the active toggle state for all groups of a view
+  */
+
+  public void setGroupVisibilities(GenomeInstance gi, GroupSettings.Setting setting);
+  
+  
+  /***************************************************************************
+  ** 
+  ** Drop state for a genome
+  */
+  
+  public GroupSettingChange dropGroupVisibilities(String giName);
   
   /***************************************************************************
   ** 
@@ -50,4 +70,43 @@ public interface GroupSettingSource {
 
   public GroupSettingChange setGroupVisibility(String genomeName, String groupName, GroupSettings.Setting setting);
   
+  
+  /***************************************************************************
+  **
+  ** Undo a change
+  */
+  
+  public void changeUndo(GroupSettingChange undo);
+  
+  /***************************************************************************
+  **
+  ** Redo a change
+  */
+  
+  public void changeRedo(GroupSettingChange undo);
+  
+  
+  /***************************************************************************
+  **
+  ** drop Orphaned Visibilities
+  */
+  
+  public boolean dropOrphanedVisibilities(String genomeID, DataAccessContext dacx, Set<String> liveGroups, UndoSupport support);
+  
+  /***************************************************************************
+  **
+  ** drop Orphaned Visibilities For Proxy
+  */
+  
+  public boolean dropOrphanedVisibilitiesForProxy(String proxyID, DataAccessContext dacx, Set<String> liveGroups, UndoSupport support);
+       
+  /***************************************************************************
+  **
+  ** Drop settings
+  */
+  
+  public void drop();
+  
+
+
 }

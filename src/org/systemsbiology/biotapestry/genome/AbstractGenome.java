@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,8 +31,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.nav.ImageChange;
 import org.systemsbiology.biotapestry.nav.ImageManager;
@@ -43,7 +43,6 @@ import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.TaggedSet;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 
 /****************************************************************************
@@ -59,7 +58,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////  
    
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   protected String description_;
   protected HashMap<String, Gene> genes_;
   protected String id_;
@@ -87,9 +86,9 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   ** Constructor
   */
 
-  public AbstractGenome(BTState appState, String name, String id, int overlayOwnerMode, boolean labelMgr) {
+  public AbstractGenome(DataAccessContext dacx, String name, String id, int overlayOwnerMode, boolean labelMgr) {
     ownerMode_ = overlayOwnerMode;
-    appState_ = appState;
+    dacx_ = dacx;
     name_ = name;
     id_ = id;
     genes_ = new HashMap<String, Gene>();
@@ -99,7 +98,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
     labels_ = new UniqueLabeller();
     imgKey_ = null;
     mySource_ = null;
-    ovrops_ = new OverlayOpsSupport(appState_, overlayOwnerMode, id_);
+    ovrops_ = new OverlayOpsSupport(dacx_, overlayOwnerMode, id_);
     labelManager_ = labelMgr;  // Handles labels for nodes, genes, links, i.e. ROOT GENOME ONLY!!
   }  
 
@@ -109,7 +108,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   */
 
   public AbstractGenome(AbstractGenome other, boolean overAndNotes) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.name_ = other.name_;
     this.id_ = other.id_;
     this.mySource_ = other.mySource_;
@@ -154,7 +153,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
         this.notes_.put(noID, other.notes_.get(noID).clone());
       }            
     } else {
-      this.ovrops_ = new OverlayOpsSupport(appState_, ownerMode_, id_);
+      this.ovrops_ = new OverlayOpsSupport(dacx_, ownerMode_, id_);
       this.notes_ = new HashMap<String, Note>();
     }
   } 
@@ -800,6 +799,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   ** Clone
   */
 
+  @Override
   public AbstractGenome clone() {
     try {
       AbstractGenome retval = (AbstractGenome)super.clone();
@@ -844,12 +844,27 @@ public abstract class AbstractGenome implements Genome, Cloneable {
  
   /***************************************************************************
   **
+  ** Modify the image key for IO Tab Appending
+  **
+  */
+  
+  public void mapImageKeyForAppend(Map<String, String> daMap) {
+    if (imgKey_ != null) {
+      String newKey = daMap.get(imgKey_);
+      if (newKey != null) {
+        imgKey_ = newKey;
+      }
+    }
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Drop the genome image
   **
   */
   
-  public ImageChange dropGenomeImage() {
-    ImageManager mgr = appState_.getImageMgr();
+  public ImageChange dropGenomeImage(ImageManager mgr) {
     if (imgKey_ != null) {
       ImageChange dropChange = mgr.dropImageUsage(imgKey_);
       dropChange.genomeKey = id_;
@@ -881,8 +896,6 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   public String getDescription() {
     return (description_);
   }
-  
-
 
   /***************************************************************************
   **
@@ -1338,8 +1351,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   ** Redo an image change
   */
   
-  public void imageChangeRedo(ImageChange redo) { 
-    ImageManager mgr = appState_.getImageMgr();
+  public void imageChangeRedo(ImageManager mgr, ImageChange redo) { 
     mgr.changeRedo(redo);
     if (redo.countOnlyKey != null) {
       // FIX FOR BT-10-25-07:1 ??
@@ -1361,8 +1373,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   ** Undo an image change
   */
   
-  public void imageChangeUndo(ImageChange undo) {
-    ImageManager mgr = appState_.getImageMgr();
+  public void imageChangeUndo(ImageManager mgr, ImageChange undo) {
     mgr.changeUndo(undo);
     if (undo.countOnlyKey != null) {
       // FIX FOR BT-10-25-07:1 ??
@@ -1435,14 +1446,14 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   */
   
   public void overlayChangeRedo(NetworkOverlayOwnerChange redo) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     if ((redo.nmvOrig != null) && (redo.nmvNew != null)) {
       throw new IllegalArgumentException();
     } else if ((redo.nmvOrig == null) && (redo.nmvNew != null)) {
-      ((DBGenome)gSrc.getGenome()).addKey(redo.nmvNew.getID());
+      ((DBGenome)gSrc.getRootDBGenome()).addKey(redo.nmvNew.getID());
       ovrops_.getNetworkOverlayMap().put(redo.nmvNew.getID(), redo.nmvNew.clone());
     } else if ((redo.nmvOrig != null) && (redo.nmvNew == null)) {
-      ((DBGenome)gSrc.getGenome()).removeKey(redo.nmvOrig.getID());
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(redo.nmvOrig.getID());
       ovrops_.getNetworkOverlayMap().remove(redo.nmvOrig.getID());
     }
     return;
@@ -1455,14 +1466,14 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   */
   
   public void overlayChangeUndo(NetworkOverlayOwnerChange undo) {
-    GenomeSource gSrc = (mySource_ == null) ? appState_.getDB() : mySource_;
+    GenomeSource gSrc = (mySource_ == null) ? dacx_.getGenomeSource() : mySource_;
     if ((undo.nmvOrig != null) && (undo.nmvNew != null)) {
       throw new IllegalArgumentException();
     } else if ((undo.nmvOrig == null) && (undo.nmvNew != null)) {     
-      ((DBGenome)gSrc.getGenome()).removeKey(undo.nmvNew.getID());
+      ((DBGenome)gSrc.getRootDBGenome()).removeKey(undo.nmvNew.getID());
       ovrops_.getNetworkOverlayMap().remove(undo.nmvNew.getID());
     } else if ((undo.nmvOrig != null) && (undo.nmvNew == null)) {
-      ((DBGenome)gSrc.getGenome()).addKey(undo.nmvOrig.getID());
+      ((DBGenome)gSrc.getRootDBGenome()).addKey(undo.nmvOrig.getID());
       ovrops_.getNetworkOverlayMap().put(undo.nmvOrig.getID(), undo.nmvOrig.clone());
     }
     return;
@@ -1588,8 +1599,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   **
   */
   
-  public ImageChange[] setGenomeImage(String imgKey) {   
-    ImageManager mgr = appState_.getImageMgr();
+  public ImageChange[] setGenomeImage(ImageManager mgr, String imgKey) {   
     ArrayList<ImageChange> allChanges = new ArrayList<ImageChange>();
     if (imgKey_ != null) {
       ImageChange dropChange = mgr.dropImageUsage(imgKey_);
@@ -1603,6 +1613,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
       allChanges.add(regChange);
     }
     int changeCount = allChanges.size();
+    // If this is true, we are setting null to null and nothing changes....
     if (changeCount == 0) {
       imgKey_ = imgKey;
       return (null);
@@ -1751,8 +1762,7 @@ public abstract class AbstractGenome implements Genome, Cloneable {
   **
   */
   
-  protected ImageChange dropGenomeImageSupport(String currImgKey) {
-    ImageManager mgr = appState_.getImageMgr();
+  protected ImageChange dropGenomeImageSupport(ImageManager mgr, String currImgKey) {
     if (currImgKey != null) {
       ImageChange dropChange = mgr.dropImageUsage(currImgKey);
       dropChange.genomeKey = id_;

@@ -122,6 +122,8 @@ public class XPlatUIPrimitiveElement implements XPlatUIElement {
 	}
 	  
 	public void setParameter(String key, Object value) {
+		if(this.parameters_ == null) 
+			this.parameters_ = new HashMap<String,Object>();
 		this.parameters_.put(key,value);
 	}	
 	
@@ -130,7 +132,9 @@ public class XPlatUIPrimitiveElement implements XPlatUIElement {
 	}
 
 	public Object getParameter(String key) {
-		return this.parameters_.get(key);
+		if(this.parameters_ != null)
+			return this.parameters_.get(key);
+		return null;
 	}
 	
 	public void setEvent(String eventKey, XPlatUIEvent thisEvent) {

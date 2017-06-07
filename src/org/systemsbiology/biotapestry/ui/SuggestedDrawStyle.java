@@ -22,6 +22,7 @@ package org.systemsbiology.biotapestry.ui;
 import java.io.IOException;
 import java.awt.Color;
 import java.io.PrintWriter;
+import java.util.Map;
 import java.util.Vector;
 import java.text.MessageFormat;
 
@@ -193,6 +194,7 @@ public class SuggestedDrawStyle implements Cloneable {
   ** To string
   */
   
+  @Override
   public String toString() {
     return ("SuggestedDrawStyle: drawStyle = " + style_ + " color = " + color_ 
             + " thick = " + thickness_);
@@ -203,6 +205,7 @@ public class SuggestedDrawStyle implements Cloneable {
   ** Hashcode
   */
   
+  @Override
   public int hashCode() {
     return (((color_ == null) ? 0 : color_.hashCode()) + (style_ * 10) + thickness_);
   }
@@ -214,6 +217,7 @@ public class SuggestedDrawStyle implements Cloneable {
   ** at the moment.  Fix me?
   */
   
+  @Override
   public boolean equals(Object other) {
     if (this == other) {
       return (true);
@@ -239,6 +243,19 @@ public class SuggestedDrawStyle implements Cloneable {
     return (this.color_.equalsIgnoreCase(otherDS.color_));
   }
 
+  /***************************************************************************
+  **
+  ** Remap the color tag
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    String nk = ctm.get(color_);
+    if (nk != null) {
+      color_ = nk;
+    }
+    return;
+  }  
+  
   /***************************************************************************
   **
   ** Fill with defaults

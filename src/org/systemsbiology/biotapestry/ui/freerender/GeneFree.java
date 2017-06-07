@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,12 +23,10 @@ import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.AffineTransform;
 import java.awt.geom.GeneralPath;
-import java.awt.geom.Line2D;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
@@ -53,7 +51,6 @@ import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeInsertionDirective;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.NodeRenderBase;
-import org.systemsbiology.biotapestry.ui.RenderObjectCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.BoundShapeContainer;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.GeneCacheGroup;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalShapeContainer;
@@ -267,7 +264,7 @@ public class GeneFree extends NodeRenderBase {
   
   @Override
   public Rectangle getNonExpansionRegion(GenomeItem item, DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double minX = origin.getX();
     double minY = origin.getY();
@@ -278,12 +275,12 @@ public class GeneFree extends NodeRenderBase {
     // Disallow any expansion between occupied launch and landing pads
     //
     
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     String myId = item.getID();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       // This introduces diagonals on recompression following link additions.
-      if (rcx.getLayout().getLinkProperties(link.getID()) == null) {  // can use on incomplete layouts...
+      if (rcx.getCurrentLayout().getLinkProperties(link.getID()) == null) {  // can use on incomplete layouts...
         continue;
       }
       String src = link.getSource();
@@ -320,10 +317,10 @@ public class GeneFree extends NodeRenderBase {
   ** Render the gene at the designated location
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -333,9 +330,9 @@ public class GeneFree extends NodeRenderBase {
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
-    AnnotatedFont mFontAnn = rcx.fmgr.getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
+    AnnotatedFont mFontAnn = rcx.getFontManager().getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
         
     //
     // Figure out the length of the gene line:
@@ -358,9 +355,9 @@ public class GeneFree extends NodeRenderBase {
       textGhosted = isGhosted && (activityLevel != GeneInstance.VESTIGIAL);
     }
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop, mode);
     Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);    
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop, mode);    
     
     int orient = np.getOrientation();   
     float x = (float)origin.getX();
@@ -381,11 +378,11 @@ public class GeneFree extends NodeRenderBase {
     
     // In the web application, push the same transformation to the selection shape stream,
     // as the selection shapes are rendered separately (in a different call) in the web renderer.
-    if (rcx.forWeb) {
+    if (rcx.isForWeb()) {
         group.addShapeSelected(pushTrans, majorLayer, minorLayer);
     }
     
-    selectionSupport(group, selected, (int)(x - extraLen), (int)y, (int)(GENE_WIDTH_ + extraLen), (int)GENE_HEIGHT_, rcx.forWeb);
+    selectionSupport(group, selected, (int)(x - extraLen), (int)y, (int)(GENE_WIDTH_ + extraLen), (int)GENE_HEIGHT_, rcx.isForWeb());
     
     //
     // Draw the branch
@@ -438,11 +435,11 @@ public class GeneFree extends NodeRenderBase {
  
     // In the web application, push the same pop transformation operation to the selection shape stream,
     // as the selection shapes are rendered separately (in a different call) in the web renderer.
-    if (rcx.forWeb) {
+    if (rcx.isForWeb()) {
         group.addShapeSelected(popTrans, majorLayer, minorLayer);
     }
     
-    if (rcx.showBubbles || rcx.forWeb) {
+    if (rcx.getShowBubbles() || rcx.isForWeb()) {
       renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, rcx);
     }    
          
@@ -458,7 +455,7 @@ public class GeneFree extends NodeRenderBase {
     }
   
     if (glist != null) {
-      Font rFont = rcx.fmgr.getFont(FontManager.MODULE_NAME);
+      Font rFont = rcx.getFontManager().getFont(FontManager.MODULE_NAME);
       // g2.setFont(rFont);
       BasicStroke divStroke = new BasicStroke(LINE_THIN_, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
       // g2.setStroke(divStroke);
@@ -481,8 +478,8 @@ public class GeneFree extends NodeRenderBase {
         float width = (float)bounds.getWidth() / 2.0F;
         
         AnnotatedFont rFontAnn = new AnnotatedFont(rFont, false);
-        ModalShape ts = textFactory.buildTextShape(label, rFontAnn, textCol, xLabel - width, (float)(yLabel + DIV_LINE_LEN_ + bounds.getHeight()), new AffineTransform());
-        
+        ModalShape ts = textFactory.buildTextShape(label, rFontAnn, textCol, xLabel - width, (float)(yLabel + DIV_LINE_LEN_ + bounds.getHeight()), new AffineTransform());       
+
         group.addShape(ts, majorLayer, minorLayer);        
         
         //
@@ -546,9 +543,11 @@ public class GeneFree extends NodeRenderBase {
     //   
     
     String name = item.getName();
-    Point2D nStart = getNameStart(item, name, mFontAnn.getFont(), rcx.getFrc(), orient, (glist != null), origin, np.getHideName(), np.getLineBreakDef(), rcx.fmgr);
+    Point2D nStart = getNameStart(item, name, mFontAnn.getFont(), rcx.getFrc(), orient, (glist != null), 
+                                  origin, np.getHideName(), np.getLineBreakDef(), rcx.getFontManager());
     // Good for debug:g2.draw(new Rectangle2D.Double(nStart.getX() - 5.0, nStart.getY() - 5.0, 10.0, 10.0));
-    renderText(group, (float)nStart.getX(), (float)nStart.getY(), name, textCol, np.getHideName(), mFontAnn, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr, textFactory);
+    renderText(group, (float)nStart.getX(), (float)nStart.getY(), name, textCol, np.getHideName(), 
+               mFontAnn, np.getLineBreakDef(), rcx.getFrc(), rcx.getFontManager(), textFactory);
     
     
     // Good for debug:g2.draw(getTextBounds(frc, (float)nStart.getX(), (float)nStart.getY(), name, np.getHideName(), mFont, np.getLineBreakDef()));
@@ -562,7 +561,7 @@ public class GeneFree extends NodeRenderBase {
     Point2D pieCenter = new Point2D.Double(x + pieOff.getX() + xOff, y + pieOff.getY() + 20.0);
     drawVariableActivityPie(group, item, col, pieCenter, dop);    
     
-    setGroupBounds(group, rcx.getGenome(), item, rcx.getLayout(), rcx.getFrc(), rcx.fmgr);
+    setGroupBounds(group, rcx.getCurrentGenome(), item, rcx.getCurrentLayout(), rcx.getFrc(), rcx.getFontManager());
     
     cache.addGroup(group);
   }
@@ -597,7 +596,7 @@ public class GeneFree extends NodeRenderBase {
         textPad = 0;
       }
     }
-    double yoff = (double)(origin.getY() + GENE_HEIGHT_ + flDim.height + regionExtraHeight + textPad);
+    double yoff = origin.getY() + GENE_HEIGHT_ + flDim.height + regionExtraHeight + textPad;
     return (new Point2D.Double(xoff, yoff));
   }
   
@@ -611,7 +610,7 @@ public class GeneFree extends NodeRenderBase {
                                     DataAccessContext rcx, 
                                     LinkPlacementGrid grid, Map<String, Integer> targetCounts, 
                                     Map<String, Integer> minPads, int strictness) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     int orient = np.getOrientation();
     
     //
@@ -639,7 +638,7 @@ public class GeneFree extends NodeRenderBase {
     
     boolean defaultLength = (padCount == DBGene.DEFAULT_PAD_COUNT);
     int extraPads = (defaultLength) ? 0 : padCount - MAX_PADS_;    
-    float extraLen = (float)extraPads * PAD_WIDTH_;         
+    float extraLen = extraPads * PAD_WIDTH_;         
  
     //
     // Bounds is kinds bogus for width (eg includes long gene names). 
@@ -709,7 +708,7 @@ public class GeneFree extends NodeRenderBase {
       int minPad = Integer.MAX_VALUE;    
       if (!notATarget) {
         String myID = item.getID();
-        Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+        Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
         while (lit.hasNext()) {
           Linkage link = lit.next();
           String targ = link.getTarget();
@@ -780,7 +779,7 @@ public class GeneFree extends NodeRenderBase {
   */
   
   public Intersection intersects(GenomeItem item, Point2D pt, DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double orx = origin.getX();
     double ory = origin.getY();
@@ -805,7 +804,7 @@ public class GeneFree extends NodeRenderBase {
     String name = item.getName();
     String breakDef = np.getLineBreakDef();
     if ((distsq > sqRad) && !isTextCandidate(rcx.getFrc(), FontManager.GENE_NAME, np.getFontOverride(), 
-                                             name, GENE_DIAG_, dx, distsq, breakDef, true, false, rcx.fmgr)) {
+                                             name, GENE_DIAG_, dx, distsq, breakDef, true, false, rcx.getFontManager())) {
       return (null);
     }
     
@@ -816,7 +815,7 @@ public class GeneFree extends NodeRenderBase {
     //
 
     int extraPads = (defaultLength) ? 0 : padCount - DBGene.DEFAULT_PAD_COUNT;     
-    float extraLen = (float)extraPads * PAD_WIDTH_;
+    float extraLen = extraPads * PAD_WIDTH_;
     float lineLen = (defaultLength) ? LINE_LENGTH_ : LINE_LENGTH_ + extraLen; 
     
     //
@@ -860,7 +859,7 @@ public class GeneFree extends NodeRenderBase {
     // No hit on gene glyph.  If we have regions, try to see if we hit those:
     //
        
-    Rectangle2D regBounds = regionBounds(item, origin, orient, rcx.getFrc(), rcx.fmgr);
+    Rectangle2D regBounds = regionBounds(item, origin, orient, rcx.getFrc(), rcx.getFontManager());
     boolean hasARegion = false;
     if (regBounds != null) {
       hasARegion = true;
@@ -873,10 +872,12 @@ public class GeneFree extends NodeRenderBase {
     // Still no hit.  Try to intersect the gene label
     //
     
-    AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
+    AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
    
-    Point2D nStart = getNameStart(item, name, amFont.getFont(), rcx.getFrc(), orient, hasARegion, origin, np.getHideName(), breakDef, rcx.fmgr);
-    Rectangle2D textRect = getTextBounds(rcx.getFrc(), (float)nStart.getX(), (float)nStart.getY(), name, false, amFont, breakDef, rcx.fmgr);
+    Point2D nStart = getNameStart(item, name, amFont.getFont(), rcx.getFrc(), 
+                                  orient, hasARegion, origin, np.getHideName(), breakDef, rcx.getFontManager());
+    Rectangle2D textRect = getTextBounds(rcx.getFrc(), (float)nStart.getX(), (float)nStart.getY(), 
+                                         name, false, amFont, breakDef, rcx.getFontManager());
     minX = (int)textRect.getX();
     minY = (int)textRect.getY();
     maxX = minX + (int)textRect.getWidth();
@@ -939,7 +940,7 @@ public class GeneFree extends NodeRenderBase {
 
   public Intersection intersects(GenomeItem item, Rectangle rect, boolean countPartial, 
                                  DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double minX = origin.getX();
     double minY = origin.getY();
@@ -947,7 +948,7 @@ public class GeneFree extends NodeRenderBase {
     int padCount = ((Gene)item).getPadCount();
     boolean defaultLength = (padCount == DBGene.DEFAULT_PAD_COUNT);
     int extraPads = (defaultLength) ? 0 : padCount - MAX_PADS_;    
-    float extraLen = (float)extraPads * PAD_WIDTH_;    
+    float extraLen = extraPads * PAD_WIDTH_;    
     int orient = np.getOrientation();   
     minX = (orient == NodeProperties.LEFT) ? minX : minX - extraLen;
     float width = GENE_WIDTH_ + extraLen;
@@ -996,7 +997,7 @@ public class GeneFree extends NodeRenderBase {
   */
   
   public Vector2D getLaunchPadOffset(int padNum, GenomeItem item, DataAccessContext icx) {
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     int orient = np.getOrientation();
     return (getLaunchPadOffsetByOrient(orient));
   }
@@ -1023,7 +1024,7 @@ public class GeneFree extends NodeRenderBase {
   
   public Vector2D getLandingPadOffset(int padNum, GenomeItem item, int sign,
                                       DataAccessContext icx) {
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());    
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());    
     int orient = np.getOrientation();
     return (getLandingPadOffsetByOrientAndSign(padNum, orient, sign));
   }
@@ -1043,9 +1044,9 @@ public class GeneFree extends NodeRenderBase {
     float vertical = GENE_HEIGHT_ - (LINE_THICK / 2.0F) - negPosTweak;
     Vector2D retval = null;
     if (orient == NodeProperties.RIGHT) {
-      retval = (new Vector2D((PAD_WIDTH_ * (float)(padNum + 1)), vertical));
+      retval = (new Vector2D((PAD_WIDTH_ * (padNum + 1)), vertical));
     } else {
-      retval = (new Vector2D(GENE_WIDTH_-(PAD_WIDTH_ * (float)(padNum + 1)), vertical));
+      retval = (new Vector2D(GENE_WIDTH_-(PAD_WIDTH_ * (padNum + 1)), vertical));
     }
     return (retval);
   }  
@@ -1092,14 +1093,14 @@ public class GeneFree extends NodeRenderBase {
                                         boolean labelToo, Integer topPadCount) {    
   
      Point2D origin = new Point2D.Double(0.0, 0.0);
-     NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+     NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
      String breakDef = np.getLineBreakDef();
      boolean hideName = np.getHideName();
      Gene theGene = (Gene)item;
      int padCount = (topPadCount == null) ? theGene.getPadCount() : topPadCount.intValue();
-     AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
+     AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
      Rectangle basic = getBoundsGuts(item, rcx.getFrc(), origin, padCount, NodeProperties.RIGHT, 
-                                     breakDef, hideName, amFont, rcx.fmgr);
+                                     breakDef, hideName, amFont, rcx.getFontManager());
      return (basic);
   }
   
@@ -1163,7 +1164,7 @@ public class GeneFree extends NodeRenderBase {
     //
 
     int extraPads = (defaultLength) ? 0 : padCount - DBGene.DEFAULT_PAD_COUNT;
-    float extraLen = (float)extraPads * PAD_WIDTH_;
+    float extraLen = extraPads * PAD_WIDTH_;
     float lineLen = (defaultLength) ? LINE_LENGTH_ : LINE_LENGTH_ + extraLen;
 
     //
@@ -1222,14 +1223,14 @@ public class GeneFree extends NodeRenderBase {
   */
   
   public Rectangle getBounds(GenomeItem item, DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     int padCount = ((Gene)item).getPadCount();
     int orient = np.getOrientation();
     String breakDef = np.getLineBreakDef();
     boolean hideName = np.getHideName();
-    AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
-    return (getBoundsGuts(item, rcx.getFrc(), origin, padCount, orient, breakDef, hideName, amFont, rcx.fmgr));
+    AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.GENE_NAME, np.getFontOverride());
+    return (getBoundsGuts(item, rcx.getFrc(), origin, padCount, orient, breakDef, hideName, amFont, rcx.getFontManager()));
   }
    
   /***************************************************************************
@@ -1250,7 +1251,7 @@ public class GeneFree extends NodeRenderBase {
     
     boolean defaultLength = (padCount == DBGene.DEFAULT_PAD_COUNT);
     int extraPads = (defaultLength) ? 0 : padCount - MAX_PADS_;    
-    float extraLen = (float)extraPads * PAD_WIDTH_;      
+    float extraLen = extraPads * PAD_WIDTH_;      
     minXd = (orient == NodeProperties.LEFT) ? minXd : minXd - extraLen;
     float geneWidth = GENE_WIDTH_ + extraLen;
     int minX = (int)minXd;
@@ -1333,7 +1334,7 @@ public class GeneFree extends NodeRenderBase {
     int padCount = ((Gene)item).getPadCount();
     boolean defaultLength = (padCount == DBGene.DEFAULT_PAD_COUNT);
     int extraPads = (defaultLength) ? 0 : padCount - MAX_PADS_;    
-    float extraLen = (float)extraPads * PAD_WIDTH_;    
+    float extraLen = extraPads * PAD_WIDTH_;    
     float geneWidth = GENE_WIDTH_ + extraLen;
     return (geneWidth);
   }
@@ -1434,7 +1435,7 @@ public class GeneFree extends NodeRenderBase {
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     // g2.setPaint(col); 
     // g2.setStroke(new BasicStroke(1));
@@ -1448,7 +1449,7 @@ public class GeneFree extends NodeRenderBase {
     
     ModelObjectCache.Ellipse circ = new ModelObjectCache.Ellipse(x, y, padRadius, DrawMode.DRAW, col, new BasicStroke(1));
     
-    if (!rcx.forWeb) {
+    if (!rcx.isForWeb()) {
     	group.addShape(circ, majorLayer, minorLayer);
     }
     else {
@@ -1500,7 +1501,7 @@ public class GeneFree extends NodeRenderBase {
       Line line2 = new Line(x + padRadius, y, xt + padRadius, yt, DrawMode.DRAW, col, new BasicStroke(1));
   		
   		
-  		if (!rcx.forWeb) {
+  		if (!rcx.isForWeb()) {
   			group.addShape(arc1, majorLayer, minorLayer);
   			group.addShape(arc2, majorLayer, minorLayer);
   			group.addShape(line1, majorLayer, minorLayer);
@@ -1528,7 +1529,7 @@ public class GeneFree extends NodeRenderBase {
 
     ArrayList<Intersection.PadVal> retval = new ArrayList<Intersection.PadVal>();
  
-    NodeProperties np = irx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = irx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     Vector2D lpo = getLaunchPadOffset(0, item, irx);
     double x = origin.getX() + lpo.getX();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ import java.awt.GridBagLayout;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -66,8 +66,8 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
   
   protected PendingEditTracker pet_;
   protected JFrame parent_;
-  protected BTState appState_;
   protected DataAccessContext dacx_;
+  protected UIComponentSource uics_;
   protected String myKey_;
   protected ResourceManager rMan_;    
   protected GridBagConstraints gbc_;
@@ -93,10 +93,10 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
   ** Constructor 
   */ 
   
-  public AnimatedSplitEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, 
+  public AnimatedSplitEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, 
                                 PendingEditTracker pet, String myKey, int colNum) { 
-    appState_ = appState;
     dacx_ = dacx;
+    uics_ = uics;
     parent_ = parent;
     pet_ = pet;
     myKey_ = myKey;
@@ -104,10 +104,10 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
     editInProgress_ = false;
     mode_ = NO_MODE;
     
-    rMan_ = appState_.getRMan();
+    rMan_ = dacx_.getRMan();
     setLayout(new GridBagLayout());
     gbc_ = new GridBagConstraints();
-    ds_ = new DialogSupport(this, appState_, gbc_);
+    ds_ = new DialogSupport(this, uics_, dacx_, gbc_);
     rowNum_ = 0;
   }
 

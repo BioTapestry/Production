@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -46,10 +46,11 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.export.ExportPublish;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.ImageExporter;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
@@ -183,7 +184,8 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
     private ExportPublish.ExportSettings finishedSettings_;
     private ClientControlFlowHarness cfh_;
     private Preferences prefs_;
-    private BTState appState_;
+    private DataAccessContext dacx_;
+    private UIComponentSource uics_;
     
     private static final long serialVersionUID = 1L;
       
@@ -198,10 +200,11 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopDialog(ServerControlFlowHarness cfh, int baseWidth, int baseHeight) {     
-      super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("exportDialog.title"), true);
-      appState_ = cfh.getBTState();
-      ResourceManager rMan = appState_.getRMan();
+    public DesktopDialog(ServerControlFlowHarness cfh, int baseWidth, int baseHeight) {  
+      super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("exportDialog.title"), true);
+      uics_ = cfh.getUI();
+      dacx_ = cfh.getDataAccessContext();
+      ResourceManager rMan = dacx_.getRMan();
       setSize(400, 350);
       JPanel cp = (JPanel)getContentPane();
       cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -244,7 +247,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
           try {
             reset();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });    
@@ -259,7 +262,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
               DesktopDialog.this.dispose();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });     
@@ -271,7 +274,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
             DesktopDialog.this.setVisible(false);
             DesktopDialog.this.dispose();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -292,6 +295,10 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
       setLocationRelativeTo(((DesktopDialogPlatform)cfh.getDialogPlatform()).getParent());
     }
     
+    public boolean dialogIsModal() {
+      return (true);
+    }
+  
     ////////////////////////////////////////////////////////////////////////////
     //
     // INNER CLASSES
@@ -656,7 +663,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
       JPanel retval = new JPanel();
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();     
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       currentUnits_ = prefs_.getInt("ExportPublishUnits", ImageExporter.INCHES);
       currSettings_.aspectFixed = prefs_.getBoolean("ExportPublishAspect", true);
   
@@ -726,7 +733,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
           try {
             processPublishVal(false, ParamVals.ASPECT_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -736,7 +743,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
           try {
             processPublishVal(false, ParamVals.RES_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -806,7 +813,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
               validate();            
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });         
@@ -822,7 +829,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
               validate();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -848,7 +855,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
     */
     
     private void updateUnits() {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       String currUnits = rMan.getString((currentUnits_ == ImageExporter.INCHES) ? "exportDialog.inches" : "exportDialog.cm");
       pubWidthUnits_.setText(currUnits);
       pubHeightUnits_.setText(currUnits);
@@ -919,7 +926,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
       
       long numPix = pixHeight * pixWidth;
       if (numPix > ExportSettingsDialog.HUGE_PIC) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         String desc = MessageFormat.format(rMan.getString("export.confirmBigExport"), 
                                            new Object[] {new Long(numPix)});
         desc = UiUtil.convertMessageToHtml(desc);                                         
@@ -1013,14 +1020,14 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
         try {
           processPublishVal(true, whichVal_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
       public void caretUpdate(CaretEvent evt) {
         try {
           processPublishVal(false, whichVal_);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
       public void focusGained(FocusEvent evt) {
@@ -1029,7 +1036,7 @@ public class ExportSettingsPublishDialogFactory extends DialogFactory {
         try {
           fixPubVals();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }        
     }

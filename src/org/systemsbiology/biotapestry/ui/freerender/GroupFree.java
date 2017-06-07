@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,6 +33,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorGenerator;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -47,6 +49,7 @@ import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
@@ -68,8 +71,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 /****************************************************************************
 **
 ** This renders a group. 11/20/13: No longer extends ItemRenderBase, since it
-** requires extra render arguments and we no longer support having an internal
-** BTState reference.
+** requires extra render arguments
 */
 
 public class GroupFree {
@@ -120,11 +122,11 @@ public class GroupFree {
   */
   
   public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, 
-                     DataAccessContext rcx, Object miscInfo) {
+                     StaticDataAccessContext rcx, IRenderer.Mode mode, Object miscInfo) {
   	
     String groupRef = item.getID();
     
-    GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     if (gp.doNotRender()) {
       return;
     }
@@ -144,22 +146,22 @@ public class GroupFree {
     
     GroupFreeCacheGroup group = new GroupFreeCacheGroup(item, gp.getOrder(), gp.getLayer(), childId);    
     
-  	if (rcx.forWeb) {
-  			renderGuts(group, item, selected, rcx, miscInfo, false);
-  			renderGuts(group, item, selected, rcx, miscInfo, true);  			
+  	if (rcx.isForWeb()) {
+  			renderGuts(group, item, selected, rcx, miscInfo, mode, false);
+  			renderGuts(group, item, selected, rcx, miscInfo, mode, true);  			
   	}
   	else {
-  			renderGuts(group, item, selected, rcx, miscInfo, false);
+  			renderGuts(group, item, selected, rcx, miscInfo, mode, false);
   	}
   	
     cache.addGroup(group);  	
   }
   
   public void renderGuts(GroupFreeCacheGroup group, GenomeItem item, Intersection selected, 
-                     DataAccessContext rcx, Object miscInfo, Boolean drawLightOverride) {
+                         StaticDataAccessContext rcx, Object miscInfo, IRenderer.Mode mode, Boolean drawLightOverride) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -168,14 +170,14 @@ public class GroupFree {
   	
   	Integer minorLayer = 0;
   	Integer majorLayer = 0;
-    Genome genome = rcx.getGenome();  	
+    Genome genome = rcx.getCurrentGenome();  	
   	
     //
     // Currently, while doing path display, we are not rendering the groups!
     //
     
     String groupRef = item.getID();
-    GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     if (gp.doNotRender()) {
       return;
     }
@@ -198,7 +200,7 @@ public class GroupFree {
     if (setting != null) {
       groupViz = setting;
     } else {      
-      groupViz = rcx.gsm.getGroupVisibility(genome.getID(), groupRef, rcx);
+      groupViz = rcx.getGSM().getGroupVisibility(genome.getID(), groupRef, rcx);
     }
    
     int style = gp.getStyle();
@@ -209,7 +211,7 @@ public class GroupFree {
     int rpad = gp.getPadding(GroupProperties.RIGHT);    
     boolean doBold = (layer == 0);
 
-    Color col = gp.getColor(groupViz == GroupSettings.Setting.ACTIVE, rcx.cRes);
+    Color col = gp.getColor(groupViz == GroupSettings.Setting.ACTIVE, rcx.getColorResolver());
     Color vlg = new Color(240, 240, 240);
     if ((extra != null) && (extra.replacementColor != null)) {
       col = (groupViz != GroupSettings.Setting.ACTIVE) ? extra.replacementColor : vlg;
@@ -217,6 +219,11 @@ public class GroupFree {
 
     boolean isGhosted = rcx.isGhosted();
     Color paintColor = (isGhosted) ? vlg : col;
+    
+    if (mode != IRenderer.Mode.NORMAL) {
+      paintColor = (new ColorGenerator()).modulateColorSaturation(0.25, paintColor);
+    }
+     
     boolean drawLight = ((groupViz != GroupSettings.Setting.ACTIVE) || isGhosted) || drawLightOverride;
     
     // GroupFreeCacheGroup group = new GroupFreeCacheGroup(item, gp.getOrder(), gp.getLayer());    
@@ -225,7 +232,7 @@ public class GroupFree {
     // Figure out what name to use:
     //
 
-    NameAndBoldAndEmpty nab = getName(genome, item, extra, doBold, rcx.rMan);
+    NameAndBoldAndEmpty nab = getName(genome, item, extra, doBold, rcx.getRMan());
     doBold = nab.doBold;
     String name = nab.name;
     
@@ -233,7 +240,7 @@ public class GroupFree {
     // Figure out name text rectangle:
     //
     
-    TextRect textRectInfo = getTextRect(gp, doBold, name, rcx.getFrc(), rcx.fmgr);
+    TextRect textRectInfo = getTextRect(gp, doBold, name, rcx.getFrc(), rcx.getFontManager());
 
     if (style == GroupProperties.AUTOBOUND) {
       //
@@ -314,7 +321,7 @@ public class GroupFree {
       }
     }
     
-    setGroupBounds(group, rcx.getGenome(), item, rcx, miscInfo);
+    setGroupBounds(group, item, rcx, miscInfo);
     
     return;  	
   }
@@ -324,19 +331,19 @@ public class GroupFree {
   ** Get the text rectangle
   */
   
-  public Rectangle getLabelBounds(GenomeItem item, DataAccessContext irx) { 
+  public Rectangle getLabelBounds(GenomeItem item, StaticDataAccessContext irx) { 
     //
     // Figure out what name to use:
     //
     String groupRef = item.getID();
-    GroupProperties gp = irx.getLayout().getGroupProperties(Group.getBaseID(groupRef)); 
+    GroupProperties gp = irx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef)); 
     int layer = gp.getLayer();
     boolean doBold = (layer == 0);
     
-    NameAndBoldAndEmpty nab = getName(irx.getGenome(), item, null, doBold, irx.rMan);
+    NameAndBoldAndEmpty nab = getName(irx.getCurrentGenome(), item, null, doBold, irx.getRMan());
     doBold = nab.doBold;
     
-    TextRect tr = getTextRect(gp, doBold, nab.name, irx.getFrc(), irx.fmgr); 
+    TextRect tr = getTextRect(gp, doBold, nab.name, irx.getFrc(), irx.getFontManager()); 
     return (tr.textRect);
   }
   
@@ -436,9 +443,9 @@ public class GroupFree {
     while (mit.hasNext()) {
       GroupMember member = mit.next();
       String nodeID = member.getID();
-      Node node = rcx.getGenome().getNode(nodeID);
+      Node node = rcx.getCurrentGenome().getNode(nodeID);
       // Useful for partial layouts:
-      NodeProperties np = rcx.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(nodeID);
       if (np == null) {
         continue;
       }
@@ -520,7 +527,7 @@ public class GroupFree {
   
   public void renderToPlacementGrid(GenomeItem item, DataAccessContext rcx, LinkPlacementGrid grid) {                                    
     String groupRef = item.getID();                                      
-    GroupProperties gp = rcx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     if (gp.doNotRender()) {
       return;
     }   
@@ -536,14 +543,14 @@ public class GroupFree {
     // Figure out what name to use:
     //
 
-    NameAndBoldAndEmpty nab = getName(rcx.getGenome(), item, null, doBold, rcx.rMan);
+    NameAndBoldAndEmpty nab = getName(rcx.getCurrentGenome(), item, null, doBold, rcx.getRMan());
     String name = nab.name;
     
     //
     // Figure out name text rectangle:
     //
     
-    TextRect textRectInfo = getTextRect(gp, doBold, name, rcx.getFrc(), rcx.fmgr);
+    TextRect textRectInfo = getTextRect(gp, doBold, name, rcx.getFrc(), rcx.getFontManager());
 
     if (style == GroupProperties.AUTOBOUND) {
       //
@@ -567,14 +574,14 @@ public class GroupFree {
   ** Answer if we intersect the group
   */
   
-  public Intersection intersects(GenomeItem item, Point2D pt, DataAccessContext itx, Object miscInfo) {
+  public Intersection intersects(GenomeItem item, Point2D pt, StaticDataAccessContext itx, Object miscInfo) {
                        
     String groupRef = item.getID();
-    GroupProperties gp = itx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = itx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     int style = gp.getStyle();
     int x = (int)pt.getX();  // FIX ME: Round, not trunc
     int y = (int)pt.getY();
-    Genome genome = itx.getGenome();    
+    Genome genome = itx.getCurrentGenome();    
     
     ExtraInfo exi = (miscInfo != null) ? ((AugmentedExtraInfo)miscInfo).extra : null;
     
@@ -615,10 +622,10 @@ public class GroupFree {
   ** Check for intersection of label:
   */
   
-  private boolean intersectsLabel(GenomeItem item, DataAccessContext itx, Point2D pt, ExtraInfo extra) {
+  private boolean intersectsLabel(GenomeItem item, StaticDataAccessContext itx, Point2D pt, ExtraInfo extra) {
 
     String groupRef = item.getID();
-    GroupProperties gp = itx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = itx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     String name = item.getName();
     boolean hideName = calcHideLabel(extra.genomeIsRoot, gp);
     
@@ -636,7 +643,7 @@ public class GroupFree {
       }
     }
     
-    TextRect textRect = getTextRect(gp, doBold, name, itx.getFrc(), itx.fmgr);    
+    TextRect textRect = getTextRect(gp, doBold, name, itx.getFrc(), itx.getFontManager());    
     Rectangle2D useMe = textRect.rect;
     return (Bounds.intersects(useMe.getMinX(), useMe.getMinY(), 
                               useMe.getMaxX(), useMe.getMaxY(), pt.getX(), pt.getY()));
@@ -658,7 +665,7 @@ public class GroupFree {
   ** Return the Rectangle used by this group
   */
   
-  public Rectangle getBounds(GenomeItem item, DataAccessContext itx, Object miscInfo, boolean skipModules) {
+  public Rectangle getBounds(GenomeItem item, StaticDataAccessContext itx, Object miscInfo, boolean skipModules) {
                                
     HashSet<Rectangle> bounds = boxBounds(item, itx, true, skipModules);
     if (bounds.isEmpty()) {
@@ -673,10 +680,10 @@ public class GroupFree {
   ** Sets the bound shapes for the CacheGroup, to be exported in the
   ** web application.
   */
-  public void setGroupBounds(BoundShapeContainer group, Genome genome, GenomeItem item, DataAccessContext rcx, Object miscInfo) {
+  public void setGroupBounds(BoundShapeContainer group, GenomeItem item, StaticDataAccessContext rcx, Object miscInfo) {
     ArrayList<ModelObjectCache.ModalShape> bounds = new ArrayList<ModelObjectCache.ModalShape>();
 
-    fillBoundsArray(bounds, genome, item, rcx, miscInfo);
+    fillBoundsArray(bounds, item, rcx, miscInfo);
     for (ModelObjectCache.ModalShape ms : bounds) {
       group.addBoundsShape(ms);
     }
@@ -687,10 +694,10 @@ public class GroupFree {
   ** Fills an array with bound shapes that will be exported in the model map
   ** in the web application.
   */
-  void fillBoundsArray(ArrayList<ModelObjectCache.ModalShape> targetArray, Genome genome, GenomeItem item, 
-                       DataAccessContext rcx, Object miscInfo) {
+  void fillBoundsArray(ArrayList<ModelObjectCache.ModalShape> targetArray, GenomeItem item, 
+                       StaticDataAccessContext rcx, Object miscInfo) {
 
-	Rectangle bounds = getBounds(item, rcx, miscInfo, false);
+	  Rectangle bounds = getBounds(item, rcx, miscInfo, false);
     targetArray.add(ModalShapeFactory.buildBoundRectangleForGlyph(bounds));
   }
   
@@ -705,11 +712,11 @@ public class GroupFree {
   ** Figure out bounding rectangles
   */
   
-  private HashSet<Rectangle> boxBounds(GenomeItem item, DataAccessContext itx, boolean onlyOne, boolean skipModules) {
+  private HashSet<Rectangle> boxBounds(GenomeItem item, StaticDataAccessContext itx, boolean onlyOne, boolean skipModules) {
 
     HashSet<Rectangle> retval = new HashSet<Rectangle>();
     String groupRef = item.getID();
-    GroupProperties gp = itx.getLayout().getGroupProperties(Group.getBaseID(groupRef));
+    GroupProperties gp = itx.getCurrentLayout().getGroupProperties(Group.getBaseID(groupRef));
     int style = gp.getStyle();
     int layer = gp.getLayer();
     int tpad = gp.getPadding(GroupProperties.TOP);
@@ -727,11 +734,11 @@ public class GroupFree {
     
     // Gotta have something to click on to delete these guys!
     if ((((Group)item).getMemberCount() == 0) && ((name == null) || (name.trim().equals("")))) {
-      name = itx.rMan.getString("groupName.empty");
+      name = itx.getRMan().getString("groupName.empty");
     }
     
     if ((name != null) && (!name.trim().equals(""))) {
-      tRect = getTextRect(gp, true, name, itx.getFrc(), itx.fmgr);    
+      tRect = getTextRect(gp, true, name, itx.getFrc(), itx.getFontManager());    
     }    
     
     if (style == GroupProperties.AUTOBOUND) {
@@ -747,8 +754,8 @@ public class GroupFree {
       while (mit.hasNext()) {
         GroupMember member = mit.next();
         String nodeID = member.getID();
-        Node node = itx.getGenome().getNode(nodeID);
-        NodeProperties np = itx.getLayout().getNodeProperties(nodeID);
+        Node node = itx.getCurrentGenome().getNode(nodeID);
+        NodeProperties np = itx.getCurrentLayout().getNodeProperties(nodeID);
         if (np == null) { // useful for partial layouts...
           continue;
         }
@@ -811,12 +818,12 @@ public class GroupFree {
     Rectangle extent = null;
     // FIX ME Pretty expensive to do here.  Better once for each paint!
     HashSet<NetModule.FullModuleKey> attached = new HashSet<NetModule.FullModuleKey>();
-    itx.fgho.getModulesAttachedToGroup(((GenomeInstance)itx.getGenome()), item.getID(), attached); 
+    itx.getFGHO().getModulesAttachedToGroup(((GenomeInstance)itx.getCurrentGenome()), item.getID(), attached); 
     
     Iterator<NetModule.FullModuleKey> ait = attached.iterator();
     while (ait.hasNext()) {
       NetModule.FullModuleKey fmk = ait.next();
-      NetOverlayProperties nop = itx.getLayout().getNetOverlayProperties(fmk.ovrKey);
+      NetOverlayProperties nop = itx.getCurrentLayout().getNetOverlayProperties(fmk.ovrKey);
       NetModuleProperties nmp = nop.getNetModuleProperties(fmk.modKey);
       Rectangle sob = nmp.shapeOnlyBounds();
       if (sob == null) {
@@ -841,12 +848,12 @@ public class GroupFree {
     // Make sure we bound the subset labels too!
     //
     Group group = (Group)item;
-    GenomeInstance gi = (GenomeInstance)itx.getGenome();
+    GenomeInstance gi = (GenomeInstance)itx.getCurrentGenome();
     Set<String> subsets = group.getSubsets(gi);
     Iterator<String> sidit = subsets.iterator();
     while (sidit.hasNext()) {
       String subid = sidit.next();
-      GroupProperties gps = itx.getLayout().getGroupProperties(Group.getBaseID(subid));
+      GroupProperties gps = itx.getCurrentLayout().getGroupProperties(Group.getBaseID(subid));
       if (gps == null) {
         //FIX ME!  Why would subLabelBoxBounds be null?
         return;
@@ -855,7 +862,7 @@ public class GroupFree {
       String name = sub.getName();
       boolean hideLabel = (gps.getHideLabelMode() == GroupProperties.HIDE_LABEL_ALL_LEVELS);
       if ((name != null) && !hideLabel) {
-        TextRect tRect = getTextRect(gps, true, name, itx.getFrc(), itx.fmgr);
+        TextRect tRect = getTextRect(gps, true, name, itx.getFrc(), itx.getFontManager());
         Bounds.tweakBounds(currBounds, tRect.textRect);
       }
     }

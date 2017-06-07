@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 
 /****************************************************************************
@@ -60,7 +60,7 @@ class Batch implements Cloneable {
   private String date_;
   private String invest_;
   private String batchKey_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -73,8 +73,8 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(BTState appState) {
-    appState_ = appState;
+  Batch(DataAccessContext dacx) {
+    dacx_ = dacx;
     measurements_ = new ArrayList<Measurement>();
     time_ = NO_TIME;
     date_ = null;
@@ -87,8 +87,8 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(BTState appState, int time, String date, String invest) {
-    appState_ = appState;
+  Batch(DataAccessContext dacx, int time, String date, String invest) {
+    dacx_ = dacx;
     measurements_ = new ArrayList<Measurement>();
     time_ = time;
     date_ = date;
@@ -101,8 +101,8 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(BTState appState, int time, String date, String invest, String batchKey) {
-    appState_ = appState;
+  Batch(DataAccessContext dacx, int time, String date, String invest, String batchKey) {
+    dacx_ = dacx;
     measurements_ = new ArrayList<Measurement>();
     time_ = time;
     date_ = date;
@@ -130,7 +130,8 @@ class Batch implements Cloneable {
   ** Clone
   */
 
-   public Batch clone() {
+  @Override
+  public Batch clone() {
     try {
       Batch newVal = (Batch)super.clone();
       newVal.measurements_ = new ArrayList<Measurement>();
@@ -257,7 +258,7 @@ class Batch implements Cloneable {
     if (time_ == NO_TIME) {
       return (null);
     }
-    return (TimeAxisDefinition.getTimeDisplay(appState_, new Integer(time_), false, false));
+    return (TimeAxisDefinition.getTimeDisplay(dacx_, new Integer(time_), false, false));
   } 
   
   /***************************************************************************
@@ -381,7 +382,8 @@ class Batch implements Cloneable {
   ** 
   */
   
-   public String toString() {
+  @Override
+  public String toString() {
     return ("Batch: measurements = " + measurements_);
   }
 
@@ -401,7 +403,7 @@ class Batch implements Cloneable {
   **
   */
   
-   static Batch buildFromXML(BTState appState, String elemName, 
+   static Batch buildFromXML(DataAccessContext dacx, String elemName, 
                              Attributes attrs) throws IOException {
     if (!elemName.equals("batch") && !elemName.equals("nullBatch")) {
       return (null);
@@ -441,9 +443,9 @@ class Batch implements Cloneable {
     }
     
     if ((timeVal != NO_TIME) || (date != null) || (invest != null) || (batchKey != null)) {
-      return (new Batch(appState, timeVal, date, invest, batchKey));
+      return (new Batch(dacx, timeVal, date, invest, batchKey));
     } else {
-      return (new Batch(appState));
+      return (new Batch(dacx));
     }
   }  
 }

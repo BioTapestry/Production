@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,12 +29,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
@@ -50,6 +50,7 @@ import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.SuperAddTargetDialogFactory;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
@@ -77,8 +78,7 @@ public class SuperAdd extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public SuperAdd(BTState appState) {
-    super(appState);  
+  public SuperAdd() {  
     name = "nodePopup.SuperAdd" ;
     desc = "nodePopup.SuperAdd";
     mnem = "nodePopup.SuperAddMnem";
@@ -97,8 +97,8 @@ public class SuperAdd extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -118,9 +118,7 @@ public class SuperAdd extends AbstractControlFlow {
       } else { 
         ans = (StepState)last.currStateX;
       }
-      if (ans.cfh == null) {
-         ans.cfh = cfh;
-      }
+      ans.stockCfhIfNeeded(cfh);
       if (ans.getNextStep().equals("stepState")) {
         next = ans.stepState();
       } else if (ans.getNextStep().equals("stepDataExtract")) {      
@@ -142,30 +140,31 @@ public class SuperAdd extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState {
     
-    private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-    private ServerControlFlowHarness cfh;
+    private Intersection intersect_; 
     private String nodeID;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToWarn";
-      dacx_ = dacx;
     }
     
+    /***************************************************************************
+    **
+    ** Constructor
+    */
+       
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepToWarn";
+    }
+
     /***************************************************************************
     **
     ** Set params
@@ -183,11 +182,11 @@ public class SuperAdd extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepState() {
       nodeID = intersect_.getObjectID();
-      Node node = dacx_.getGenome().getNode(nodeID);
+      Node node = dacx_.getCurrentGenome().getNode(nodeID);
       if (node != null) {  
         SuperAddTargetDialogFactory.SuperAddBuildArgs ba = 
           new SuperAddTargetDialogFactory.SuperAddBuildArgs(nodeID);
-        SuperAddTargetDialogFactory dgcdf = new SuperAddTargetDialogFactory(cfh);
+        SuperAddTargetDialogFactory dgcdf = new SuperAddTargetDialogFactory(cfh_);
         ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
         nextStep_ = "stepDataExtract";
@@ -208,8 +207,8 @@ public class SuperAdd extends AbstractControlFlow {
          return (retval);
        } 
        List<SuperAddPair> superAddPairs = crq.sapResult;
-       superAddForNode(appState_, dacx_, nodeID, superAddPairs, null);
-       appState_.getSUPanel().drawModel(false);
+       superAddForNode(dacx_, nodeID, superAddPairs, null, uFac_);
+       uics_.getSUPanel().drawModel(false);
        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
        return (retval);
      } 
@@ -221,8 +220,8 @@ public class SuperAdd extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToWarn() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -240,11 +239,11 @@ public class SuperAdd extends AbstractControlFlow {
   ** Super add the given node into the specified target model/group pairs.
   */  
  
-  public static boolean superAddForNode(BTState appState, DataAccessContext dacx, 
+  public static boolean superAddForNode(StaticDataAccessContext dacx, 
                                         String nodeID, List<SuperAddPair> superAddPairs, 
-                                        UndoSupport support) {
+                                        UndoSupport support, UndoFactory uFac) {
 
-    DataAccessContext rcxR = dacx.getContextForRoot(); // root genome
+    StaticDataAccessContext rcxR = dacx.getContextForRoot(); // root genome
 
     String rootNodeID = GenomeItemInstance.getBaseID(nodeID);
 
@@ -296,15 +295,15 @@ public class SuperAdd extends AbstractControlFlow {
     boolean closeSupport = false;
     if (support == null) {
       closeSupport = true;
-      support = new UndoSupport(appState, "undo.superAddNode");
+      support = uFac.provideUndoSupport("undo.superAddNode", rcxR);
     }
      
     int numOM = orderedModelsToHit.size();
     for (int i = 0; i < numOM; i++) {
       String gKey = orderedModelsToHit.get(i);        
-      DataAccessContext rcxT = new DataAccessContext(rcxR, gKey);
+      StaticDataAccessContext rcxT = new StaticDataAccessContext(rcxR, gKey);
       // changing rcxR to rcxT here fixes issue 197:
-      GenomeInstance target = rcxT.getGenomeAsInstance();
+      GenomeInstance target = rcxT.getCurrentGenomeAsInstance();
       boolean needLayout = (target.getVfgParent() == null);
       Set<String> groupSet = groupsPerModel.get(gKey);
       
@@ -317,12 +316,12 @@ public class SuperAdd extends AbstractControlFlow {
         String groupID = gsit.next();
         String newNodeID;
         if (needLayout) {
-          Point2D existCentroid = rcxT.getLayout().getApproxCenterForGroup(target, groupID, false);
-          Point2D existOrigCentroid = rcxR.getLayout().getApproxCenterForGroup(target, groupID, true);
+          Point2D existCentroid = rcxT.getCurrentLayout().getApproxCenterForGroup(target, groupID, false);
+          Point2D existOrigCentroid = rcxR.getCurrentLayout().getApproxCenterForGroup(target, groupID, true);
           if ((existCentroid == null) || (existOrigCentroid == null)) {
-            GroupProperties gp = rcxT.getLayout().getGroupProperties(groupID);
+            GroupProperties gp = rcxT.getCurrentLayout().getGroupProperties(groupID);
             existCentroid = gp.getLabelLocation();      
-            existOrigCentroid = rcxR.getLayout().getApproxCenter(rcxR.getGenome().getAllNodeIterator());
+            existOrigCentroid = rcxR.getCurrentLayout().getApproxCenter(rcxR.getCurrentGenome().getAllNodeIterator());
           }
           Group targGroup = target.getGroup(groupID);
           Vector2D offset;
@@ -331,8 +330,8 @@ public class SuperAdd extends AbstractControlFlow {
           } else {
             offset = new Vector2D(0.0, 0.0);
           }
-          Node node = rcxR.getGenome().getNode(rootNodeID);
-          newNodeID = PropagateSupport.propagateNode(appState, (node.getNodeType() == Node.GENE), rcxT, (DBNode)node, rcxR.getLayout(), offset, targGroup, support);
+          Node node = rcxR.getCurrentGenome().getNode(rootNodeID);
+          newNodeID = PropagateSupport.propagateNode((node.getNodeType() == Node.GENE), rcxT, (DBNode)node, rcxR.getCurrentLayout(), offset, targGroup, support);
          
           //
           // Handle (optional) adding to subgroups. Note this ONLY happens in the root instance models!
@@ -340,7 +339,7 @@ public class SuperAdd extends AbstractControlFlow {
           Set<String> sGrps = subGroupsPerModel.get(gKey);
           if (sGrps != null) {
             for (String subg : sGrps) {
-              AddNodeToSubGroup.addNodeToSubGroup(appState, rcxT, target, subg, newNodeID, support);
+              AddNodeToSubGroup.addNodeToSubGroup(rcxT, target, subg, newNodeID, support, uFac);
             }
           }
  
@@ -350,7 +349,7 @@ public class SuperAdd extends AbstractControlFlow {
           GenomeInstance pgi = target.getVfgParent();
           String instanceKey = GenomeItemInstance.getCombinedID(rootNodeID, Integer.toString(iNum));
           NodeInstance pNode = (NodeInstance)pgi.getNode(instanceKey);
-          PropagateSupport.addNewNodeToSubsetInstance(appState, rcxT, pNode, support);
+          PropagateSupport.addNewNodeToSubsetInstance(rcxT, pNode, support);
           newNodeID = instanceKey;
         }
         
@@ -367,7 +366,7 @@ public class SuperAdd extends AbstractControlFlow {
               NetModule nmod = nol.getModule(modKey);
               NetModuleChange nmc = target.addMemberToNetworkModule(ovrKey, nmod, newNodeID);
               if (nmc != null) {
-                NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcxT, nmc);
+                NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcxT, nmc);
                 support.addEdit(gcc);
               }
             }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,10 +27,14 @@ import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
+import org.systemsbiology.biotapestry.app.RememberSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd.Progress;
 import org.systemsbiology.biotapestry.cmd.flow.view.Zoom;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.DataPopupManager;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.ui.GenomePresentation;
@@ -39,6 +43,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.FileChooserWrapperFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -64,8 +69,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   private GenomePresentation pre_;
   private UserInputs stashedResults_;
   private boolean outOfBandResult_;
-  
-  
+   
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -77,10 +81,12 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   ** Constructor 
   */ 
   
-  public DesktopControlFlowHarness(BTState appState, DesktopDialogPlatform dPlat) {
-    super(appState, dPlat);
+  public DesktopControlFlowHarness(HarnessBuilder hBld, UIComponentSource uics, RememberSource rSrc, 
+                                   UndoFactory uFac, TabSource tSrc, PathAndFileSource pafs, 
+                                   CmdSource cSrc, DesktopDialogPlatform dPlat) {  
+    super(dPlat, hBld, uics, rSrc, uFac, tSrc, pafs, cSrc); 
     currFlow = null;
-    pre_ = appState.getGenomePresentation();
+    pre_ = uics_.getGenomePresentation();
     stashedResults_ = null;   
   }
      
@@ -106,9 +112,9 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   */ 
   
   @Override
-  public void initFlow(ControlFlow theFlow, DataAccessContext dacx) {
+  public void initFlow(ControlFlow theFlow, StaticDataAccessContext dacx) {
     super.initFlow(theFlow, dacx);
-    currOvr_ = dacx.oso.getCurrentOverlay();
+    currOvr_ = dacx.getOSO().getCurrentOverlay();
     return;
   }
   
@@ -206,7 +212,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   */ 
   
   private DialogAndInProcessCmd runFlowGuts()  { 
-    SUPanel sup = appState.getSUPanel();
+    SUPanel sup = uics_.getSUPanel();
     while (currDaipc != null) {
       switch (currDaipc.state) {
       // Mouse mode has been installed; return it.
@@ -235,7 +241,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
           return (currDaipc);
         case HAVE_DIALOG_TO_SHOW:
           if (currDaipc.dialog != null) {
-            if (appState.getIsEditor() && currDaipc.dialog instanceof FileChooserWrapperFactory.DesktopFileChooserWrapper) {
+            if (uics_.getIsEditor() && currDaipc.dialog instanceof FileChooserWrapperFactory.DesktopFileChooserWrapper) {
               ((FileChooserWrapperFactory.DesktopFileChooserWrapper)currDaipc.dialog).launch();
             } else {          
               JDialog uijd = (JDialog)currDaipc.dialog;
@@ -256,7 +262,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
         case HAVE_FRAME_TO_LAUNCH_AND_MOUSE_RESULT:
           if (currDaipc.dialog != null) {
             JFrame uijd = (JFrame)currDaipc.dialog;
-            DataPopupManager dpm = appState.getDataPopupMgr();
+            DataPopupManager dpm = uics_.getDataPopupMgr();
             dpm.manageFrame(uijd);
           }
           if (currDaipc.state == DialogAndInProcessCmd.Progress.HAVE_FRAME_TO_LAUNCH_AND_MOUSE_RESULT) {
@@ -287,10 +293,10 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
           return (null);
         case INSTALL_MOUSE_MODE:
           DialogAndInProcessCmd.ButtonMaskerCmdState bmcs = (DialogAndInProcessCmd.ButtonMaskerCmdState)currDaipc.currStateX;
-          XPlatMaskingStatus ms = appState.getCommonView().calcDisableControls(bmcs.getMask(), bmcs.pushDisplay());
-          boolean inMode = appState.getPanelCmds().setToMode(currDaipc, ms);
+          XPlatMaskingStatus ms = uics_.getCommonView().calcDisableControls(bmcs.getMask(), bmcs.pushDisplay());
+          boolean inMode = cSrc_.getPanelCmds().setToMode(currDaipc, ms);
           if (inMode) {
-            appState.getPanelCmds().setHarness(this);
+            cSrc_.getPanelCmds().setHarness(this);
           }
           return (null);
         case KEEP_PROCESSING: // ONLY AFTER MOUSE CLICK!   
@@ -301,7 +307,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
         case APPLY_PROCESSED: // PROCESSED IN HAVE_DIALOG_TO_SHOW CASE ON DESKTOP
         case APPLY_ON_THREAD: // PROCESSED IN HAVE_DIALOG_TO_SHOW CASE ON DESKTOP
         default:
-          throw new IllegalStateException();
+          throw new IllegalStateException("[ERROR] case "+currDaipc.state+" is not supported here.");
       }      
       stepTheFlow();
     }
@@ -334,7 +340,7 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   */ 
   
   public void showSimpleUserFeedback(SimpleUserFeedback suf) {
-    JFrame topFrame = appState.getTopFrame();
+    JFrame topFrame = uics_.getTopFrame();
     switch (suf.optionPane) {
       case WARNING:
         JOptionPane.showMessageDialog(topFrame, suf.message, suf.title, JOptionPane.WARNING_MESSAGE);
@@ -397,19 +403,19 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
     }
     setViewport(vixR);
     if (vixR.isStale()) {
-      appState.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
     }
     return;
   }
    
   private void installSelections(VisualChangeResult svr) {
-    pre_.selectNodesAndLinks(svr.getSelectedNodes(), dacx, svr.getSelectedLinks(), svr.doClearCurrent(), appState.getUndoManager());
+    pre_.selectNodesAndLinks(uics_, svr.getSelectedNodes(), dacx, svr.getSelectedLinks(), svr.doClearCurrent(), uFac_);
     return;
   }
     
   private void clearSelections(VisualChangeResult svr) {
-    UndoSupport support = new UndoSupport(appState, svr.getUndoString());
-    pre_.clearSelections(dacx, support);
+    UndoSupport support = uFac_.provideUndoSupport(svr.getUndoString(), dacx);
+    pre_.clearSelections(uics_, dacx, support);
     support.finish();
     return;
   }  
@@ -420,17 +426,17 @@ public class DesktopControlFlowHarness extends ServerControlFlowHarness implemen
   }    
     
   private void setOverlays(VisualChangeResult svr) {
-    UndoSupport support = new UndoSupport(appState, svr.getUndoString());
-    NetOverlayController noc = appState.getNetOverlayController();
+    UndoSupport support = uFac_.provideUndoSupport(svr.getUndoString(), dacx);
+    NetOverlayController noc = uics_.getNetOverlayController();
     // Don't change the current revealed settings at all:
-    noc.setFullOverlayState(currOvr_, svr.getModuleMatches(), dacx.oso.getRevealedModules(), support, dacx);
-    Zoom.zoomToCurrentMod(appState, dacx);
+    noc.setFullOverlayState(currOvr_, svr.getModuleMatches(), dacx.getOSO().getRevealedModules(), support, dacx);
+    Zoom.zoomToCurrentMod(uics_, dacx);
     support.finish();
   }
   
   private void setViewport(VisualChangeResult results) {
     if (results.getViewport() == VisualChangeResult.Viewports.SELECTED) {
-      appState.getZoomCommandSupport().zoomToSelected();
+      uics_.getZoomCommandSupport().zoomToSelected();
     } 
     return;
   } 

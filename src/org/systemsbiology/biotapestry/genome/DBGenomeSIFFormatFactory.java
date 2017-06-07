@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,8 @@ import java.awt.geom.Point2D;
 import java.awt.Dimension;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
 import org.systemsbiology.biotapestry.cmd.instruct.GeneralBuildInstruction;
@@ -42,6 +43,7 @@ import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayout;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngineParams;
 import org.systemsbiology.biotapestry.util.AsynchExitRequestException;
 import org.systemsbiology.biotapestry.util.BTProgressMonitor;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -92,7 +94,9 @@ public class DBGenomeSIFFormatFactory {
   ** Get the SIF file
   */
 
-  public AugmentedResult buildFromSIF(BTState appState, DataAccessContext dacx, File infile,                                                                                             
+  public AugmentedResult buildFromSIF(UIComponentSource uics,
+                                      StaticDataAccessContext dacx,
+                                      UndoFactory uFac, File infile,                                                                                             
                                       boolean doReplacement,
                                       SpecialtyLayout specLayout,
                                       SpecialtyLayoutEngineParams params,
@@ -103,8 +107,8 @@ public class DBGenomeSIFFormatFactory {
     // Read in the lines.
     //
     
-    Point2D center = appState.getCanvasCenter();
-    Dimension size = appState.getCanvasSize();
+    Point2D center = dacx.getWorkspaceSource().getWorkspace().getCanvasCenter();
+    Dimension size = dacx.getWorkspaceSource().getWorkspace().getCanvasSize();
     ArrayList<BuildInstruction> commands = new ArrayList<BuildInstruction>();    
     BufferedReader in = new BufferedReader(new FileReader(infile));
     String line = null;
@@ -117,7 +121,7 @@ public class DBGenomeSIFFormatFactory {
         if (tokens[0].trim().equals("")) {
           throw new IOException();
         }
-        commands.add(processRelationToInstruction(appState, dacx, tokens[0].trim(), null, null, Linkage.NONE));
+        commands.add(processRelationToInstruction(dacx, tokens[0].trim(), null, null, Linkage.NONE));
       } else {
         for (int i = 2; i < tokens.length; i++) {
           if (tokens[0].trim().equals("") || tokens[i].trim().equals("")) {
@@ -138,18 +142,18 @@ public class DBGenomeSIFFormatFactory {
               seenSign = true;
             }
           }
-          commands.add(processRelationToInstruction(appState, dacx, tokens[0].trim(), tokens[1], tokens[i].trim(), sign));
+          commands.add(processRelationToInstruction(dacx, tokens[0].trim(), tokens[1], tokens[i].trim(), sign));
         }
       }
     }  
     in.close();
 
-    LayoutOptions options = new LayoutOptions(appState.getLayoutOptMgr().getLayoutOptions());
+    LayoutOptions options = new LayoutOptions(dacx.getLayoutOptMgr().getLayoutOptions());
     options.optimizationPasses = (doOpts) ? 1 : 0;
     options.overlayOption = overlayOption;
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(appState);
-    BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(appState, dacx, commands, center, size, !doReplacement, false,
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, dacx, uFac);
+    BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, dacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);
     bip.installPISIFData(psd);
@@ -162,7 +166,9 @@ public class DBGenomeSIFFormatFactory {
   ** Build for gaggle
   */
 
-  public LinkRouter.RoutingResult buildForGaggle(BTState appState, DataAccessContext dacx,
+  public LinkRouter.RoutingResult buildForGaggle(UIComponentSource uics,
+                                                 DataAccessContext dacx,
+                                                 UndoFactory uFac,
                                                  List<BuildInstruction> commands,
                                                  boolean doReplacement,
                                                  SpecialtyLayout specLayout,
@@ -171,10 +177,10 @@ public class DBGenomeSIFFormatFactory {
                                                  BTProgressMonitor monitor, double startFrac, double endFrac) 
                                                  throws IOException, AsynchExitRequestException {
     
-    LayoutOptions options = appState.getLayoutOptMgr().getLayoutOptions();
+    LayoutOptions options = dacx.getLayoutOptMgr().getLayoutOptions();
     options.optimizationPasses = (doOpts) ? 1 : 0; 
-    Point2D center = appState.getCanvasCenter(); 
-    Dimension size = appState.getCanvasSize();
+    Point2D center = dacx.getWorkspaceSource().getWorkspace().getCanvasCenter(); 
+    Dimension size = dacx.getWorkspaceSource().getWorkspace().getCanvasSize();
           
     //
     // Gaggle instructions have no id yet:
@@ -187,12 +193,13 @@ public class DBGenomeSIFFormatFactory {
       bi.setID(id);
     }
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(appState);
-    BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(appState, dacx, commands, center, size, !doReplacement, false,
+    StaticDataAccessContext sdacx = new StaticDataAccessContext(dacx);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, sdacx, uFac);
+    BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, sdacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);
     bip.installPISIFData(psd);
-    LinkRouter.RoutingResult result = bip.processInstructionsForSIF(dacx);
+    LinkRouter.RoutingResult result = bip.processInstructionsForSIF(sdacx);
     return (result);
   }  
 
@@ -244,7 +251,7 @@ public class DBGenomeSIFFormatFactory {
   ** Process the relation into a Build Instruction
   */
   
-  private BuildInstruction processRelationToInstruction(BTState appState, DataAccessContext dacx, String node1ID, String link, String node2ID, int sign) {
+  private BuildInstruction processRelationToInstruction(DataAccessContext dacx, String node1ID, String link, String node2ID, int sign) {
     String id = dacx.getInstructSrc().getNextInstructionLabel();    
     if ((link != null) && (node2ID != null)) {
       return (new GeneralBuildInstruction(id, Node.GENE, node1ID, 

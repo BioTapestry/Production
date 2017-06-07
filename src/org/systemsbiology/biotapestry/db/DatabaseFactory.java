@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,25 +25,39 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.tabs.TabOps;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionFactory;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSetFactory;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBGenomeFactory;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxyFactory;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.GenomeInstanceFactory;
-import org.systemsbiology.biotapestry.nav.ImageFactory;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.nav.UserTreePathFactory;
 import org.systemsbiology.biotapestry.parser.ParserClient;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
-import org.systemsbiology.biotapestry.qpcr.QpcrLegacyPublicExposed;
+import org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn;
+import org.systemsbiology.biotapestry.plugin.PlugInManager;
+import org.systemsbiology.biotapestry.qpcr.QpcrXmlFormatFactory;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoFormatFactory;
-import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeFormatFactory;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseFormatFactory;
-import org.systemsbiology.biotapestry.ui.GlobalDataFactory;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.LayoutFactory;
+import org.systemsbiology.biotapestry.util.UndoFactory;
+import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
 **
@@ -58,12 +72,39 @@ public class DatabaseFactory implements ParserClient {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private Set bioTapHeaderKeys_; 
-  private HashSet allKeys_; 
+  private UIComponentSource uics_;
+  private TabSource tSrc_;
+  private UndoFactory uFac_;
+  private DynamicDataAccessContext ddacx_;
+
+  private Set<String> dbHeaderKeys_; 
+  private HashSet<String> allKeys_; 
   private ParserClient currClient_;
   private HashMap<String, ParserClient> clients_;
-  private BTState appState_;
+  private DBGenomeFactory dbgf_;
+  private GenomeInstanceFactory gif_;
+  private DynamicInstanceProxyFactory dipf_;
+  private LayoutFactory lof_;
+  private boolean isForAppend_;
+  private FactoryWhiteboard sharedBoard_;
+  private boolean isFirstElem_;
+  private UndoSupport supportForAppend_;
+  private BuildInstructionFactory bif_;
+  private TemporalInputRangeData.TemporalInputRangeWorker tirw_;
+  private FontManager.FontManagerWorker fmw_;
+  private UserTreePathFactory utpf_;
+  private InstanceInstructionSetFactory iisf_;
+  private ImageManager.ImageManagerWorker imw_;
+  private ModelDataFactory mdf_;  
+  private TimeAxisFactory taf_;   
+  private DisplayOptions.DisplayOptionsWorker dow_;   
+  private QpcrXmlFormatFactory qxff_;
+  private TimeCourseFormatFactory tcff_;
+  private CopiesPerEmbryoFormatFactory ceff_;
+  private ColorGenerator.ColorGeneratorWorker cge_;
+  private PerturbationData.PertDataWorker pdw_;
   
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -75,32 +116,66 @@ public class DatabaseFactory implements ParserClient {
   ** Constructor
   */
 
-  public DatabaseFactory(BTState appState, boolean isViewer) {
-      
-    // the only tag we advertise about is the biotapestry tag:
-    appState_ = appState;
-    bioTapHeaderKeys_ = Database.keywordsOfInterest();  
-    allKeys_ = new HashSet();
-    allKeys_.addAll(bioTapHeaderKeys_);
-    DataAccessContext dacx = new DataAccessContext(appState_);
+  public DatabaseFactory(boolean isViewer, 
+                         boolean isForAppend, UndoSupport forAppend, 
+                         DynamicDataAccessContext ddacx, UIComponentSource uics, 
+                         TabSource tSrc, UndoFactory uFac) {
     
+    uics_ = uics;
+    tSrc_ = tSrc;
+    uFac_ = uFac;
+    ddacx_ = ddacx;
+    isFirstElem_ = true;
+    supportForAppend_ = forAppend;
+    allKeys_ = new HashSet<String>();
+    isForAppend_ = isForAppend;
+    dbHeaderKeys_ = DBGenome.keywordsOfInterest();  
+    sharedBoard_ = new FactoryWhiteboard();
     ArrayList<ParserClient> alist = new ArrayList<ParserClient>();
-    alist.add(new DBGenomeFactory(appState_, dacx));
-    alist.add(new GenomeInstanceFactory(appState_, dacx));
-    alist.add(new LayoutFactory(appState_)); 
-    alist.add(new ModelDataFactory(appState_));
-    alist.add(new BuildInstructionFactory(appState_));
-    alist.add(new InstanceInstructionSetFactory(appState_));
-    alist.add(new GlobalDataFactory(appState_));
-    alist.add(new ImageFactory(appState_));
-    alist.add(new UserTreePathFactory(appState_));    
-    alist.add(new QpcrLegacyPublicExposed(appState_).getParserClient(false, false)); 
-    alist.add(new TimeCourseFormatFactory(appState_, false, false));
-    alist.add(new CopiesPerEmbryoFormatFactory(appState_, false));
-    alist.add(new TemporalInputRangeFormatFactory(appState_, false));
-    alist.add(new DynamicInstanceProxyFactory(appState_, dacx));
-    alist.add(new PerturbationData.PertDataWorker(appState_, false, false));
-    
+    dbgf_ = new DBGenomeFactory();
+    alist.add(dbgf_);
+    gif_ = new GenomeInstanceFactory();
+    alist.add(gif_); 
+    lof_ = new LayoutFactory();
+    alist.add(lof_); 
+    mdf_ = new ModelDataFactory(sharedBoard_, isForAppend);
+    alist.add(mdf_);
+    taf_ = new TimeAxisFactory(sharedBoard_, false);
+    alist.add(taf_);
+    bif_ = new BuildInstructionFactory();
+    alist.add(bif_);
+    iisf_ = new InstanceInstructionSetFactory();
+    alist.add(iisf_);
+    dow_ = new DisplayOptions.DisplayOptionsWorker(sharedBoard_, isForAppend);
+    alist.add(dow_);
+    fmw_ = new FontManager.FontManagerWorker(sharedBoard_, isForAppend);
+    alist.add(fmw_);
+    imw_ = new ImageManager.ImageManagerWorker(sharedBoard_, isForAppend);    
+    alist.add(imw_);
+    utpf_ = new UserTreePathFactory();
+    alist.add(utpf_);
+    qxff_ = new QpcrXmlFormatFactory(false, false);
+    alist.add(qxff_);
+    tcff_ = new TimeCourseFormatFactory(false, false, true, false);
+    alist.add(tcff_);
+    ceff_ = new CopiesPerEmbryoFormatFactory(false, false);
+    alist.add(ceff_);
+    tirw_ = new TemporalInputRangeData.TemporalInputRangeWorker(sharedBoard_, false);
+    alist.add(tirw_);
+    cge_ = new ColorGenerator.ColorGeneratorWorker(sharedBoard_, isForAppend);
+    alist.add(cge_);
+    dipf_ = new DynamicInstanceProxyFactory();
+    alist.add(dipf_);
+    pdw_ = new PerturbationData.PertDataWorker(false, false, false);
+    alist.add(pdw_);
+    if (!isViewer) {
+      PlugInManager pluginManager = uics_.getPlugInMgr(); 
+      Iterator<ModelBuilderPlugIn> mbIterator = pluginManager.getBuilderIterator();
+      if (mbIterator.hasNext()) {
+         ModelBuilder.DataLoader mbdl = mbIterator.next().getDataLoader();
+         alist.add(mbdl);
+      }
+    }                 
     Iterator<ParserClient> cit = alist.iterator();
     clients_ = new HashMap<String, ParserClient>();
     while (cit.hasNext()) {
@@ -113,10 +188,10 @@ public class DatabaseFactory implements ParserClient {
         if (prev != null) {
           throw new IllegalArgumentException();
         }
+        allKeys_.add(key);
       }
     }
-    currClient_ = null;
-    
+    currClient_ = null;    
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -125,6 +200,15 @@ public class DatabaseFactory implements ParserClient {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  ** 
+  ** Get merge issue list
+  */
+
+  public List<String> getMergeErrors() { 
+    return (sharedBoard_.mergeIssues);    
+  }
+  
   /***************************************************************************
   ** 
   ** Set the container
@@ -144,12 +228,29 @@ public class DatabaseFactory implements ParserClient {
   */
   
   public boolean finishElement(String elemName) throws IOException {
+    if (elemName.equals("BioTapestry")) {
+      Map<String, String> aikm = sharedBoard_.appendImgKeyMap;
+      if (aikm != null) {
+        ImageManager.repairMergedRefs(ddacx_, aikm);
+      }
+      Map<String, String> ackm = sharedBoard_.appendColorKeyMap;
+      if (ackm != null) {
+        ColorGenerator.repairMergedRefs(ddacx_, ackm);
+      }
+
+      TabNameData tnd = ddacx_.getGenomeSource().getTabNameData();
+      if (isForAppend_) {
+        TabNameData.TabNameDataWorker.tweakForAppendUniqueness(tSrc_, ddacx_, tnd);
+        ddacx_.getGenomeSource().setTabNameData(tnd);
+      }    
+      uics_.getCommonView().setTabTitleData(tSrc_.getCurrentTabIndex(), tnd);  
+    }  
     if (currClient_ == null) {
       return (false);
     }
     if (currClient_.finishElement(elemName)) {
       currClient_ = null;
-    }
+    } 
     return (allKeys_.contains(elemName));
   }
   
@@ -171,7 +272,7 @@ public class DatabaseFactory implements ParserClient {
   **
   */
   
-  public Set keywordsOfInterest() {
+  public Set<String> keywordsOfInterest() {
     return (allKeys_);
   }
   
@@ -182,18 +283,45 @@ public class DatabaseFactory implements ParserClient {
   */
   
   public Object processElement(String elemName, Attributes attrs) throws IOException {
-
-    if (bioTapHeaderKeys_.contains(elemName)) {
-      String version = Database.versionFromXML(elemName, attrs);
-      appState_.getDB().setIOVersion(version);
-      return (null);
-    }
     
+    //
+    // We need to get the tab stuff sorted out ASAP so legacy BTP loads can be successfully
+    // appended as new tabs. So the first time any tab we are interested in shows up through
+    // the door, we deal with it.
+    //
+    
+    if (allKeys_.contains(elemName) && isFirstElem_) {
+      isFirstElem_ = false;
+      if (!isForAppend_) {
+        tSrc_.resetTabForLoad(ddacx_.getMetabase().legacyDBID(), 0);
+      } else { 
+        TabOps.doNewTabStat(tSrc_, uics_, ddacx_, uFac_, true, null, tSrc_.getNumTab(), null, null, null, null, supportForAppend_);
+      }
+      dbgf_.setContext(ddacx_);
+      gif_.setContext(ddacx_);
+      dipf_.setContext(ddacx_);
+      lof_.setContext(ddacx_);
+      bif_.setContext(ddacx_);
+      tirw_.setContext(ddacx_);
+      fmw_.setContext(ddacx_);
+      utpf_.setContext(uics_);
+      iisf_.setContext(ddacx_);
+      imw_.setContext(uics_);
+      mdf_.setContext(ddacx_, uics_, tSrc_);  
+      taf_.setContext(ddacx_);
+      dow_.setContext(ddacx_);
+      qxff_.setContext(ddacx_);
+      tcff_.setContext(ddacx_);
+      ceff_.setContext(ddacx_);
+      cge_.setContext(ddacx_);
+      pdw_.setContext(new TabPinnedDynamicDataAccessContext(ddacx_));  
+    }
+
     if (currClient_ != null) {
       return (currClient_.processElement(elemName, attrs));
     }
     
-    ParserClient pc = (ParserClient)clients_.get(elemName);
+    ParserClient pc = clients_.get(elemName);
     if (pc != null) {
       currClient_ = pc; 
       return (currClient_.processElement(elemName, attrs));

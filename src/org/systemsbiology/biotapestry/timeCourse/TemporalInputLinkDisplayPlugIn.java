@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,8 +23,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -40,7 +43,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class TemporalInputLinkDisplayPlugIn implements InternalLinkDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,10 +70,10 @@ public class TemporalInputLinkDisplayPlugIn implements InternalLinkDataDisplayPl
   ** Internal plugins need to have access to internal state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+   public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
-  } 
+  }
   
   /***************************************************************************
   **
@@ -87,7 +90,7 @@ public class TemporalInputLinkDisplayPlugIn implements InternalLinkDataDisplayPl
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (false);
   }
    
@@ -106,7 +109,7 @@ public class TemporalInputLinkDisplayPlugIn implements InternalLinkDataDisplayPl
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String itemId) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String itemId) {
     return (null);
   }
  
@@ -115,28 +118,30 @@ public class TemporalInputLinkDisplayPlugIn implements InternalLinkDataDisplayPl
   ** Show the Temporal Input Data
   */
   
-  public String getDataAsHTML(String genomeID, String linkID) {
-    StringBuffer buf = new StringBuffer(); 
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome(genomeID);
+  public String getDataAsHTML(String dbID, String genomeID, String linkID) {
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();
+    StringBuffer buf = new StringBuffer();
+    GenomeSource gs = dacx.getGenomeSource();
+    Genome genome = gs.getGenome(genomeID);
     Linkage link = genome.getLinkage(linkID);
     String targID = link.getTarget();
     String sourceID = link.getSource();
     String baseTargID = GenomeItemInstance.getBaseID(targID);
     String baseSourceID = GenomeItemInstance.getBaseID(sourceID);
 
-    TemporalInputRangeData trd = db.getTemporalInputRangeData();
+    TemporalInputRangeData trd = dacx.getTemporalRangeSrc().getTemporalInputRangeData();
     if ((trd == null) || !trd.haveData()) {
       return ("");
     }
       
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     buf.append("<center><h1>"); 
     buf.append(rMan.getString("dataWindow.temporalInputsForLink")); 
     buf.append("</h1>\n");
 
-    List<String> targDataKeys = trd.getTemporalInputRangeEntryKeysWithDefault(baseTargID);
-    HashSet<String> srcDataKeys = new HashSet<String>(trd.getTemporalInputRangeSourceKeysWithDefault(baseSourceID));
+    List<String> targDataKeys = trd.getTemporalInputRangeEntryKeysWithDefault(baseTargID, gs);
+    HashSet<String> srcDataKeys = new HashSet<String>(trd.getTemporalInputRangeSourceKeysWithDefault(baseSourceID, gs));
     boolean gotData = false;
     if (targDataKeys != null) {
       Iterator<String> dkit = targDataKeys.iterator();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,7 +39,8 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ListWidget;
@@ -66,7 +67,8 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
   private ArrayList candidateDisplayList_;  
   private HashMap candidateMap_;
   private boolean haveResult_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
     
@@ -81,12 +83,13 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
   ** Constructor 
   */ 
   
-  public QPCRImportPruningDialog(BTState appState, Set candidates) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("qipd.title"), true);
-    appState_ = appState;
+  public QPCRImportPruningDialog(UIComponentSource uics, DataAccessContext dacx, Set candidates) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("qipd.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
     candidates_ = candidates;
     
-    ResourceManager rMan = appState.getRMan(); 
+    ResourceManager rMan = dacx_.getRMan(); 
     setSize(500, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -113,7 +116,7 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
     cp.add(lab, gbc);
 
-    lw_ = new ListWidget(appState, candidateDisplayList_, this, ListWidget.DELETE_COMBINE);    
+    lw_ = new ListWidget(uics_.getHandlerAndManagerSource(), candidateDisplayList_, this, ListWidget.DELETE_COMBINE);    
     UiUtil.gbcSet(gbc, 1, 0, 5, 5, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
     cp.add(lw_, gbc);
         
@@ -130,7 +133,7 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
             QPCRImportPruningDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -143,7 +146,7 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
             QPCRImportPruningDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -158,7 +161,7 @@ public class QPCRImportPruningDialog extends JDialog implements ListWidgetClient
     //
     UiUtil.gbcSet(gbc, 0, 6, 7, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////

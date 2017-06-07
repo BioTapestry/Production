@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.OverlayDisplayChange;
@@ -53,8 +51,8 @@ public class NetOverlayDisplayChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public NetOverlayDisplayChangeCmd(BTState appState, DataAccessContext dacx, OverlayDisplayChange restore) {
-    super(appState, dacx);
+  public NetOverlayDisplayChangeCmd(DataAccessContext dacx, OverlayDisplayChange restore) {
+    super(dacx);
     restore_ = restore;
   }
 
@@ -92,9 +90,8 @@ public class NetOverlayDisplayChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    NetOverlayController noc = appState_.getNetOverlayController();
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    noc.changeUndo(restore_, dacx);
+    NetOverlayController noc = uics_.getNetOverlayController();
+    noc.changeUndo(restore_, dacx_);
     return;
   }  
   
@@ -106,9 +103,8 @@ public class NetOverlayDisplayChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    NetOverlayController noc = appState_.getNetOverlayController();
-    DynamicDataAccessContext dacx = new DynamicDataAccessContext(appState_);
-    noc.changeRedo(restore_, dacx);
+    NetOverlayController noc = uics_.getNetOverlayController();
+    noc.changeRedo(restore_, dacx_);
     return;
   }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,6 +31,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -87,7 +88,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
  
     switch(platform.getPlatform()) {
       case DESKTOP:
-        return (new DesktopDialog(cfh, dniba.forSIF));  
+        return (new DesktopDialog(cfh, dniba.forSIF, dniba.relayoutChoices, dniba.selected));  
       case WEB:
       default:
         throw new IllegalArgumentException("The platform is not supported: " + platform.getPlatform());
@@ -109,10 +110,16 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
   public static class BuildArgs extends DialogBuildArgs { 
     
     boolean forSIF;
+    Vector<ChoiceContent> relayoutChoices;
+    ChoiceContent selected;
+        
+    
           
-    public BuildArgs(boolean forSIF) {
+    public BuildArgs(boolean forSIF, DataAccessContext dacx) {
       super(null);
       this.forSIF = forSIF; 
+      relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx);
+      selected = NetOverlayProperties.relayoutForCombo(dacx, NetOverlayProperties.RELAYOUT_SHIFT_AND_RESIZE_SHAPES);  
     }
   }
 
@@ -148,7 +155,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopDialog(ServerControlFlowHarness cfh, boolean forSIF) { 
+    public DesktopDialog(ServerControlFlowHarness cfh, boolean forSIF, Vector<ChoiceContent> relayoutChoices, ChoiceContent selected) { 
       super(cfh, (forSIF) ? "chooseSIFImport.title" : "chooseSIFImport.CSVtitle", new Dimension(700, 400), 2,  new SIFImportRequest(), false);
          
       //
@@ -156,7 +163,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
       // overlays is recentering them; anything fancier is a no-op.
       //
       
-      boolean showOverlayOptions = (!forSIF && cfh.getDataAccessContext().fgho.overlayExists());
+      boolean showOverlayOptions = (!forSIF && cfh.getDataAccessContext().getFGHO().overlayExists());
       
       //
       // Build the option selection buttons
@@ -180,7 +187,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
             validate();
             repaint();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
@@ -195,7 +202,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
      
       layoutChoiceLabel_ = new JLabel(rMan_.getString("chooseSIFImport.layout"));
       
-      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(appState_, true);    
+      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(dacx_, true);    
       layoutChoiceCombo_ = new JComboBox(layoutChoices); 
       setLayoutOptions_ = new JCheckBox(rMan_.getString("chooseSIFImport.setOptions"), true);
       
@@ -204,14 +211,13 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
         // shove GenomeInstance groups around to fit stuff in.  In those cases, the
         // overlay modules may need to be tweaked:
         overlayLabel_ = new JLabel(rMan_.getString("layoutParam.overlayOptions"));
-        Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
         overlayOptionCombo_ = new JComboBox<ChoiceContent>(relayoutChoices);
-        overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, NetOverlayProperties.RELAYOUT_SHIFT_AND_RESIZE_SHAPES));
+        overlayOptionCombo_.setSelectedItem(selected);
         overlayLabel_.setEnabled(false);
         overlayOptionCombo_.setEnabled(false);
       }    
   
-      if (cfh.getDataAccessContext().getGenome().isEmpty()) {
+      if (cfh.getDataAccessContext().getCurrentGenome().isEmpty()) {
         replace_.setEnabled(false);
         incremental_.setEnabled(false);
       } else {
@@ -245,6 +251,10 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
     //
     //////////////////////////////////////////////////////////////////////////// 
 
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // INNER CLASSES
@@ -296,6 +306,10 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
       haveResult = false;
       return;
     }    
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }

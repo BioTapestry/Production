@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,7 @@ package org.systemsbiology.biotapestry.genome;
 
 import java.io.PrintWriter;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -38,7 +38,7 @@ public abstract class DBGenomeItem implements GenomeItem, Cloneable {
 
   protected String name_;
   protected String id_;
-  protected BTState appState_;
+  protected DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -52,7 +52,7 @@ public abstract class DBGenomeItem implements GenomeItem, Cloneable {
   */
 
   public DBGenomeItem(DBGenomeItem other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.name_ = other.name_;
     this.id_ = other.id_;
   }  
@@ -62,8 +62,8 @@ public abstract class DBGenomeItem implements GenomeItem, Cloneable {
   ** Name and id
   */
 
-  public DBGenomeItem(BTState appState, String name, String id) {
-    appState_ = appState;
+  public DBGenomeItem(DataAccessContext dacx, String name, String id) {
+    dacx_ = dacx;
     name_ = name;
     id_ = id;
   }
@@ -126,6 +126,7 @@ public abstract class DBGenomeItem implements GenomeItem, Cloneable {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("DBGenomeItem: name = " + name_ + " id = " + id_);
   }
@@ -136,6 +137,7 @@ public abstract class DBGenomeItem implements GenomeItem, Cloneable {
   **
   */
   
+  @SuppressWarnings("unused")
   public void writeXML(PrintWriter out, int indent) {
     out.print("<item ");
     out.print("name=\"");

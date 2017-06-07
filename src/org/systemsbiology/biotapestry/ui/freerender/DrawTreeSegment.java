@@ -31,6 +31,7 @@ import org.systemsbiology.biotapestry.ui.LinkSegment;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.util.Vector2D;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
 import org.systemsbiology.biotapestry.ui.SuggestedDrawStyle;
 import org.systemsbiology.biotapestry.ui.ResolvedDrawStyle;
@@ -55,6 +56,7 @@ public class DrawTreeSegment {
   private SuggestedDrawStyle perSegProps_;  // May be null
   private ArrayList<LinkTaggedPerLinkProps> perLinkProps_;
   private HashMap<String, Double> perLinkModulation_;
+  private HashMap<String, Double> perLinkSimDiff_;
   private DrawTreeCornerInfo footInfo_;
   private ResolvedDrawStyle resolved_;
   private boolean drawn_;
@@ -75,6 +77,7 @@ public class DrawTreeSegment {
     perSegProps_ = props;
     perLinkProps_ = new ArrayList<LinkTaggedPerLinkProps>();
     perLinkModulation_ = new HashMap<String, Double>();
+    perLinkSimDiff_ = new HashMap<String, Double>();
     footInfo_ = new DrawTreeCornerInfo();
     resolved_ = null;
     parent_ = null;
@@ -204,7 +207,7 @@ public class DrawTreeSegment {
   }
 
   void addPerLinkProps(PerLinkDrawStyle perLink, String linkID, 
-                       PerLinkDrawStyle perLinkForEvidence, Double perLinkActivity) {
+                       PerLinkDrawStyle perLinkForEvidence, Double perLinkActivity, Double perLinkSim) {
     
     //
     // Evidence setting always overrides the layout-driven option
@@ -219,6 +222,9 @@ public class DrawTreeSegment {
     if (perLinkActivity != null) {
       perLinkModulation_.put(linkID, perLinkActivity);
     }
+    if (perLinkSim != null) {
+      perLinkSimDiff_.put(linkID, perLinkSim);
+    }
     return;
   }
 
@@ -227,15 +233,15 @@ public class DrawTreeSegment {
   ** Resolve the drawing style to use:
   */
 
-  ResolvedDrawStyle resolveDrawStyle(LinkProperties lp, boolean isGhosted, int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) { 
+  ResolvedDrawStyle resolveDrawStyle(LinkProperties lp, boolean isGhosted, int activityDrawChange, 
+                                     boolean forModules, ColorResolver cRes, IRenderer.Mode mode, DisplayOptions dopt) { 
 
     //
     // Start with the values for the whole tree, then add on top of it:
     //
 
     SuggestedDrawStyle currStyle = lp.getDrawStyle();
-    ResolvedDrawStyle retval = resolvePerLinkProps(currStyle, isActive_, isGhosted, activityDrawChange, forModules, cRes, dopt);
-
+    ResolvedDrawStyle retval = resolvePerLinkProps(currStyle, isActive_, isGhosted, activityDrawChange, forModules, cRes, mode, dopt);
     SuggestedDrawStyle perSeg = getPerSegmentStyle();
     if (perSeg != null) {
       retval.masterUpdate(perSeg, isActive_, isGhosted, forModules, cRes);
@@ -251,17 +257,22 @@ public class DrawTreeSegment {
 
   ResolvedDrawStyle resolvePerLinkProps(SuggestedDrawStyle currStyle, 
                                         boolean isActive, boolean isGhosted, 
-                                        int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {
+                                        int activityDrawChange, boolean forModules, ColorResolver cRes, 
+                                        IRenderer.Mode mode, DisplayOptions dopt) {
     int num = perLinkProps_.size();
     boolean colorMatters = (isActive && !isGhosted);
 
     //
     // Easy case: Just convert
     //
-    if ((num == 0) && perLinkModulation_.isEmpty()) {
+    if ((num == 0) && perLinkModulation_.isEmpty() && perLinkSimDiff_.isEmpty()) {
       currStyle = currStyle.clone();
       currStyle.fillWithDefaults();
-      return (new ResolvedDrawStyle(currStyle, colorMatters, forModules, cRes, dopt));    
+      ResolvedDrawStyle rds = new ResolvedDrawStyle(currStyle, colorMatters, forModules, cRes, dopt);
+      if (mode == IRenderer.Mode.DELTA) {
+        rds.deSatColor(0.50);
+      }
+      return (rds);    
     } 
 
     //
@@ -351,12 +362,15 @@ public class DrawTreeSegment {
     
 
     ResolvedDrawStyle rds = new ResolvedDrawStyle(currStyle, colorMatters, maxThick, maxStyle, newCol, forModules, cRes, dopt);
-    if (perLinkModulation_.isEmpty()) {
+    if (perLinkModulation_.isEmpty() && perLinkSimDiff_.isEmpty()) {
+      if (mode == IRenderer.Mode.DELTA) {
+        rds.deSatColor(0.50);
+      }
       return (rds);
     }
  
     //
-    // Choose the activity value for a segment based on the maxium activity:
+    // Choose the activity value for a segment based on the maximum activity:
     //
     
     double maxLevel = 0.0;
@@ -373,7 +387,29 @@ public class DrawTreeSegment {
     if (pathCount_ > numLevels) {
       maxLevel = 1.0;
     }
+    
+    double maxSimLevel = 0.0;
+    int numSimLevels = 0;
+    Iterator<Double> plsit = perLinkSimDiff_.values().iterator();
+    while (plsit.hasNext()) {
+      Double perLinkSD = plsit.next();
+      double plaVal = perLinkSD.doubleValue();
+      if (plaVal > maxSimLevel) {
+        maxSimLevel = plaVal;
+      }
+      numSimLevels++;
+    }
+    if (pathCount_ > numSimLevels) {
+      maxSimLevel = 1.0;
+    }
 
+    if (mode == IRenderer.Mode.DELTA) {
+      if (maxSimLevel != 0.0) {
+        rds = new ResolvedDrawStyle(rds, Color.red);
+        return (rds);
+      }
+    }
+    
     if (maxLevel != 1.0) {
       if ((activityDrawChange == DisplayOptions.LINK_ACTIVITY_COLOR) ||
           (activityDrawChange == DisplayOptions.LINK_ACTIVITY_BOTH)) {
@@ -384,7 +420,9 @@ public class DrawTreeSegment {
         rds.modulateThickness(maxLevel);
       }
     }
-
+    if (mode == IRenderer.Mode.DELTA) {
+      rds.deSatColor(0.50);
+    }
     return (rds);
   }
   

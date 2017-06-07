@@ -63,7 +63,7 @@ public class IntersectionChooser {
   
   public IntersectionChooser(boolean legacyMode, DataAccessContext rcx) {
     legacyMode_ = legacyMode;
-    layout_ = rcx.getLayout();
+    layout_ = rcx.getCurrentLayout();
   }
    
   ////////////////////////////////////////////////////////////////////////////

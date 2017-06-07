@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,8 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
@@ -57,21 +57,21 @@ public class LayoutFailureTracker {
   public static final double GRID_SIZE = 10.0; 
   public static final int    GRID_SIZE_INT = 10;  
   
-  private static HashMap bordersExits_;
-  private static HashMap bordersExitsShifted_;
-  private static HashMap linkOrder_;
-  private static HashMap exitRoutes_;
-  private static HashMap mergeData_;
-  private static HashMap ptLists_;
-  private static HashMap trunkPoints_;
-  private static HashMap leafPoints_;
-  private static HashMap postLayoutForSource_;
-  private static HashMap recoveryPoints_;
-  private static HashMap recoveryTosses_;
+  private static HashMap<String, String> bordersExits_;
+  private static HashMap<String, String> bordersExitsShifted_;
+  private static HashMap<String, String> linkOrder_;
+  private static HashMap<String, String> exitRoutes_;
+  private static HashMap<String, String> mergeData_;
+  private static HashMap<String, String> ptLists_;
+  private static HashMap<String, String> trunkPoints_;
+  private static HashMap<String, String> leafPoints_;
+  private static HashMap<String, String> postLayoutForSource_;
+  private static HashMap<String, String> recoveryPoints_;
+  private static HashMap<String, String> recoveryTosses_;
   private static boolean enabled_;
   private static StringBuffer buf_;
   private static String glueDone_;
-  private static ArrayList failedLinks_;
+  private static ArrayList<String> failedLinks_;
   private static int passNum_;
   private static int subPassNum_;
 
@@ -86,18 +86,18 @@ public class LayoutFailureTracker {
     enabled_ = false;
     if (enabled_) {
       buf_ = new StringBuffer();
-      bordersExits_ = new HashMap();
-      bordersExitsShifted_ = new HashMap();
-      mergeData_ = new HashMap();
-      exitRoutes_ = new HashMap();
-      linkOrder_ = new HashMap();
-      trunkPoints_ = new HashMap();
-      leafPoints_ = new HashMap();
-      ptLists_ = new HashMap();
-      postLayoutForSource_ = new HashMap();
-      recoveryPoints_ = new HashMap();
-      recoveryTosses_ = new HashMap();
-      failedLinks_ = new ArrayList();
+      bordersExits_ = new HashMap<String, String>();
+      bordersExitsShifted_ = new HashMap<String, String>();
+      mergeData_ = new HashMap<String, String>();
+      exitRoutes_ = new HashMap<String, String>();
+      linkOrder_ = new HashMap<String, String>();
+      trunkPoints_ = new HashMap<String, String>();
+      leafPoints_ = new HashMap<String, String>();
+      ptLists_ = new HashMap<String, String>();
+      postLayoutForSource_ = new HashMap<String, String>();
+      recoveryPoints_ = new HashMap<String, String>();
+      recoveryTosses_ = new HashMap<String, String>();
+      failedLinks_ = new ArrayList<String>();
       passNum_ = -1;
       subPassNum_ = -1;
     }
@@ -114,7 +114,7 @@ public class LayoutFailureTracker {
        return;
      }
      buf_.setLength(0);       
-     String pre = (String)recoveryPoints_.get(srcID);
+     String pre = recoveryPoints_.get(srcID);
      if (pre != null) {
        buf_.append(pre);   
      }
@@ -129,12 +129,12 @@ public class LayoutFailureTracker {
   ** Record recovery info
   */
     
-   public static void recordRecoveryTrack(String srcID, String linkID, List points) {
+   public static void recordRecoveryTrack(String srcID, String linkID, List<Point2D> points) {
      if (!enabled_) {
        return;
      }
      buf_.setLength(0);       
-     String pre = (String)recoveryPoints_.get(srcID);
+     String pre = recoveryPoints_.get(srcID);
      if (pre != null) {
        buf_.append(pre);   
      } else {
@@ -151,26 +151,26 @@ public class LayoutFailureTracker {
   ** Stash ALL link layout data
   */
     
-   public static void postLayoutReport(DataAccessContext irx) {
+   public static void postLayoutReport(StaticDataAccessContext irx) {
      if (!enabled_) {
        return;
      }
-     Iterator nit = irx.getGenome().getAllNodeIterator();
+     Iterator<Node> nit = irx.getCurrentGenome().getAllNodeIterator();
      while (nit.hasNext()) {
-       Node aNode = (Node)nit.next();
+       Node aNode = nit.next();
        String srcID = aNode.getID();
-       BusProperties bp = irx.getLayout().getLinkPropertiesForSource(srcID);
+       BusProperties bp = irx.getCurrentLayout().getLinkPropertiesForSource(srcID);
        if (bp == null) {
          continue;
        }     
        buf_.setLength(0);       
-       String pre = (String)postLayoutForSource_.get(srcID);
+       String pre = postLayoutForSource_.get(srcID);
        if (pre != null) {
          buf_.append(pre);   
        } else {
          buf_.append("Full Post Layout for " + srcID + ":\n");
        }
-       Set allPts = bp.getAllPointsToLeaves(LinkSegmentID.buildIDForStartDrop());
+       Set<Point2D> allPts = bp.getAllPointsToLeaves(LinkSegmentID.buildIDForStartDrop());
        if (!allPts.isEmpty()) {
          buf_.append(srcID + ": " + bp.getDepthFirstDebug(irx));
        }
@@ -191,7 +191,7 @@ public class LayoutFailureTracker {
     }
     buf_.setLength(0);
     String srcID = sin.getSrcID();
-    String pre = (String)trunkPoints_.get(srcID);
+    String pre = trunkPoints_.get(srcID);
     if (pre != null) {
       buf_.append(pre);   
     } else {
@@ -218,7 +218,7 @@ public class LayoutFailureTracker {
     }
     buf_.setLength(0);
     String srcID = sin.getSrcID();
-    String pre = (String)leafPoints_.get(srcID);
+    String pre = leafPoints_.get(srcID);
     if (pre != null) {
       buf_.append(pre);   
     } else {
@@ -242,7 +242,8 @@ public class LayoutFailureTracker {
   ** 
   ** 
   */
-    
+  
+  @SuppressWarnings("unused")
   public static void recordBordersAndExits(SuperSrcRouterPointSource ssr, 
                                            SpecialtyLayoutLinkData sin, 
                                            int debugPath) {
@@ -262,7 +263,7 @@ public class LayoutFailureTracker {
   ** 
   */
     
-  private static void recordBordersAndExitGuts(SpecialtyLayoutLinkData sin, Map useMap) {
+  private static void recordBordersAndExitGuts(SpecialtyLayoutLinkData sin, Map<String, String> useMap) {
     for (int i = 0; i < SpecialtyLayoutLinkData.NUM_EXIT_FRAMEWORK; i++) {
       SpecialtyLayoutLinkData.PlacedPoint pp = sin.getExitFrameworkForDebug(i);
       buf_.append("Exit  " + i + " = " + pp + "\n");
@@ -326,7 +327,7 @@ public class LayoutFailureTracker {
   ** Report link failures
   */  
   
-  public static void reportFailedLinks(Set failures) {
+  public static void reportFailedLinks(Set<String> failures) {
     if (!enabled_) {
       return;
     }
@@ -345,7 +346,7 @@ public class LayoutFailureTracker {
     }
     buf_.setLength(0);
     String srcID = sin.getSrcID();
-    String pre = (String)mergeData_.get(srcID);
+    String pre = mergeData_.get(srcID);
     if (pre != null) {
       buf_.append(pre);   
     }
@@ -366,7 +367,7 @@ public class LayoutFailureTracker {
     }
     buf_.setLength(0);
     String srcID = sin.getSrcID();
-    String pre = (String)mergeData_.get(srcID);
+    String pre = mergeData_.get(srcID);
     if (pre == null) {
       buf_.append("MERGE DATA FOR " + srcID + ": " + "\n");   
     } else {
@@ -388,13 +389,13 @@ public class LayoutFailureTracker {
   private static void linkDataGuts(SpecialtyLayoutLinkData sin) {
     int numLinks = sin.numLinks();
     for (int j = 0; j < numLinks; j++) {
-      String linkID = (String)sin.getLink(j);      
+      String linkID = sin.getLink(j);      
       buf_.append(linkID);
       buf_.append(": ");
       SpecialtyLayoutLinkData.NoZeroList posList = sin.getPositionList(linkID);
       int numPos = posList.size();
       for (int i = 0; i < numPos; i++) {
-        Point2D pt = ((SpecialtyLayoutLinkData.TrackPos)posList.get(i)).getPoint();
+        Point2D pt = posList.get(i).getPoint();
         buf_.append(pt);
         if (i != (numPos - 1)) {
           buf_.append(", ");
@@ -412,7 +413,7 @@ public class LayoutFailureTracker {
   ** glue everybody together.  Record that here!
   */
   
-  public static void reportGluingDone(List placeList) {
+  public static void reportGluingDone(List<SpecialtyLayoutLinkData> placeList) {
     if (!enabled_) {
       return;
     }
@@ -420,7 +421,7 @@ public class LayoutFailureTracker {
     buf_.append("Glue phase is complete\n"); 
     int numSin = placeList.size();
     for (int i = 0; i < numSin; i++) {
-      SpecialtyLayoutLinkData sin = (SpecialtyLayoutLinkData)placeList.get(i);
+      SpecialtyLayoutLinkData sin = placeList.get(i);
       buf_.append((sin != null) ? sin.getSrcID() : "<no linkData>");
       if (i != (numSin - 1)) {
         buf_.append(", ");
@@ -446,7 +447,7 @@ public class LayoutFailureTracker {
     buf_.append("Final link order for src " + sin.getSrcID() + ": ");   
     int numLinks = (sin == null) ? 0 : sin.numLinks();
     for (int i = 0; i < numLinks; i++) {
-      String linkID = (String)sin.getLink(i);
+      String linkID = sin.getLink(i);
       buf_.append(linkID);
       if (i != (numLinks - 1)) {
         buf_.append(", ");
@@ -467,7 +468,7 @@ public class LayoutFailureTracker {
       return;
     }
     buf_.setLength(0);
-    String pre = (String)ptLists_.get(srcID);
+    String pre = ptLists_.get(srcID);
     if (pre == null) {
       buf_.append("Placing links for src " + srcID + ": " + "\n");   
     } else {
@@ -476,7 +477,7 @@ public class LayoutFailureTracker {
     buf_.append("  Point list for link " + linkID + ": ");   
     int numPts = ptList.size();
     for (int i = 0; i < numPts; i++) {
-      Point2D pt = ((SpecialtyLayoutLinkData.TrackPos)ptList.get(i)).getPoint();
+      Point2D pt = ptList.get(i).getPoint();
       buf_.append(pt);
       if (i != (numPts - 1)) {
         buf_.append(", ");
@@ -533,45 +534,45 @@ public class LayoutFailureTracker {
     System.err.println("****************************************************************");
     System.err.println("Link Layout Failures:");
     for (int i = 0; i < failedLinks_.size(); i++) {
-      String failed = (String)failedLinks_.get(i);
+      String failed = failedLinks_.get(i);
       System.err.println(failed);
     }
     System.err.println("****************************************************************");
-    String rct = (String)recoveryTosses_.get(bp.getSourceTag());
+    String rct = recoveryTosses_.get(bp.getSourceTag());
     System.err.print(rct);
     System.err.println("****************************************************************");
-    String rco = (String)recoveryPoints_.get(bp.getSourceTag());
+    String rco = recoveryPoints_.get(bp.getSourceTag());
     System.err.print(rco);
     System.err.println("****************************************************************");
-    String ploTxt = (String)postLayoutForSource_.get(bp.getSourceTag());
+    String ploTxt = postLayoutForSource_.get(bp.getSourceTag());
     System.err.print(ploTxt);
     System.err.println("****************************************************************");
     System.err.println("Current BP: " + bp.getAllPointsToLeaves(LinkSegmentID.buildIDForStartDrop()));
     System.err.println("****************************************************************");
-    String trpTxt = (String)trunkPoints_.get(bp.getSourceTag());
+    String trpTxt = trunkPoints_.get(bp.getSourceTag());
     System.err.print(trpTxt);
     System.err.println("****************************************************************");
-    String lepTxt = (String)leafPoints_.get(bp.getSourceTag());
+    String lepTxt = leafPoints_.get(bp.getSourceTag());
     System.err.print(lepTxt);
     System.err.println("****************************************************************");
-    String beTxt = (String)bordersExits_.get(bp.getSourceTag());
+    String beTxt = bordersExits_.get(bp.getSourceTag());
     System.err.print(beTxt);
     System.err.println("****************************************************************");
-    String besTxt = (String)bordersExitsShifted_.get(bp.getSourceTag());
+    String besTxt = bordersExitsShifted_.get(bp.getSourceTag());
     System.err.print("bs " + besTxt);
     System.err.println("****************************************************************");
-    String erTxt = (String)exitRoutes_.get(bp.getSourceTag());
+    String erTxt = exitRoutes_.get(bp.getSourceTag());
     System.err.print("er " + erTxt);
     System.err.println("****************************************************************");
-    String mrgTxt = (String)mergeData_.get(bp.getSourceTag());
+    String mrgTxt = mergeData_.get(bp.getSourceTag());
     System.err.print("md " + mrgTxt);      
     System.err.println("****************************************************************");
     System.err.print(glueDone_);
     System.err.println("****************************************************************");
-    String loTxt = (String)linkOrder_.get(bp.getSourceTag());
+    String loTxt = linkOrder_.get(bp.getSourceTag());
     System.err.print(loTxt);
     System.err.println("****************************************************************");
-    String plTxt = (String)ptLists_.get(bp.getSourceTag());
+    String plTxt = ptLists_.get(bp.getSourceTag());
     System.err.print(plTxt);
     System.err.println("****************************************************************");
     return;
@@ -588,7 +589,7 @@ public class LayoutFailureTracker {
     } 
     buf_.setLength(0);
     String srcID = sin.getSrcID();
-    String pre = (String)exitRoutes_.get(srcID);
+    String pre = exitRoutes_.get(srcID);
     if (pre == null) {
       buf_.append("Exit route built for " + sin.getSrcID() + ": " + "\n");   
     } else {
@@ -605,6 +606,7 @@ public class LayoutFailureTracker {
   ** Marker function
   */
   
+  @SuppressWarnings("unused")
   public static void tracePaths(String msg) {
     if (!enabled_) {
       return;

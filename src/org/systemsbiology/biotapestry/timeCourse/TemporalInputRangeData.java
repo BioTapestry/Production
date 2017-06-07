@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.List;
 import java.util.ArrayList;
@@ -33,9 +34,16 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
+import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -59,11 +67,11 @@ public class TemporalInputRangeData {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  private DataAccessContext dacx_;
   private ArrayList<TemporalRange> entries_;
   private HashMap<String, List<String>> trEntryMap_;
   private HashMap<String, List<String>> trSourceMap_;  
   private HashMap<String, List<GroupUsage>> groupMap_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -76,8 +84,8 @@ public class TemporalInputRangeData {
   ** Constructor
   */
 
-  public TemporalInputRangeData(BTState appState) {
-    appState_ = appState;
+  public TemporalInputRangeData(DataAccessContext dacx) {
+    dacx_ = dacx;
     entries_ = new ArrayList<TemporalRange>();
     trEntryMap_ = new HashMap<String, List<String>>();
     trSourceMap_ = new HashMap<String, List<String>>();    
@@ -90,6 +98,69 @@ public class TemporalInputRangeData {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  **
+  ** Clone
+  **
+  */  
+  
+  @Override
+  public TemporalInputRangeData clone() { 
+    try {
+      TemporalInputRangeData newVal = (TemporalInputRangeData)super.clone();
+      newVal.entries_ = new ArrayList<TemporalRange>();
+      int size = this.entries_.size();
+      for (int i = 0; i < size; i++) {
+        TemporalRange itr = this.entries_.get(i);
+        newVal.entries_.add(itr.clone());
+      }
+      newVal.mapCopy(this);
+      return (newVal);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  } 
+
+  /***************************************************************************
+  **
+  ** Just get the maps extracted
+  **
+  */  
+  
+  public TemporalInputRangeData extractOnlyMaps() { 
+    TemporalInputRangeData retval = new TemporalInputRangeData(this.dacx_);
+    retval.mapCopy(this);
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** Just get the maps extracted into is
+  **
+  */  
+  
+  private void mapCopy(TemporalInputRangeData other) {     
+    this.trEntryMap_ = new HashMap<String, List<String>>();
+    for (String temKey : other.trEntryMap_.keySet()) {
+      List<String> tml = other.trEntryMap_.get(temKey);
+      this.trEntryMap_.put(temKey, new ArrayList<String>(tml));
+    }
+    this.trSourceMap_ = new HashMap<String, List<String>>();
+    for (String tsmKey : other.trSourceMap_.keySet()) {
+      List<String> tml = other.trSourceMap_.get(tsmKey);
+      this.trSourceMap_.put(tsmKey, new ArrayList<String>(tml));
+    }   
+    this.groupMap_ = new HashMap<String, List<GroupUsage>>();
+    for (String gmKey : other.groupMap_.keySet()) {
+      List<GroupUsage> gml = other.groupMap_.get(gmKey);
+      ArrayList<GroupUsage> nvgm = new ArrayList<GroupUsage>();        
+      this.groupMap_.put(gmKey, nvgm);
+      for (GroupUsage gu : gml) {
+        nvgm.add(gu.clone());
+      }
+    } 
+    return;
+  } 
   
   /***************************************************************************
   **
@@ -100,6 +171,15 @@ public class TemporalInputRangeData {
     if (!entries_.isEmpty()) {
       return (true);
     }
+    return (haveMaps());
+  }
+  
+  /***************************************************************************
+  **
+  ** Answer if we have maps
+  */
+  
+  public boolean haveMaps() {
     if (!trEntryMap_.isEmpty()) {
       return (true);
     }
@@ -111,7 +191,144 @@ public class TemporalInputRangeData {
     }
     return (false);
   }
-  
+
+  /***************************************************************************
+  ** 
+  ** Copy our maps from the established TCD data
+  */
+
+  public void buildMapsFromTCDMaps(DataAccessContext dac) {
+    TimeCourseDataMaps tcdm = dac.getDataMapSrc().getTimeCourseDataMaps();
+    groupMap_ = new HashMap<String, List<GroupUsage>>(tcdm.getGroupMapCopy());
+    Map<String, List<TimeCourseDataMaps.TCMapping>> tcmc = tcdm.getTCMapCopy();
+    trEntryMap_.clear();
+    trSourceMap_.clear();
+    Iterator<String> tcmit = tcmc.keySet().iterator();
+    while (tcmit.hasNext()) {
+      String mapKey = tcmit.next();
+      List<TimeCourseDataMaps.TCMapping> targList = tcmc.get(mapKey);
+      ArrayList<String> emaplist = new ArrayList<String>();
+      ArrayList<String> smaplist = new ArrayList<String>();
+      trEntryMap_.put(mapKey, emaplist);
+      trSourceMap_.put(mapKey, smaplist);
+      int tlSize = targList.size();
+      for (int i = 0; i < tlSize; i++) {
+        TimeCourseDataMaps.TCMapping targ = targList.get(i);
+        emaplist.add(targ.name);
+        smaplist.add(targ.name);
+      }
+    }
+    return;
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Build the temporal input range data purely from the time course data. Do this inside an undo transaction
+  */
+
+  public void buildFromTCD(DataAccessContext dac) {
+    
+    TimeCourseData tcd = dac.getExpDataSrc().getTimeCourseData();
+    TimeCourseDataMaps tcdm = dac.getDataMapSrc().getTimeCourseDataMaps();
+    DBGenome genome = dac.getDBGenome();
+    
+    Set<Integer> times = tcd.getInterestingTimes();
+    SortedSet<Integer> sortedTimes = new TreeSet<Integer>(times);
+    sortedTimes = DataUtil.fillOutHourly(sortedTimes);
+    
+    Map<String, Set<CrossRegionTuple>> xRegLinks = dac.getFGHO().getAllCrossLinks(this);
+       
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage link = lit.next();
+      String src = link.getSource();
+      String trg = link.getTarget();
+      List<TimeCourseDataMaps.TCMapping> stcm = tcdm.getTimeCourseTCMDataKeysWithDefault(src, dac.getGenomeSource());
+      String srcNameT = genome.getNode(src).getRootName();
+      String trgNameT = genome.getNode(trg).getRootName();
+      List<String> tisks = getTemporalInputRangeSourceKeysWithDefaultGivenName(src, srcNameT);   
+      List<String> tirks = getTemporalInputRangeEntryKeysWithDefaultGivenName(trg, trgNameT);
+      UiUtil.fixMePrintout("this is tisks x tirks x sctm! NO! Incorrect duplications can happen");
+      for (String trgName : tirks) {
+        for (String srcName : tisks) {
+          TemporalRange tr = getRange(trgName);
+          InputTimeRange itr = (tr == null) ? null : tr.getTimeRange(srcName);
+          Set<CrossRegionTuple> xrts = xRegLinks.get(GenomeItemInstance.getBaseID(link.getID()));
+          
+          for (TimeCourseDataMaps.TCMapping tcm : stcm) {            
+            TimeCourseGene tcg = tcd.getTimeCourseData(tcm.name);
+            // Guys in VfG but no VfA will show up here:
+            if (tcg == null) {
+              continue;
+            }
+            Set<String> regions = tcg.expressesInRegions(tcm.channel, true);
+            
+            Iterator<Integer> tmit = sortedTimes.iterator();
+            while (tmit.hasNext()) {
+              Integer time = tmit.next();
+              Iterator<String> rit = regions.iterator();
+              while (rit.hasNext()) {
+                String region = rit.next();
+                TimeCourseGene.VariableLevel vl = new TimeCourseGene.VariableLevel();
+                boolean expressesAtTime = false;
+                int exLev = tcg.getExpressionLevelForSource(region, time, tcm.channel, vl);
+                if ((exLev == ExpressionEntry.EXPRESSED) ||
+                    (exLev == ExpressionEntry.WEAK_EXPRESSION)) {
+                  expressesAtTime = true;
+                } else if (exLev == ExpressionEntry.VARIABLE) {
+                  if (vl.level > 0.0) {
+                    expressesAtTime = true;
+                  }
+                }
+                if (expressesAtTime) {
+                  if (tr == null) {
+                    tr = new TemporalRange(trgName, null, true);
+                    addEntry(tr);
+                  }
+                  if (itr == null) {
+                    itr = new InputTimeRange(srcName);
+                    tr.addTimeRange(itr);
+                  }
+                  HashSet<CrossRegionTuple> genXrts = new HashSet<CrossRegionTuple>();
+                  genXrts.add(new CrossRegionTuple(region, region));
+                  if (xrts != null) {
+                    for (CrossRegionTuple xrtu : xrts) {
+                      if (xrtu.getSourceRegion().equals(region)) {
+                        genXrts.add(xrtu.clone());
+                      }
+                    }
+                  }
+                  for (CrossRegionTuple gxrtu : genXrts) {
+                    RegionAndRange rar = null;
+                    Iterator<RegionAndRange> itrar = itr.getRanges();
+                    int rarSign = RegionAndRange.signForSign(link.getSign());
+                    while (itrar.hasNext()) {
+                      RegionAndRange range = itrar.next();                
+                      String reg = range.getRegion();
+                      if ((reg != null) && DataUtil.keysEqual(gxrtu.getTargetRegion(), reg) && (rarSign == range.getSign())) {
+                        rar = range;
+                        break;
+                      }
+                    }
+                    int tiv = time.intValue();
+                    if (rar == null) {
+                      String srcReg = (gxrtu.isCross()) ? gxrtu.getSourceRegion() : null;
+                      rar = new RegionAndRange(gxrtu.getTargetRegion(), tiv, tiv, RegionAndRange.signForSign(link.getSign()), null, srcReg);
+                      itr.add(rar);                
+                    } else {
+                      rar.addTime(tiv);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return;
+  }  
+
   /***************************************************************************
   **
   ** Answers if we have a tir mapping
@@ -179,11 +396,11 @@ public class TemporalInputRangeData {
   **
   */
   
-  public boolean haveDataForNode(String nodeID) {
+  public boolean haveDataForNode(String nodeID, GenomeSource db) {
     if (!haveData()) {
       return (false);
     }
-    List<String> mapped = getTemporalInputRangeEntryKeysWithDefault(nodeID);
+    List<String> mapped = getTemporalInputRangeEntryKeysWithDefault(nodeID, db);
     if (mapped == null) {
       return (false);
     }
@@ -234,7 +451,7 @@ public class TemporalInputRangeData {
     // will map by default:
     //
     
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx_.getDBGenome();
     Node node = genome.getGeneWithName(name);
     if (node != null) {
       if (!haveCustomEntryMapForNode(node.getID())) {
@@ -288,7 +505,7 @@ public class TemporalInputRangeData {
     // will map by default:
     //
     
-    DBGenome genome = (DBGenome)appState_.getDB().getGenome();
+    DBGenome genome = dacx_.getDBGenome();
     Node node = genome.getGeneWithName(name);
     if (node != null) {
       if (!haveCustomSourceMapForNode(node.getID())) {
@@ -896,6 +1113,16 @@ public class TemporalInputRangeData {
   
   /***************************************************************************
   **
+  ** Get a set of hour values that are covered by the data
+  */
+  
+  public Set<Integer> getHours() {
+    HashSet<Integer> retval = new HashSet<Integer>();
+    return (retval);
+  }
+  
+  /***************************************************************************
+  **
   ** Add source and target maps
   */
 
@@ -934,7 +1161,7 @@ public class TemporalInputRangeData {
     Iterator<TirMapResult> mit = mapSets.iterator();
     while (mit.hasNext()) {
       TirMapResult res = mit.next();
-      if (res.type == TirMapResult.ENTRY_MAP) {
+      if (res.type == TirMapResult.Type.ENTRY_MAP) {
         entryList.add(res.name);
       } else {
         sourceList.add(res.name);
@@ -954,19 +1181,15 @@ public class TemporalInputRangeData {
   ** Get the list of entry names for the node ID.  May be empty.
   */
   
-  public List<String> getTemporalInputRangeEntryKeysWithDefault(String nodeId) {
+  public List<String> getTemporalInputRangeEntryKeysWithDefault(String nodeId, GenomeSource db) {
     List<String> retval = trEntryMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<String>();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);      
-      if (node == null) { // for when node has been already deleted...
-        throw new IllegalStateException();
-      }
-      String nodeName = node.getRootName();
-      if ((nodeName == null) || (nodeName.trim().equals(""))) {
+      String defMap = getTemporalInputRangeDefaultMap(nodeId, db);
+      if (defMap == null) {
         return (retval);
       }
-      retval.add(nodeName);
+      retval.add(defMap);
     }    
     return (retval);
   }
@@ -996,17 +1219,17 @@ public class TemporalInputRangeData {
   public List<String> getCustomTemporalInputRangeEntryKeys(String nodeId) {
     return (trEntryMap_.get(nodeId));
   }
-  
+ 
   /***************************************************************************
   **
   ** Get the list of source names for the node ID.  May be empty.
   */
   
-  public List<String> getTemporalInputRangeSourceKeysWithDefault(String nodeId) {
+  public List<String> getTemporalInputRangeSourceKeysWithDefault(String nodeId, GenomeSource db) {
     List<String> retval = trSourceMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<String>();
-      String defMap = getTemporalInputRangeDefaultMap(nodeId);
+      String defMap = getTemporalInputRangeDefaultMap(nodeId, db);
       if (defMap == null) {
         return (retval);
       }
@@ -1020,8 +1243,8 @@ public class TemporalInputRangeData {
   ** Get the default target name for the node ID.  May be null.
   */
   
-  public String getTemporalInputRangeDefaultMap(String nodeId) {
-    Node node = appState_.getDB().getGenome().getNode(nodeId);      
+  public String getTemporalInputRangeDefaultMap(String nodeId, GenomeSource db) {
+    Node node = db.getRootDBGenome().getNode(nodeId);      
     if (node == null) { // for when node has been already deleted...
       throw new IllegalStateException();
     }      
@@ -1517,7 +1740,7 @@ public class TemporalInputRangeData {
       String name = tr.getName();
       if (DataUtil.keysEqual(name, targetName)) {
         if (!tr.isInternalOnly()) {
-          tr.getInputsTable(appState_, out, srcNames);
+          tr.getInputsTable(dacx_, out, srcNames);
         }
       }
     }
@@ -1530,6 +1753,7 @@ public class TemporalInputRangeData {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("TemporalInputRangeData: " + " entries = " + entries_);
   }
@@ -1548,12 +1772,11 @@ public class TemporalInputRangeData {
   
   public static class TirMapResult {
     public String name;
-    public int type;
+    public Type type;
     
-    public static final int ENTRY_MAP  = 0;
-    public static final int SOURCE_MAP = 1;
+    public enum Type {ENTRY_MAP, SOURCE_MAP};
 
-    public TirMapResult(String name, int type) {
+    public TirMapResult(String name, Type type) {
       this.name = name;
       this.type = type;
     }
@@ -1567,127 +1790,274 @@ public class TemporalInputRangeData {
   
   /***************************************************************************
   **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("TemporalInputRangeData");
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  @SuppressWarnings("unused")
-  public static TemporalInputRangeData buildFromXML(BTState appState, String elemName, 
-                                                    Attributes attrs) throws IOException {
-    if (!elemName.equals("TemporalInputRangeData")) {
-      return (null);
+  ** For XML I/O
+  */  
+      
+  public static class TemporalInputRangeWorker extends AbstractFactoryClient {
+    
+    private DataAccessContext dacx_;
+    private TemporalRange.TemporalRangeWorker trw_;
+    private TemporalInputMapWorker timw_;
+    private TemporalGroupMapWorker tgmw_;
+    
+    public TemporalInputRangeWorker(FactoryWhiteboard whiteboard, boolean mapsAreIllegal) {
+      super(whiteboard);
+      myKeys_.add("TemporalInputRangeData");
+      trw_ = new TemporalRange.TemporalRangeWorker(whiteboard);
+      installWorker(trw_, new MyTemporalRangeGlue());
+      timw_ = new TemporalInputMapWorker(whiteboard, mapsAreIllegal);
+      installWorker(timw_, null);
+      tgmw_ = new TemporalGroupMapWorker(whiteboard, mapsAreIllegal);
+      installWorker(tgmw_, null);
     }
     
-    return (new TemporalInputRangeData(appState));
+
+    public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      trw_.installContext(dacx_);
+      timw_.installContext(dacx_);
+      tgmw_.installContext(dacx_);
+      return;
+    }
+
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("TemporalInputRangeData")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tird = buildFromXML(elemName, attrs);
+        retval = board.tird;
+        if (retval != null) {
+          dacx_.getTemporalRangeSrc().setTemporalInputRangeData(board.tird);
+        }
+      }
+      return (retval);     
+    }  
+    
+    @SuppressWarnings("unused")
+    private TemporalInputRangeData buildFromXML(String elemName, Attributes attrs) throws IOException {  
+      return (new TemporalInputRangeData(dacx_));
+    }
   }
   
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static String extractTrMapKey(String elemName, 
-                                     Attributes attrs) throws IOException {
-    return (AttributeExtractor.extractAttribute(
-              elemName, attrs, "trMap", "key", true));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static TirMapResult extractUseTr(String elemName, 
-                                          Attributes attrs) throws IOException {
-    String name = AttributeExtractor.extractAttribute(
-                         elemName, attrs, "useTr", "name", true);
-    String type = AttributeExtractor.extractAttribute(
-                   elemName, attrs, "useTr", "type", true);
-    int mapType = (type.equals("entry")) ? TirMapResult.ENTRY_MAP : TirMapResult.SOURCE_MAP;
-    return (new TirMapResult(name, mapType));   
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static String extractGroupMapKey(String elemName, 
-                                     Attributes attrs) throws IOException {
-    return (AttributeExtractor.extractAttribute(
-              elemName, attrs, "trGroupMap", "key", true));
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static GroupUsage extractUseGroup(String elemName, 
-                                           Attributes attrs) throws IOException {
-    String mappedGroup = AttributeExtractor.extractAttribute(
-                         elemName, attrs, "trUseGroup", "name", true);
-    String usage = AttributeExtractor.extractAttribute(
-                   elemName, attrs, "trUseGroup", "useFor", false);    
-    return (new GroupUsage(mappedGroup, usage));
-  }  
-  
-  /***************************************************************************
-  **
-  ** Return the trMap keyword
-  **
-  */
-  
-  public static String trMapKeyword() {
-    return ("trMap");
-  }
-  
-  /***************************************************************************
-  **
-  ** Return the usetr keyword
-  **
-  */
-  
-  public static String useTrKeyword() {
-    return ("useTr");
+  public static class MyTemporalRangeGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.tird.addEntry(board.temporalRange);
+      return (null);
+    }
   }
 
   /***************************************************************************
   **
-  ** Return the groupmap keyword
-  **
-  */
+  ** For XML I/O
+  */  
+      
+  public static class TemporalInputMapWorker extends AbstractFactoryClient {
+    
+    private DataAccessContext dacx_;
+    private boolean mapsAreIllegal_;
+    private TemporalInputMapEntryWorker timew_;
+    
+    public TemporalInputMapWorker(FactoryWhiteboard whiteboard, boolean mapsAreIllegal) {
+      super(whiteboard);
+      myKeys_.add("trMap");
+      mapsAreIllegal_ = mapsAreIllegal;
+      timew_ = new TemporalInputMapEntryWorker(whiteboard);
+      installWorker(timew_, new MyMapEntryGlue());
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      timew_.installContext(dacx_);
+      return;
+    }
+
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (mapsAreIllegal_) {
+        throw new IOException();
+      }
+      if (elemName.equals("trMap")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tmrKey = buildFromXML(elemName, attrs);
+        board.tmrList = new ArrayList<TemporalInputRangeData.TirMapResult>();
+        retval = board.tmrList;
+      }
+      return (retval);     
+    }
+    //
+    // This list addition can only happen when the list is complete! No glue stick! 
+    //
+    @Override
+    protected void localFinishElement(String elemName) throws IOException {
+      if (elemName.equals("trMap")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tird.addCombinedTemporalInputRangeMaps(board.tmrKey, board.tmrList);
+        board.tmrKey = null;
+        board.tmrList = null;
+      } 
+      return;
+    }
+    
+    private String buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String key = AttributeExtractor.extractAttribute(elemName, attrs, "trMap", "key", true);
+      return (key);
+    }
+  } 
   
-  public static String groupMapKeyword() {
-    return ("trGroupMap");
+  public static class MyMapEntryGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.tmrList.add(board.tmres);
+      return (null);
+    }
   }
   
   /***************************************************************************
   **
-  ** Return the useGroup keyword
+  ** For XML I/O
+  */  
+      
+  public static class TemporalInputMapEntryWorker extends AbstractFactoryClient {
+ 
+    @SuppressWarnings("unused")
+    private DataAccessContext dacx_;
+    
+    public TemporalInputMapEntryWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("useTr");
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+ 
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("useTr")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tmres = buildFromXML(elemName, attrs);
+        retval = board.tmres;
+      }
+      return (retval);     
+    } 
+    
+    private TirMapResult buildFromXML(String elemName, Attributes attrs) throws IOException {     
+      String name = AttributeExtractor.extractAttribute(elemName, attrs, "useTr", "name", true);
+      String type = AttributeExtractor.extractAttribute(elemName, attrs, "useTr", "type", true);
+      TirMapResult.Type mapType = (type.equals("entry")) ? TirMapResult.Type.ENTRY_MAP : TirMapResult.Type.SOURCE_MAP;
+      return (new TirMapResult(name, mapType));   
+    }
+  }
+
+  /***************************************************************************
   **
-  */
+  ** For XML I/O
+  */  
+      
+  public static class TemporalGroupMapWorker extends AbstractFactoryClient {
+    
+    private boolean mapsAreIllegal_;
+    private DataAccessContext dacx_;
+    private TemporalGroupMapEntryWorker tgmew_;
+    
+    public TemporalGroupMapWorker(FactoryWhiteboard whiteboard, boolean mapsAreIllegal) {
+      super(whiteboard);
+      myKeys_.add("trGroupMap");
+      mapsAreIllegal_ = mapsAreIllegal;
+      tgmew_ = new TemporalGroupMapEntryWorker(whiteboard);
+      installWorker(tgmew_, new MyGroupMapEntryGlue());
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      tgmew_.installContext(dacx_);
+      return;
+    }
+       
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (mapsAreIllegal_) {
+        throw new IOException();
+      }
+      if (elemName.equals("trGroupMap")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tirdguKey = buildFromXML(elemName, attrs);
+        board.tirdguList = new ArrayList<GroupUsage>();
+        retval = board.tirdguList;
+      }
+      return (retval);     
+    } 
+    
+    //
+    // This list addition can only happen when the list is complete! No glue stick! 
+    //
+    @Override
+    protected void localFinishElement(String elemName) throws IOException {
+      if (elemName.equals("trGroupMap")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tird.setTemporalRangeGroupMap(board.tirdguKey, board.tirdguList);
+        board.tirdguKey = null;
+        board.tirdguList = null;
+      } 
+      return;
+    }
+
+    private String buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String key = AttributeExtractor.extractAttribute(elemName, attrs, "trGroupMap", "key", true);
+      return (key);
+    }
+  } 
   
-  public static String useGroupKeyword() {
-    return ("trUseGroup");
-  }  
+  public static class MyGroupMapEntryGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.tirdguList.add(board.tirdgu);
+      return (null);
+    }
+  }
   
+  /***************************************************************************
+  **
+  ** For XML I/O
+  */  
+      
+  public static class TemporalGroupMapEntryWorker extends AbstractFactoryClient {
+ 
+    @SuppressWarnings("unused")
+    private DataAccessContext dacx_;
+    
+    public TemporalGroupMapEntryWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("trUseGroup");
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("trUseGroup")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.tirdgu = buildFromXML(elemName, attrs);
+        retval = board.tirdgu;
+      }
+      return (retval);     
+    } 
+    
+    private GroupUsage buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String mappedGroup = AttributeExtractor.extractAttribute(elemName, attrs, "trUseGroup", "name", true);
+      String usage = AttributeExtractor.extractAttribute(elemName, attrs, "trUseGroup", "useFor", false);    
+      return (new GroupUsage(mappedGroup, usage));   
+    }
+  }
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE INSTANCE METHODS
@@ -1752,7 +2122,7 @@ public class TemporalInputRangeData {
   */
   
   private void writeGroupMap(PrintWriter out, Indenter ind) {
-    ind.up().indent();    
+    ind.indent();    
     out.println("<trGroupMaps>");
     TreeSet<String> sorted = new TreeSet<String>();
     sorted.addAll(groupMap_.keySet());
@@ -1785,4 +2155,80 @@ public class TemporalInputRangeData {
     out.println("</trGroupMaps>");
     return;
   }
+  
+    ////////////////////////////////////////////////////////////////////////////
+  //
+  // INNER CLASSES
+  //
+  ////////////////////////////////////////////////////////////////////////////   
+  
+  /***************************************************************************
+  **
+  ** Used to return group tuples
+  */
+  
+  public static class CrossRegionTuple implements Cloneable {
+    private String srcReg_;
+    private String trgReg_;
+    
+    public CrossRegionTuple(String srcReg, String trgReg) {
+      if ((srcReg == null) || (trgReg == null)) {
+        throw new IllegalArgumentException();
+      }
+      srcReg_ = srcReg;
+      trgReg_ = trgReg;
+    }
+   
+    @Override
+    public CrossRegionTuple clone() { 
+      try {
+        return ((CrossRegionTuple)super.clone());
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    } 
+  
+    @Override
+    public boolean equals(Object other) {
+      if (other == this) {
+        return (true);
+      }
+      if (other == null) {
+        return (false);
+      }
+      if (!(other instanceof CrossRegionTuple)) {
+        return (false);
+      }
+      CrossRegionTuple otherGT = (CrossRegionTuple)other;
+      if (!this.srcReg_.equals(otherGT.srcReg_)) {
+        return (false);
+      }
+      return (this.trgReg_.equals(otherGT.trgReg_));
+    }
+    
+    public boolean isCross() {
+      return (!srcReg_.equals(trgReg_));
+    }
+  
+    public String getSourceRegion() {
+      return (srcReg_);
+    }
+    
+    public String getTargetRegion() {
+      return (trgReg_);
+    } 
+    
+    @Override
+    public int hashCode() {
+      return ((srcReg_.hashCode() * 3) + trgReg_.hashCode());
+    }
+    
+    @Override
+    public String toString() {
+      return ("CrossRegionTuple : " + srcReg_ + " -> " + trgReg_);
+    }
+  }   
+  
+  
+  
 }

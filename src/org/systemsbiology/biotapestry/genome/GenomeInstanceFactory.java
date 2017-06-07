@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,9 +22,10 @@ package org.systemsbiology.biotapestry.genome;
 import java.util.Set;
 import java.io.IOException;
 
+import javax.swing.tree.TreeNode;
+
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -58,7 +59,6 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
   private DataAccessContext dacx_;
   private GenomeInstance currGI_;
   private Group currGroup_;
@@ -86,6 +86,7 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
   
   private StringBuffer descBuf_;
   private StringBuffer urlBuf_;
+  private NetworkOverlay.NetOverlayWorker now_;
       
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -98,10 +99,9 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
   ** Constructor for a genome instance factory
   */
 
-  public GenomeInstanceFactory(BTState appState, DataAccessContext dacx) {
+  public GenomeInstanceFactory() {
     super(new FactoryWhiteboard());
-    appState_ = appState;
-    dacx_ = dacx;
+    dacx_ = null;
     genomeKeys_ = GenomeInstance.keywordsOfInterest();
     geneKeys_ = GeneInstance.keywordsOfInterest();
     nodeKeys_ = NodeInstance.keywordsOfInterest();
@@ -118,7 +118,8 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
    
     FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
     whiteboard.genomeType = NetworkOverlay.GENOME_INSTANCE;
-    installWorker(new NetworkOverlay.NetOverlayWorker(appState_, whiteboard), new MyGlue());
+    now_ = new NetworkOverlay.NetOverlayWorker(whiteboard);
+    installWorker(now_, new MyGlue());
     myKeys_.addAll(genomeKeys_);
     
     descBuf_ = new StringBuffer();
@@ -133,10 +134,22 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
 
   /***************************************************************************
   **
+  ** Set the current context
+  */
+  
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    now_.installContext(dacx);
+    return;
+  }
+  
+  /***************************************************************************
+  **
   ** Callback for completion of the element
   **
   */
   
+  @Override
   protected void localFinishElement(String elemName) {
     if (charTarget_ == NODE_DESCRIPTION_) {
       if (!elemName.equals(nodeDescripKey_)) {
@@ -168,6 +181,7 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
   ** Handle incoming characters
   */
 
+  @Override
   protected void localProcessCharacters(char[] chars, int start, int length) {
     String nextString = new String(chars, start, length);
     switch (charTarget_) {
@@ -205,15 +219,18 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
   protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
 
     if (genomeKeys_.contains(elemName)) {
-      GenomeInstance gi = GenomeInstance.buildFromXML(appState_, elemName, attrs);
+      GenomeInstance gi = GenomeInstance.buildFromXML(dacx_, elemName, attrs);
       if (gi != null) {        
         dacx_.getGenomeSource().addGenomeInstance(gi.getID(), gi);
         currGI_ = gi;
         ((FactoryWhiteboard)sharedWhiteboard_).genome = gi;
         NavTree tree = dacx_.getGenomeSource().getModelHierarchy();
-        GenomeInstance parent = gi.getVfgParent();
-        String parentID = (parent == null) ? null : parent.getID();
-        tree.addNode(gi.getName(), parentID, gi.getID());
+        if (tree.needLegacyGlue()) {
+          GenomeInstance parent = gi.getVfgParent();
+          NavTree.Kids nodeType = (parent == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
+          TreeNode parNode = tree.nodeForModel(dacx_.getGenomeSource().getRootDBGenome().getID());
+          tree.addNode(nodeType, gi.getName(), parNode, new NavTree.ModelID(gi.getID()), null, null, dacx_);
+        }
         return (gi);
       }
       return (null);
@@ -222,13 +239,13 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
     } else if (longNameKey_.equals(elemName)) {
       charTarget_ = LONG_NAME_;            
     } else if (geneKeys_.contains(elemName)) {
-      currNode_ = GeneInstance.buildFromXML(appState_, (DBGenome)dacx_.getGenomeSource().getGenome(), currGI_, attrs);
+      currNode_ = GeneInstance.buildFromXML(dacx_, (DBGenome)dacx_.getGenomeSource().getRootDBGenome(), attrs);
       currGI_.addGene((GeneInstance)currNode_);
     } else if (nodeKeys_.contains(elemName)) {
-      currNode_ = NodeInstance.buildFromXML(appState_, dacx_.getGenomeSource().getGenome(), currGI_, elemName, attrs);
+      currNode_ = NodeInstance.buildFromXML(dacx_, dacx_.getGenomeSource().getRootDBGenome(), elemName, attrs);
       currGI_.addNode(currNode_);
     } else if (linkKeys_.contains(elemName)) {
-      currLink_ = LinkageInstance.buildFromXML(appState_, (DBGenome)dacx_.getGenomeSource().getGenome(), currGI_, attrs);
+      currLink_ = LinkageInstance.buildFromXML(dacx_, (DBGenome)dacx_.getGenomeSource().getRootDBGenome(), attrs);
       currGI_.addLinkage(currLink_); 
     } else if (linkDescripKey_.equals(elemName)) {
       charTarget_ = LINK_DESCRIPTION_;
@@ -243,7 +260,7 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
       charTarget_ = NODE_URL_;
       urlBuf_.setLength(0);          
     } else if (groupKeys_.contains(elemName)) {
-      Group newGroup = Group.buildFromXML(appState_.getRMan(), elemName, attrs);
+      Group newGroup = Group.buildFromXML(dacx_.getRMan(), elemName, attrs);
       if (newGroup != null) {        
         currGroup_ = newGroup;
         currGI_.addGroup(currGroup_);

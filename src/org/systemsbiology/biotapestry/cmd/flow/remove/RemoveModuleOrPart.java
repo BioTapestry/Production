@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,9 +23,11 @@ package org.systemsbiology.biotapestry.cmd.flow.remove;
 import java.io.IOException;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
@@ -114,8 +116,7 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveModuleOrPart(BTState appState, ModAction action, HardwiredEnabledArgs her) {
-    super(appState);
+  public RemoveModuleOrPart(ModAction action, HardwiredEnabledArgs her) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -138,8 +139,8 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, action_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(action_, dacx);
     return (retval);
   }
  
@@ -150,16 +151,17 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (action_ == ModAction.REMOVE_REGION) {
       return (her_.getEnabled());
     } else if (action_ == ModAction.DETACH_FROM_GROUP) {  
       // Can ony detach from group if it attached:
       String moduleID = inter.getObjectID();
-      String overlayKey = rcx.oso.getCurrentOverlay();
-      NetworkOverlay nov = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID()).getNetworkOverlay(overlayKey);     
+      String overlayKey = rcx.getOSO().getCurrentOverlay();
+      NetworkOverlay nov = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID()).getNetworkOverlay(overlayKey);     
       NetModule nmod = nov.getModule(moduleID);
-      boolean canBeAttached = !(rcx.getGenome() instanceof DBGenome);
+      boolean canBeAttached = !rcx.currentGenomeIsRootDBGenome();
       return (canBeAttached && (nmod.getGroupAttachment() != null));     
     }
     return (true);
@@ -179,6 +181,7 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();      
         } else {
@@ -197,28 +200,20 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
     private ModAction myAction_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, ModAction myAction, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ModAction myAction, StaticDataAccessContext dacx) {
+      super(dacx);
       myAction_ = myAction;
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -237,33 +232,33 @@ public class RemoveModuleOrPart extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd stepToRemove() {
-      String ovrKey = rcxT_.oso.getCurrentOverlay();
+      String ovrKey = dacx_.getOSO().getCurrentOverlay();
       String netModKey = intersect_.getObjectID();
       UndoSupport support;
       switch (myAction_) {
         case REMOVE_ALL:
-          NetOverlayController noc = appState_.getNetOverlayController();
-          support = new UndoSupport(appState_, "undo.removeThisNetworkModule");
-          noc.dropACurrentModule(netModKey, support, rcxT_);
-          OverlaySupport.deleteNetworkModule(appState_, rcxT_, ovrKey, netModKey, support);
+          NetOverlayController noc = uics_.getNetOverlayController();
+          support = uFac_.provideUndoSupport("undo.removeThisNetworkModule", dacx_);
+          noc.dropACurrentModule(netModKey, support, dacx_);
+          OverlaySupport.deleteNetworkModule(uics_, dacx_, ovrKey, netModKey, support);
           // This resets the current module options now that the module is gone...
-          noc.updateModuleOptions(support, rcxT_);
+          noc.updateModuleOptions(support, dacx_);
           support.finish();
           break;
         case REMOVE_REGION:        
-          support = new UndoSupport(appState_, "undo.removeNetworkModuleRegion");
+          support = uFac_.provideUndoSupport("undo.removeNetworkModuleRegion", dacx_);
           NetModuleFree.IntersectionExtraInfo iexi = (NetModuleFree.IntersectionExtraInfo)intersect_.getSubID();
-          OverlaySupport.deleteNetworkModuleRegion(appState_, rcxT_, ovrKey, netModKey, iexi, support);
+          OverlaySupport.deleteNetworkModuleRegion(dacx_, ovrKey, netModKey, iexi, support);
           break;
         case DETACH_FROM_GROUP:
-          support = new UndoSupport(appState_, "undo.detachModuleFromGroup");
-          NetOverlayOwner owner = rcxT_.getCurrentOverlayOwner();
+          support = uFac_.provideUndoSupport("undo.detachModuleFromGroup", dacx_);
+          NetOverlayOwner owner = dacx_.getCurrentOverlayOwner();
           NetworkOverlay novr = owner.getNetworkOverlay(ovrKey);
           NetModule nmod = novr.getModule(netModKey);
           NetModuleChange nmc = nmod.detachFromGroup(owner.getID(), owner.overlayModeForOwner(), ovrKey);
           if (nmc != null) {
-            support.addEdit(new NetOverlayChangeCmd(appState_, rcxT_, nmc));
-            support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+            support.addEdit(new NetOverlayChangeCmd(dacx_, nmc));
+            support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
             support.finish();
           }
           break;         

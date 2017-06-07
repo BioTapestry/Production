@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@ import java.awt.Toolkit;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 
 import java.net.URL;
 
@@ -44,15 +44,14 @@ public class CursorManager  {
   private JPanel pan_;
   private Cursor xCur_;
   private Cursor errCur_;
-  private BTState appState_;
   private boolean active_;
 
-  public CursorManager(BTState appState) {
-    appState_ = appState.setCursorManager(this);
+  public CursorManager(UIComponentSource uics) {
+
     errCount_ = 0;
-    active_ = !appState_.isHeadless();
+    active_ = !uics.isHeadless();
     if (active_) {
-      pan_ = appState_.getSUPanel().getPanel();
+      pan_ = uics.getSUPanel().getPanel();
       pan_.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
       buildCursors();
     }

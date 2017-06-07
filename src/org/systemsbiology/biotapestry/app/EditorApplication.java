@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,6 +34,8 @@ import java.util.Map;
 import javax.swing.SwingUtilities;
 
 import org.systemsbiology.biotapestry.gaggle.DeadGoose;
+import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.gaggle.GooseAppInterface;
 
@@ -58,6 +60,9 @@ public class EditorApplication {
   
   private JWindow splash_;
   private final BTState appState_;
+  private final UIComponentSource uics_;
+  private final CmdSource cSrc_;
+  private final TabSource tSrc_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -74,12 +79,15 @@ public class EditorApplication {
     ArgParser ap = new ArgParser(); 
     final Map<String, Object> argMap = ap.parse(ArgParser.AppType.EDITOR, argv);
     if (argMap == null) {
-      System.err.print(ap.getUsage(new BTState(), ArgParser.AppType.EDITOR));
+      System.err.print(ap.getUsage((new BTState()).getUIComponentSource().getRMan(), ArgParser.AppType.EDITOR));
       System.exit(0);
     }
 
     BTState appState = new BTState("WJRL", argMap, false, false);
-    final EditorApplication su = new EditorApplication(appState); 
+    UIComponentSource uics = appState.getUIComponentSource();
+    CmdSource cSrc = appState.getCmdSource();
+    TabSource tSrc = appState.getTabSource();
+    final EditorApplication su = new EditorApplication(appState, uics, cSrc, tSrc); 
     
     //
     // Gotta wait to give splash screen a chance to get painted:
@@ -93,7 +101,7 @@ public class EditorApplication {
     } catch (Exception ex) {
     }
     
-    boolean ok = appState.getPlugInMgr().loadDataDisplayPlugIns(argMap);   
+    boolean ok = uics.getPlugInMgr().loadDataDisplayPlugIns(argMap);   
     if (!ok) {
       System.err.println("Problems loading plugins");
     }
@@ -117,9 +125,12 @@ public class EditorApplication {
   //
   ////////////////////////////////////////////////////////////////////////////    
         
-  private EditorApplication(BTState appState) {
+  private EditorApplication(BTState appState, UIComponentSource uics, CmdSource cSrc, TabSource tSrc) {
     appState_ = appState;
-    appState_.setIsEditor(true);
+    uics_ = uics;
+    cSrc_ = cSrc;
+    tSrc_ = tSrc;
+    uics.setIsEditor(true);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -129,10 +140,15 @@ public class EditorApplication {
   ////////////////////////////////////////////////////////////////////////////    
         
   private void launch() {
-    appState_.getDB().newModelViaDACX(); // Bogus, but no DACX yet
-    EditorWindow ew = new EditorWindow(appState_);
+    Metabase mb = appState_.getMetabase();
+    mb.newModelViaDACX();
+    String tabID = tSrc_.getDbIdForIndex(tSrc_.getCurrentTabIndex());
+    Database newDB = mb.getDB(tabID);
+    DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState()); 
+    newDB.newModelViaDACX(ddacx.getTabContext(tabID));
+    EditorWindow ew = new EditorWindow(appState_, uics_, cSrc_, tSrc_);
          
-    if (appState_.getDoGaggle()) {
+    if (uics_.getDoGaggle()) {
       //
       // This keeps the verifier from trying to dig into this code when it is not present:
       //
@@ -141,8 +157,8 @@ public class EditorApplication {
         GooseAppInterface liveGoose = (GooseAppInterface)gooseClass.newInstance();
         liveGoose.setParameters(ew, appState_, appState_.getGaggleSpecies());
         liveGoose.activate();
-        appState_.getGooseMgr().setGoose(liveGoose);
-        appState_.getGaggleControls().updateGaggleTargetActions();
+        uics_.getGooseMgr().setGoose(liveGoose);
+        uics_.getGaggleControls().updateGaggleTargetActions();
       } catch (ClassNotFoundException cnfex) {
         System.err.println("BTGoose class not found");
       } catch (InstantiationException iex) {
@@ -153,12 +169,13 @@ public class EditorApplication {
       //
       // Triggers button to turn on if connect was successful:
       //
-      String genomeKey = appState_.getGenome();
-      String layoutKey = appState_.getLayoutKey();
+      StaticDataAccessContext dacx = new StaticDataAccessContext(appState_);
+      String genomeKey = dacx.getCurrentGenomeID();
+      String layoutKey = dacx.getCurrentLayoutID();
       SelectionChangeEvent ev = new SelectionChangeEvent(genomeKey, layoutKey, SelectionChangeEvent.UNSPECIFIED_CHANGE);
-      appState_.getEventMgr().sendSelectionChangeEvent(ev);
+      uics_.getEventMgr().sendSelectionChangeEvent(ev);
     } else {
-      appState_.getGooseMgr().setGoose(new DeadGoose());
+      uics_.getGooseMgr().setGoose(new DeadGoose());
     }
     return;
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,7 +39,8 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -57,12 +58,11 @@ class NullPerturb implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private BTState appState_;
-  private ArrayList sources_;
-  private ArrayList targets_;
+  private ArrayList<Source> sources_;
+  private ArrayList<NullTarget> targets_;
   
-  private TreeSet investigators_;  // Added after QPCR was made obsolete to
-                                   // support perturb HTML display
+  private TreeSet<String> investigators_;  // Added after QPCR was made obsolete to
+                                           // support perturb HTML display
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -75,11 +75,10 @@ class NullPerturb implements Cloneable {
   ** Constructor
   */
 
-   NullPerturb(BTState appState) {
-    appState_ = appState;
-    this.sources_ = new ArrayList();
-    this.targets_ = new ArrayList();
-    this.investigators_ = new TreeSet();
+   NullPerturb() {
+    this.sources_ = new ArrayList<Source>();
+    this.targets_ = new ArrayList<NullTarget>();
+    this.investigators_ = new TreeSet<String>();
   }
   
   /***************************************************************************
@@ -87,15 +86,14 @@ class NullPerturb implements Cloneable {
   ** Constructor
   */
 
-   NullPerturb(BTState appState, List sources) {
-    appState_ = appState;
-    this.sources_ = new ArrayList();
+   NullPerturb(List<Source> sources) {
+    this.sources_ = new ArrayList<Source>();
     int num = sources.size();
     for (int i = 0; i < num; i++) {
-      this.sources_.add(((Source)sources.get(i)).clone());
+      this.sources_.add(sources.get(i).clone());
     }
-    this.targets_ = new ArrayList();
-    this.investigators_ = new TreeSet();
+    this.targets_ = new ArrayList<NullTarget>();
+    this.investigators_ = new TreeSet<String>();
   }  
    
   /***************************************************************************
@@ -119,11 +117,11 @@ class NullPerturb implements Cloneable {
   ** if otherSources is null!
   */
   
-  boolean sourcesContainOneOrMore(List otherSources) { 
+  boolean sourcesContainOneOrMore(List<String> otherSources) { 
     if (otherSources != null) {
-      Iterator srcIt = sources_.iterator();
+      Iterator<Source> srcIt = sources_.iterator();
       while (srcIt.hasNext()) {
-        Source src = (Source)srcIt.next();
+        Source src = srcIt.next();
         if (DataUtil.containsKey(otherSources, src.getBaseType())) {
           return (true);
         }
@@ -139,20 +137,20 @@ class NullPerturb implements Cloneable {
   ** Answer if our set of sources matches the given set
   */
   
-   boolean sourcesMatch(List otherSources) {
+   boolean sourcesMatch(List<Source> otherSources) {
     if (otherSources.size() != sources_.size()) {
       return (false);
     }
     QPCRData.SourceComparator srcCmp = new QPCRData.SourceComparator();   
-    TreeSet mySorted = new TreeSet(srcCmp);
+    TreeSet<Source> mySorted = new TreeSet<Source>(srcCmp);
     mySorted.addAll(sources_);
-    TreeSet otherSorted = new TreeSet(srcCmp);
+    TreeSet<Source> otherSorted = new TreeSet<Source>(srcCmp);
     otherSorted.addAll(otherSources);
-    Iterator msit = mySorted.iterator();
-    Iterator osit = otherSorted.iterator();    
+    Iterator<Source> msit = mySorted.iterator();
+    Iterator<Source> osit = otherSorted.iterator();    
     while (msit.hasNext()) {
-      Source ms = (Source)msit.next();
-      Source os = (Source)osit.next();
+      Source ms = msit.next();
+      Source os = osit.next();
       if (srcCmp.compare(ms, os) != 0) {
         return (false);
       }
@@ -165,20 +163,21 @@ class NullPerturb implements Cloneable {
   ** Clone
   */
 
-   public Object clone() {
+  @Override 
+  public NullPerturb clone() {
     try {
       NullPerturb newVal = (NullPerturb)super.clone();
-      newVal.sources_ = new ArrayList();
-      Iterator osit = this.sources_.iterator();
+      newVal.sources_ = new ArrayList<Source>();
+      Iterator<Source> osit = this.sources_.iterator();
       while (osit.hasNext()) {
-        newVal.sources_.add(((Source)osit.next()).clone());
+        newVal.sources_.add(osit.next().clone());
       }
-      newVal.targets_ = new ArrayList();
-      Iterator otit = this.targets_.iterator();
+      newVal.targets_ = new ArrayList<NullTarget>();
+      Iterator<NullTarget> otit = this.targets_.iterator();
       while (otit.hasNext()) {
-        newVal.targets_.add(((NullTarget)otit.next()).clone());
+        newVal.targets_.add(otit.next().clone());
       }     
-      newVal.investigators_ = new TreeSet(this.investigators_);     
+      newVal.investigators_ = new TreeSet<String>(this.investigators_);     
       return (newVal);
     } catch (CloneNotSupportedException ex) {
       throw new IllegalStateException();     
@@ -193,7 +192,7 @@ class NullPerturb implements Cloneable {
    void updateDataRange(NullTimeSpan defaultSpan, int[] range) {
     int size = targets_.size();
     for (int i = 0; i < size; i++) {
-      NullTarget targ = (NullTarget)targets_.get(i);
+      NullTarget targ = targets_.get(i);
       targ.updateDataRange(defaultSpan, range);
     }
     return;
@@ -205,18 +204,17 @@ class NullPerturb implements Cloneable {
   */
   
    void mergeInNewValues(NullPerturb other) {
-    this.appState_ = other.appState_;
-    this.sources_ = new ArrayList();
-    Iterator osit = other.sources_.iterator();
+    this.sources_ = new ArrayList<Source>();
+    Iterator<Source> osit = other.sources_.iterator();
     while (osit.hasNext()) {
-      this.sources_.add(((Source)osit.next()).clone());
+      this.sources_.add(osit.next().clone());
     }
-    this.targets_ = new ArrayList();
-    Iterator otit = other.targets_.iterator();
+    this.targets_ = new ArrayList<NullTarget>();
+    Iterator<NullTarget> otit = other.targets_.iterator();
     while (otit.hasNext()) {
-      this.targets_.add(((NullTarget)otit.next()).clone());
+      this.targets_.add(otit.next().clone());
     }
-    this.investigators_ = new TreeSet(other.investigators_); 
+    this.investigators_ = new TreeSet<String>(other.investigators_); 
     return;
   }
   
@@ -225,7 +223,7 @@ class NullPerturb implements Cloneable {
   ** Get an iterator over the sources
   */
   
-   Iterator getSources() {
+   Iterator<Source> getSources() {
     return (sources_.iterator());
   }
   
@@ -234,7 +232,7 @@ class NullPerturb implements Cloneable {
   ** Get an iterator over the targets
   */
   
-   Iterator getTargets() {
+   Iterator<NullTarget> getTargets() {
     return (targets_.iterator());
   }  
 
@@ -267,7 +265,7 @@ class NullPerturb implements Cloneable {
   */
   
    Source getSource(int index) {
-    return ((Source)sources_.get(index));
+    return (sources_.get(index));
   }  
   
   /***************************************************************************
@@ -320,7 +318,7 @@ class NullPerturb implements Cloneable {
   */
   
    NullTarget getTarget(int index) {
-    return ((NullTarget)targets_.get(index));
+    return (targets_.get(index));
   } 
   
   /***************************************************************************
@@ -328,18 +326,18 @@ class NullPerturb implements Cloneable {
   ** Get the set of footnote numbers used by this null perturb
   */
   
-   Set getFootnoteNumbers() {
-    HashSet retval = new HashSet();
-    Iterator pers = getSources();
+   Set<String> getFootnoteNumbers() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<Source> pers = getSources();
     while (pers.hasNext()) {
-      Source src = (Source)pers.next();
-      List notes = src.getFootnoteNumbers();
+      Source src = pers.next();
+      List<String> notes = src.getFootnoteNumbers();
       retval.addAll(notes);
     }
-    Iterator pert = getTargets();
+    Iterator<NullTarget> pert = getTargets();
     while (pert.hasNext()) {
-      NullTarget nt = (NullTarget)pert.next();
-      List notes = nt.getFootnoteNumbers();
+      NullTarget nt = pert.next();
+      List<String> notes = nt.getFootnoteNumbers();
       retval.addAll(notes);
     } 
     return (retval);
@@ -350,12 +348,12 @@ class NullPerturb implements Cloneable {
   ** Set the note.  Used for legacy input
   */
   
-   void setNote(String note, QPCRData qpcr) throws IOException {
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+   void setNote(String note, QPCRData qpcr, TabPinnedDynamicDataAccessContext dacx) throws IOException {
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (tad.getUnits() != TimeAxisDefinition.LEGACY_UNITS) {
       throw new IOException();
     }
-    convertNoteToTargets(note, targets_, qpcr.getLegacyNullPerturbationsDefaultTimeSpan());
+    convertNoteToTargets(note, targets_, qpcr.getLegacyNullPerturbationsDefaultTimeSpan(dacx), dacx);
     return;
   }
 
@@ -365,7 +363,7 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   boolean appliesToTargets(List targetGeneNames) {
+   boolean appliesToTargets(List<String> targetGeneNames) {
     return (appliesToTargetsGetTarget(targetGeneNames) != null);
   }  
   
@@ -375,13 +373,13 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   NullTarget appliesToTargetsGetTarget(List targetGeneNames) {
-    Iterator tgit = targetGeneNames.iterator();
+   NullTarget appliesToTargetsGetTarget(List<String> targetGeneNames) {
+    Iterator<String> tgit = targetGeneNames.iterator();
     while (tgit.hasNext()) {
-      String targetName = (String)tgit.next();
-      Iterator trgit = getTargets();
+      String targetName = tgit.next();
+      Iterator<NullTarget> trgit = getTargets();
       while (trgit.hasNext()) {
-        NullTarget nt = (NullTarget)trgit.next();
+        NullTarget nt = trgit.next();
         String nextTarg = nt.getTarget();
         if (DataUtil.keysEqual(targetName, nextTarg)) {
           return (nt);
@@ -397,14 +395,14 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   List appliesToTargetGetTargetIndices(String targetName) {
-    ArrayList retval = new ArrayList();
+   List<Integer> appliesToTargetGetTargetIndices(String targetName) {
+    ArrayList<Integer> retval = new ArrayList<Integer>();
     int numTarg = targets_.size();
     for (int i = 0; i < numTarg; i++) {
       NullTarget nt = getTarget(i);
       String nextTarg = nt.getTarget();
       if (DataUtil.keysEqual(targetName, nextTarg)) {
-        retval.add(new Integer(i));
+        retval.add(Integer.valueOf(i));
       }
     }      
     return (retval);
@@ -426,11 +424,11 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   void deleteTargetIndices(List indices) {
-    ArrayList newTargs = new ArrayList();
+   void deleteTargetIndices(List<Integer> indices) {
+    ArrayList<NullTarget> newTargs = new ArrayList<NullTarget>();
     int numTarg = targets_.size();
     for (int i = 0; i < numTarg; i++) {
-      if (!indices.contains(new Integer(i))) {
+      if (!indices.contains(Integer.valueOf(i))) {
         newTargs.add(targets_.get(i));
       }
     }
@@ -444,30 +442,30 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   String buildTargetDisplayString(NullTimeSpan defaultSpan) {
+   String buildTargetDisplayString(NullTimeSpan defaultSpan, DataAccessContext dacx) {
 
     //
     // Group targets into common span sets:
     //
     
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String units = tad.unitDisplayAbbrev();
     boolean isSuffix = tad.unitsAreASuffix();
        
-    Map spanLists = groupInSpanSets(defaultSpan);
+    Map<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>> spanLists = groupInSpanSets(defaultSpan);
     
     //
     // Build alphabetic lists of default and single-target spans:
     //
     
-    HashSet defaultSet = new HashSet();
+    HashSet<NullTimeSpan> defaultSet = new HashSet<NullTimeSpan>();
     defaultSet.add(defaultSpan);
-    HashMap multiTargs = new HashMap();
-    TreeMap defAndSingles = new TreeMap();
-    Iterator slit = spanLists.keySet().iterator();
+    HashMap<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>> multiTargs = new HashMap<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>>();
+    TreeMap<String, List<NullTarget>> defAndSingles = new TreeMap<String, List<NullTarget>>();
+    Iterator<Set<NullTimeSpan>> slit = spanLists.keySet().iterator();
     while (slit.hasNext()) {
-      Set spanSet = (Set)slit.next();
-      SortedMap targMap = (SortedMap)spanLists.get(spanSet);
+      Set<NullTimeSpan> spanSet = slit.next();
+      SortedMap<String, List<NullTarget>> targMap = spanLists.get(spanSet);
       if (spanSet.equals(defaultSet) || (targMap.size() == 1)) {
         mergeMaps(defAndSingles, targMap);
       } else {
@@ -478,19 +476,19 @@ class NullPerturb implements Cloneable {
     StringBuffer buf = new StringBuffer();
     boolean isFirst = true;
     
-    Iterator dsit = defAndSingles.keySet().iterator();
+    Iterator<String> dsit = defAndSingles.keySet().iterator();
     while (dsit.hasNext()) {
-      String dKey = (String)dsit.next();
-      List targForTString = (List)defAndSingles.get(dKey);
-      Iterator tftit = targForTString.iterator();
+      String dKey = dsit.next();
+      List<NullTarget> targForTString = defAndSingles.get(dKey);
+      Iterator<NullTarget> tftit = targForTString.iterator();
       while (tftit.hasNext()) {
-        NullTarget nt = (NullTarget)tftit.next();
+        NullTarget nt = tftit.next();
         if (isFirst) {
          isFirst = false;
         } else {
           buf.append(", ");
         }
-        Set spanSet = nt.getSpansInSet();
+        Set<NullTimeSpan> spanSet = nt.getSpansInSet();
         if (spanSet.isEmpty()) {
           spanSet.add(new NullTimeSpan(defaultSpan));
         }
@@ -499,18 +497,18 @@ class NullPerturb implements Cloneable {
       }
     }
     
-    Iterator mtit = multiTargs.keySet().iterator();
+    Iterator<Set<NullTimeSpan>> mtit = multiTargs.keySet().iterator();
     while (mtit.hasNext()) {
-      Set spanSet = (Set)mtit.next();
-      SortedMap targMap = (SortedMap)spanLists.get(spanSet);
-      Iterator tmit = targMap.keySet().iterator();
+      Set<NullTimeSpan> spanSet = mtit.next();
+      SortedMap<String, List<NullTarget>> targMap = spanLists.get(spanSet);
+      Iterator<String> tmit = targMap.keySet().iterator();
       boolean isFirstForBracket = true;
       while (tmit.hasNext()) {
-        String dKey = (String)tmit.next();
-        List targForTString = (List)targMap.get(dKey);
-        Iterator tftit = targForTString.iterator();
+        String dKey = tmit.next();
+        List<NullTarget> targForTString = targMap.get(dKey);
+        Iterator<NullTarget> tftit = targForTString.iterator();
         while (tftit.hasNext()) {
-          NullTarget nt = (NullTarget)tftit.next();
+          NullTarget nt = tftit.next();
           if (isFirstForBracket) {
             isFirstForBracket = false;
             if (isFirst) {
@@ -544,7 +542,7 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   void addInvestigators(Set invest) {
+   void addInvestigators(Set<String> invest) {
     investigators_.addAll(invest);
     return;
   }
@@ -555,13 +553,13 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   String buildInvestDisplayString() {
+   String buildInvestDisplayString(DataAccessContext dacx) {
      
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     String etAl = rMan.getString("qpcrData.andOthers");
     int numInv = investigators_.size();
     if (numInv == 1) {  
-      String only = (String)investigators_.iterator().next();
+      String only = investigators_.iterator().next();
       if (only.equals(etAl)) {
         return (null);
       }
@@ -571,9 +569,9 @@ class NullPerturb implements Cloneable {
     boolean etAlPending = investigators_.contains(etAl);
     
     StringBuffer buf = new StringBuffer();
-    Iterator iit = investigators_.iterator();
+    Iterator<String> iit = investigators_.iterator();
     while (iit.hasNext()) {
-      String inv = (String)iit.next();
+      String inv = iit.next();
       if (inv.equals(etAl)) {
         continue;
       }
@@ -601,14 +599,14 @@ class NullPerturb implements Cloneable {
   **
   */
   
-  private void mergeMaps(SortedMap destMap, SortedMap srcMap) {
-    Iterator smit = srcMap.keySet().iterator();
+  private void mergeMaps(SortedMap<String, List<NullTarget>> destMap, SortedMap<String, List<NullTarget>> srcMap) {
+    Iterator<String> smit = srcMap.keySet().iterator();
     while (smit.hasNext()) {
-      String smkey = (String)smit.next();
-      List smList = (List)srcMap.get(smkey);
-      List dstList = (List)destMap.get(smkey);
+      String smkey = smit.next();
+      List<NullTarget> smList = srcMap.get(smkey);
+      List<NullTarget> dstList = destMap.get(smkey);
       if (dstList == null) {
-        destMap.put(smkey, new ArrayList(smList));
+        destMap.put(smkey, new ArrayList<NullTarget>(smList));
       } else {
         dstList.addAll(smList);
       }
@@ -622,29 +620,29 @@ class NullPerturb implements Cloneable {
   **
   */
   
-  private Map groupInSpanSets(NullTimeSpan defaultSpan) {
+  private Map<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>> groupInSpanSets(NullTimeSpan defaultSpan) {
     //
     // Group targets into common span sets:
     //
-    Iterator trgs = getTargets();
-    HashMap spanMaps = new HashMap();
+    Iterator<NullTarget> trgs = getTargets();
+    HashMap<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>> spanMaps = new HashMap<Set<NullTimeSpan>, SortedMap<String, List<NullTarget>>>();
     while (trgs.hasNext()) {
-      NullTarget trg = (NullTarget)trgs.next();
-      Set spanSet = trg.getSpansInSet();
+      NullTarget trg = trgs.next();
+      Set<NullTimeSpan> spanSet = trg.getSpansInSet();
       if (spanSet.isEmpty()) {
         spanSet.add(new NullTimeSpan(defaultSpan));
       }
-      SortedMap currMap = (SortedMap)spanMaps.get(spanSet);
-      ArrayList targsForTarg;
+      SortedMap<String, List<NullTarget>> currMap = spanMaps.get(spanSet);
+      List<NullTarget> targsForTarg;
       if (currMap == null) {
-        currMap = new TreeMap();
+        currMap = new TreeMap<String, List<NullTarget>>();
         spanMaps.put(spanSet, currMap);
-        targsForTarg = new ArrayList();
+        targsForTarg = new ArrayList<NullTarget>();
         currMap.put(trg.getTarget(), targsForTarg);
       } else {
-        targsForTarg = (ArrayList)currMap.get(trg.getTarget());
+        targsForTarg = currMap.get(trg.getTarget());
         if (targsForTarg == null) {
-          targsForTarg = new ArrayList();
+          targsForTarg = new ArrayList<NullTarget>();
           currMap.put(trg.getTarget(), targsForTarg);          
         } 
       }
@@ -661,9 +659,9 @@ class NullPerturb implements Cloneable {
   
    String getSourceDisplayString(boolean footnotes) {
     StringBuffer buf = new StringBuffer();
-    Iterator sit = getSources();
+    Iterator<Source> sit = getSources();
     while (sit.hasNext()) {
-      Source src = (Source)sit.next();
+      Source src = sit.next();
       buf.append(src.getDisplayValue());
       if (footnotes) {
         String notes = src.getNotes();
@@ -686,15 +684,15 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, NullTimeSpan defaultSpan) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, NullTimeSpan defaultSpan, DataAccessContext dacx) {
     ind.indent();    
     out.println("<tr valign=\"top\" >");    
     ind.up().indent();    
     out.println("<td>");
     ind.up().indent();
-    Iterator srcs = getSources();   
+    Iterator<Source> srcs = getSources();   
     while (srcs.hasNext()) {
-      Source src = (Source)srcs.next();
+      Source src = srcs.next();
       src.writeHTML(out, ind, srcs.hasNext(), qtp, true);
     }
     ind.down().indent();    
@@ -704,11 +702,11 @@ class NullPerturb implements Cloneable {
     ind.up().indent();
     qtp.paragraph(false);
     out.print("<i>");
-    out.print(buildTargetDisplayString(defaultSpan));    
+    out.print(buildTargetDisplayString(defaultSpan, dacx));    
     out.println("</i>");
-    String inv = buildInvestDisplayString();
+    String inv = buildInvestDisplayString(dacx);
     if (inv != null) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx.getRMan();
       out.print(" (");
       out.print(rMan.getString("qpcrData.dataOf"));
       out.print(" ");
@@ -758,7 +756,7 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   static NullPerturb buildFromXML(BTState appState, String elemName, 
+   static NullPerturb buildFromXML(DataAccessContext dacx, String elemName, 
                                    Attributes attrs) throws IOException {
     if (!elemName.equals("nullPerturbation")) {
       return (null);
@@ -783,9 +781,9 @@ class NullPerturb implements Cloneable {
       }
     }
     
-    NullPerturb retval = new NullPerturb(appState);
+    NullPerturb retval = new NullPerturb();
     if (p != null) {
-      retval.convertLegacySource(p);
+      retval.convertLegacySource(p, dacx);
     }
     
     return (retval);
@@ -802,19 +800,19 @@ class NullPerturb implements Cloneable {
   ** Set the targets from a string.  Used for legacy input
   */
   
-  private void convertNoteToTargets(String note, List targets, NullTimeSpan defaultNull) {
+  private void convertNoteToTargets(String note, List<NullTarget> targets, NullTimeSpan defaultNull, DataAccessContext dacx) {
     
     //
     // Chop up the note string by commas, but keep the time span
     // lists (with commas) glued together:
     //
-    ArrayList tokens = new ArrayList();
+    ArrayList<String> tokens = new ArrayList<String>();
     Pattern plus = Pattern.compile(",");
     Pattern spanStart = Pattern.compile(".*\\([0-9]+$");
     Pattern spanEnd = Pattern.compile(".*[0-9]+ *h\\)]?$");
     Matcher m = plus.matcher(note);
     int pstart = 0;
-    ArrayList currGlue = new ArrayList();
+    ArrayList<String> currGlue = new ArrayList<String>();
     while (m.find()) {
       String next = note.substring(pstart, m.start());
       addOrGlue(next, spanStart, spanEnd, currGlue, tokens);
@@ -840,18 +838,18 @@ class NullPerturb implements Cloneable {
     } else {
       defaultToks.taggedToken = def;
     }
-    ArrayList bracketedToks = new ArrayList();
+    ArrayList<TimeTaggedList> bracketedToks = new ArrayList<TimeTaggedList>();
     groupByTimeTags(defaultToks, bracketedToks, tokens);
 
     //
     // Create Null targets from the tagged lists:
     //
    
-    targets.addAll(convertTimeTaggedList(defaultToks, minTime));
+    targets.addAll(convertTimeTaggedList(defaultToks, minTime, dacx));
     int brakNum = bracketedToks.size();    
     for (int i = 0; i < brakNum; i++) {
-      TimeTaggedList bt = (TimeTaggedList)bracketedToks.get(i);
-      targets.addAll(convertTimeTaggedList(bt, minTime));
+      TimeTaggedList bt = bracketedToks.get(i);
+      targets.addAll(convertTimeTaggedList(bt, minTime, dacx));
     }    
     return;
   }
@@ -861,16 +859,16 @@ class NullPerturb implements Cloneable {
   ** Convert time tagged list to NullTargets
   */
  
-  private List convertTimeTaggedList(TimeTaggedList ttl, int minTime) {
-    ArrayList retval = new ArrayList();
-    List spans = parseTimeTag(ttl.isDefault, ttl.taggedToken, minTime);
+  private List<NullTarget> convertTimeTaggedList(TimeTaggedList ttl, int minTime, DataAccessContext dacx) {
+    ArrayList<NullTarget> retval = new ArrayList<NullTarget>();
+    List<NullTimeSpan> spans = parseTimeTag(ttl.isDefault, ttl.taggedToken, minTime, dacx);
     int size = ttl.tokens.size();
     for (int i = 0; i < size; i++) {
-      String token = (String)ttl.tokens.get(i);
+      String token = ttl.tokens.get(i);
       String[] chopped = chopOutTimeSpan(token);
-      List useSpans;
+      List<NullTimeSpan> useSpans;
       if (chopped.length == 2) {
-        useSpans = parseTimeTag(false, chopped[1], minTime);
+        useSpans = parseTimeTag(false, chopped[1], minTime, dacx);
       } else {
         useSpans = spans;
       }
@@ -881,7 +879,7 @@ class NullPerturb implements Cloneable {
       if (useSpans != null) {
         int spSize = useSpans.size();
         for (int j = 0; j < spSize; j++) {
-          NullTimeSpan span = (NullTimeSpan)useSpans.get(j);
+          NullTimeSpan span = useSpans.get(j);
           newNull.addTimeSpan(span);
         }
       }
@@ -895,7 +893,7 @@ class NullPerturb implements Cloneable {
   ** Chop or glue
   */
   
-  private void addOrGlue(String next, Pattern spanStart, Pattern spanEnd, List glued, List tokens) {
+  private void addOrGlue(String next, Pattern spanStart, Pattern spanEnd, List<String> glued, List<String> tokens) {
     next = next.trim();
     Matcher mSS = spanStart.matcher(next);
     if (mSS.matches()) {
@@ -920,14 +918,14 @@ class NullPerturb implements Cloneable {
   ** Flush a glue list to a String
   */
 
-  private String flushGlueToString(List glued) {
+  private String flushGlueToString(List<String> glued) {
     StringBuffer buf = new StringBuffer();
     int size = glued.size();
     for (int i = 0; i < size; i++) {
       if (i != 0) {
         buf.append(", ");
       }
-      buf.append((String)glued.get(i));
+      buf.append(glued.get(i));
     }
     return (buf.toString());
   }
@@ -937,13 +935,13 @@ class NullPerturb implements Cloneable {
   ** Handle bracketing
   */
 
-  private void groupByTimeTags(TimeTaggedList defaultToks, List specialToks, List tokens) {
+  private void groupByTimeTags(TimeTaggedList defaultToks, List<TimeTaggedList> specialToks, List<String> tokens) {
     Pattern brackStart = Pattern.compile("^\\[.*");
     Pattern brackEnd = Pattern.compile(".*]$");
     int tokNum = tokens.size();
     TimeTaggedList tokTarg = defaultToks;
     for (int i = 0; i < tokNum; i++) {
-      String tok = (String)tokens.get(i);
+      String tok = tokens.get(i);
       Matcher mBS = brackStart.matcher(tok);
       if (mBS.matches()) {
         tok = tok.replaceFirst("\\[", "");
@@ -973,11 +971,11 @@ class NullPerturb implements Cloneable {
   ** Handle default assignment
   */
 
-  private String extractDefault(List tokens) {
+  private String extractDefault(List<String> tokens) {
     if (tokens.size() == 0) {
       return (null);
     }
-    String tok = (String)tokens.get(0);
+    String tok = tokens.get(0);
     Pattern defSpan = Pattern.compile("^(\\([0-9, -&]+h *\\):)");
     Matcher dSM = defSpan.matcher(tok);
     if (dSM.find()) {
@@ -995,7 +993,7 @@ class NullPerturb implements Cloneable {
   ** Parse time tag
   */
 
-  private List parseTimeTag(boolean isDefault, String tag, int minTime) {
+  private List<NullTimeSpan> parseTimeTag(boolean isDefault, String tag, int minTime, DataAccessContext dacx) {
     if (isDefault) {
       return (null);
     }
@@ -1005,10 +1003,9 @@ class NullPerturb implements Cloneable {
     boolean toUpper = (tag.indexOf("(to") != -1);    
     boolean isSingle = !isList && !isRange && !isPair && !toUpper;
     
-    ArrayList retval = new ArrayList();
+    ArrayList<NullTimeSpan> retval = new ArrayList<NullTimeSpan>();
     Pattern number = Pattern.compile("([0-9]+)");
     Matcher m = number.matcher(tag);
-    int pstart = 0;
     int first = Integer.MIN_VALUE;
     while (m.find()) {
       String next = m.group(1);
@@ -1020,18 +1017,18 @@ class NullPerturb implements Cloneable {
         throw new IllegalStateException();
       }
       if (isList || isSingle) {
-        retval.add(new NullTimeSpan(appState_, val));
+        retval.add(new NullTimeSpan(dacx, val));
       } else if (toUpper) {
-        retval.add(new NullTimeSpan(appState_, minTime, val));
+        retval.add(new NullTimeSpan(dacx, minTime, val));
       } else if (isPair) {
-        retval.add(new NullTimeSpan(appState_, val));
+        retval.add(new NullTimeSpan(dacx, val));
       } else if (first != Integer.MIN_VALUE) {
-        retval.add(new NullTimeSpan(appState_, first, val));
+        retval.add(new NullTimeSpan(dacx, first, val));
         first = Integer.MIN_VALUE;
       } else {
         first = val;
       }
-      pstart = m.end();
+      m.end();
     }
     return (retval);        
   }  
@@ -1093,8 +1090,8 @@ class NullPerturb implements Cloneable {
   ** Set the source from a string.  Used for legacy input
   */
   
-  private void convertLegacySource(String legacy) throws IOException {
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+  private void convertLegacySource(String legacy, DataAccessContext dacx) throws IOException {
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (tad.getUnits() != TimeAxisDefinition.LEGACY_UNITS) {
       throw new IOException();
     }
@@ -1119,11 +1116,11 @@ class NullPerturb implements Cloneable {
     
     boolean isDefault;
     String taggedToken;
-    ArrayList tokens;
+    ArrayList<String> tokens;
   
     TimeTaggedList() {
       isDefault = false;
-      this.tokens = new ArrayList();
+      this.tokens = new ArrayList<String>();
     }
     
      public String toString() {

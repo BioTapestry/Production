@@ -19,11 +19,8 @@
 
 package org.systemsbiology.biotapestry.perturb;
  
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import org.systemsbiology.biotapestry.perturb.PerturbationData.RegionRestrict;
 
 /***************************************************************************
 **
@@ -34,69 +31,34 @@ import org.systemsbiology.biotapestry.perturb.PerturbationData.RegionRestrict;
 public class PertDataChange {
  
   public enum Mode {
-   UNDEFINED,
-  DATA_POINT ,
-  EXPERIMENT ,
- DATA_POINT_SET ,
- EXPERIMENT_SET,
-  SOURCE_DEF  ,
-  USER_FIELD_VALS ,
- USER_FIELD_NAME ,
-REG_RESTRICT ,
-DATA_ANNOTS   ,
-TARGET_ANNOTS,
- SOURCE_NAME ,
-EXP_CONTROL  ,
-INVEST      ,
- DATA_ANNOTS_SET,
-SOURCE_DEF_SET ,
- MEASURE_PROP ,
- EXP_COND     ,
- MEAS_SCALE  ,
-TARGET_NAME    ,
- ANNOTATION    ,
- PERT_PROP    ,
-TARG_ANNOTS_SET ,
- ANNOT_MODULE  ,
- NAME_MAPPER     ,
- MEASURE_PROP_SET,
-  };
-  
-  
-  
-  
-  
-  
-  
-  /*
-  
-  public static final int UNDEFINED       = 0;
-  public static final int DATA_POINT      = 1;
-  public static final int EXPERIMENT      = 2;
-  public static final int DATA_POINT_SET  = 3;
-  public static final int EXPERIMENT_SET  = 4;
-  public static final int SOURCE_DEF      = 5;
-  public static final int USER_FIELD_VALS = 6;
-  public static final int USER_FIELD_NAME = 7;
-  public static final int REG_RESTRICT    = 8;
-  public static final int DATA_ANNOTS     = 9;
-  public static final int TARGET_ANNOTS   = 10;  
-  public static final int SOURCE_NAME     = 11;  
-  public static final int EXP_CONTROL     = 12;
-  public static final int INVEST          = 13;
-  public static final int DATA_ANNOTS_SET = 14;
-  public static final int SOURCE_DEF_SET  = 15;
-  public static final int MEASURE_PROP    = 16;
-  public static final int EXP_COND        = 17;
-  public static final int MEAS_SCALE      = 18;
-  public static final int TARGET_NAME     = 19;
-  public static final int ANNOTATION      = 20;
-  public static final int PERT_PROP       = 21;
-  public static final int TARG_ANNOTS_SET = 22;
-  public static final int ANNOT_MODULE    = 23;
-  public static final int NAME_MAPPER     = 24;
-  public static final int MEASURE_PROP_SET = 25;
-*/
+                    UNDEFINED,
+                    DATA_POINT,
+                    EXPERIMENT,
+                    DATA_POINT_SET,
+                    EXPERIMENT_SET,
+                    SOURCE_DEF,
+                    USER_FIELD_VALS,
+                    USER_FIELD_NAME,
+                    REG_RESTRICT,
+                    DATA_ANNOTS,
+                    TARGET_ANNOTS,
+                    SOURCE_NAME,
+                    EXP_CONTROL,
+                    INVEST,
+                    DATA_ANNOTS_SET,
+                    SOURCE_DEF_SET,
+                    MEASURE_PROP,
+                    EXP_COND,
+                    MEAS_SCALE,
+                    TARGET_NAME,
+                    ANNOTATION,
+                    PERT_PROP,
+                    TARG_ANNOTS_SET,
+                    ANNOT_MODULE,
+                    NAME_MAPPER,
+                    MEASURE_PROP_SET,
+                   };
+ 
   public long serialNumberOrig;
   public long serialNumberNew;
   public Mode mode;
@@ -121,8 +83,8 @@ TARG_ANNOTS_SET ,
   public List<String> userDataOrig;
   public List<String> userDataNew;
   
-  public Map<String, RegionRestrict> dataPtRegResSubsetOrig;
-  public Map<String, RegionRestrict> dataPtRegResSubsetNew;
+  public Map<String, PerturbationData.RegionRestrict> dataPtRegResSubsetOrig;
+  public Map<String, PerturbationData.RegionRestrict> dataPtRegResSubsetNew;
   
   public Map<String, List<String>> dataPtNotesSubsetOrig;
   public Map<String, List<String>> dataPtNotesSubsetNew;
@@ -130,8 +92,8 @@ TARG_ANNOTS_SET ,
   public Map<String, PertDataPoint> dataPtsSubsetOrig;
   public Map<String, PertDataPoint> dataPtsSubsetNew;
   
-  public HashMap<String, List<String>> targetNotesSubsetOrig;
-  public HashMap<String, List<String>> targetNotesSubsetNew;
+  public Map<String, List<String>> targetNotesSubsetOrig;
+  public Map<String, List<String>> targetNotesSubsetNew;
     
   public Map<String, Experiment> expSubsetOrig;
   public Map<String, Experiment> expSubsetNew;

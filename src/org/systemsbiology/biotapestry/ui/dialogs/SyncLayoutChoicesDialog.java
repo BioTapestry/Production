@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,8 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
@@ -73,7 +74,7 @@ public class SyncLayoutChoicesDialog extends JDialog {
   private boolean swapPads_;
   private int overlayOption_;
   
-  private BTState appState_;
+  private UIComponentSource uics_;
 
   private static final long serialVersionUID = 1L;
   
@@ -88,12 +89,12 @@ public class SyncLayoutChoicesDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public SyncLayoutChoicesDialog(BTState appState, boolean offerDirectCopy) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("syncLayoutChoices.title"), true);
-    appState_ = appState;
+  public SyncLayoutChoicesDialog(UIComponentSource uics, boolean offerDirectCopy, DataAccessContext dacx) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("syncLayoutChoices.title"), true);
+    uics_ = uics;
     haveResult_ = false;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx.getRMan();    
     setSize(600, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -109,9 +110,9 @@ public class SyncLayoutChoicesDialog extends JDialog {
     groupBox_ = new JCheckBox(rMan.getString("syncLayoutChoices.keepGroups"), true);
     swapPadsBox_ = new JCheckBox(rMan.getString("syncLayoutChoices.swapPads"), true);
     JLabel overlayLabel = new JLabel(rMan.getString("layoutParam.overlayOptions"));   
-    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
+    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx);
     overlayOptionCombo_ = new JComboBox<ChoiceContent>(relayoutChoices);
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, NetOverlayProperties.RELAYOUT_SHIFT_AND_RESIZE_SHAPES));    
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(dacx, NetOverlayProperties.RELAYOUT_SHIFT_AND_RESIZE_SHAPES));    
   
     if (offerDirectCopy) {
       compressBox_.setEnabled(false);
@@ -147,7 +148,7 @@ public class SyncLayoutChoicesDialog extends JDialog {
             compressBox_.setEnabled(!directBox_.isSelected());
             groupBox_.setEnabled(!directBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -166,7 +167,7 @@ public class SyncLayoutChoicesDialog extends JDialog {
             SyncLayoutChoicesDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -179,7 +180,7 @@ public class SyncLayoutChoicesDialog extends JDialog {
             SyncLayoutChoicesDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -194,7 +195,7 @@ public class SyncLayoutChoicesDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, rowNum, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////

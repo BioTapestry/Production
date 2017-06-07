@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,8 +24,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.ui.layouts.SpecialtyLayoutEngine;
 
 /****************************************************************************

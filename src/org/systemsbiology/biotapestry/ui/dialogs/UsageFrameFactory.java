@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -49,46 +49,38 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
-import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
-import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
+import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.ui.dialogs.GeneCreationDialogFactory.CreateRequest;
-import org.systemsbiology.biotapestry.ui.dialogs.GeneCreationDialogFactory.SerializableDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
-import org.systemsbiology.biotapestry.ui.xplat.XPlatLayoutFactory;
-import org.systemsbiology.biotapestry.ui.xplat.XPlatLayoutFactory.RegionType;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatPrimitiveElementFactory;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatUICollectionElement;
-import org.systemsbiology.biotapestry.ui.xplat.XPlatUIElement;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatUIElement.XPlatUIElementType;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatUIEvent;
-import org.systemsbiology.biotapestry.ui.xplat.XPlatUIEvent.XPlatUIElementActionType;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatUIPrimitiveElement;
 import org.systemsbiology.biotapestry.ui.xplat.XPlatUIValidity;
 import org.systemsbiology.biotapestry.ui.xplat.dialog.XPlatUIDialog;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
+import org.systemsbiology.biotapestry.util.Tuple;
 import org.systemsbiology.biotapestry.util.UiUtil;
-
 
 /****************************************************************************
 **
@@ -129,10 +121,11 @@ public class UsageFrameFactory extends DialogFactory {
   
     switch(platform.getPlatform()) {
       case DESKTOP:
+        TabPinnedDynamicDataAccessContext tpddacx = new TabPinnedDynamicDataAccessContext(dniba.ddacx, cfh.getTabSource().getCurrentTab());
         if (dniba.linkIDs != null) {
-          return (new DesktopLinkUsageFrame(cfh.getBTState(), dniba.linkIDs, dniba.nodeID));
+          return (new DesktopLinkUsageFrame(cfh.getUI(), tpddacx, cfh.getHarnessBuilder(), cfh.getTabSource().getCurrentTab(), dniba.linkIDs, dniba.nodeID));
         } else {
-          return (new DesktopNodeUsageFrame(cfh.getBTState(), dniba.nodeID));
+          return (new DesktopNodeUsageFrame(cfh.getUI(), tpddacx, cfh.getHarnessBuilder(), cfh.getTabSource().getCurrentTab(), dniba.nodeID));
         }
       case WEB:
     	  return (new SerializableDialog(cfh, dniba.nodeID, dniba.linkIDs));
@@ -158,9 +151,11 @@ public class UsageFrameFactory extends DialogFactory {
     
     Set<String> linkIDs; 
     String nodeID;
+    DynamicDataAccessContext ddacx;
           
-    public BuildArgs(Set<String> linkIDs, String nodeID) {
+    public BuildArgs(DynamicDataAccessContext ddacx, Set<String> linkIDs, String nodeID) {
       super(null);
+      this.ddacx = ddacx;
       this.linkIDs = linkIDs;
       this.nodeID = nodeID;  
     }
@@ -174,7 +169,6 @@ public class UsageFrameFactory extends DialogFactory {
   // XPlat Implementation of this dialog
   
   public static class SerializableDialog implements SerializableDialogPlatform.Dialog {
-	  protected BTState appState_;
 	  private XPlatUIDialog xplatDialog_;
 	  private ServerControlFlowHarness scfh_;
 	  private XPlatPrimitiveElementFactory primElemFac_; 
@@ -190,15 +184,13 @@ public class UsageFrameFactory extends DialogFactory {
 	  ){
 		  this.nodeId_ = nodeId;
 		  this.scfh_ = cfh;
-		  this.appState_ = cfh.getBTState();
-		  this.rMan_ = this.appState_.getRMan();
+		  this.rMan_ = scfh_.getDataAccessContext().getRMan();
 		  this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan_);
 	      this.linkIds_ = linkIds;
 	      
 		  String dialogTitle = null;
 
-	      Database db = appState_.getDB();
-	      DBGenome genome = (DBGenome)db.getGenome();
+	    DBGenome genome = scfh_.getDataAccessContext().getDBGenome();
 	      
 		  if(this.linkIds_ == null) {
 		      String titleFormat = rMan_.getString("nudd.titleFormat");
@@ -230,7 +222,7 @@ public class UsageFrameFactory extends DialogFactory {
 		  buildDialog(dialogTitle,700,400);  
 	  }
 	  
-	  public boolean isModal() {
+	  public boolean dialogIsModal() {
 	    return (false);
 	  }
 	  
@@ -326,7 +318,7 @@ public class UsageFrameFactory extends DialogFactory {
 	  //	  
 	  private List<ListEntry> generateNodeUsages(String nodeID) {
 		  
-		  DBGenome genome = (DBGenome)this.appState_.getDB().getGenome();
+		  DBGenome genome = scfh_.getDataAccessContext().getDBGenome();
 		  ArrayList<ListEntry> usageList = new ArrayList<ListEntry>();
 		  String baseID = GenomeItemInstance.getBaseID(nodeID);
 
@@ -342,7 +334,7 @@ public class UsageFrameFactory extends DialogFactory {
 		  ListEntry le = new ListEntry(fullUse, genome.getID(), baseID);
 		  usageList.add(le);
 	 
-		  Iterator<GenomeInstance> iit = this.appState_.getDB().getInstanceIterator();
+		  Iterator<GenomeInstance> iit = scfh_.getDataAccessContext().getGenomeSource().getInstanceIterator();
 		  while (iit.hasNext()) {
 			  GenomeInstance gi = iit.next();
 			  String giName = gi.getName();
@@ -372,20 +364,18 @@ public class UsageFrameFactory extends DialogFactory {
 	  //
 	  //
 	  private List<ListEntry> generateLinkUsages(Set<String> linkIds) {
-	      Database db = appState_.getDB();
-	      DBGenome genome = (DBGenome)db.getGenome();
+	      DBGenome genome = scfh_.getDataAccessContext().getDBGenome();
 	      ArrayList<ListEntry> usageList = new ArrayList<ListEntry>();
-	      
+
 	      Iterator<String> lit = linkIds.iterator();
 	      while (lit.hasNext()) {
 	        String linkID = lit.next();
 	        String baseID = GenomeItemInstance.getBaseID(linkID);
-	        ResourceManager rMan = appState_.getRMan();
-	        String instanceFormatOneGroup = rMan.getString("toolCmd.instanceLinkUsageSingleFormat");
-	        String instanceFormatTwoGroups = rMan.getString("toolCmd.instanceLinkUsageDoubleFormat");
-	        String dynMessage = rMan.getString("toolCmd.dynamicLinkUsageFormat");
-	        String linkFormatMessage = rMan.getString("toolCmd.LinkUsageLinkFormat");
-	        String noGroup = rMan.getString("toolCmd.noGroup");
+	        String instanceFormatOneGroup = rMan_.getString("toolCmd.instanceLinkUsageSingleFormat");
+	        String instanceFormatTwoGroups = rMan_.getString("toolCmd.instanceLinkUsageDoubleFormat");
+	        String dynMessage = rMan_.getString("toolCmd.dynamicLinkUsageFormat");
+	        String linkFormatMessage = rMan_.getString("toolCmd.LinkUsageLinkFormat");
+	        String noGroup = rMan_.getString("toolCmd.noGroup");
 	  
 	        Linkage rootLink = genome.getLinkage(baseID);
 	        if (rootLink == null) {
@@ -398,11 +388,11 @@ public class UsageFrameFactory extends DialogFactory {
 	        ListEntry le = new ListEntry(linkMsg, null, null);                                                                       
 	        usageList.add(le);
 	        
-	        String fullUse = "  " + rMan.getString("toolCmd.fullGenomeLinkUsage");
+	        String fullUse = "  " + rMan_.getString("toolCmd.fullGenomeLinkUsage");
 	        le = new ListEntry(fullUse, genome.getID(), baseID,true);          
 	        usageList.add(le);
 	  
-	        Iterator<GenomeInstance> iit = db.getInstanceIterator();
+          Iterator<GenomeInstance> iit = scfh_.getDataAccessContext().getGenomeSource().getInstanceIterator();
 	        while (iit.hasNext()) {
 	          GenomeInstance gi = iit.next();
 	          String giName = gi.getName();
@@ -543,7 +533,12 @@ public class UsageFrameFactory extends DialogFactory {
 	      return (crq);
 	      */
 		  return null;
-	  }	  
+	  }
+
+	public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+		// TODO Auto-generated method stub
+		return null;
+	}	  
   }
   
   public static class DesktopLinkUsageFrame extends JFrame implements ListSelectionListener, DesktopDialogPlatform.Dialog {
@@ -560,7 +555,9 @@ public class UsageFrameFactory extends DialogFactory {
     private String baseSrcID_;
     private Set<String> linkIDs_;
     private boolean processing_;
-    private BTState appState_;
+    private String tabKey_;
+    private UIComponentSource uics_;
+    private TabPinnedDynamicDataAccessContext tpddacx_;
     
     private static final long serialVersionUID = 1L;
     
@@ -575,25 +572,27 @@ public class UsageFrameFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopLinkUsageFrame(BTState appState, Set<String> linkIDs, String baseSrcID) {
+    public DesktopLinkUsageFrame(UIComponentSource uics, TabPinnedDynamicDataAccessContext tpddacx, HarnessBuilder hBld, String tabKey, Set<String> linkIDs, String baseSrcID) {
       super();
-      appState_ = appState;
+      uics_ = uics;
+      tpddacx_ = tpddacx;
+      tabKey_ = tabKey;
       URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/BioTapFab16White.gif");  
       setIconImage(new ImageIcon(ugif).getImage());
       linkIDs_ = new HashSet<String>(linkIDs); 
       baseSrcID_ = baseSrcID;
       setWindowTitle();
-      
+           
       final String closeID = baseSrcID;    
       addWindowListener(new WindowAdapter() {
         @Override
         public void windowClosing(WindowEvent e) {
           // Fix for Bug BT-10-27-09:16
-          appState_.getDataPopupMgr().dropLinkSelectionWindow(closeID);
+          uics_.getDataPopupMgr().dropLinkSelectionWindow(new Tuple<String, String>(tabKey_, closeID));
         }
       });    
       
-      usageSel_ = new UsageSelector(appState, this);
+      usageSel_ = new UsageSelector(hBld, this);
       processing_ = false;
       
       setSize(800, 500);
@@ -602,7 +601,7 @@ public class UsageFrameFactory extends DialogFactory {
       cp.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();
   
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JLabel lab = new JLabel(rMan.getString("ludd.usages"));
       UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
       cp.add(lab, gbc);
@@ -624,7 +623,7 @@ public class UsageFrameFactory extends DialogFactory {
           try {
             usageSel_.goToModelAndSelectLink();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });      
@@ -637,9 +636,9 @@ public class UsageFrameFactory extends DialogFactory {
       buttonO.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
-            appState_.getDataPopupMgr().dropLinkSelectionWindow(closeID);
+            uics_.getDataPopupMgr().dropLinkSelectionWindow(new Tuple<String, String>(tabKey_, closeID));
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -655,7 +654,7 @@ public class UsageFrameFactory extends DialogFactory {
       //
       UiUtil.gbcSet(gbc, 0, 22, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
       cp.add(buttonPanel, gbc);
-      setLocationRelativeTo(appState.getTopFrame());
+      setLocationRelativeTo(uics_.getTopFrame());
     }
     
   
@@ -670,7 +669,7 @@ public class UsageFrameFactory extends DialogFactory {
     ** These are required. Note we are a frame, i.e. not modal:
     */
     
-    public boolean isModal() {
+    public boolean dialogIsModal() {
       return (false);
     }
     
@@ -695,7 +694,7 @@ public class UsageFrameFactory extends DialogFactory {
         }
         handleButtons();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;             
     }
@@ -729,6 +728,15 @@ public class UsageFrameFactory extends DialogFactory {
       return (baseSrcID_);
     }   
    
+    /***************************************************************************
+    **
+    ** Get the tab key
+    */
+    
+    public String getTabKey() {
+      return (tabKey_);
+    } 
+    
     /***************************************************************************
     **
     ** Update the list of entries
@@ -767,8 +775,7 @@ public class UsageFrameFactory extends DialogFactory {
     */  
    
     private Linkage getABaseLink(String linkID) { 
-      Database db = appState_.getDB();
-      DBGenome genome = (DBGenome)db.getGenome();
+      DBGenome genome = tpddacx_.getDBGenome();
       String baseID = GenomeItemInstance.getBaseID(linkID);
       Linkage rootLink = genome.getLinkage(baseID);
       return (rootLink);
@@ -780,9 +787,9 @@ public class UsageFrameFactory extends DialogFactory {
     */  
    
     private void setWindowTitle() { 
-      ResourceManager rMan = appState_.getRMan();  
+      ResourceManager rMan = uics_.getRMan();  
       String aLinkID = (linkIDs_.isEmpty()) ? null : linkIDs_.iterator().next();
-      Genome genome = appState_.getDB().getGenome();
+      DBGenome genome = tpddacx_.getDBGenome();
       String msg;
       if (aLinkID != null) {
         Linkage rootLinkage = getABaseLink(aLinkID);
@@ -811,15 +818,14 @@ public class UsageFrameFactory extends DialogFactory {
    
     public List<ListEntry> generateLinkUsages(Set<String> linkIDs) {
       
-      Database db = appState_.getDB();
-      DBGenome genome = (DBGenome)db.getGenome();
+      DBGenome genome = tpddacx_.getDBGenome();
       ArrayList<ListEntry> usageList = new ArrayList<ListEntry>();
       
+      ResourceManager rMan = uics_.getRMan();
       Iterator<String> lit = linkIDs.iterator();
       while (lit.hasNext()) {
         String linkID = lit.next();
-        String baseID = GenomeItemInstance.getBaseID(linkID);
-        ResourceManager rMan = appState_.getRMan();
+        String baseID = GenomeItemInstance.getBaseID(linkID);     
         String instanceFormatOneGroup = rMan.getString("toolCmd.instanceLinkUsageSingleFormat");
         String instanceFormatTwoGroups = rMan.getString("toolCmd.instanceLinkUsageDoubleFormat");
         String dynMessage = rMan.getString("toolCmd.dynamicLinkUsageFormat");
@@ -841,7 +847,7 @@ public class UsageFrameFactory extends DialogFactory {
         le = new ListEntry(fullUse, genome.getID(), baseID);          
         usageList.add(le);
   
-        Iterator<GenomeInstance> iit = db.getInstanceIterator();
+        Iterator<GenomeInstance> iit = tpddacx_.getGenomeSource().getInstanceIterator();
         while (iit.hasNext()) {
           GenomeInstance gi = iit.next();
           String giName = gi.getName();
@@ -901,8 +907,10 @@ public class UsageFrameFactory extends DialogFactory {
     private UsageSelector usageSel_;
     private JList jlist_;
     private String nodeID_;
+    private String tabKey_;
     private boolean processing_;
-    private BTState appState_;
+    private UIComponentSource uics_;
+    private TabPinnedDynamicDataAccessContext tpddacx_;
     
     private static final long serialVersionUID = 1L;
     
@@ -917,9 +925,11 @@ public class UsageFrameFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopNodeUsageFrame(BTState appState, String nodeID) {     
+    public DesktopNodeUsageFrame(UIComponentSource uics, TabPinnedDynamicDataAccessContext tpddacx, HarnessBuilder hBld, String tabKey, String nodeID) {     
       super();
-      appState_ = appState;
+      uics_ = uics;
+      tpddacx_ = tpddacx;
+      tabKey_ = tabKey;
       URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/BioTapFab16White.gif");  
       setIconImage(new ImageIcon(ugif).getImage());
       nodeID_ = GenomeItemInstance.getBaseID(nodeID);
@@ -927,11 +937,11 @@ public class UsageFrameFactory extends DialogFactory {
       
       addWindowListener(new WindowAdapter() {
         public void windowClosing(WindowEvent e) {
-          appState_.getDataPopupMgr().dropSelectionWindow(nodeID_);
+          uics_.getDataPopupMgr().dropSelectionWindow(new Tuple<String, String>(tabKey_, nodeID_));
         }
       });
      
-      usageSel_ = new UsageSelector(appState, this);
+      usageSel_ = new UsageSelector(hBld, this);
       processing_ = false;
       
       setSize(500, 700);
@@ -940,7 +950,7 @@ public class UsageFrameFactory extends DialogFactory {
       cp.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();
   
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JLabel lab = new JLabel(rMan.getString("nudd.usages"));
       UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
       cp.add(lab, gbc);
@@ -965,7 +975,7 @@ public class UsageFrameFactory extends DialogFactory {
           try {
             usageSel_.goToModelAndSelectNode();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });    
@@ -974,9 +984,9 @@ public class UsageFrameFactory extends DialogFactory {
       buttonO.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
           try {
-            appState_.getDataPopupMgr().dropSelectionWindow(nodeID_);
+            uics_.getDataPopupMgr().dropSelectionWindow(new Tuple<String, String>(tabKey_, nodeID_));
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -993,7 +1003,7 @@ public class UsageFrameFactory extends DialogFactory {
       UiUtil.gbcSet(gbc, 0, 22, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
       cp.add(buttonPanel, gbc);
       
-      setLocationRelativeTo(appState.getTopFrame());
+      setLocationRelativeTo(uics_.getTopFrame());
     }
     
     
@@ -1024,7 +1034,7 @@ public class UsageFrameFactory extends DialogFactory {
         }
         handleButtons();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;             
     } 
@@ -1057,7 +1067,7 @@ public class UsageFrameFactory extends DialogFactory {
     ** These are required. Note we are a frame, i.e. not modal:
     */
  
-    public boolean isModal() {
+    public boolean dialogIsModal() {
       return (false);
     }
     
@@ -1085,13 +1095,21 @@ public class UsageFrameFactory extends DialogFactory {
     */  
    
     private Node getTheBaseNode(String nodeID) { 
-      Database db = appState_.getDB();
-      DBGenome genome = (DBGenome)db.getGenome();
+      DBGenome genome = tpddacx_.getDBGenome();
       String baseID = GenomeItemInstance.getBaseID(nodeID);
       Node rootNode = genome.getNode(baseID);
       return (rootNode);
     }
     
+    /***************************************************************************
+    **
+    ** Get the tab key
+    */
+    
+    public String getTabKey() {
+      return (tabKey_);
+    } 
+
     /***************************************************************************
     **
     ** Return the node name
@@ -1108,7 +1126,7 @@ public class UsageFrameFactory extends DialogFactory {
     */  
    
     private void setNodeTitle() { 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String titleFormat = rMan.getString("nudd.titleFormat");
       Node rootNode = getTheBaseNode(nodeID_);
       String name = getNodeName(rootNode);
@@ -1124,11 +1142,10 @@ public class UsageFrameFactory extends DialogFactory {
    
     private List<ListEntry> generateNodeUsages(String nodeID) {
       
-      Database db = appState_.getDB();
-      DBGenome genome = (DBGenome)db.getGenome();
+      DBGenome genome = tpddacx_.getDBGenome();
       ArrayList<ListEntry> usageList = new ArrayList<ListEntry>();
       String baseID = GenomeItemInstance.getBaseID(nodeID);
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String instanceFormat = rMan.getString("toolCmd.instanceNodeUsageFormat");
       String dynMessage = rMan.getString("toolCmd.dynamicNodeUsageFormat");
       String noGroup = rMan.getString("toolCmd.noGroup");
@@ -1141,7 +1158,7 @@ public class UsageFrameFactory extends DialogFactory {
       ListEntry le = new ListEntry(fullUse, genome.getID(), baseID);
       usageList.add(le);
    
-      Iterator<GenomeInstance> iit = db.getInstanceIterator();
+      Iterator<GenomeInstance> iit = tpddacx_.getGenomeSource().getInstanceIterator();
       while (iit.hasNext()) {
         GenomeInstance gi = iit.next();
         String giName = gi.getName();
@@ -1178,9 +1195,9 @@ public class UsageFrameFactory extends DialogFactory {
     //
     ////////////////////////////////////////////////////////////////////////////  
     
-    private BTState appState_;
     private ListEntry selected_;
     private JFrame parent_;
+    private HarnessBuilder hBld_;
     
     ////////////////////////////////////////////////////////////////////////////
     //
@@ -1193,11 +1210,11 @@ public class UsageFrameFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public UsageSelector(BTState appState, JFrame parent) {
+    public UsageSelector(HarnessBuilder hBld, JFrame parent) {
       // NOT THE APP WINDOW!!!!
       parent_ = parent;
       selected_ = null;
-      appState_ = appState;
+      hBld_ = hBld;
     }
     
     ////////////////////////////////////////////////////////////////////////////
@@ -1268,13 +1285,11 @@ public class UsageFrameFactory extends DialogFactory {
      */
     
     public void sendRequest(String modelID, Set<String> nodes, Set<String> links, FlowMeister.FlowKey flowKey) {
-      DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(parent_));
-      ControlFlow myControlFlow = appState_.getFloM().getControlFlow(flowKey, null);
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-      SetCurrentModel.StepState agis = (SetCurrentModel.StepState)myControlFlow.getEmptyStateForPreload(dacx);
+      
+      HarnessBuilder.PreHarness pH = hBld_.buildHarness(flowKey, parent_);
+      SetCurrentModel.StepState agis = (SetCurrentModel.StepState)pH.getCmdState();
       agis.setPreload(modelID, nodes, links);
-      dcf.initFlow(myControlFlow, dacx);
-      dcf.runFlow(agis);
+      hBld_.runHarness(pH);
       return;
     }
   }
@@ -1307,6 +1322,7 @@ public class UsageFrameFactory extends DialogFactory {
         this.needsIndent = needsIndent;
       }    
     
+    @Override
     public String toString() {
       return (display);
     }

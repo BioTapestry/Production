@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -40,7 +40,8 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.DataMapSource;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.ConditionDictionary;
@@ -53,6 +54,7 @@ import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PerturbationData.KeyAndDataChange;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -86,16 +88,16 @@ class QPCRData {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private ArrayList genes_;
-  private ArrayList nullPerturbations_;
+  private ArrayList<TargetGene> genes_;
+  private ArrayList<NullPerturb> nullPerturbations_;
   private NullTimeSpan nullPertDefaultSpan_;  
-  private ArrayList footnotes_;
-  private ArrayList timeSpanCols_;
-  private HashMap entryMap_;
-  private HashMap sourceMap_;
+  private ArrayList<Footnote> footnotes_;
+  private ArrayList<MinMax> timeSpanCols_;
+  private HashMap<String, List<String>> entryMap_;
+  private HashMap<String, List<String>> sourceMap_;
   private double threshold_;
   private long serialNumber_;
-  private BTState appState_;
+  private TabPinnedDynamicDataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -108,15 +110,15 @@ class QPCRData {
   ** Constructor
   */
 
-  QPCRData(BTState appState) {
-    appState_ = appState;
-    genes_ = new ArrayList();
-    nullPerturbations_ = new ArrayList();
+  QPCRData(TabPinnedDynamicDataAccessContext dacx) {
+    dacx_ = dacx;
+    genes_ = new ArrayList<TargetGene>();
+    nullPerturbations_ = new ArrayList<NullPerturb>();
     nullPertDefaultSpan_ = null;
-    footnotes_ = new ArrayList();
-    timeSpanCols_ = new ArrayList();
-    entryMap_ = new HashMap();
-    sourceMap_ = new HashMap();
+    footnotes_ = new ArrayList<Footnote>();
+    timeSpanCols_ = new ArrayList<MinMax>();
+    entryMap_ = new HashMap<String, List<String>>();
+    sourceMap_ = new HashMap<String, List<String>>();
     threshold_ = 1.6;
     serialNumber_ = 0L;
   }
@@ -132,47 +134,53 @@ class QPCRData {
   ** Stock the new perturbation system from the old QPCR storage:
   */
   
-   void transferFromLegacy() {
-    
-    PerturbationData pd = appState_.getDB().getPertData();
+  void transferFromLegacy() {
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+    DataMapSource dms = dacx_.getDataMapSrc();
+    PerturbationDataMaps pdms = dms.getPerturbationDataMaps();
+    if (pdms == null) {
+      pdms = new PerturbationDataMaps(dacx_);
+      dms.setPerturbationDataMaps(pdms);
+    }
+
     PertDictionary pDict = pd.getPertDictionary();
     MeasureDictionary mDict = pd.getMeasureDictionary();
     ConditionDictionary cDict = pd.getConditionDictionary();
     String legCondition = cDict.getStandardConditionKey(); 
     String legMeasure = mDict.createLegacyMeasureProps(threshold_);
     
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions(); 
+    DisplayOptions dOpt = dacx_.getDisplayOptsSource().getDisplayOptions(); 
     dOpt.setColumns(getColumns());
     
     long timeStamp = System.currentTimeMillis();
-    ArrayList unkInvs = new ArrayList();
+    ArrayList<String> unkInvs = new ArrayList<String>();
    
-    HashMap annotsForSrcs = new HashMap();
-    HashMap annotsToData = new HashMap();
+    HashMap<Set<PertSource>, Map<String, Set<String>>> annotsForSrcs = new HashMap<Set<PertSource>, Map<String, Set<String>>>();
+    HashMap<Set<PertSource>, Map<String, Set<String>>> annotsToData = new HashMap<Set<PertSource>, Map<String, Set<String>>>();
     factorSourceAnnots(pd, pDict, annotsForSrcs, annotsToData);
       
     int numGenes = genes_.size();
     for (int i = 0; i < numGenes; i++) {
-      TargetGene tgene = (TargetGene)genes_.get(i);
-      List gnotes = tgene.getTranslatedNotes();
-      List gidList = footNumsToIDs(pd, gnotes);    
+      TargetGene tgene = genes_.get(i);
+      List<String> gnotes = tgene.getTranslatedNotes();
+      List<String> gidList = footNumsToIDs(pd, gnotes);    
       String targName = tgene.getName();
       KeyAndDataChange kadc = pd.provideTarget(targName);
       String targKey = kadc.key;
       if (!gidList.isEmpty()) {
         pd.setFootnotesForTargetIO(targKey, gidList);
       }
-      Iterator pit = tgene.getPerturbations();   
+      Iterator<Perturbation> pit = tgene.getPerturbations();   
       while (pit.hasNext()) {
-        Perturbation prt = (Perturbation)pit.next();   
-        ArrayList srcList = new ArrayList();
-        Iterator sit1 = prt.getSources(); 
-        Set keypss = perturbationToKey(pd, pDict, sit1, new ArrayList());
-        Set retainNotes = ((HashMap)annotsForSrcs.get(keypss)).keySet(); 
-        HashMap notesToTargs = (HashMap)annotsToData.get(keypss);
-        Iterator sit = prt.getSources(); 
+        Perturbation prt = pit.next();   
+        ArrayList<String> srcList = new ArrayList<String>();
+        Iterator<Source> sit1 = prt.getSources(); 
+        Set<PertSource> keypss = perturbationToKey(pd, pDict, sit1, new ArrayList<String>());
+        Set<String> retainNotes = annotsForSrcs.get(keypss).keySet(); 
+        Map<String, Set<String>> notesToTargs = annotsToData.get(keypss);
+        Iterator<Source> sit = prt.getSources(); 
         while (sit.hasNext()) {
-          Source src = (Source)sit.next();
+          Source src = sit.next();
           String srcID = sourceToPertSource(src, pd, pDict, retainNotes);
           srcList.add(srcID);
         }
@@ -183,33 +191,33 @@ class QPCRData {
           pInvestList.add(inv);
         }
         PertSources srcs = new PertSources(srcList);
-        Iterator tsit = prt.getTimeSpans();
+        Iterator<TimeSpan> tsit = prt.getTimeSpans();
         while (tsit.hasNext()) {
-          TimeSpan tspan = (TimeSpan)tsit.next();
+          TimeSpan tspan = tsit.next();
           PerturbationData.RegionRestrict rr = null;
-          Iterator rrit = tspan.getRegionRestrictions();
+          Iterator<String> rrit = tspan.getRegionRestrictions();
           if (rrit.hasNext()) {
-            ArrayList regionList = new ArrayList();
+            ArrayList<String> regionList = new ArrayList<String>();
             while (rrit.hasNext()) {
-              String regID = (String)rrit.next();
+              String regID = rrit.next();
               regionList.add(regID);
             }
             rr = new PerturbationData.RegionRestrict(regionList);
           }         
           MinMax spanTimes = tspan.getMinMaxSpan();
-          Iterator tbit = tspan.getBatches();
+          Iterator<Batch> tbit = tspan.getBatches();
           int subBatchKey = 0;
           while (tbit.hasNext()) {
-            Batch batch = (Batch)tbit.next();
+            Batch batch = tbit.next();
             String invests = batch.getInvestigators();
-            List investList = (invests != null) ? Perturbation.unformatInvestigators(invests) : pInvestList;
-            ArrayList invKeyList = new ArrayList();
+            List<String> investList = (invests != null) ? Perturbation.unformatInvestigators(invests) : pInvestList;
+            ArrayList<String> invKeyList = new ArrayList<String>();
             if (investList.isEmpty()) {
               invKeyList = unkInvs;
             } else {
               int numI = investList.size();
               for (int j = 0; j < numI; j++) {
-                String invest  = (String)investList.get(j);
+                String invest  = investList.get(j);
                 invKeyList.add(pd.provideInvestigator(invest).key);     
               }
               
@@ -229,9 +237,9 @@ class QPCRData {
             }
             String date = batch.getDate();
             String psiKey = pd.provideExperiment(srcs, useMin, legacyMax, invKeyList, legCondition).key;
-            Iterator bit = batch.getMeasurements();
+            Iterator<Measurement> bit = batch.getMeasurements();
             while (bit.hasNext()) {
-              Measurement mea = (Measurement)bit.next();
+              Measurement mea = bit.next();
               exportMeasurement(mea, pd, srcs, psiKey, timeStamp, targKey, 
                                 batchKey, date, legMeasure, invKeyList, rr, 
                                 notesToTargs, DataUtil.normKey(targName), legCondition);
@@ -245,28 +253,28 @@ class QPCRData {
     // Now handle null perturbations:
     //
   
-    NullTimeSpan dnts = getLegacyNullPerturbationsDefaultTimeSpan();
+    NullTimeSpan dnts = getLegacyNullPerturbationsDefaultTimeSpan(dacx_);
  
     int numNull = nullPerturbations_.size();
     for (int i = 0; i < numNull; i++) {
-      NullPerturb np = (NullPerturb)nullPerturbations_.get(i);
-      Iterator sit1 = np.getSources();
-      Set keypss = perturbationToKey(pd, pDict, sit1, new ArrayList());
-      HashMap notesToTargs = (HashMap)annotsToData.get(keypss);
+      NullPerturb np = nullPerturbations_.get(i);
+      Iterator<Source> sit1 = np.getSources();
+      Set<PertSource> keypss = perturbationToKey(pd, pDict, sit1, new ArrayList<String>());
+      Map<String,Set<String>> notesToTargs = annotsToData.get(keypss);
     
-      Set retainNotes = ((HashMap)annotsForSrcs.get(keypss)).keySet();   
-      ArrayList srcList = new ArrayList();
-      Iterator sit = np.getSources();
+      Set<String> retainNotes = annotsForSrcs.get(keypss).keySet();   
+      ArrayList<String> srcList = new ArrayList<String>();
+      Iterator<Source> sit = np.getSources();
       while (sit.hasNext()) {
-        Source src = (Source)sit.next();
+        Source src = sit.next();
         String srcID = sourceToPertSource(src, pd, pDict, retainNotes);
         srcList.add(srcID);
       }
       PertSources srcs = new PertSources(srcList);
       MinMax fallbackTime = new MinMax(dnts.getMin(), dnts.getMax()); 
-      Iterator nit = np.getTargets();
+      Iterator<NullTarget> nit = np.getTargets();
       while (nit.hasNext()) {
-        NullTarget nt = (NullTarget)nit.next();
+        NullTarget nt = nit.next();
         String targName = nt.getTarget();
         KeyAndDataChange kadc = pd.provideTarget(targName);
         String targKey = kadc.key; 
@@ -288,9 +296,9 @@ class QPCRData {
            
         if (nt.getBatchCount() == 0) {    
           if (numTimes > 0) { 
-            Iterator tmit = nt.getTimes();
+            Iterator<NullTimeSpan> tmit = nt.getTimes();
             while (tmit.hasNext()) {
-              NullTimeSpan nts = (NullTimeSpan)tmit.next();
+              NullTimeSpan nts = tmit.next();
               int minTime;
               int maxTime;
               if (nts.isASpan()) {
@@ -306,16 +314,16 @@ class QPCRData {
           }
         } else {
           if (numTimes > 0) {
-            Iterator spit = nt.getSupportData();
-            HashSet dataNums = new HashSet();
+            Iterator<Batch> spit = nt.getSupportData();
+            HashSet<Integer> dataNums = new HashSet<Integer>();
             while (spit.hasNext()) {
-              Batch ntb = (Batch)spit.next();
+              Batch ntb = spit.next();
               int batchTime = ntb.getTimeNumber();
-              dataNums.add(new Integer(batchTime));
+              dataNums.add(Integer.valueOf(batchTime));
             }
-            Iterator tmit = nt.getTimes();
+            Iterator<NullTimeSpan> tmit = nt.getTimes();
             while (tmit.hasNext()) {
-              NullTimeSpan nts = (NullTimeSpan)tmit.next();
+              NullTimeSpan nts = tmit.next();
               int minTime;
               int maxTime;
               if (nts.isASpan()) {
@@ -336,19 +344,19 @@ class QPCRData {
                                           rr, notesToTargs, legCondition);
             }
           }
-          Iterator spit = nt.getSupportData();
+          Iterator<Batch> spit = nt.getSupportData();
           int subBatchKey = 0;
           while (spit.hasNext()) {
-            Batch ntb = (Batch)spit.next();
+            Batch ntb = spit.next();
             String invests = ntb.getInvestigators();
-            List investList = Perturbation.unformatInvestigators(invests);
-            ArrayList invKeyList = new ArrayList();
+            List<String> investList = Perturbation.unformatInvestigators(invests);
+            ArrayList<String> invKeyList = new ArrayList<String>();
             if (investList.isEmpty()) {
               invKeyList = unkInvs;
             } else {
               int numI = investList.size();
               for (int j = 0; j < numI; j++) {
-                String invest  = (String)investList.get(j);
+                String invest  = investList.get(j);
                 invKeyList.add(pd.provideInvestigator(invest).key);     
               }   
             }
@@ -362,9 +370,9 @@ class QPCRData {
             String date = ntb.getDate();
             
             String psiKey = pd.provideExperiment(srcs, batchTime, Experiment.NO_TIME, invKeyList, legCondition).key;
-            Iterator bit = ntb.getMeasurements();
+            Iterator<Measurement> bit = ntb.getMeasurements();
             while (bit.hasNext()) {
-              Measurement mea = (Measurement)bit.next();
+              Measurement mea = bit.next();
               exportMeasurement(mea, pd, srcs, psiKey, timeStamp, targKey, 
                                 batchKey, date, legMeasure, invKeyList, rr, 
                                 notesToTargs, DUMMY_NULL_TARG_KEY_, legCondition);
@@ -374,17 +382,18 @@ class QPCRData {
       }     
     }
     
-    Iterator emit = entryMap_.keySet().iterator();
+    
+    Iterator<String> emit = entryMap_.keySet().iterator();
     while (emit.hasNext()) {
-      String eKey = (String)emit.next();
-      ArrayList forKey = (ArrayList)entryMap_.get(eKey);
-      pd.importLegacyEntryMapEntry(eKey, forKey);
+      String eKey = emit.next();
+      List<String> forKey = entryMap_.get(eKey);
+      pd.importLegacyEntryMapEntry(eKey, forKey, pdms);
     }
-    Iterator smit = sourceMap_.keySet().iterator();
+    Iterator<String> smit = sourceMap_.keySet().iterator();
     while (smit.hasNext()) {
-      String sKey = (String)smit.next();
-      ArrayList forKey = (ArrayList)sourceMap_.get(sKey);
-      pd.importLegacySourceMapEntry(sKey,forKey);
+      String sKey = smit.next();
+      List<String> forKey = sourceMap_.get(sKey);
+      pd.importLegacySourceMapEntry(sKey, forKey, pdms);
     }
  
     genes_.clear();
@@ -400,9 +409,9 @@ class QPCRData {
   */
   
   private void exportNoDataNullMeasurement(int minTime, int maxTime, PerturbationData pd, PertSources srcs, 
-                                           List unkInvs, long timeStamp, String targKey, String legMeasure, 
+                                           List<String> unkInvs, long timeStamp, String targKey, String legMeasure, 
                                            PerturbationData.RegionRestrict regRestrict, 
-                                           HashMap<String, Set<String>> notesToTargs, String legCondition) {
+                                           Map<String, Set<String>> notesToTargs, String legCondition) {
    
     //
     // Add in annots that really belong with the data, not with the source:
@@ -446,19 +455,19 @@ class QPCRData {
   ** Generate a key for footnote transfer
   */
   
-  private Set perturbationToKey(PerturbationData pd, PertDictionary pDict, 
-                                Iterator sit, List allFoots) {
-    ArrayList emptyList = new ArrayList();
-    HashSet allSrcs = new HashSet();
+  private Set<PertSource> perturbationToKey(PerturbationData pd, PertDictionary pDict, 
+                                            Iterator<Source> sit, List<String> allFoots) {
+    ArrayList<String> emptyList = new ArrayList<String>();
+    HashSet<PertSource> allSrcs = new HashSet<PertSource>();
     while (sit.hasNext()) {
-      Source src = (Source)sit.next(); 
+      Source src = sit.next(); 
       String base = src.getBaseType();
       String expr = src.getExpType();
       String pertKey = pDict.getPerturbPropsFromName(expr);
       if (pertKey == null) {
         throw new IllegalStateException();
       }
-      List sfoots = src.getFootnoteNumbers();
+      List<String> sfoots = src.getFootnoteNumbers();
       allFoots.addAll(footNumsToIDs(pd, sfoots));
       PertSource ps = new PertSource("", DataUtil.normKey(base), pertKey, emptyList);
       allSrcs.add(ps);
@@ -474,26 +483,27 @@ class QPCRData {
   */
   
   private void factorSourceAnnots(PerturbationData pd, PertDictionary pDict, 
-                                  HashMap annotsForSrcs, HashMap annotsToData) {   
+                                  HashMap<Set<PertSource>, Map<String, Set<String>>> annotsForSrcs, 
+                                  HashMap<Set<PertSource>, Map<String, Set<String>>> annotsToData) {   
   
     int numGenes = genes_.size();
     for (int i = 0; i < numGenes; i++) {
-      TargetGene tgene = (TargetGene)genes_.get(i);
+      TargetGene tgene = genes_.get(i);
       String normName = DataUtil.normKey(tgene.getName());
-      Iterator pit = tgene.getPerturbations();   
+      Iterator<Perturbation> pit = tgene.getPerturbations();   
       while (pit.hasNext()) {
-        Perturbation prt = (Perturbation)pit.next();
-        ArrayList allFoots = new ArrayList();
-        Set pssk = perturbationToKey(pd, pDict, prt.getSources(), allFoots);
+        Perturbation prt = pit.next();
+        ArrayList<String> allFoots = new ArrayList<String>();
+        Set<PertSource> pssk = perturbationToKey(pd, pDict, prt.getSources(), allFoots);
         factorSourceAnnotsGuts(normName, pssk, allFoots, annotsForSrcs, annotsToData);
       }
     }
       
     int numNull = nullPerturbations_.size();
     for (int i = 0; i < numNull; i++) {
-      NullPerturb np = (NullPerturb)nullPerturbations_.get(i);
-      ArrayList allFoots = new ArrayList();
-      Set pssk = perturbationToKey(pd, pDict, np.getSources(), allFoots);
+      NullPerturb np = nullPerturbations_.get(i);
+      ArrayList<String> allFoots = new ArrayList<String>();
+      Set<PertSource> pssk = perturbationToKey(pd, pDict, np.getSources(), allFoots);
       factorSourceAnnotsGuts(DUMMY_NULL_TARG_KEY_, pssk, allFoots, annotsForSrcs, annotsToData);
     }
     return;
@@ -505,20 +515,21 @@ class QPCRData {
   **
   */
   
-  private void factorSourceAnnotsGuts(String targetName, Set pssk, List allFoots,
-                                      HashMap annotsForSrcs, HashMap annotsToData) {   
+  private void factorSourceAnnotsGuts(String targetName, Set<PertSource> pssk, List<String> allFoots,
+                                      HashMap<Set<PertSource>, Map<String, Set<String>>> annotsForSrcs, 
+                                      HashMap<Set<PertSource>, Map<String, Set<String>>> annotsToData) {   
    
-    HashSet idSet = new HashSet(allFoots);
-    HashMap notes = (HashMap)annotsForSrcs.get(pssk);
-    HashMap goesToData = (HashMap)annotsToData.get(pssk);
+    HashSet<String> idSet = new HashSet<String>(allFoots);
+    Map<String, Set<String>> notes = annotsForSrcs.get(pssk);
+    Map<String, Set<String>> goesToData = annotsToData.get(pssk);
     // First time seen:
     if (notes == null) {
-      notes = new HashMap();
+      notes = new HashMap<String, Set<String>>();
       annotsForSrcs.put(pssk, notes);
-      Iterator idsit = idSet.iterator();
+      Iterator<String> idsit = idSet.iterator();
       while (idsit.hasNext()) {
-        String noteID = (String)idsit.next();
-        HashSet forNote = new HashSet();
+        String noteID = idsit.next();
+        HashSet<String> forNote = new HashSet<String>();
         notes.put(noteID, forNote);
         forNote.add(targetName);
       }  
@@ -527,12 +538,12 @@ class QPCRData {
       // If already gone to data, they get transferred ASAP:
       //
       if (goesToData != null) {
-        HashSet intersectToData = new HashSet(goesToData.keySet());
+        HashSet<String> intersectToData = new HashSet<String>(goesToData.keySet());
         intersectToData.retainAll(idSet);
-        Iterator i2dit = intersectToData.iterator();
+        Iterator<String> i2dit = intersectToData.iterator();
         while (i2dit.hasNext()) {
-          String noteID = (String)i2dit.next();
-          HashSet toDatForTargs = (HashSet)goesToData.get(noteID);
+          String noteID = i2dit.next();
+          Set<String> toDatForTargs = goesToData.get(noteID);
           toDatForTargs.add(targetName);
           idSet.remove(noteID);
         }
@@ -540,30 +551,30 @@ class QPCRData {
       //
       // Guys left get to try to stay with the source:
       //
-      HashSet allKeys = new HashSet(notes.keySet());
-      HashSet intersect = (HashSet)allKeys.clone();
+      HashSet<String> allKeys = new HashSet<String>(notes.keySet());
+      HashSet<String> intersect = new HashSet<String>(allKeys);
       intersect.retainAll(idSet);
       if (goesToData == null) {
-        goesToData = new HashMap();
+        goesToData = new HashMap<String, Set<String>>();
         annotsToData.put(pssk, goesToData);
       } 
-      Iterator akit = allKeys.iterator();
+      Iterator<String> akit = allKeys.iterator();
       while (akit.hasNext()) {
-        String noteKey = (String)akit.next();
+        String noteKey = akit.next();
         if (!intersect.contains(noteKey)) {
-           HashSet forTrgs = (HashSet)notes.remove(noteKey);
-          Iterator ftit = forTrgs.iterator();
+          Set<String> forTrgs = notes.remove(noteKey);
+          Iterator<String> ftit = forTrgs.iterator();
           while (ftit.hasNext()) {
-            String targ = (String)ftit.next();
-            HashSet toDatForTargs = (HashSet)goesToData.get(noteKey);
+            String targ = ftit.next();
+            Set<String> toDatForTargs = goesToData.get(noteKey);
             if (toDatForTargs == null) {
-              toDatForTargs = new HashSet();
+              toDatForTargs = new HashSet<String>();
               goesToData.put(noteKey, toDatForTargs);
             }
             toDatForTargs.add(targ);
           }
         } else {
-          HashSet forTrgs = (HashSet)notes.get(noteKey);
+          Set<String> forTrgs = notes.get(noteKey);
           forTrgs.add(targetName);
         }
       }
@@ -571,12 +582,12 @@ class QPCRData {
       // Anybody left needs to go to the data-based notes:
       //
       idSet.removeAll(intersect);
-      Iterator idit = idSet.iterator();
+      Iterator<String> idit = idSet.iterator();
       while (idit.hasNext()) {
-        String noteID = (String)idit.next();
-        HashSet toDatForTargs = (HashSet)goesToData.get(noteID);
+        String noteID = idit.next();
+        Set<String> toDatForTargs = goesToData.get(noteID);
         if (toDatForTargs == null) {
-          toDatForTargs = new HashSet();
+          toDatForTargs = new HashSet<String>();
           goesToData.put(noteID, toDatForTargs);
         }
         toDatForTargs.add(targetName);
@@ -590,11 +601,11 @@ class QPCRData {
   ** Convert perturbation sources
   */
   
-  private String sourceToPertSource(Source src, PerturbationData pd, PertDictionary pDict, Set retainNotes) { 
+  private String sourceToPertSource(Source src, PerturbationData pd, PertDictionary pDict, Set<String> retainNotes) { 
     String base = src.getBaseType();
     PerturbationData.KeyAndDataChange kdac = pd.providePertSrcName(base);
     String expr = src.getExpType();
-    List sfoots = src.getFootnoteNumbers();
+    List<String> sfoots = src.getFootnoteNumbers();
     String pSign = src.getProxySign();
     pSign = PertSource.mapLegacyProxySign(pSign);
     String proxNameID = null;
@@ -604,16 +615,16 @@ class QPCRData {
       proxNameID = kdac2.key;
     }
     
-    List idList = footNumsToIDs(pd, sfoots);
+    List<String> idList = footNumsToIDs(pd, sfoots);
    
     String pertKey = pDict.getPerturbPropsFromName(expr);
     if (pertKey == null) {
       throw new IllegalStateException();
     }
-    ArrayList useList = new ArrayList();
+    ArrayList<String> useList = new ArrayList<String>();
     int numL = idList.size();
     for (int i = 0; i < numL; i++) {
-      String annotID = (String)idList.get(i);
+      String annotID = idList.get(i);
       if (retainNotes.contains(annotID)) {
         useList.add(annotID);
       }
@@ -627,13 +638,13 @@ class QPCRData {
   ** process footnote numbers
   */
   
-  private List footNumsToIDs(PerturbationData pd, List noteList) { 
-    Map footMsg = translateFootNumbers(noteList);
-    Iterator fmit = footMsg.keySet().iterator();
-    ArrayList idList = new ArrayList();
+  private List<String> footNumsToIDs(PerturbationData pd, List<String> noteList) { 
+    Map<String, String> footMsg = translateFootNumbers(noteList);
+    Iterator<String> fmit = footMsg.keySet().iterator();
+    ArrayList<String> idList = new ArrayList<String>();
     while (fmit.hasNext()) {
-      String key = (String)fmit.next();
-      String msg = (String)footMsg.get(key);
+      String key = fmit.next();
+      String msg = footMsg.get(key);
       String msgID = pd.addLegacyMessage(key, msg);
       if (msgID == null) {
         throw new IllegalStateException();
@@ -651,9 +662,9 @@ class QPCRData {
   private void exportMeasurement(Measurement mea, PerturbationData pd, PertSources srcs, 
                                  String psiKey, long timeStamp, 
                                  String targKey, String batchKey, 
-                                 String date, String legMeasure, List invKeyList, 
+                                 String date, String legMeasure, List<String> invKeyList, 
                                  PerturbationData.RegionRestrict regRestrict, 
-                                 HashMap notesToTargs, String useKey, String legCondition) {
+                                 Map<String, Set<String>> notesToTargs, String useKey, String legCondition) {
     Object valObj = getMeANumber(mea);
     double value = 0.0;
     LegacyPert lv = null;
@@ -681,18 +692,18 @@ class QPCRData {
     String ctrl = mea.getControl();
     String comment = mea.getComment();
     Integer legNonStandard = mea.getTime();
-    List noteList = mea.getFootnoteNumbers();
-    List idList = footNumsToIDs(pd, noteList);
+    List<String> noteList = mea.getFootnoteNumbers();
+    List<String> idList = footNumsToIDs(pd, noteList);
       
     //
     // Add in annots that really belong with the data, not with the source:
     //
      
     if (notesToTargs != null) {
-      Iterator nttkit = notesToTargs.keySet().iterator();
+      Iterator<String> nttkit = notesToTargs.keySet().iterator();
       while (nttkit.hasNext()) {
-        String noteID = (String)nttkit.next();
-        HashSet forTargs = (HashSet)notesToTargs.get(noteID);
+        String noteID = nttkit.next();
+        Set<String> forTargs = notesToTargs.get(noteID);
         if (forTargs.contains(useKey)) {
           idList.add(noteID);
         }
@@ -733,14 +744,14 @@ class QPCRData {
   ** Translate for export
   */
   
-  private Map translateFootNumbers(List footList) {
-    HashMap retval = new HashMap();
+  private Map<String, String> translateFootNumbers(List<String> footList) {
+    HashMap<String, String> retval = new HashMap<String, String>();
     int numFL = footList.size();
     for (int i = 0; i < numFL; i++) {
-      String flNum = (String)footList.get(i);
+      String flNum = footList.get(i);
       int numf = footnotes_.size();
       for (int j = 0; j < numf; j++) {
-        Footnote fn = (Footnote)footnotes_.get(j);
+        Footnote fn = footnotes_.get(j);
         String num = fn.getNumber();
         if (num.equals(flNum)) {
           retval.put(num, fn.getNote());
@@ -848,6 +859,7 @@ class QPCRData {
   ** Add a gene
   */
   
+  @SuppressWarnings("unused")
   void addGene(TargetGene gene, boolean bumpSerial) {
     genes_.add(gene);
   }
@@ -857,7 +869,7 @@ class QPCRData {
   ** Get an iterator over the genes
   */
   
-   Iterator getGenes() {
+   Iterator<TargetGene> getGenes() {
     return (genes_.iterator());
   }
   
@@ -894,7 +906,7 @@ class QPCRData {
   ** Get an iterator over the null perturbations
   */
   
-   Iterator getNullPerturbations() {
+   Iterator<NullPerturb> getNullPerturbations() {
     return (nullPerturbations_.iterator());
   } 
   
@@ -904,7 +916,7 @@ class QPCRData {
   */
   
   NullPerturb getNullPerturbation(int index) {
-    return ((NullPerturb)nullPerturbations_.get(index));
+    return (nullPerturbations_.get(index));
   }   
 
   /***************************************************************************
@@ -912,13 +924,13 @@ class QPCRData {
   ** Get the default time span for null perturbations
   */
   
-  NullTimeSpan getLegacyNullPerturbationsDefaultTimeSpan() {
+  NullTimeSpan getLegacyNullPerturbationsDefaultTimeSpan(TabPinnedDynamicDataAccessContext dacx) {
     //
     // Kinda weird; don;t actually set it unless user does so explicitly. Don't
     // want it written out or considered committed unless we actually set it.
     if (nullPertDefaultSpan_ == null) {
-      MinMax mm = appState_.getDB().getTimeAxisDefinition().getDefaultTimeSpan();
-      return (new NullTimeSpan(appState_, mm.min, mm.max));
+      MinMax mm = dacx.getExpDataSrc().getTimeAxisDefinition().getDefaultTimeSpan();
+      return (new NullTimeSpan(dacx, mm.min, mm.max));
     } else {
       return (nullPertDefaultSpan_);
     }
@@ -959,7 +971,7 @@ class QPCRData {
   ** Get an iterator over the footnote
   */
   
-   Iterator getFootnotes() {
+   Iterator<Footnote> getFootnotes() {
     return (footnotes_.iterator());
   }
   
@@ -968,7 +980,7 @@ class QPCRData {
   ** Set the column headings
   */
   
-   void setColumns(ArrayList columns) {
+   void setColumns(ArrayList<MinMax> columns) {
     timeSpanCols_ = columns;
     return;
   }
@@ -999,13 +1011,13 @@ class QPCRData {
   */
   
    boolean columnDefinitionsUsed() {
-    Iterator git = getGenes();
+    Iterator<TargetGene> git = getGenes();
     if (git.hasNext()) {
-      TargetGene tg = (TargetGene)git.next();
-      Iterator pit = tg.getPerturbations();
+      TargetGene tg = git.next();
+      Iterator<Perturbation> pit = tg.getPerturbations();
       if (pit.hasNext()) {
-        Perturbation pert = (Perturbation)pit.next();
-        Iterator sit = pert.getTimeSpans();
+        Perturbation pert = pit.next();
+        Iterator<TimeSpan> sit = pert.getTimeSpans();
         return (sit.hasNext());
       }
     }
@@ -1017,7 +1029,7 @@ class QPCRData {
   ** Get the column headings (note we are handing out the actual list DANGER!)
   */
   
-   ArrayList getColumns() {
+   ArrayList<MinMax> getColumns() {
     return (timeSpanCols_);
   }
   
@@ -1026,7 +1038,7 @@ class QPCRData {
   ** Get the column headings iterator
   */
   
-   Iterator getColumnIterator() {
+   Iterator<MinMax> getColumnIterator() {
     return (timeSpanCols_.iterator());
   }  
   
@@ -1045,7 +1057,7 @@ class QPCRData {
   */
   
    static int getMinimum(String colVal) {
-    return (getMaxOrMin((String)colVal, true));
+    return (getMaxOrMin(colVal, true));
   }  
   
   /***************************************************************************
@@ -1054,7 +1066,7 @@ class QPCRData {
   */
   
    static int getMaximum(String colVal) {
-    return (getMaxOrMin((String)colVal, false));
+    return (getMaxOrMin(colVal, false));
   }  
 
   /***************************************************************************
@@ -1091,14 +1103,14 @@ class QPCRData {
     int cols = timeSpanCols_.size();
     if (timeMax != Experiment.NO_TIME) {
       for (int i = 0; i < cols; i++) {
-        MinMax col = (MinMax)timeSpanCols_.get(i);
+        MinMax col = timeSpanCols_.get(i);
         if ((time == col.min) && (timeMax == col.max)) {
           return (col);  
         }
       }
     } else {
       for (int i = 0; i < cols; i++) {
-        MinMax col = (MinMax)timeSpanCols_.get(i);
+        MinMax col = timeSpanCols_.get(i);
         if ((time >= col.min) && (time <= col.max)) {
           return (col);
         }
@@ -1124,7 +1136,7 @@ class QPCRData {
     MinMax best = null;
     int cols = timeSpanCols_.size();
     for (int i = 0; i < cols; i++) {
-      MinMax col = (MinMax)timeSpanCols_.get(i);
+      MinMax col = timeSpanCols_.get(i);
       int chkDistMin = Math.abs(col.min - time);
       int chkDistMax = Math.abs(col.max - time);
       if (chkDistMin < minDist) {
@@ -1147,7 +1159,7 @@ class QPCRData {
    MinMax getBestSpanColumn(int time, int timeMax) { 
   
     MinMax checkSpan = new MinMax(time, timeMax);
-    SortedSet checkSet = checkSpan.getAsSortedSet();
+    SortedSet<Integer> checkSet = checkSpan.getAsSortedSet();
     int minDisjointDist = Integer.MAX_VALUE;
     MinMax bestDisjoint = null;
     int maxOverlap = Integer.MIN_VALUE;
@@ -1155,12 +1167,12 @@ class QPCRData {
     
     int cols = timeSpanCols_.size();
     for (int i = 0; i < cols; i++) {
-      MinMax col = (MinMax)timeSpanCols_.get(i);
+      MinMax col = timeSpanCols_.get(i);
       MinMax.SetRel eval = col.evaluate(checkSpan);
       if ((eval == MinMax.SetRel.IS_PROPER_SUBSET) || (eval == MinMax.SetRel.EQUALS)) {
         return (col);
       } else if ((eval == MinMax.SetRel.INTERSECTS) || (eval == MinMax.SetRel.IS_PROPER_SUPERSET)) {
-        SortedSet colSet = col.getAsSortedSet();
+        SortedSet<Integer> colSet = col.getAsSortedSet();
         colSet.retainAll(checkSet);
         int sizeOver = colSet.size();
         if (sizeOver > maxOverlap) {
@@ -1189,7 +1201,7 @@ class QPCRData {
   ** Add a map from a gene to a List of target genes
   */
   
-   void addDataMaps(String key, List entries, List sources) {
+   void addDataMaps(String key, List<String> entries, List<String> sources) {
     if ((entries != null) && (entries.size() > 0)) {
       entryMap_.put(key, entries);
     }
@@ -1204,12 +1216,12 @@ class QPCRData {
   ** Add the maps from a gene sources and entries
   */
   
-   void addCombinedDataMaps(String key, List datasets) {
-    ArrayList sourceList = new ArrayList();
-    ArrayList entryList = new ArrayList();
-    Iterator dit = datasets.iterator();
+   void addCombinedDataMaps(String key, List<QpcrMapResult> datasets) {
+    ArrayList<String> sourceList = new ArrayList<String>();
+    ArrayList<String> entryList = new ArrayList<String>();
+    Iterator<QpcrMapResult> dit = datasets.iterator();
     while (dit.hasNext()) {
-      QpcrMapResult res = (QpcrMapResult)dit.next();
+      QpcrMapResult res = dit.next();
       if (res.type == QpcrMapResult.ENTRY_MAP) {
         entryList.add(res.name);
       } else {
@@ -1226,11 +1238,11 @@ class QPCRData {
   ** Get the list of targets names for the gene ID.  May be empty.
   */
   
-  private List getQPCRDataEntryKeysWithDefault(String nodeId) {  
-    List retval = (List)entryMap_.get(nodeId);
+  private List<String> getQPCRDataEntryKeysWithDefault(String nodeId, TabPinnedDynamicDataAccessContext dacx) {  
+    List<String> retval = entryMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);
+      retval = new ArrayList<String>();
+      Node node = dacx.getGenomeSource().getRootDBGenome().getNode(nodeId);
       if (node == null) {
         throw new IllegalStateException();
       }
@@ -1249,11 +1261,11 @@ class QPCRData {
   ** Get the list of source names for the gene ID.  May be empty.
   */
   
-  private List getQPCRDataSourceKeysWithDefault(String nodeId) {  
-    List retval = (List)sourceMap_.get(nodeId);
+  private List<String> getQPCRDataSourceKeysWithDefault(String nodeId, TabPinnedDynamicDataAccessContext dacx) {  
+    List<String> retval = sourceMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);
+      retval = new ArrayList<String>();
+      Node node = dacx.getGenomeSource().getRootDBGenome().getNode(nodeId);
       if (node == null) {
         throw new IllegalStateException();
       }
@@ -1273,9 +1285,9 @@ class QPCRData {
   */
   
   TargetGene getQPCRDataRelaxedMatch(String targetName) {
-    Iterator trgit = genes_.iterator();
+    Iterator<TargetGene> trgit = genes_.iterator();
     while (trgit.hasNext()) {
-      TargetGene trg = (TargetGene)trgit.next();
+      TargetGene trg = trgit.next();
       String name = trg.getName();
       if (DataUtil.keysEqual(name, targetName)) {
         return (trg);
@@ -1289,15 +1301,15 @@ class QPCRData {
   ** Get the HTML table for the given gene.  May be null.
   */
   
-   String getHTML(String geneId, String sourceID, QpcrTablePublisher qtp) {
-    List keys = getQPCRDataEntryKeysWithDefault(geneId);
+   String getHTML(String geneId, String sourceID, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
+    List<String> keys = getQPCRDataEntryKeysWithDefault(geneId, dacx);
     if (keys == null) {
       return (null);
     }
     
-    List srcKeys = null;
+    List<String> srcKeys = null;
     if (sourceID != null) {
-      srcKeys = getQPCRDataSourceKeysWithDefault(sourceID);
+      srcKeys = getQPCRDataSourceKeysWithDefault(sourceID, dacx);
       if (srcKeys == null) {
         return (null);
       }
@@ -1308,17 +1320,17 @@ class QPCRData {
     qtp.setOutput(out);
     Indenter ind = new Indenter(out, Indenter.DEFAULT_INDENT);     
 
-    Iterator trgit = genes_.iterator();
-    ArrayList targetGenes = new ArrayList();
+    Iterator<TargetGene> trgit = genes_.iterator();
+    ArrayList<TargetGene> targetGenes = new ArrayList<TargetGene>();
     while (trgit.hasNext()) {
-      TargetGene trg = (TargetGene)trgit.next();
+      TargetGene trg = trgit.next();
       if (DataUtil.containsKey(keys, trg.getName())) {
         targetGenes.add(trg);
       }
     }
     // needs keys for ALL targets, even those that did not map to table data, to fill out
     // null perturbation lists.
-    writeHTMLForGenes(out, ind, targetGenes, keys, srcKeys, true, qtp);
+    writeHTMLForGenes(out, ind, targetGenes, keys, srcKeys, true, qtp, dacx);
     return (sw.toString());
   }  
   
@@ -1328,23 +1340,23 @@ class QPCRData {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp) {
-    Iterator trgit = genes_.iterator();
-    TreeMap sortedGeneMap = new TreeMap();    
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
+    Iterator<TargetGene> trgit = genes_.iterator();
+    TreeMap<String, TargetGene> sortedGeneMap = new TreeMap<String, TargetGene>();    
     while (trgit.hasNext()) {
-      TargetGene trg = (TargetGene)trgit.next();
+      TargetGene trg = trgit.next();
       sortedGeneMap.put(trg.getName().toLowerCase(), trg);
     }
-    ArrayList geneNames = new ArrayList();
-    ArrayList sortedGenes = new ArrayList();
-    Iterator sgmit = sortedGeneMap.keySet().iterator();
+    ArrayList<String> geneNames = new ArrayList<String>();
+    ArrayList<TargetGene> sortedGenes = new ArrayList<TargetGene>();
+    Iterator<String> sgmit = sortedGeneMap.keySet().iterator();
     while (sgmit.hasNext()) {
-      String name = (String)sgmit.next();
-      TargetGene trg = (TargetGene)sortedGeneMap.get(name);
+      String name = sgmit.next();
+      TargetGene trg = sortedGeneMap.get(name);
       geneNames.add(trg.getName());
       sortedGenes.add(trg);
     }
-    writeHTMLForGenes(out, ind, sortedGenes, geneNames, null, false, qtp);
+    writeHTMLForGenes(out, ind, sortedGenes, geneNames, null, false, qtp, dacx);
     return;
   }
 
@@ -1355,30 +1367,30 @@ class QPCRData {
   */
   
    void writeHTMLForGenes(PrintWriter out, Indenter ind, 
-                          List targetGenes, List names, List srcNames,
-                          boolean doTrim, QpcrTablePublisher qtp) {
+                          List<TargetGene> targetGenes, List<String> names, List<String> srcNames,
+                          boolean doTrim, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
      
     qtp.colorsAndScaling();
-    DisplayOptions dopt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dopt = dacx.getDisplayOptsSource().getDisplayOptions();
     boolean breakOutInvest = dopt.breakOutInvestigators();
     ind.indent();
     out.println("<center>");   
     out.println("<table width=\"100%\" border=\"1\" bordercolor=\"#000000\" cellpadding=\"7\" cellspacing=\"0\" >");
  
     // Print out table heading row
-    outputSpanRow(out, ind, qtp);
+    outputSpanRow(out, ind, qtp, dacx);
    
     //
     // Crank out the genes
     //
     int rowCount = 0;
-    Iterator git = targetGenes.iterator();
-    Set footNumbers = new HashSet();
+    Iterator<TargetGene> git = targetGenes.iterator();
+    Set<String> footNumbers = new HashSet<String>();
     while (git.hasNext()) {
-      TargetGene tg = (TargetGene)git.next();
-      rowCount = tg.writeHTML(out, ind, timeSpanCols_, qtp, rowCount, breakOutInvest, srcNames, footNumbers, appState_);
+      TargetGene tg = git.next();
+      rowCount = tg.writeHTML(out, ind, timeSpanCols_, qtp, rowCount, breakOutInvest, srcNames, footNumbers, dacx);
       if ((rowCount > HEADING_SPACING_) && git.hasNext()){
-        outputSpanRow(out, ind, qtp);
+        outputSpanRow(out, ind, qtp, dacx);
         rowCount = 0;
       }
     }
@@ -1386,36 +1398,36 @@ class QPCRData {
     out.println("</table>");
 
     qtp.paragraph(false);
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     out.print(rMan.getString("qpcrData.qpcrTableNote"));    
     out.println("</p>");
     
     
     // Crank out null perturbations
-    Iterator pers = getNullPerturbations();
-    TreeMap sortedPert = new TreeMap();    
+    Iterator<NullPerturb> pers = getNullPerturbations();
+    TreeMap<String, NullPerturb> sortedPert = new TreeMap<String, NullPerturb>();    
     while (pers.hasNext()) {
-      NullPerturb per = (NullPerturb)pers.next();
+      NullPerturb per = pers.next();
       if (per.sourcesContainOneOrMore(srcNames)) { 
         String pertName = per.getSourceDisplayString(false);
         sortedPert.put(pertName, per);
       }
     }
-    Iterator perout = sortedPert.keySet().iterator();
-    NullTimeSpan ndts = new NullTimeSpan(appState_, dopt.getNullPertDefaultSpan());
+    Iterator<String> perout = sortedPert.keySet().iterator();
+    NullTimeSpan ndts = new NullTimeSpan(dacx, dopt.getNullPertDefaultSpan());
     boolean doHeading = true;    
     while (perout.hasNext()) {
-      String pertName = (String)perout.next();
-      NullPerturb per = (NullPerturb)sortedPert.get(pertName);
+      String pertName = perout.next();
+      NullPerturb per = sortedPert.get(pertName);
       if (!doTrim || per.appliesToTargets(names)) {
         if (doHeading) {
           qtp.writePerturbationHeader(ind, ndts);
           ind.up();
           doHeading = false;
         }  
-        per.writeHTML(out, ind, qtp, ndts);
+        per.writeHTML(out, ind, qtp, ndts, dacx);
         if (doTrim) {
-          Set foots = per.getFootnoteNumbers();
+          Set<String> foots = per.getFootnoteNumbers();
           footNumbers.addAll(foots);
         }
       }
@@ -1427,10 +1439,10 @@ class QPCRData {
     out.println("</center>");
     // Crank out footnotes
     ind.indent();
-    Iterator fit = getFootnotes();
+    Iterator<Footnote> fit = getFootnotes();
     doHeading = true;
     while (fit.hasNext()) {
-      Footnote fn = (Footnote)fit.next();
+      Footnote fn = fit.next();
       String fnNum = fn.getNumber();
       if (!doTrim || footNumbers.contains(fnNum)) {
         if (doHeading) {
@@ -1451,7 +1463,7 @@ class QPCRData {
   ** Output column headers
   */
   
-  private void outputSpanRow(PrintWriter out, Indenter ind, QpcrTablePublisher qtp) { 
+  private void outputSpanRow(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) { 
     ind.up().indent();
     out.println("<tbody>");
     // Print out table heading row
@@ -1474,9 +1486,9 @@ class QPCRData {
     out.println("<b>Perturbation</b></p>");    
     ind.down().indent();
     out.println("</td>");   
-    Iterator cit = timeSpanCols_.iterator();    
+    Iterator<MinMax> cit = timeSpanCols_.iterator();    
     while (cit.hasNext()) {
-      MinMax tc = (MinMax)cit.next();
+      MinMax tc = cit.next();
       ind.indent();
       out.println("<td bgcolor=\"#EEEEEE\">");
       ind.up().indent();
@@ -1484,9 +1496,9 @@ class QPCRData {
       out.print("<b>");
       String tdisp;
       if ((tc.min == Integer.MIN_VALUE) && (tc.max == Integer.MAX_VALUE)) {
-        tdisp = appState_.getRMan().getString("qpcrDisplay.allTimes");
+        tdisp = dacx.getRMan().getString("qpcrDisplay.allTimes");
       } else {     
-        tdisp = TimeSpan.spanToString(appState_, tc);
+        tdisp = TimeSpan.spanToString(dacx, tc);
       }
       tdisp = tdisp.replaceAll(" ", "&nbsp;");     
       out.print(tdisp);
@@ -1540,18 +1552,14 @@ class QPCRData {
   **
   */
   
-   static class SourceComparator implements Comparator {
-     public int compare(Object o1, Object o2) {
-      Source s1 = (Source)o1;
-      Source s2 = (Source)o2;
+   static class SourceComparator implements Comparator<Source> {
+     public int compare(Source s1, Source s2) {
       String s1v = s1.getDisplayValue().toUpperCase().replaceAll(" ", "");
       String s2v = s2.getDisplayValue().toUpperCase().replaceAll(" ", "");
       return (s1v.compareTo(s2v));
     }
   }  
-  
 
-  
   /***************************************************************************
   **
   ** Used to return QPCR map results
@@ -1585,14 +1593,8 @@ class QPCRData {
   */
   
    static Set<String> keywordsOfInterest() {
-    HashSet retval = new HashSet();
-    retval.add("QPCR");
-  //  retval.add("targetGenes");
-  //  retval.add("nullPerturbations");
- //   retval.add("footnotes");
-  //  retval.add("columns"); 
-  //  retval.add("columnRanges");     
-  //  retval.add("datamaps");     
+    HashSet<String> retval = new HashSet<String>();
+    retval.add("QPCR"); 
     return (retval);
   }
   
@@ -1654,11 +1656,11 @@ class QPCRData {
   
   /***************************************************************************
   **
-  ** Handle the attributes for the keyword
+  ** Build from XML input. This is for legacy input.
   **
   */
   
-   static QPCRData buildFromXML(BTState appState, String elemName, 
+   static QPCRData buildFromXML(TabPinnedDynamicDataAccessContext dacx, String elemName, 
                                 Attributes attrs, 
                                 boolean serialNumberIsIllegal) throws IOException {
     if (!elemName.equals("QPCR")) {
@@ -1670,7 +1672,7 @@ class QPCRData {
       throw new IOException();
     }
     
-    QPCRData retval = new QPCRData(appState);
+    QPCRData retval = new QPCRData(dacx);
     if (threshString != null) {
       try {
         double thresh = Double.parseDouble(threshString);
@@ -1824,18 +1826,18 @@ class QPCRData {
   */
   
    static void writeDataMap(PrintWriter out, Indenter ind, 
-                                  Map entryMap, Map sourceMap, boolean forQpcr) {
+                            Map<String, List<String>> entryMap, Map<String, List<String>> sourceMap, boolean forQpcr) {
     ind.indent();    
     out.println(forQpcr ? "<datamaps>" : "<tempWorkDatamaps>");
-    TreeSet sorted = new TreeSet();
+    TreeSet<String> sorted = new TreeSet<String>();
     sorted.addAll(entryMap.keySet());
     sorted.addAll(sourceMap.keySet());
-    Iterator mapKeys = sorted.iterator();
+    Iterator<String> mapKeys = sorted.iterator();
     ind.up();    
     while (mapKeys.hasNext()) {
-      String key = (String)mapKeys.next();     
-      List elist = (List)entryMap.get(key);
-      List slist = (List)sourceMap.get(key);      
+      String key = mapKeys.next();     
+      List<String> elist = entryMap.get(key);
+      List<String> slist = sourceMap.get(key);      
       ind.indent();
       out.print(forQpcr ? "<datamap" : "<tempWorkDatamap");
       out.print(" key=\"");      
@@ -1843,9 +1845,9 @@ class QPCRData {
       out.println("\">");
       ind.up();
       if (elist != null) {
-        Iterator lit = elist.iterator();
+        Iterator<String> lit = elist.iterator();
         while (lit.hasNext()) {
-          String useqpcr = (String)lit.next();      
+          String useqpcr = lit.next();      
           ind.indent();
           out.print(forQpcr ? "<useqpcr" : "<tempWorkUseqpcr");
           out.print(" type=\"entry\" name=\"");          
@@ -1854,9 +1856,9 @@ class QPCRData {
         }
       }
       if (slist != null) {
-        Iterator lit = slist.iterator(); 
+        Iterator<String> lit = slist.iterator(); 
         while (lit.hasNext()) {
-          String useqpcr = (String)lit.next();      
+          String useqpcr = lit.next();      
           ind.indent();
           out.print(forQpcr ? "<useqpcr" : "<tempWorkUseqpcr");
           out.print(" type=\"source\" name=\"");          

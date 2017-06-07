@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.parser.ParserClient;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -58,7 +58,8 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   private String currCpeMapKey_;
   private ArrayList<String> currCpeMapList_;
   private boolean mapsAreIllegal_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private boolean isForMeta_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,8 +72,8 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   ** Constructor
   */
 
-  public CopiesPerEmbryoFormatFactory(BTState appState, boolean mapsAreIllegal) {
-    appState_ = appState;
+  public CopiesPerEmbryoFormatFactory(boolean mapsAreIllegal, boolean isForMeta) {
+    isForMeta_ = isForMeta;
     
     mapsAreIllegal_ = mapsAreIllegal;    
     dataKeys_ = CopiesPerEmbryoData.keywordsOfInterest();
@@ -91,6 +92,17 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  
+  /***************************************************************************
+  ** 
+  ** Set access context
+  */
+
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    return;
+  }
 
   /***************************************************************************
   ** 
@@ -158,9 +170,13 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
     }
     
     if (dataKeys_.contains(elemName)) {
-      CopiesPerEmbryoData data = CopiesPerEmbryoData.buildFromXML(appState_, elemName, attrs);
+      CopiesPerEmbryoData data = CopiesPerEmbryoData.buildFromXML(dacx_, elemName, attrs);
       if (data != null) {
-        appState_.getDB().setCopiesPerEmbryoData(data);
+        if (isForMeta_) {
+          dacx_.getMetabase().setSharedCopiesPerEmbryoData(data);
+        } else {
+          dacx_.getLocalDataCopyTarget().installLocalCopiesPerEmbryoData(data);
+        }   
         currTarg_ = data;
       }
     } else if (geneKeys_.contains(elemName)) {

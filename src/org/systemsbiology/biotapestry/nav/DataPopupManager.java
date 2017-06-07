@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,6 +21,7 @@
 package org.systemsbiology.biotapestry.nav;
 
 import java.io.IOException;
+import java.text.MessageFormat;
 import java.util.Iterator;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,9 +41,13 @@ import javax.swing.JScrollPane;
 import javax.swing.text.html.HTMLDocument;
 import javax.swing.text.html.StyleSheet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.OtherFlowKey;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.event.EventManager;
@@ -53,11 +58,14 @@ import org.systemsbiology.biotapestry.event.ModelChangeListener;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeListener;
+import org.systemsbiology.biotapestry.event.TabChangeEvent;
+import org.systemsbiology.biotapestry.event.TabChangeListener;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.TopOfTheHeap;
 import org.systemsbiology.biotapestry.ui.dialogs.PathDisplayFrameFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.UsageFrameFactory;
+import org.systemsbiology.biotapestry.util.Tuple;
 
 /****************************************************************************
 **
@@ -65,7 +73,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.UsageFrameFactory;
 ** same functions for selection windows.
 */
 
-public class DataPopupManager implements GeneralChangeListener, ModelChangeListener, SelectionChangeListener {
+public class DataPopupManager implements GeneralChangeListener, ModelChangeListener, SelectionChangeListener, TabChangeListener {
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -75,11 +83,42 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
 
   private HashMap<FrameKey, FrameInfo> popups_;
   private HashMap<FrameKey, FrameInfo> linkPopups_;
-  private HashMap<String, FrameInfo> nodeSelections_;
-  private HashMap<String, FrameInfo> linkSelections_;
+  private HashMap<Tuple<String, String>, FrameInfo> nodeSelections_;
+  private HashMap<Tuple<String, String>, FrameInfo> linkSelections_;
   private FrameInfo pathDisplay_;
   private boolean clearing_ = false;
-  private BTState appState_;
+  
+  private DynamicDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private TabSource tSrc_;
+  
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PUBLIC CONSTRUCTORS
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Basic constructor
+  */
+
+  public DataPopupManager(DynamicDataAccessContext dacx, UIComponentSource uics, TabSource tSrc) {
+    dacx_ = dacx;
+    uics_ = uics;
+    tSrc_ = tSrc;
+    popups_ = new HashMap<FrameKey, FrameInfo>();
+    linkPopups_ = new HashMap<FrameKey, FrameInfo>();
+    nodeSelections_ = new HashMap<Tuple<String, String>, FrameInfo>();
+    linkSelections_ = new HashMap<Tuple<String, String>, FrameInfo>();
+    clearing_ = false;
+    EventManager em = uics_.getEventMgr();
+    em.addModelChangeListener(this);
+    em.addGeneralChangeListener(this);
+    em.addSelectionChangeListener(this);
+    em.addTabChangeListener(this);
+  }
+  
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -93,7 +132,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   */ 
   
   public void generalChangeOccurred(GeneralChangeEvent gcev) {
-    fullRefresh();
+    fullRefresh(null);
     return;
   }
 
@@ -126,7 +165,6 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     return;
   }
   
-  
   /***************************************************************************
   **
   ** Notify listener of model change
@@ -135,34 +173,51 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   public void modelHasChanged(ModelChangeEvent mcev) { 
     int change = mcev.getChangeType();
     if (change == ModelChangeEvent.UNSPECIFIED_CHANGE) {
-      fullRefresh();
+      fullRefresh(null);
     } else if (change == ModelChangeEvent.MODEL_DROPPED) {
       // This means the whole thing is gone:
-      if (mcev.getGenomeKey().equals(appState_.getDB().getGenome().getID())) {
-        fullClear();
+      if (mcev.getGenomeKey().equals(dacx_.getDBGenome().getID())) {
+        fullClear(null);
       } else {
-        fullRefresh();
+        fullRefresh(null);
       }
     } else if (change == ModelChangeEvent.PROPERTY_CHANGE) {
-      fullRefresh();
+      fullRefresh(null);
     } else if (change == ModelChangeEvent.MODEL_ADDED) {
-      fullRefresh();
+      fullRefresh(null);
     }
     return;
   }
   
   /***************************************************************************
   **
+  ** Notify listener of tab change
+  */ 
+  
+  public void tabHasChanged(TabChangeEvent tcev) { 
+    TabChangeEvent.Change change = tcev.getChangeType();
+    if (change == TabChangeEvent.Change.DELETE) {
+      fullClear(tcev.getTabKey());
+    } else if (change != TabChangeEvent.Change.NO_CHANGE) {
+      fullRefresh(tcev.getTabKey());
+    }
+    return;
+  } 
+  
+  /***************************************************************************
+  **
   ** Handle node data
   */ 
   
-  public DataReturn popupData(String genomeID, String nodeID) {
+  public DataReturn popupData(String tabKey, String genomeID, String nodeID) {
  
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, tabKey);
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(tpdacx, genomeID);
     genomeID = tooth.getID();
     boolean isInstance = tooth.isInstance();
      
@@ -171,16 +226,16 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     // new one.
     // 
     
-    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, genomeID, nodeID, false);
-    boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForNode(appState_, ba);     
-    FrameKey fkey = new FrameKey(appState_, genomeID, nodeID, needPerInstance, isInstance);
-    ba = new ExternalInventoryItem.BuilderArgs(appState_, fkey.genomeID, fkey.itemID, false);
+    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(tpdacx, tabKey, genomeID, nodeID, false);
+    boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForNode(uics_, ba);     
+    FrameKey fkey = new FrameKey(tpdacx, tabKey, genomeID, nodeID, needPerInstance, isInstance);
+    ba = new ExternalInventoryItem.BuilderArgs(tpdacx, fkey.tabKey, fkey.genomeID, fkey.itemID, false);
     // This will be used for the web server results:
     DataPopupStringBuilder.SyncedBuffer sbuf = null;
     
     FrameInfo existing = popups_.get(fkey);
     if (existing != null) { 
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         existing.frame.setExtendedState(JFrame.NORMAL);
         existing.frame.toFront();
       } else {
@@ -189,67 +244,88 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     } else {
       DataPopupStringBuilder.TextTarget putt;      
       JEditorPane pane = null;
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         pane = new JEditorPane("text/html", "");
         putt = new DataPopupStringBuilder.JEPWrapper(pane);
       } else {
-        if (appState_.isWebApplication()) {
+        if (tpdacx.isForWeb()) {
           sbuf = new DataPopupStringBuilder.SyncedBuffer(); 
           putt = new DataPopupStringBuilder.BufferWrapper(sbuf);
         } else {
-          putt = new DataPopupStringBuilder.StreamWrapper(appState_.getCurrentPrintWriter());
+          putt = new DataPopupStringBuilder.StreamWrapper(uics_.getCurrentPrintWriter());
         }
       }
-      DataPopupStringBuilder builder = new DataPopupStringBuilder(appState_, putt, ba);
+      DataPopupStringBuilder builder = new DataPopupStringBuilder(uics_, tpdacx, putt, ba);
       builder.prepare();
-      Genome keyGenome = appState_.getDB().getGenome(fkey.genomeID);
+      GenomeSource gs = tpdacx.getGenomeSource();
+      Genome keyGenome = gs.getGenome(fkey.genomeID);
       Node node = keyGenome.getNode(fkey.itemID);
-      String title = node.getDisplayString(keyGenome, false); 
+      String nodeTitle = node.getDisplayString(keyGenome, false); 
+    
+      String title = buildFrameTitle(tpdacx, nodeTitle);
       FrameInfo fi;
       JFrame frame = null;
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         frame = createDataWindow(fkey, title, pane, true);
-        fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, frame, null, builder);
+        fi = new FrameInfo(fkey.tabKey, fkey.genomeID, fkey.itemID, title, frame, null, builder);
       } else {
-        fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, sbuf, null, builder);
+        fi = new FrameInfo(fkey.tabKey, fkey.genomeID, fkey.itemID, title, sbuf, null, builder);
       }
       popups_.put(fkey, fi);
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         frame.setVisible(true);
       }
       builder.kickOff();
     }
     // Note the sbuf.getComplete() may be inconsistent, but only in a conservative fashion, giving us another later callback:
-    return ((sbuf == null) ? null : new DataReturn(sbuf.getTextContents(), genomeID, nodeID, !sbuf.getComplete(), OtherFlowKey.TARDY_NODE_DATA));
+    return ((sbuf == null) ? null : new DataReturn(sbuf.getTextContents(), tabKey, genomeID, nodeID, !sbuf.getComplete(), OtherFlowKey.TARDY_NODE_DATA));
   }
   
+  /***************************************************************************
+  **
+  ** Build a frame title
+  */ 
+  
+  public String buildFrameTitle(TabPinnedDynamicDataAccessContext tpdacx, String baseTitle) {
+    
+    int numTab = dacx_.getMetabase().getNumDB();
+    String title;
+    if (numTab == 1) {
+      title = baseTitle;
+    } else {
+      String tabName = tpdacx.getGenomeSource().getTabNameData().getTitle();      
+      String format = uics_.getRMan().getString("dataWindow.tabPlusNodeFmt");     
+      title = MessageFormat.format(format, new Object[] {tabName, baseTitle});
+    }
+    return (title);
+  }
+
   /***************************************************************************
   **
   ** Handle link data
   */ 
   
-  public Map<String, Object> popupLinkData(String genomeID, String linkID) {
+  public Map<String, Object> popupLinkData(String tabKey, String genomeID, String linkID) {
     
-	  String title = null;
+	  TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, tabKey);
 	  
     //
     // Have to work with the root or root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TopOfTheHeap tooth = new TopOfTheHeap(tpdacx, genomeID);
     genomeID = tooth.getID();
     boolean isInstance = tooth.isInstance();
   
-    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, genomeID, linkID, true);
-    boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForLink(appState_, ba);
-    FrameKey fkey = new FrameKey(appState_, genomeID, linkID, needPerInstance, isInstance);
-    ba = new ExternalInventoryItem.BuilderArgs(appState_, fkey.genomeID, fkey.itemID, true);
+    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(tpdacx, tabKey, genomeID, linkID, true);
+    boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForLink(uics_, ba);
+    FrameKey fkey = new FrameKey(tpdacx, tabKey, genomeID, linkID, needPerInstance, isInstance);
+    ba = new ExternalInventoryItem.BuilderArgs(tpdacx, fkey.tabKey, fkey.genomeID, fkey.itemID, true);
     DataPopupStringBuilder.SyncedBuffer sbuf = null;
     
-    Genome keyGenome = appState_.getDB().getGenome(fkey.genomeID);
+    Genome keyGenome = tpdacx.getGenomeSource().getGenome(fkey.genomeID);
     Linkage link = keyGenome.getLinkage(fkey.itemID);
-    title = link.getDisplayString(keyGenome, false);
-    
+    String title = buildFrameTitle(tpdacx, link.getDisplayString(keyGenome, false));    
     //
     // If the window is already present, just raise it.  Otherwise, make a
     // new one.
@@ -257,7 +333,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   
     FrameInfo existing = linkPopups_.get(fkey);
     if (existing != null) {      
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         existing.frame.setExtendedState(JFrame.NORMAL);
         existing.frame.toFront();
       } else {
@@ -266,29 +342,29 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     } else {
       DataPopupStringBuilder.TextTarget putt;
       JEditorPane pane = null;
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         pane = new JEditorPane("text/html", "");
         putt = new DataPopupStringBuilder.JEPWrapper(pane);
       } else {
-        if (appState_.isWebApplication()) {
+        if (tpdacx.isForWeb()) {
           sbuf = new DataPopupStringBuilder.SyncedBuffer(); 
           putt = new DataPopupStringBuilder.BufferWrapper(sbuf);
         } else {
-          putt = new DataPopupStringBuilder.StreamWrapper(appState_.getCurrentPrintWriter());
+          putt = new DataPopupStringBuilder.StreamWrapper(uics_.getCurrentPrintWriter());
         }       
       }
-      DataPopupStringBuilder builder = new DataPopupStringBuilder(appState_, putt, ba);
+      DataPopupStringBuilder builder = new DataPopupStringBuilder(uics_, tpdacx, putt, ba);
       builder.prepare();
       FrameInfo fi;
       JFrame frame = null;
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         frame = createDataWindow(fkey, title, pane, false);
-        fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, frame, null, builder);
+        fi = new FrameInfo(fkey.tabKey, fkey.genomeID, fkey.itemID, title, frame, null, builder);
       } else {
-        fi = new FrameInfo(fkey.genomeID, fkey.itemID, title, sbuf, null, builder);
+        fi = new FrameInfo(fkey.tabKey, fkey.genomeID, fkey.itemID, title, sbuf, null, builder);
       }
       linkPopups_.put(fkey, fi);
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         frame.setVisible(true);
       }
       builder.kickOff();
@@ -299,7 +375,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     
     if (sbuf != null) {
       // Note the sbuf.getComplete() may be inconsistent, but only in a conservative fashion, giving us another later callback:
-      results.put("contents", new DataReturn(sbuf.getTextContents(), genomeID, linkID, !sbuf.getComplete(), OtherFlowKey.TARDY_LINK_DATA));
+      results.put("contents", new DataReturn(sbuf.getTextContents(), tabKey, genomeID, linkID, !sbuf.getComplete(), OtherFlowKey.TARDY_LINK_DATA));
     }
     
     return results;
@@ -311,7 +387,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   */  
  
   public void manageFrame(JFrame uijd) {
-    if (appState_.isHeadless()) {
+    if (uics_.isHeadless()) {
       return;
     }  
     if (uijd instanceof UsageFrameFactory.DesktopLinkUsageFrame) {
@@ -338,7 +414,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       existing.frame.setExtendedState(JFrame.NORMAL);
       existing.frame.toFront();
     } else {
-      nodeSelections_.put(baseID, new FrameInfo(null, baseID, null, nuf, null, null));
+      nodeSelections_.put(new Tuple<String, String>(nuf.getTabKey(), baseID), new FrameInfo(nuf.getTabKey(), null, baseID, null, nuf, null, null));
       nuf.setVisible(true);
     }
     return;
@@ -363,7 +439,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       existing.frame.setExtendedState(JFrame.NORMAL);
       existing.frame.toFront();
     } else {
-      linkSelections_.put(baseSrcID, new FrameInfo(null, baseSrcID, null, luf, baseLinks, null));
+      linkSelections_.put(new Tuple<String, String>(luf.getTabKey(), baseSrcID), new FrameInfo(luf.getTabKey(), null, baseSrcID, null, luf, baseLinks, null));
       luf.setVisible(true);
     }
     return;
@@ -377,12 +453,13 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   private void displayPathFrame(PathDisplayFrameFactory.DesktopPathFrame nuf) {
     String srcID = nuf.getCurrentSource();
     String trgID = nuf.getCurrentTarget();
+    String tabKey = nuf.getTabKey(); 
     String genomeID = nuf.getCurrentModel();
     
     FrameInfo existing = pathDisplay_;
     if (existing != null) { 
       if (!existing.itemID2.equals(srcID) || !existing.itemID.equals(trgID) || !existing.genomeKey.equals(genomeID)) {
-        ((PathDisplayFrameFactory.DesktopPathFrame)existing.frame).refresh(genomeID, srcID, trgID);
+        ((PathDisplayFrameFactory.DesktopPathFrame)existing.frame).refresh(tabKey, genomeID, srcID, trgID);
         existing.itemID2 = srcID;
         existing.itemID = trgID;
         existing.genomeKey = genomeID;       
@@ -392,7 +469,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       existing.frame.setExtendedState(JFrame.NORMAL);
       existing.frame.toFront();
     } else {
-      pathDisplay_ = new FrameInfo(nuf, srcID, trgID, genomeID);
+      pathDisplay_ = new FrameInfo(nuf, tabKey, srcID, trgID, genomeID);
       nuf.setVisible(true);
     }
     return;
@@ -409,7 +486,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       return;
     }
     if (pathDisplay_ != null) {
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         pathDisplay_.frame.dispose();
       }
       pathDisplay_ = null;
@@ -422,14 +499,14 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   ** Drop selection window
   */ 
   
-  public void dropSelectionWindow(String geneID) {
+  public void dropSelectionWindow(Tuple<String, String> tuple) {
     if (clearing_) {
       return;
     }
-    FrameInfo existing = nodeSelections_.get(geneID);
+    FrameInfo existing = nodeSelections_.get(tuple);
     if (existing != null) {
-      nodeSelections_.remove(geneID);
-      if (!appState_.isHeadless()) {
+      nodeSelections_.remove(tuple);
+      if (!uics_.isHeadless()) {
         existing.frame.dispose();
       }
     }
@@ -441,14 +518,14 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   ** Drop selection window
   */ 
   
-  public void dropLinkSelectionWindow(String srcID) {
+  public void dropLinkSelectionWindow(Tuple<String, String> tuple) {
     if (clearing_) {
       return;
     }
-    FrameInfo existing = linkSelections_.get(srcID);
+    FrameInfo existing = linkSelections_.get(tuple);
     if (existing != null) {
-      linkSelections_.remove(srcID);
-      if (!appState_.isHeadless()) {
+      linkSelections_.remove(tuple);
+      if (!uics_.isHeadless()) {
         existing.frame.dispose();
       }
     }
@@ -468,7 +545,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     if (existing != null) {
       popups_.remove(fiKey);
       existing.builder.discardBuilder();
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         existing.frame.dispose();
       }
     }
@@ -488,7 +565,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     if (existing != null) {
       linkPopups_.remove(fiKey);
       existing.builder.discardBuilder();
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         existing.frame.dispose();
       }
     }
@@ -500,30 +577,6 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   // PUBLIC STATIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // PUBLIC CONSTRUCTORS
-  //
-  ////////////////////////////////////////////////////////////////////////////
-
-  /***************************************************************************
-  **
-  ** Basic constructor
-  */
-
-  public DataPopupManager(BTState appState) {
-    appState_ = appState;
-    popups_ = new HashMap<FrameKey, FrameInfo>();
-    linkPopups_ = new HashMap<FrameKey, FrameInfo>();
-    nodeSelections_ = new HashMap<String, FrameInfo>();
-    linkSelections_ = new HashMap<String, FrameInfo>();
-    clearing_ = false;
-    EventManager em = appState.getEventMgr();
-    em.addModelChangeListener(this);
-    em.addGeneralChangeListener(this);
-    em.addSelectionChangeListener(this);
-  }
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -539,7 +592,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   private JFrame createDataWindow(FrameKey key, String title, JEditorPane pane, boolean forNode) {
     pane.setEditable(false);
  
-    if (appState_.getDisplayOptMgr().isForBigScreen()) {
+    if (uics_.doBig()) {
    	  HTMLDocument doc = (HTMLDocument)pane.getDocument();
    	  StyleSheet styles = doc.getStyleSheet();
       String rule1 = "h1 {font-size: 60pt;}";
@@ -589,126 +642,150 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
 
   /***************************************************************************
   **
-  ** Do a full refresh
+  ** Do a full refresh. Now with tab-awareness!
   */ 
   
-  private void fullRefresh() {
+  private void fullRefresh(String tabID) {
     
     //
     // Crank thru all the frames and refresh them
     //
-    Database db = appState_.getDB();
     
-    Iterator<FrameKey> fit = new HashSet<FrameKey>(popups_.keySet()).iterator();
-    while (fit.hasNext()) {
-      FrameKey fiID = fit.next();
-      FrameInfo info = popups_.get(fiID);   
-      Genome nodeGenome = db.getGenome(info.genomeKey);
-      Node node = (nodeGenome == null) ? null : nodeGenome.getNode(info.itemID);
-      // name may have changed...
-      if (node != null) {
-        ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, info.genomeKey, info.itemID, false);
-        boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForNode(appState_, ba);
-        boolean isInstance = !GenomeItemInstance.isBaseID(info.itemID);
-        if (needPerInstance != isInstance) {
+    for (FrameKey fiID : new HashSet<FrameKey>(popups_.keySet())) {
+      FrameInfo info = popups_.get(fiID);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {
+        TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, info.tabKey);
+        GenomeSource gs = tpdacx.getGenomeSource();
+        Genome nodeGenome = gs.getGenome(info.genomeKey);
+        Node node = (nodeGenome == null) ? null : nodeGenome.getNode(info.itemID);
+        // name may have changed...
+        if (node != null) {
+          ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(tpdacx, info.tabKey, info.genomeKey, info.itemID, false);
+          boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForNode(uics_, ba);
+          boolean isInstance = !GenomeItemInstance.isBaseID(info.itemID);
+          if (needPerInstance != isInstance) {
+            dropDataWindow(fiID);
+          } else {
+            info.winTitle = buildFrameTitle(tpdacx, node.getDisplayString(nodeGenome, false));    
+            fullRefreshCore(info, false);
+          }
+        } else {
           dropDataWindow(fiID);
-        } else {
-          info.winTitle = node.getDisplayString(nodeGenome, false);
-          fullRefreshCore(info, false);
         }
-      } else {
-        dropDataWindow(fiID);
       }
     }
-    
-    Iterator<FrameKey> flit = new HashSet<FrameKey>(linkPopups_.keySet()).iterator();
-    while (flit.hasNext()) {
-      FrameKey fiID = flit.next();
+ 
+    for (FrameKey fiID : new HashSet<FrameKey>(linkPopups_.keySet())) {
       FrameInfo info = linkPopups_.get(fiID);
-      Genome linkGenome = db.getGenome(info.genomeKey);
-      Linkage link = (linkGenome == null) ? null : linkGenome.getLinkage(info.itemID);
-      if (link != null) {
-        ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, info.genomeKey, info.itemID, true);
-        boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForLink(appState_, ba);
-        boolean isInstance = !GenomeItemInstance.isBaseID(info.itemID);
-        if (needPerInstance != isInstance) {
-          dropLinkDataWindow(fiID);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {
+        TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, info.tabKey);
+        GenomeSource gs = tpdacx.getGenomeSource();
+        Genome linkGenome = gs.getGenome(info.genomeKey);
+        Linkage link = (linkGenome == null) ? null : linkGenome.getLinkage(info.itemID);
+        if (link != null) {
+          ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(tpdacx, info.tabKey, info.genomeKey, info.itemID, true);
+          boolean needPerInstance = DataPopupStringBuilder.needPerInstanceForLink(uics_, ba);
+          boolean isInstance = !GenomeItemInstance.isBaseID(info.itemID);
+          if (needPerInstance != isInstance) {
+            dropLinkDataWindow(fiID);
+          } else {
+            info.winTitle = buildFrameTitle(tpdacx, link.getDisplayString(linkGenome, false));    
+            fullRefreshCore(info, true);
+          }
         } else {
-          info.winTitle = link.getDisplayString(linkGenome, false);
-          fullRefreshCore(info, true);
+          dropLinkDataWindow(fiID);
         }
-      } else {
-        dropLinkDataWindow(fiID);
       }
     }
     
-    Genome genome = db.getGenome();
+    //
+    // We only show node and link selections windows for the current tab. Not a tab match? Clear it out. 
+    //
     
-    Iterator<FrameInfo> fiit = new HashSet<FrameInfo>(nodeSelections_.values()).iterator();
-    while (fiit.hasNext()) {
-      FrameInfo info = fiit.next();
-      Node node = genome.getNode(info.itemID);
-      if (node != null) {
-        ((UsageFrameFactory.DesktopNodeUsageFrame)(info.frame)).refreshList();
-      } else {
-        dropSelectionWindow(info.itemID);
-      }
-    }   
-    
-    fiit = new HashSet<FrameInfo>(linkSelections_.values()).iterator();
-    while (fiit.hasNext()) {
-      FrameInfo info = fiit.next();
-      Node node = genome.getNode(info.itemID);
-      if (node == null) {
-        dropLinkSelectionWindow(info.itemID);
-      } else {
-        HashSet<String> baseLinks = new HashSet<String>();
-        Iterator<String> lit = info.linkIDs.iterator();
-        while (lit.hasNext()) {
-          String linkID = lit.next();
-          String baseLinkID = GenomeItemInstance.getBaseID(linkID);
-          Linkage baseLink = genome.getLinkage(baseLinkID);
-          if (baseLink == null) {
-            continue;
-          }
-          if (!baseLink.getSource().equals(info.itemID)) {
-            continue;
-          }
-          baseLinks.add(baseLinkID);
-        }
-        if (baseLinks.size() == 0) {
-          dropLinkSelectionWindow(info.itemID);
-        } else if (!baseLinks.equals(info.linkIDs)) {
-          ((UsageFrameFactory.DesktopLinkUsageFrame)(info.frame)).updateLinkSet(baseLinks);
-          info.linkIDs = baseLinks;
+    for (FrameInfo info : new HashSet<FrameInfo>(nodeSelections_.values())) {
+      String currTab = tSrc_.getCurrentTab();
+      if (!currTab.equals(info.tabKey)) {
+        dropSelectionWindow(new Tuple<String, String>(info.tabKey, info.itemID));
+      } else if ((tabID == null) || tabID.equals(info.tabKey)) {
+        TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, info.tabKey);
+        GenomeSource gs = tpdacx.getGenomeSource();
+        Genome genome = gs.getGenome(info.genomeKey);
+        Node node = genome.getNode(info.itemID);
+        if (node != null) {
+          ((UsageFrameFactory.DesktopNodeUsageFrame)(info.frame)).refreshList();
         } else {
-          ((UsageFrameFactory.DesktopLinkUsageFrame)(info.frame)).refreshList();
+          dropSelectionWindow(new Tuple<String, String>(info.tabKey, info.itemID));
         }
       }
-    } 
+    }
+ 
+    for (FrameInfo info : new HashSet<FrameInfo>(linkSelections_.values())) {
+      String currTab = tSrc_.getCurrentTab();
+      if (!currTab.equals(info.tabKey)) {
+        dropLinkSelectionWindow(new Tuple<String, String>(info.tabKey, info.itemID));
+      } else if ((tabID == null) || tabID.equals(info.tabKey)) {
+        TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, info.tabKey);
+        GenomeSource gs = tpdacx.getGenomeSource();
+        Genome genome = gs.getGenome(info.genomeKey);
+        Node node = genome.getNode(info.itemID);
+        if (node == null) {
+          dropLinkSelectionWindow(new Tuple<String, String>(info.tabKey, info.itemID));
+        } else {
+          HashSet<String> baseLinks = new HashSet<String>();
+          Iterator<String> lit = info.linkIDs.iterator();
+          while (lit.hasNext()) {
+            String linkID = lit.next();
+            String baseLinkID = GenomeItemInstance.getBaseID(linkID);
+            Linkage baseLink = genome.getLinkage(baseLinkID);
+            if (baseLink == null) {
+              continue;
+            }
+            if (!baseLink.getSource().equals(info.itemID)) {
+              continue;
+            }
+            baseLinks.add(baseLinkID);
+          }
+          if (baseLinks.size() == 0) {
+            dropLinkSelectionWindow(new Tuple<String, String>(info.tabKey, info.itemID));
+          } else if (!baseLinks.equals(info.linkIDs)) {
+            ((UsageFrameFactory.DesktopLinkUsageFrame)(info.frame)).updateLinkSet(baseLinks);
+            info.linkIDs = baseLinks;
+          } else {
+            ((UsageFrameFactory.DesktopLinkUsageFrame)(info.frame)).refreshList();
+          }
+        }
+      }
+    }
     
     if (pathDisplay_ != null) {
-      boolean keepIt = true;
-      Genome pdGenome = db.getGenome(pathDisplay_.genomeKey);
-      if (pdGenome == null) {
-        keepIt = false;
-      } else { 
-        Node srcNode = pdGenome.getNode(pathDisplay_.itemID2);
-        if (srcNode == null) {
+      boolean keepIt = true;  
+      String currTab = tSrc_.getCurrentTab();
+      if (!currTab.equals(pathDisplay_.tabKey)) {
+        dropPathWindow();
+      } else if ((tabID == null) || tabID.equals(pathDisplay_.tabKey)) {
+        TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, pathDisplay_.tabKey);
+        Genome pdGenome = tpdacx.getGenomeSource().getGenome(pathDisplay_.genomeKey);
+        if (pdGenome == null) {
           keepIt = false;
-        } else {
-          Node trgNode = pdGenome.getNode(pathDisplay_.itemID);
-          if (trgNode == null) {
+        } else { 
+          Node srcNode = pdGenome.getNode(pathDisplay_.itemID2);
+          if (srcNode == null) {
             keepIt = false;
+          } else {
+            Node trgNode = pdGenome.getNode(pathDisplay_.itemID);
+            if (trgNode == null) {
+              keepIt = false;
+            }
           }
         }
-      }
-      if (!keepIt) {
-        dropPathWindow();
-      } else {
-        ((PathDisplayFrameFactory.DesktopPathFrame)pathDisplay_.frame).refresh(pathDisplay_.genomeKey, 
-                                                                               pathDisplay_.itemID2, 
-                                                                               pathDisplay_.itemID);  
+        if (!keepIt) {
+          dropPathWindow();
+        } else {
+          ((PathDisplayFrameFactory.DesktopPathFrame)pathDisplay_.frame).refresh(pathDisplay_.tabKey,
+                                                                                 pathDisplay_.genomeKey, 
+                                                                                 pathDisplay_.itemID2, 
+                                                                                 pathDisplay_.itemID);  
+        }
       }
     }
     return;
@@ -720,21 +797,21 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   */ 
   
   private void fullRefreshCore(FrameInfo info, boolean forLink) {
-    boolean isHeadless = appState_.isHeadless();
-    info.builder.discardBuilder();
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(dacx_, info.tabKey);
+    
+    boolean isHeadless = uics_.isHeadless();  
     if (!isHeadless) {
       info.frame.setTitle(info.winTitle);
     }
-    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(appState_, info.genomeKey, info.itemID, forLink);
+    ExternalInventoryItem.BuilderArgs ba = new ExternalInventoryItem.BuilderArgs(tpdacx, info.tabKey, info.genomeKey, info.itemID, forLink);
     DataPopupStringBuilder.TextTarget putt;
-    JEditorPane pane = null;
     if (!isHeadless) {
-      pane = new JEditorPane("text/html", "");
-      putt = new DataPopupStringBuilder.JEPWrapper(pane);
+      putt = info.builder.getTextTarget();
     } else {
-      putt = new DataPopupStringBuilder.StreamWrapper(appState_.getCurrentPrintWriter());        
+      putt = new DataPopupStringBuilder.StreamWrapper(uics_.getCurrentPrintWriter());        
     }
-    info.builder = new DataPopupStringBuilder(appState_, putt, ba);
+    info.builder.discardBuilder();
+    info.builder = new DataPopupStringBuilder(uics_, tpdacx, putt, ba);
     info.builder.prepare();
     info.builder.kickOff();
     return;
@@ -742,54 +819,59 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
 
   /***************************************************************************
   **
-  ** Do a full clear
+  ** Do a full clear. Now tab aware. Will either clear out for a tab, or (if null)
+  ** all frames
   */ 
   
-  private void fullClear() {
+  private void fullClear(String tabID) {
     //
     // Crank thru all the frames and eliminate them
     //
     clearing_ = true;
-    Iterator<FrameInfo> fit = popups_.values().iterator();
-    while (fit.hasNext()) {
-      FrameInfo info = fit.next();
-      info.builder.discardBuilder();
-      if (!appState_.isHeadless()) {
-        info.frame.dispose();
+    for (FrameKey fkey : new HashSet<FrameKey>(popups_.keySet())) {
+      FrameInfo info = popups_.get(fkey);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {  
+        info.builder.discardBuilder();
+        if (!uics_.isHeadless()) {
+          info.frame.dispose();
+        }
+        popups_.remove(fkey);
       }
     }
-    popups_.clear();
-    
-    Iterator<FrameInfo> flit = linkPopups_.values().iterator();
-    while (flit.hasNext()) {
-      FrameInfo info = flit.next();
-      info.builder.discardBuilder();
-      if (!appState_.isHeadless()) {
-        info.frame.dispose();
+ 
+    for (FrameKey fkey : new HashSet<FrameKey>(linkPopups_.keySet())) {
+      FrameInfo info = popups_.get(fkey);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {     
+        info.builder.discardBuilder();
+        if (!uics_.isHeadless()) {
+          info.frame.dispose();
+        }
+        linkPopups_.remove(fkey);
       }
     }
-    linkPopups_.clear();
 
-    fit = nodeSelections_.values().iterator();
-    while (fit.hasNext()) {
-      FrameInfo info = fit.next();
-      if (!appState_.isHeadless()) {
-        info.frame.dispose();
+    for (Tuple<String, String> key : new HashSet<Tuple<String, String>>(nodeSelections_.keySet())) {
+      FrameInfo info = nodeSelections_.get(key);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {
+        if (!uics_.isHeadless()) {
+          info.frame.dispose();
+        }
+        nodeSelections_.remove(key);
       }
     }
-    nodeSelections_.clear();  
-    
-    fit = linkSelections_.values().iterator();
-    while (fit.hasNext()) {
-      FrameInfo info = fit.next();
-      if (!appState_.isHeadless()) {
-        info.frame.dispose();
+ 
+    for (Tuple<String, String> key : new HashSet<Tuple<String, String>>(linkSelections_.keySet())) {
+      FrameInfo info = linkSelections_.get(key);
+      if ((tabID == null) || tabID.equals(info.tabKey)) {      
+        if (!uics_.isHeadless()) {
+          info.frame.dispose();
+        }
+        linkSelections_.remove(key);
       }
     }
-    linkSelections_.clear();   
    
     if (pathDisplay_ != null) {
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         pathDisplay_.frame.dispose();
       }
     } 
@@ -811,6 +893,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   */  
   
   private static class FrameInfo {
+    String tabKey;
     String genomeKey;
     String itemID;
     String itemID2;
@@ -820,7 +903,8 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
     Set<String> linkIDs;
     DataPopupStringBuilder builder;
     
-    FrameInfo(String genomeKey, String itemID, String winTitle, JFrame frame, Set<String> linkIDs, DataPopupStringBuilder builder) {
+    FrameInfo(String tabKey, String genomeKey, String itemID, String winTitle, JFrame frame, Set<String> linkIDs, DataPopupStringBuilder builder) {
+      this.tabKey = tabKey;
       this.genomeKey = genomeKey;
       this.itemID = itemID;
       this.winTitle = winTitle;
@@ -830,7 +914,8 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       this.builder = builder;
     }
     
-    FrameInfo(String genomeKey, String itemID, String winTitle, DataPopupStringBuilder.SyncedBuffer sbuf, Set<String> linkIDs, DataPopupStringBuilder builder) {
+    FrameInfo(String tabKey, String genomeKey, String itemID, String winTitle, DataPopupStringBuilder.SyncedBuffer sbuf, Set<String> linkIDs, DataPopupStringBuilder builder) {
+      this.tabKey = tabKey;
       this.genomeKey = genomeKey;
       this.itemID = itemID;
       this.winTitle = winTitle;
@@ -840,7 +925,8 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
       this.builder = builder;
     }
     
-    FrameInfo(JFrame frame, String srcID, String trgID, String genomeID) {
+    FrameInfo(JFrame frame, String tabKey, String srcID, String trgID, String genomeID) {
+      this.tabKey = tabKey;
       this.frame = frame;
       this.itemID2 = srcID;
       this.itemID = trgID;
@@ -854,16 +940,18 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   */  
   
   public static class FrameKey {
+    String tabKey;
     String genomeID;
     String itemID;
   
-    FrameKey(BTState appState, String genomeID, String itemID, boolean needPerInstance, boolean isInstance) {
+    FrameKey(DataAccessContext dacx, String tabKey, String genomeID, String itemID, boolean needPerInstance, boolean isInstance) {
+      this.tabKey = tabKey;
       if (needPerInstance) {
         this.genomeID = genomeID;
         this.itemID = itemID;
       } else {
         if (isInstance) {
-          this.genomeID = appState.getDB().getGenome().getID();
+          this.genomeID = dacx.getDBGenomeID();
           this.itemID = GenomeItemInstance.getBaseID(itemID);
         } else {
           this.genomeID = genomeID;
@@ -874,7 +962,7 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
 
     @Override
     public int hashCode() {
-      return (genomeID.hashCode() + itemID.hashCode());
+      return (tabKey.hashCode() + genomeID.hashCode() + itemID.hashCode());
     }
   
     @Override
@@ -889,12 +977,12 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
         return (false);
       }
       FrameKey otherFK = (FrameKey)other;
-      return ((this.genomeID.equals(otherFK.genomeID)) && (this.itemID.equals(otherFK.itemID)));
+      return ((this.tabKey.equals(otherFK.tabKey)) && (this.genomeID.equals(otherFK.genomeID)) && (this.itemID.equals(otherFK.itemID)));
     }  
   
     @Override
     public String toString() {
-      return ("FrameKey genomeID: " + genomeID + " itemID: " + itemID);
+      return ("FrameKey genomeID: " + genomeID + " itemID: " + itemID + " tabKey: " + tabKey);
     }
   }
   
@@ -906,17 +994,23 @@ public class DataPopupManager implements GeneralChangeListener, ModelChangeListe
   public static class DataReturn {
 
     private String html_;
+    private String tabKey_;
     private String genomeKey_;
     private String id_;
     private boolean incomplete_;
     private OtherFlowKey flowKey_;
     
-    public DataReturn(String html, String genomeKey, String id, boolean incomplete, OtherFlowKey ofk) {
+    public DataReturn(String html, String tabKey, String genomeKey, String id, boolean incomplete, OtherFlowKey ofk) {
+      tabKey_ = tabKey;
       html_ = html;
       genomeKey_ = genomeKey;
       id_ = id;
       incomplete_ = incomplete;
       flowKey_ = ofk;
+    }
+    
+    public String getTabKey() {
+      return (tabKey_);
     }
     
     public String getHTML() {

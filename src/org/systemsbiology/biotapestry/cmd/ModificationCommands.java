@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,10 +27,10 @@ import java.util.Set;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -49,6 +49,7 @@ import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.util.LineBreaker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -84,14 +85,15 @@ public class ModificationCommands {
   ** Reset the members in a net module
   */  
  
-  public static boolean resetModuleMembers(BTState appState, Set<String> nodeIDs, DataAccessContext rcx, String moduleID, String overlayKey) {
+  public static boolean resetModuleMembers(UIComponentSource uics, Set<String> nodeIDs, 
+                                           StaticDataAccessContext rcx, String moduleID, String overlayKey, UndoFactory uFac) {
       
     //
     // Changing module geometry may need module link pad fixups:
     //
     
 
-    Layout.PadNeedsForLayout padFixups = rcx.getLayout().findAllNetModuleLinkPadRequirements(rcx);  
+    Layout.PadNeedsForLayout padFixups = rcx.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcx);  
     
     NetOverlayOwner owner = rcx.getCurrentOverlayOwner();
     NetworkOverlay nov = owner.getNetworkOverlay(overlayKey);
@@ -103,11 +105,11 @@ public class ModificationCommands {
     //
     
     if (nodeIDs.isEmpty()) {
-      NetOverlayProperties noProps = rcx.getLayout().getNetOverlayProperties(overlayKey);
+      NetOverlayProperties noProps = rcx.getCurrentLayout().getNetOverlayProperties(overlayKey);
       NetModuleProperties nmp = noProps.getNetModuleProperties(moduleID);
       if (nmp.getType() == NetModuleProperties.MEMBERS_ONLY) {
-        ResourceManager rMan = appState.getRMan();
-        JOptionPane.showMessageDialog(appState.getTopFrame(), rMan.getString("deleteNodefromMod.lastOne"), 
+        ResourceManager rMan = rcx.getRMan();
+        JOptionPane.showMessageDialog(uics.getTopFrame(), rMan.getString("deleteNodefromMod.lastOne"), 
                                       rMan.getString("deleteNodefromMod.lastOneTitle"),
                                       JOptionPane.ERROR_MESSAGE);
 
@@ -129,13 +131,13 @@ public class ModificationCommands {
     HashSet<String> toAdd = new HashSet<String>(nodeIDs);
     toAdd.removeAll(currentMem);
        
-    UndoSupport support = new UndoSupport(appState, "undo.modifyNetModuleMembers");    
+    UndoSupport support = uFac.provideUndoSupport("undo.modifyNetModuleMembers", rcx);    
     Iterator<String> tait = toAdd.iterator();
     while (tait.hasNext()) {
       String addID = tait.next();
       NetModuleChange nmc = owner.addMemberToNetworkModule(overlayKey, nmod, addID);
       if (nmc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcx, nmc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmc);
         support.addEdit(gcc);
       }
     }
@@ -144,7 +146,7 @@ public class ModificationCommands {
       String delID = tdit.next();
       NetModuleChange nmc = owner.deleteMemberFromNetworkModule(overlayKey, nmod, delID);
       if (nmc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcx, nmc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmc);
         support.addEdit(gcc);
       }
     }    
@@ -153,9 +155,9 @@ public class ModificationCommands {
     // Complete the fixups:
     //
     
-    AddCommands.finishNetModPadFixups(appState, null, null, rcx, padFixups, support);        
+    AddCommands.finishNetModPadFixups(null, null, rcx, padFixups, support);        
     
-    support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
+    support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
     support.finish();    
     return (true);
   }  
@@ -166,18 +168,18 @@ public class ModificationCommands {
   ** and need to be converted to survive.
   */
 
-  public static void repairEmptiedMemberOnlyModules(BTState appState, DataAccessContext dacx,
+  public static void repairEmptiedMemberOnlyModules(StaticDataAccessContext dacx,
                                                     Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModGeom, 
                                                     UndoSupport support) {  
     
     Iterator<String> akit = emptyModGeom.keySet().iterator();
     while (akit.hasNext()) {
       String layoutID = akit.next();
-      Layout lo = dacx.lSrc.getLayout(layoutID);
-      DataAccessContext rcx = new DataAccessContext(dacx, dacx.getGenomeSource().getGenome(lo.getTarget()), lo);
+      Layout lo = dacx.getLayoutSource().getLayout(layoutID);
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx, dacx.getGenomeSource().getGenome(lo.getTarget()), lo);
       Layout.PropChange[] emptyLpc = lo.repairAllEmptyMemberOnlyNetModules(emptyModGeom, rcx);
       if ((emptyLpc != null) && (emptyLpc.length != 0)) {
-        PropChangeCmd emptyC = new PropChangeCmd(appState, rcx, emptyLpc);
+        PropChangeCmd emptyC = new PropChangeCmd(rcx, emptyLpc);
         support.addEdit(emptyC);
       }
     }
@@ -196,12 +198,12 @@ public class ModificationCommands {
   ** on a per-overlay basis.
   */
 
-  public static void repairNetModuleLinkPadsLocally(BTState appState, Layout.PadNeedsForLayout padFixups, 
-                                                    DataAccessContext rcx, boolean orphansOnly, UndoSupport support) {  
-    Map<String, Boolean> orpho = rcx.getLayout().orphansOnlyForAll(orphansOnly);
-    Layout.PropChange[] padLpc = rcx.getLayout().repairAllNetModuleLinkPadRequirements(rcx, padFixups, orpho);
+  public static void repairNetModuleLinkPadsLocally(Layout.PadNeedsForLayout padFixups, 
+                                                    StaticDataAccessContext rcx, boolean orphansOnly, UndoSupport support) {  
+    Map<String, Boolean> orpho = rcx.getCurrentLayout().orphansOnlyForAll(orphansOnly);
+    Layout.PropChange[] padLpc = rcx.getCurrentLayout().repairAllNetModuleLinkPadRequirements(rcx, padFixups, orpho);
     if ((padLpc != null) && (padLpc.length != 0)) {
-      PropChangeCmd padC = new PropChangeCmd(appState, rcx, padLpc);
+      PropChangeCmd padC = new PropChangeCmd(rcx, padLpc);
       // One of the problems uncovered in issue #187, used with null support...
       if (support != null) { // used in preview mode....
         support.addEdit(padC);
@@ -217,20 +219,20 @@ public class ModificationCommands {
   ** call up to be the caller responsibility for better granularity?
   */  
  
-  public static void repairNetModuleLinkPadsGlobally(BTState appState, DataAccessContext dacx, Map<String, Layout.PadNeedsForLayout> globalNeeds,
+  public static void repairNetModuleLinkPadsGlobally(StaticDataAccessContext dacx, Map<String, Layout.PadNeedsForLayout> globalNeeds,
                                                      boolean orphansOnly, UndoSupport support) {
     
     Iterator<String> akit = globalNeeds.keySet().iterator();
     while (akit.hasNext()) {
       String layoutID = akit.next();
-      Layout lo = dacx.lSrc.getLayout(layoutID);
+      Layout lo = dacx.getLayoutSource().getLayout(layoutID);
       Layout.PadNeedsForLayout needsForLayout = globalNeeds.get(layoutID);      
       if (needsForLayout != null) {
         Map<String, Boolean> orpho = lo.orphansOnlyForAll(orphansOnly);
-        DataAccessContext rcx = new DataAccessContext(dacx, dacx.getGenomeSource().getGenome(lo.getTarget()), lo);
+        StaticDataAccessContext rcx = new StaticDataAccessContext(dacx, dacx.getGenomeSource().getGenome(lo.getTarget()), lo);
         PropChange[] pca = lo.repairAllNetModuleLinkPadRequirements(rcx, needsForLayout, orpho); 
         if ((pca != null) && (pca.length != 0)) {
-          PropChangeCmd pcc = new PropChangeCmd(appState, rcx, pca);
+          PropChangeCmd pcc = new PropChangeCmd(rcx, pca);
           support.addEdit(pcc);
           LayoutChangeEvent lcev = new LayoutChangeEvent(layoutID, LayoutChangeEvent.UNSPECIFIED_CHANGE);
           support.addEvent(lcev);
@@ -246,11 +248,12 @@ public class ModificationCommands {
   ** layout that have multi-line break definitions need to be modified!
   */  
  
-  public static void changeNodeNameBreaks(BTState appState, DataAccessContext dacx, String nodeID, Genome genome, 
-                                           LineBreaker.LineBreakChangeSteps steps, 
-                                           String untrimmed,
-                                           UndoSupport support) {  
+  public static void changeNodeNameBreaks(StaticDataAccessContext dacx, String nodeID,
+                                          LineBreaker.LineBreakChangeSteps steps, 
+                                          String untrimmed,
+                                          UndoSupport support) {  
     
+    Genome genome = dacx.getCurrentGenome();
     String baseID = GenomeItemInstance.getBaseID(nodeID);
     //
     // We skip the node triggering the change; it has ben fixed already
@@ -259,12 +262,12 @@ public class ModificationCommands {
     String nodeToSkip = nodeID;
     
     HashSet<String> fixedLayouts = new HashSet<String>();
-    Iterator<Layout> loit = dacx.lSrc.getLayoutIterator();
+    Iterator<Layout> loit = dacx.getLayoutSource().getLayoutIterator();
     while (loit.hasNext()) {
       Layout lo = loit.next();
       String loTarg = lo.getTarget();
       Genome gen = dacx.getGenomeSource().getGenome(loTarg);
-      DataAccessContext rcx = new DataAccessContext(dacx, gen, lo);    
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx, gen, lo);    
       Set<String> nodesToFix;
       boolean checkForLocal = false;
       
@@ -302,7 +305,7 @@ public class ModificationCommands {
           Layout.PropChange[] lpc = new Layout.PropChange[1]; 
           lpc[0] = lo.replaceNodeProperties(nextProp, changedProps);
           if (lpc[0] != null) {
-            PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+            PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
             support.addEdit(pcc);   
             fixedLayouts.add(lo.getID());
           }

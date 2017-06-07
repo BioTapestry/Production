@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Vector;
 
 import javax.swing.Box;
+import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
@@ -42,8 +43,9 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.SliderChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveNode;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.ImageChangeCmd;
@@ -52,8 +54,7 @@ import org.systemsbiology.biotapestry.cmd.undo.ProxyChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.SliderStateChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.UserTreePathChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.UserTreePathControllerChangeCmd;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
@@ -69,12 +70,14 @@ import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ListWidget;
 import org.systemsbiology.biotapestry.util.ListWidgetClient;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -94,6 +97,10 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   private JTextField minField_;
   private JTextField maxField_;
   private JTextField nameField_;
+  private JComboBox skeyCombo_;
+  private JCheckBox showDiffBox_;
+  private JLabel skLabel_;
+  
   private DynamicInstanceProxy proxy_;
   private DynamicInstanceProxy parentProx_;
   private List proxyChildren_;
@@ -109,8 +116,9 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   private TimeAxisDefinition tad_;
   private boolean namedStages_;  
   
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -125,12 +133,13 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   ** Constructor 
   */ 
   
-  public DynSingleModelPropDialog(BTState appState, DataAccessContext dacx, DynamicInstanceProxy proxy,
+  public DynSingleModelPropDialog(UIComponentSource uics, StaticDataAccessContext dacx, DynamicInstanceProxy proxy,
                                   DynamicInstanceProxy parentProx, 
-                                  List proxyChildren, NavTree nt, TreeNode popupNode) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("dsmprop.title"), true);
-    appState_ = appState;
+                                  List proxyChildren, NavTree nt, TreeNode popupNode, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("dsmprop.title"), true);
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     proxy_ = proxy;
     parentProx_ = parentProx;
     proxyChildren_ = proxyChildren;
@@ -138,8 +147,8 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     popupNode_ = popupNode;
     calcTimeBounds();    
    
-    ResourceManager rMan = appState_.getRMan();
-    setSize(700, proxy_.hasAddedNodes() ? 300 : 200);
+    ResourceManager rMan = dacx_.getRMan();
+    setSize(700, proxy_.hasAddedNodes() ? 400 : 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
@@ -204,20 +213,55 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
 
     UiUtil.gbcSet(gbc, 1, 1, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(nameField_, gbc);
+     
+    UiUtil.fixMePrintout("Waiting on resource string defs");
+    label = new JLabel(rMan.getString("dsmprop.showAsDiff"));
+    showDiffBox_ = new JCheckBox();
+   
+    UiUtil.gbcSet(gbc, 0, 2, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
+    cp.add(label, gbc);
     
+    UiUtil.gbcSet(gbc, 1, 2, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
+    cp.add(showDiffBox_, gbc);
+ 
+    skLabel_ = new JLabel(rMan.getString("dsmprop.simKeyOptions"));
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
+    Vector<ObjChoiceContent> skeys = tcd.buildSimKeyCombo();
+    skeyCombo_ = new JComboBox(skeys);
+    UiUtil.gbcSet(gbc, 2, 2, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
+    cp.add(skLabel_, gbc);
+    
+    UiUtil.gbcSet(gbc, 3, 2, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
+    cp.add(skeyCombo_, gbc);
+    skLabel_.setEnabled(false);
+    skeyCombo_.setEnabled(false);
+    
+    
+    showDiffBox_.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        try {
+          boolean isSel = showDiffBox_.isSelected();
+          skLabel_.setEnabled(isSel);
+          skeyCombo_.setEnabled(isSel);
+        } catch (Exception ex) {
+          uics_.getExceptionHandler().displayException(ex);
+        }
+      }
+    });      
+
     //
     // Build the extra added node list:
     //
     
-    int row = 2;
+    int row = 3;
     if (proxy_.hasAddedNodes()) {
       label = new JLabel(rMan.getString("dsmprop.extra"));
       UiUtil.gbcSet(gbc, 0, row, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.N, 0.0, 1.0);
       cp.add(label, gbc);      
       generateAddedNodes();
-      lw_ = new ListWidget(appState_, extras_, this, (parentProx_ == null) ? 
-                                             ListWidget.DELETE_EDIT : 
-                                             ListWidget.DELETE_ONLY); 
+      lw_ = new ListWidget(uics_.getHandlerAndManagerSource(), extras_, this, (parentProx_ == null) ? 
+                           ListWidget.DELETE_EDIT : 
+                           ListWidget.DELETE_ONLY); 
       UiUtil.gbcSet(gbc, 1, row, 6, 2, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
       cp.add(lw_, gbc);
       row += 2;
@@ -236,7 +280,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
             DynSingleModelPropDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -247,7 +291,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
           DynSingleModelPropDialog.this.setVisible(false);
           DynSingleModelPropDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -262,7 +306,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     //
     UiUtil.gbcSet(gbc, 0, row, 7, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -337,9 +381,9 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
 
     Object[] objs = choices.toArray();
     ObjChoiceContent groupChoice = 
-      (ObjChoiceContent)JOptionPane.showInputDialog(appState_.getTopFrame(), 
-                                                    dacx_.rMan.getString("dsmprop.extraGroup"), 
-                                                    dacx_.rMan.getString("dsmprop.extraGroupTitle"),     
+      (ObjChoiceContent)JOptionPane.showInputDialog(uics_.getTopFrame(), 
+                                                    dacx_.getRMan().getString("dsmprop.extraGroup"), 
+                                                    dacx_.getRMan().getString("dsmprop.extraGroupTitle"),     
                                                     JOptionPane.QUESTION_MESSAGE, null, 
                                                     objs, defObj);
     if (groupChoice != null) { 
@@ -380,7 +424,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   */
   
   private void generateAddedNodes() {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     extras_ = new ArrayList<ObjChoiceContent>();
     extraGroups_ = new HashMap<String, String>();
    
@@ -389,7 +433,8 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     String noName = rMan.getString("tirmd.noName");
     GenomeInstance gi = proxy_.getAnInstance();
     GenomeInstance giRoot = gi.getVfgParentRoot();
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    GenomeSource gsrc = dacx_.getGenomeSource();
+    TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
     
     Iterator<DynamicInstanceProxy.AddedNode> anit = proxy_.getAddedNodeIterator();
     while (anit.hasNext()) {
@@ -399,12 +444,12 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
       if ((nodeName == null) || (nodeName.trim().equals(""))) {
         nodeName = noName;
       }
-      List<TimeCourseData.TCMapping> tcms = tcd.getTimeCourseTCMDataKeysWithDefault(GenomeItemInstance.getBaseID(an.nodeName));
+      List<TimeCourseDataMaps.TCMapping> tcms = tcdm.getTimeCourseTCMDataKeysWithDefault(GenomeItemInstance.getBaseID(an.nodeName), gsrc);
       ObjChoiceContent occ;
       if ((tcms == null) || (tcms.size() == 0)) {
         occ = new ObjChoiceContent(nodeName, an.nodeName);
       } else if (tcms.size() == 1) {
-        TimeCourseData.TCMapping tcm = tcms.get(0);
+        TimeCourseDataMaps.TCMapping tcm = tcms.get(0);
         String desc = MessageFormat.format(format, new Object[] {nodeName, tcm.name});         
         occ = new ObjChoiceContent(desc, an.nodeName);    
       } else {
@@ -429,7 +474,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     
     int index = (proxy_.isSingle()) ? 1 : 0;   
     typeCombo_.setSelectedIndex(index);
-    if (!proxyChildren_.isEmpty()) {
+    if (popupNode_.getChildCount() > 0) {
       typeCombo_.setEnabled(false);
     }
     
@@ -440,7 +485,14 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
 
     minField_.setText(initMin); 
     maxField_.setText(initMax);    
-    nameField_.setText(proxy_.getName());  
+    nameField_.setText(proxy_.getName());
+    
+    showDiffBox_.setSelected(proxy_.showAsSimDiff());
+    if (proxy_.showAsSimDiff()) {
+      skeyCombo_.setSelectedItem(new ObjChoiceContent(proxy_.getSimKey(), proxy_.getSimKey()));
+      skLabel_.setEnabled(true);
+      skeyCombo_.setEnabled(true);
+    }  
     return;
   }
   
@@ -470,6 +522,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     int size = proxyChildren_.size();
     minChildTime_ = Integer.MAX_VALUE;
     maxChildTime_ = Integer.MIN_VALUE;
+      
     for (int i = 0; i < size; i++) {
       DynamicInstanceProxy dip = (DynamicInstanceProxy)proxyChildren_.get(i);
       int min = dip.getMinimumTime();
@@ -492,7 +545,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   
   private boolean applyProperties() {
 
-    DataAccessContext rcx = new DataAccessContext(dacx_, proxy_.getFirstProxiedKey());
+    StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_, proxy_.getFirstProxiedKey());
     
     //
     // Change rules:
@@ -513,7 +566,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
       maxResult = tad_.getIndexForNamedStage(maxField_.getText());          
       if ((minResult == TimeAxisDefinition.INVALID_STAGE_NAME) ||
           (maxResult == TimeAxisDefinition.INVALID_STAGE_NAME)) {
-        ResourceManager rMan = appState_.getRMan(); 
+        ResourceManager rMan = dacx_.getRMan(); 
         JOptionPane.showMessageDialog(this, rMan.getString("dsmprop.badStageName"),
                                       rMan.getString("dsmprop.badStageNameTitle"), 
                                       JOptionPane.ERROR_MESSAGE);
@@ -524,7 +577,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
         minResult = Integer.parseInt(minField_.getText());
         maxResult = Integer.parseInt(maxField_.getText());
       } catch (NumberFormatException nfex) {
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         JOptionPane.showMessageDialog(this, rMan.getString("dsmprop.badNumber"),
                                       rMan.getString("dsmprop.badNumberTitle"), 
                                       JOptionPane.ERROR_MESSAGE);
@@ -534,7 +587,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
 
     if ((minResult < minParentTime_) || (maxResult > maxParentTime_) ||
         (minResult > minChildTime_) || (maxResult < maxChildTime_)) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       JOptionPane.showMessageDialog(this, rMan.getString("dsmprop.badBounds"),
                                     rMan.getString("dsmprop.badBoundsTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
@@ -545,7 +598,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.dsmprop");     
+    UndoSupport support = uFac_.provideUndoSupport("undo.dsmprop", rcx);     
     
     String nameResult = nameField_.getText().trim();
     boolean isPerTimeResult = (typeCombo_.getSelectedIndex() == 0);
@@ -554,33 +607,39 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     List<String> preChangeKeys = proxy_.getProxiedKeys();
     String preChangeKey = preChangeKeys.get(0); 
     
-    UserTreePathController utpctrl = appState_.getPathController();
-    support.addEdit(new UserTreePathControllerChangeCmd(appState_, rcx, utpctrl.recordStateForUndo(true)));
-
-    DynamicInstanceProxy.ChangeBundle pc = proxy_.changeProperties(appState_, nameResult, isPerTimeResult, 
-                                                                   minResult, maxResult);
+    UserTreePathController utpctrl = uics_.getPathController();
+    support.addEdit(new UserTreePathControllerChangeCmd(rcx, utpctrl.recordStateForUndo(true)));
     
+    boolean showDiffResult = showDiffBox_.isSelected();
+    String simKey = (showDiffResult) ? ((ObjChoiceContent)skeyCombo_.getSelectedItem()).val : null;
+ 
+    DynamicInstanceProxy.ChangeBundle pc = proxy_.changeProperties(uics_.getImageMgr(), utpctrl, nameResult, isPerTimeResult, 
+                                                                   minResult, maxResult, showDiffResult, simKey);    
     for (int i = 0; i < pc.imageChanges.length; i++) {
       ImageChange ic = pc.imageChanges[i];
       if (ic != null) {
-        support.addEdit(new ImageChangeCmd(appState_, rcx, ic));
+        support.addEdit(new ImageChangeCmd(rcx, ic));
       }
     }
     for (int i = 0; i < pc.pathChanges.length; i++) {
       UserTreePathChange utpc = pc.pathChanges[i];
       if (utpc != null) {
-        support.addEdit(new UserTreePathChangeCmd(appState_, rcx, utpc));
+        support.addEdit(new UserTreePathChangeCmd(rcx, utpc));
       }
     } 
     if (pc.dc != null) {
-      support.addEdit(new DatabaseChangeCmd(appState_, rcx, pc.dc));      
+      support.addEdit(new DatabaseChangeCmd(rcx, pc.dc));      
     }
  
     if (pc.proxyChange != null) {
-      ProxyChangeCmd cmd = new ProxyChangeCmd(appState_, rcx, pc.proxyChange);
+      ProxyChangeCmd cmd = new ProxyChangeCmd(rcx, pc.proxyChange);
       support.addEdit(cmd);
+      if (!pc.proxyChange.nameOld.equals(pc.proxyChange.nameNew)) {
+        NavTreeChange ntc = nt_.setNodeName(popupNode_, pc.proxyChange.nameNew); 
+        support.addEdit(new NavTreeChangeCmd(rcx, ntc));  
+      }
     }
-    
+
     List<String> postChangeKeys = proxy_.getProxiedKeys();
     String postChangeKey = postChangeKeys.get(0); 
  
@@ -590,7 +649,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     
     applySliderChange(support, rcx);
     
-    support.addEdit(new UserTreePathControllerChangeCmd(appState_, rcx, utpctrl.recordStateForUndo(false)));
+    support.addEdit(new UserTreePathControllerChangeCmd(rcx, utpctrl.recordStateForUndo(false)));
     
     issueEvents(support, isPerTimeResult, wasPerTimeResult, preChangeKey, postChangeKey);
     
@@ -604,7 +663,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   ** 
   */
   
-  private void applyExtraNodeChanges(UndoSupport support, DataAccessContext rcx) {
+  private void applyExtraNodeChanges(UndoSupport support, StaticDataAccessContext rcx) {
      
     //
     // Crank through the extra nodes.  If any are missing from our local
@@ -628,7 +687,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
           if (!groupToUse.equals(an.groupToUse)) {
             ProxyChange pc = proxy_.changeExtraNodeGroupBinding(an.nodeName, groupToUse);
             if (pc != null) {
-              ProxyChangeCmd cmd = new ProxyChangeCmd(appState_, rcx, pc);
+              ProxyChangeCmd cmd = new ProxyChangeCmd(rcx, pc);
               support.addEdit(cmd);
               //
               // We also need to handle nodes underneath
@@ -639,7 +698,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
                 if ((!dip.getID().equals(proxID)) && dip.proxyIsAncestor(proxID) && dip.hasAddedNode(an.nodeName)) {
                   pc = dip.changeExtraNodeGroupBinding(an.nodeName, groupToUse);
                   if (pc != null) {
-                    support.addEdit(new ProxyChangeCmd(appState_, rcx, pc));
+                    support.addEdit(new ProxyChangeCmd(rcx, pc));
                     // Don't want to enumerate all those dynamic instances for eventing.
                     // This is a stand in that forces update of all dynamic models:
                     needGeneral = true;
@@ -661,7 +720,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
       String delNode = dlit.next();
       ProxyChange pc = proxy_.deleteExtraNode(delNode);
       if (pc != null) {
-        ProxyChangeCmd cmd = new ProxyChangeCmd(appState_, rcx, pc);
+        ProxyChangeCmd cmd = new ProxyChangeCmd(rcx, pc);
         support.addEdit(cmd);
         Iterator<DynamicInstanceProxy> pxit = rcx.getGenomeSource().getDynamicProxyIterator();        
         while (pxit.hasNext()) {
@@ -669,7 +728,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
           if ((!dip.getID().equals(proxID)) && dip.proxyIsAncestor(proxID) && dip.hasAddedNode(delNode)) {
             pc = dip.deleteExtraNode(delNode);
             if (pc != null) {
-              cmd = new ProxyChangeCmd(appState_, rcx, pc);
+              cmd = new ProxyChangeCmd(rcx, pc);
               support.addEdit(cmd);
               // Don't want to enumerate all those dynamic instances for eventing.
               // This is a stand in that forces update of all dynamic models:
@@ -681,7 +740,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     }
     
     if (!deadList.isEmpty()) {
-      RemoveNode.proxyPostExtraNodeDeletionSupport(appState_, rcx, support);
+      RemoveNode.proxyPostExtraNodeDeletionSupport(uics_, rcx, support);
     }    
 
     if (needGeneral) {
@@ -697,7 +756,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   ** 
   */
   
-  private NavTreeChange applyNavTreeChange(UndoSupport support, DataAccessContext rcx, 
+  private NavTreeChange applyNavTreeChange(UndoSupport support, StaticDataAccessContext rcx, 
                                            boolean isPerTimeResult, boolean wasPerTimeResult) {
     //
     // If we go from per time to summation, the contents of the navigation
@@ -715,7 +774,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
       ntc = nt_.changeFromProxy((DefaultMutableTreeNode)popupNode_, id);      
     }
     if (ntc != null) {
-      support.addEdit(new NavTreeChangeCmd(appState_, rcx, ntc));
+      support.addEdit(new NavTreeChangeCmd(rcx, ntc));
     }
     return (ntc);
   }
@@ -726,10 +785,10 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   ** 
   */
   
-  private void applySliderChange(UndoSupport support, DataAccessContext dacx) {
-    SliderChange sc = appState_.getVTSlider().recordSliderStateForUndo();
+  private void applySliderChange(UndoSupport support, StaticDataAccessContext dacx) {
+    SliderChange sc = uics_.getVTSlider().recordSliderStateForUndo();
     if (sc != null) {
-      support.addEdit(new SliderStateChangeCmd(appState_, dacx, sc));
+      support.addEdit(new SliderStateChangeCmd(dacx, sc));
     }
     return;
   }  
@@ -743,18 +802,20 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   private void issueEvents(UndoSupport support, 
                            boolean isPerTimeResult, boolean wasPerTimeResult,
                            String preChangeKey, String postChangeKey) {
-                                                  
+    
+    
+    GenomeSource gi = dacx_.getGenomeSource();
     if (isPerTimeResult == wasPerTimeResult) {
       if (proxy_.isSingle()) {
         String id = postChangeKey;
-        ModelChangeEvent mcev = new ModelChangeEvent(id, ModelChangeEvent.UNSPECIFIED_CHANGE, false);    
+        ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), id, ModelChangeEvent.UNSPECIFIED_CHANGE, false);    
         support.addEvent(mcev);    
-        mcev = new ModelChangeEvent(id, ModelChangeEvent.PROPERTY_CHANGE, false);     
+        mcev = new ModelChangeEvent(gi.getID(), id, ModelChangeEvent.PROPERTY_CHANGE, false);     
         support.addEvent(mcev);
       } else {
-        ModelChangeEvent mcev = new ModelChangeEvent(proxy_.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE, true);    
+        ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), proxy_.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE, true);    
         support.addEvent(mcev);    
-        mcev = new ModelChangeEvent(proxy_.getID(), ModelChangeEvent.PROPERTY_CHANGE, true);     
+        mcev = new ModelChangeEvent(gi.getID(), proxy_.getID(), ModelChangeEvent.PROPERTY_CHANGE, true);     
         support.addEvent(mcev);
       }
     } else {                    
@@ -764,15 +825,15 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
       int uc = ModelChangeEvent.UNSPECIFIED_CHANGE;
       int pc = ModelChangeEvent.PROPERTY_CHANGE;      
       if (proxy_.isSingle()) { // going from per time to single (pre events for reverse):
-        support.addPreEvent(new ModelChangeEvent(proxy_.getID(), uc, true, postChangeKey, false));    
-        support.addPreEvent(new ModelChangeEvent(proxy_.getID(), pc, true, postChangeKey, false));     
-        support.addPostEvent(new ModelChangeEvent(postChangeKey, uc, false, proxy_.getID(), true));
-        support.addPostEvent(new ModelChangeEvent(postChangeKey, pc, false, proxy_.getID(), true));      
+        support.addPreEvent(new ModelChangeEvent(gi.getID(), proxy_.getID(), uc, true, postChangeKey, false));    
+        support.addPreEvent(new ModelChangeEvent(gi.getID(), proxy_.getID(), pc, true, postChangeKey, false));     
+        support.addPostEvent(new ModelChangeEvent(gi.getID(), postChangeKey, uc, false, proxy_.getID(), true));
+        support.addPostEvent(new ModelChangeEvent(gi.getID(), postChangeKey, pc, false, proxy_.getID(), true));      
       } else {  // going from single to per time (pre events for reverse):
-        support.addPreEvent(new ModelChangeEvent(preChangeKey, uc, false, proxy_.getID(), true));    
-        support.addPreEvent(new ModelChangeEvent(preChangeKey, pc, false, proxy_.getID(), true));     
-        support.addPostEvent(new ModelChangeEvent(proxy_.getID(), uc, true, preChangeKey, false));
-        support.addPostEvent(new ModelChangeEvent(proxy_.getID(), pc, true, preChangeKey, false));
+        support.addPreEvent(new ModelChangeEvent(gi.getID(), preChangeKey, uc, false, proxy_.getID(), true));    
+        support.addPreEvent(new ModelChangeEvent(gi.getID(), preChangeKey, pc, false, proxy_.getID(), true));     
+        support.addPostEvent(new ModelChangeEvent(gi.getID(), proxy_.getID(), uc, true, preChangeKey, false));
+        support.addPostEvent(new ModelChangeEvent(gi.getID(), proxy_.getID(), pc, true, preChangeKey, false));
       } 
     }
     return;

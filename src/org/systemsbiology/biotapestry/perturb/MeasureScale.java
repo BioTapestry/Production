@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.text.MessageFormat;
 import java.util.Vector;
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -509,8 +509,8 @@ public class MeasureScale implements Cloneable {
       return (fromFold);
     }
 
-    public String getDisplayString(BTState appState) {
-      ResourceManager rMan = appState.getRMan();
+    public String getDisplayString(DataAccessContext dacx) {
+      ResourceManager rMan = dacx.getRMan();
       switch (type) {
         case NO_CONVERSION:
           return (rMan.getString("scaleConvert." + NO_CONVERSION_STR_)); 
@@ -524,16 +524,16 @@ public class MeasureScale implements Cloneable {
       }
     }
 
-    public static Vector<ChoiceContent> getConvertChoices(BTState appState) {
+    public static Vector<ChoiceContent> getConvertChoices(DataAccessContext dacx) {
       Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
       for (int i = 0; i < NUM_CONVERT_OPTIONS_; i++) {
-        retval.add(convertTypeForCombo(appState, i));    
+        retval.add(convertTypeForCombo(dacx, i));    
       }
       return (retval);
     }
   
-    public static ChoiceContent convertTypeForCombo(BTState appState, int type) {
-      return (new ChoiceContent(appState.getRMan().getString("scaleConvertOpt." + mapTypeToTag(type)), type));
+    public static ChoiceContent convertTypeForCombo(DataAccessContext dacx, int type) {
+      return (new ChoiceContent(dacx.getRMan().getString("scaleConvertOpt." + mapTypeToTag(type)), type));
     }
  
     public static String mapTypeToTag(int value) {
@@ -570,10 +570,10 @@ public class MeasureScale implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
     
 
-  public static Vector getIllegalChoices(BTState appState, boolean forNeg) {
-    Vector retval = new Vector();
+  public static Vector<ChoiceContent> getIllegalChoices(DataAccessContext dacx, boolean forNeg) {
+    Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_VAL_OPTIONS_; i++) {
-      retval.add(convertTypeForCombo(appState, i, forNeg));    
+      retval.add(convertTypeForCombo(dacx, i, forNeg));    
     }
     return (retval);
   }
@@ -602,13 +602,13 @@ public class MeasureScale implements Cloneable {
     }
   }
 
-  public static ChoiceContent convertTypeForCombo(BTState appState, int type, boolean forNeg) {
+  public static ChoiceContent convertTypeForCombo(DataAccessContext dacx, int type, boolean forNeg) {
     String rs = "illegalBoundOpt." + mapTypeToTag(type);
     String suf = "";
     if (type == INFINITY) {
       suf = (forNeg) ? "neg" : "pos";
     }
-    return (new ChoiceContent(appState.getRMan().getString(rs + suf), type));
+    return (new ChoiceContent(dacx.getRMan().getString(rs + suf), type));
   }
 
   public static String mapTypeToTag(int value) {

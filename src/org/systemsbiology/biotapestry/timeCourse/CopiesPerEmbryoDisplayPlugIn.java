@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,8 +23,10 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -40,7 +42,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -64,11 +66,11 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
   
   /***************************************************************************
   **
-  ** Internal plugins need to have access to internal state
+  ** Internal plugins need to have access to data state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
 
@@ -87,7 +89,7 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (false);
   }
   
@@ -106,7 +108,7 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String nodeID) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String nodeID) {
     return (null);
   }
     
@@ -115,10 +117,11 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
   ** Show the copies per embryo
   */
   
-  public String getDataAsHTML(String genomeIDX, String nodeID) {
+  public String getDataAsHTML(String dbID, String genomeIDX, String nodeID) {
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();
     StringBuffer buf = new StringBuffer(); 
-    Database db = appState_.getDB(); 
-    CopiesPerEmbryoData cped = db.getCopiesPerEmbryoData();
+    CopiesPerEmbryoData cped = dacx.getExpDataSrc().getCopiesPerEmbryoData();
     if ((cped == null) || !cped.haveData()) {
       return ("");
     }
@@ -127,8 +130,8 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
     
     nodeID = GenomeItemInstance.getBaseID(nodeID);
        
-    ResourceManager rMan = appState_.getRMan();
-    Genome genome = db.getGenome();
+    ResourceManager rMan = dacx.getRMan();
+    Genome genome = dacx.getGenomeSource().getRootDBGenome();
     Node node = genome.getNode(nodeID);
     String title = node.getDisplayString(genome, false);    
     String useName = ((title == null) || (title.trim().equals(""))) ? "\" \"" : title;
@@ -137,13 +140,13 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
     buf.append(MessageFormat.format(format, new Object[] {useName})); 
     buf.append("</h1>\n");
     
-    List<String> dataKeys = cped.getPerEmbryoCountDataKeysWithDefault(nodeID);
+    List<String> dataKeys = cped.getPerEmbryoCountDataKeysWithDefault(nodeID, dacx);
     boolean gotData = false;
     if (dataKeys != null) {
       Iterator<String> dkit = dataKeys.iterator();
       while (dkit.hasNext()) {
         String key = dkit.next();
-        String tab = cped.getCountTable(key, appState_);
+        String tab = cped.getCountTable(key, dacx);
         if ((tab != null) && (!tab.trim().equals(""))) {
           gotData = true;
           buf.append("<p>");

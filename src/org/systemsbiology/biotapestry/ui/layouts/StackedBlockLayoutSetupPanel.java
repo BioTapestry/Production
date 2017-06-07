@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,8 @@ import java.util.Vector;
 import javax.swing.JCheckBox;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -69,7 +70,8 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
   private boolean isForGlobal_;
   private boolean maxDisable_;
   private boolean partialDisable_;
-  private BTState appState_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
 
@@ -84,10 +86,11 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
   ** Constructor 
   */ 
   
-  public StackedBlockLayoutSetupPanel(BTState appState, Genome genome, boolean forSubset,
+  public StackedBlockLayoutSetupPanel(UIComponentSource uics, StaticDataAccessContext dacx, Genome genome, boolean forSubset,
                                       StackedBlockLayout.StackedBlockLayoutParams params,
                                       boolean forGlobalManager) { 
-    appState_ = appState;
+    uics_ = uics;
+    dacx_ = dacx;
     haveResult_ = false;
     forSubset_ = forSubset;
     params_ = params.clone(); 
@@ -146,7 +149,7 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
   
   public void displayProperties() {    
     StackedBlockLayout.StackedBlockLayoutParams defaultParams = StackedBlockLayout.getDefaultParams(forSubset_);   
-    srcTypeCombo_.setSelectedItem(params_.grouping.generateCombo(appState_));
+    srcTypeCombo_.setSelectedItem(params_.grouping.generateCombo(dacx_));
     boolean srcOver = params_.grouping.srcPositioningOverrides();
     boolean trgOver = params_.targsBelow;
     
@@ -157,16 +160,16 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
     targSizeField_.setText(Integer.toString(useRS));
 
     StackedBlockLayout.TargTypes useTG = (srcOver || trgOver) ? defaultParams.targGrouping : params_.targGrouping;
-    targTypeCombo_.setSelectedItem(useTG.generateCombo(appState_));
+    targTypeCombo_.setSelectedItem(useTG.generateCombo(dacx_));
    
-    compressTypeCombo_.setSelectedItem(params_.compressType.generateCombo(appState_));
+    compressTypeCombo_.setSelectedItem(params_.compressType.generateCombo(dacx_));
   
     if (colorTypeCombo_ != null) {
-      colorTypeCombo_.setSelectedItem(params_.assignColorMethod.generateCombo(appState_));
+      colorTypeCombo_.setSelectedItem(params_.assignColorMethod.generateCombo(dacx_));
       doBubblesBox_.setSelected(params_.showBubbles);
       doColorCheckBox_.setSelected(params_.checkColorOverlap);
     }
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, params_.overlayOption));
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(dacx_, params_.overlayOption));
     return;
   }
   
@@ -196,8 +199,8 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
         }
 
         if (badVal) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("stackedBlockLayout.badSize"), 
                                         rMan.getString("stackedBlockLayout.badSizeTitle"),
                                         JOptionPane.ERROR_MESSAGE);
@@ -276,13 +279,13 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
   */ 
   
   private void buildParamPanel(Genome genome) {     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     GridBagConstraints gbc = new GridBagConstraints();
     setLayout(new GridBagLayout());
     int rowNum = 0;
     
     JLabel srcTypeLabel = new JLabel(rMan.getString("stackedBlockLayout.srcType"));
-    srcTypeCombo_ = new JComboBox(StackedBlockLayout.SrcTypes.getChoices(appState_, isForGlobal_));
+    srcTypeCombo_ = new JComboBox(StackedBlockLayout.SrcTypes.getChoices(dacx_, isForGlobal_));
         
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(srcTypeLabel, gbc);
@@ -297,7 +300,7 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
           handleEnabled();
           return;
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -320,13 +323,13 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
           handleEnabled();
           return;
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });        
      
     targTypeLabel_ = new JLabel(rMan.getString("stackedBlockLayout.targType"));
-    targTypeCombo_ = new JComboBox(StackedBlockLayout.TargTypes.getChoices(appState_, forSubset_));
+    targTypeCombo_ = new JComboBox(StackedBlockLayout.TargTypes.getChoices(dacx_, forSubset_));
         
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(targTypeLabel_, gbc);
@@ -334,14 +337,14 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
     add(targTypeCombo_, gbc);    
        
     JLabel compressTypeLabel = new JLabel(rMan.getString("stackedBlockLayout.compressType"));
-    compressTypeCombo_ = new JComboBox(StackedBlockLayout.CompressTypes.getChoices(appState_, isForGlobal_));
+    compressTypeCombo_ = new JComboBox(StackedBlockLayout.CompressTypes.getChoices(dacx_, isForGlobal_));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(compressTypeLabel, gbc);
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(compressTypeCombo_, gbc);    
        
     JLabel overlayLabel = new JLabel(rMan.getString("stackedBlockLayout.overlayOptions"));
-    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState_);
+    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx_);
     overlayOptionCombo_ = new JComboBox(relayoutChoices);
         
     boolean activate = (genome == null) || (genome.getNetworkOverlayCount() > 0);
@@ -357,7 +360,7 @@ public class StackedBlockLayoutSetupPanel extends JPanel implements SpecialtyLay
     
     if (!forSubset_) {   
       JLabel colorTypeLabel = new JLabel(rMan.getString("specialtyLayout.colorStrategy"));
-      colorTypeCombo_ = new JComboBox(ColorTypes.getChoices(appState_));
+      colorTypeCombo_ = new JComboBox(ColorTypes.getChoices(dacx_));
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
       add(colorTypeLabel, gbc);
       UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,8 +30,9 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
@@ -85,7 +86,7 @@ public class PlacementGridSupport {
   
 	public void renderToPlacementGrid(LinkProperties lp, LinkPlacementGrid grid, Set<String> skipLinks, 
                                     String overID, DataAccessContext irx) {
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
 		LinkPathInfo paths = getBusPath(lp, irx, null, null, skipLinks);
 		if (paths == null) {
 			return;
@@ -103,7 +104,7 @@ public class PlacementGridSupport {
   ** Render the link to a pattern grid
   */
 
-  public void multiRenderToPlacementGrid(NetModuleLinkageProperties lp, DataAccessContext irx, LinkPlacementGrid grid, Map<Point2D, Map<String, Point>> multiLinkData) {
+  public void multiRenderToPlacementGrid(NetModuleLinkageProperties lp, StaticDataAccessContext irx, LinkPlacementGrid grid, Map<Point2D, Map<String, Point>> multiLinkData) {
     
     MultiRenderLinkPathInfo paths = getMultiBusPaths(lp, irx, multiLinkData);
     if (paths == null) {
@@ -127,7 +128,7 @@ public class PlacementGridSupport {
   public boolean canRenderToPlacementGrid(LinkProperties lp, LinkPlacementGrid grid, 
                                           Set<LinkPlacementGrid.PointPair> dropSet, 
                                           String overID, DataAccessContext irx) { 
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
     HashMap<String, String> targMap = new HashMap<String, String>();
     HashMap<String, GenomeInstance.GroupTuple> tupMap = 
       ((overID == null) && (genome instanceof GenomeInstance)) ? new HashMap<String, GenomeInstance.GroupTuple>() : null;    
@@ -143,7 +144,7 @@ public class PlacementGridSupport {
   public Map<LinkPlacementGrid.PointPair, List<String>> getPointPairMap(LinkProperties lp,
                                                                         String overID, 
                                                                         DataAccessContext irx) {
-    Genome genome = irx.getGenome();
+    Genome genome = irx.getCurrentGenome();
     HashMap<String, String> dummy = new HashMap<String, String>();
     HashMap<String, GenomeInstance.GroupTuple> tupMap = 
       ((overID == null) && (genome instanceof GenomeInstance)) ? new HashMap<String, GenomeInstance.GroupTuple>() : null;    
@@ -205,7 +206,7 @@ public class PlacementGridSupport {
       allSegsMap.put(rootPair, rootList);
     }
     
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     Iterator<LinkPlacementGrid.PointPair> lmkit = linkMap.keySet().iterator();
     while (lmkit.hasNext()) {
@@ -251,7 +252,7 @@ public class PlacementGridSupport {
     retval.path = usePath;
     retval.segSet = new HashSet<LinkSegment>();
 
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     GenomeSource gSrc = icx.getGenomeSource();
     //
     // Handle the direct, no segment case:
@@ -260,7 +261,7 @@ public class PlacementGridSupport {
     if (bp.isDirect()) {
       LinkBusDrop endDrop = bp.getTargetDrop();
       String busID = endDrop.getTargetRef();
-      if (!bp.linkIsInModel(gSrc, genome, icx.oso, busID)) {
+      if (!bp.linkIsInModel(gSrc, genome, icx.getOSO(), busID)) {
         return (null);
       }
       if ((skipLinks == null) || !skipLinks.contains(busID)) {
@@ -281,7 +282,7 @@ public class PlacementGridSupport {
         String busID = drop.getTargetRef();  // may be null...
         int dropType = drop.getDropType();
         if (dropType != LinkBusDrop.START_DROP) {
-          if (!bp.linkIsInModel(gSrc, genome, icx.oso, busID)) {
+          if (!bp.linkIsInModel(gSrc, genome, icx.getOSO(), busID)) {
             continue;
           }
           if ((skipLinks != null) && skipLinks.contains(busID)) {
@@ -338,7 +339,7 @@ public class PlacementGridSupport {
   ** already know their endpoints!  Otherwise, this is death!
   */
   
-  private MultiRenderLinkPathInfo getMultiBusPaths(NetModuleLinkageProperties bp, DataAccessContext icx, 
+  private MultiRenderLinkPathInfo getMultiBusPaths(NetModuleLinkageProperties bp, StaticDataAccessContext icx, 
                                                    Map<Point2D, Map<String, Point>> multiLinkData) {
     //
     // Get the drops first, which will tell us what segments 

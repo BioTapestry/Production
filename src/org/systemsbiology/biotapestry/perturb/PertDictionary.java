@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
@@ -84,22 +84,22 @@ public class PertDictionary implements Cloneable {
        return (tag_);      
      }
      
-     public String getDisplayTag(BTState appState) {
-       return (appState.getRMan().getString("pertDict.relation" + tag_));      
+     public String getDisplayTag(DataAccessContext dacx) {
+       return (dacx.getRMan().getString("pertDict.relation" + tag_));      
      }
         
      public boolean linkSignUndetermined() {
        return (undet_);      
      }
          
-     public EnumChoiceContent<PertLinkRelation> generateCombo(BTState appState) {
-       return (new EnumChoiceContent<PertLinkRelation>(getDisplayTag(appState), this));
+     public EnumChoiceContent<PertLinkRelation> generateCombo(DataAccessContext dacx) {
+       return (new EnumChoiceContent<PertLinkRelation>(getDisplayTag(dacx), this));
      }  
       
-     public static Vector<EnumChoiceContent<PertLinkRelation>> getLinkRelationshipOptions(BTState appState) {
+     public static Vector<EnumChoiceContent<PertLinkRelation>> getLinkRelationshipOptions(DataAccessContext dacx) {
        Vector<EnumChoiceContent<PertLinkRelation>> retval = new Vector<EnumChoiceContent<PertLinkRelation>>();
        for (PertLinkRelation lr: values()) {
-         retval.add(lr.generateCombo(appState));    
+         retval.add(lr.generateCombo(dacx));    
        }
        return (retval);
      }
@@ -326,11 +326,23 @@ public class PertDictionary implements Cloneable {
     String newID = labels_.getNextLabel();
     if (expType.equalsIgnoreCase(MASO_TYPE_)) {
       legPP = new PertProperties(newID, MASO_TYPE_, null, PertLinkRelation.PERT_NEG_LINK_POS);
+      legPP.setNameValue(new NameValuePair("isTranslationKnockdown", "true"));
+      legPP.setNameValue(new NameValuePair("oppositeSignProxyisKnockdown", "false"));
+      legPP.setNameValue(new NameValuePair("isOverexpression", "false"));
+      legPP.setNameValue(new NameValuePair("obligateRepressorConstruct", "false")); 
     } else if (expType.equalsIgnoreCase(MOE_TYPE_)) {
       legPP = new PertProperties(newID, MOE_TYPE_, null, PertLinkRelation.PERT_POS_LINK_POS);
+      legPP.setNameValue(new NameValuePair("isTranslationKnockdown", "false"));
+      legPP.setNameValue(new NameValuePair("oppositeSignProxyisKnockdown", "true"));
+      legPP.setNameValue(new NameValuePair("isOverexpression", "true"));
+      legPP.setNameValue(new NameValuePair("obligateRepressorConstruct", "false"));
     } else if (expType.equalsIgnoreCase(ENGRAILED_TYPE_)) {
       legPP = new PertProperties(newID, ENGRAILED_TYPE_, ENGRAILED_ABBREV_, PertLinkRelation.PERT_ALWAYS_NEGATIVE);
       legPP.setLegacyAlt(ENGRAILED_ALT_);
+      legPP.setNameValue(new NameValuePair("isTranslationKnockdown", "false"));
+      legPP.setNameValue(new NameValuePair("oppositeSignProxyisKnockdown", "false"));
+      legPP.setNameValue(new NameValuePair("isOverexpression", "true"));
+      legPP.setNameValue(new NameValuePair("obligateRepressorConstruct", "true"));
     } else {
       throw new IllegalArgumentException();
     } 

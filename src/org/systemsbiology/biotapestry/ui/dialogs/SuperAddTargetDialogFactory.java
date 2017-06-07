@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,6 +36,7 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.SuperAdd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -91,7 +92,7 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
   public ServerControlFlowHarness.Dialog getDialog(DialogBuildArgs ba) { 
    
     SuperAddBuildArgs dniba = (SuperAddBuildArgs)ba;
-    SuperAddTree sat = buildModelTree(dniba.nodeID);
+    SuperAddTree sat = buildModelTree(dniba.nodeID, cfh.getDataAccessContext());
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
       return (new DesktopDialog(cfh, sat));
     } else if (platform.getPlatform() == DialogPlatform.Plat.WEB) {
@@ -158,7 +159,7 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
       addWidgetFullRow(lab, false, false);
     
       sat_ = sat;  
-      jtree_ = new CheckBoxTree(sat_, appState_);
+      jtree_ = new CheckBoxTree(sat_, uics_.getHandlerAndManagerSource());
       JScrollPane jspt = new JScrollPane(jtree_);
       addTable(jspt, 20);
 
@@ -168,7 +169,7 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
           try {
             expandFullTree();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       }); 
@@ -176,6 +177,21 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
       finishConstructionWithExtraLeftButton(buttonE);
     }
  
+    ////////////////////////////////////////////////////////////////////////////
+    //
+    // PUBLIC METHODS
+    //
+    ////////////////////////////////////////////////////////////////////////////
+
+    /***************************************************************************
+    **
+    ** Gotta say
+    */
+    
+    public boolean dialogIsModal() {
+      return true;
+    }
+    
     /***************************************************************************
     **
     ** Full expansion
@@ -240,7 +256,13 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
     }   
     public boolean haveResults() {
       return (haveResult);
-    }       
+    }
+    
+    public void setHasResults() {
+      this.haveResult = true;
+      return;
+    }
+    
     public boolean isForApply() {
       return (false);
     }
@@ -252,9 +274,9 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private SuperAddTree buildModelTree(String nodeID) {  
+  private SuperAddTree buildModelTree(String nodeID, DataAccessContext dacxI) {  
   
-    DataAccessContext dacx = new DataAccessContext(appState);
+    DataAccessContext dacx = new StaticDataAccessContext(dacxI).getContextForRoot();
     String rootID = dacx.getDBGenome().getID();
     SuperAddTree retval = new SuperAddTree(rootID);
     
@@ -277,7 +299,7 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
         }
         
         retval.addNode(gi.getName(), parentID, gkey, null, null, true, false, false, Color.white);
-        Layout lo = dacx.lSrc.getLayoutForGenomeKey(gkey);
+        Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(gkey);
         
         Iterator<Group> git = gi.getGroupIterator();
         while (git.hasNext()) {
@@ -291,7 +313,7 @@ public class SuperAddTargetDialogFactory extends DialogFactory {
           String groupID = group.getID();
           String baseGroupID = Group.getBaseID(groupID);
           GroupProperties gp = lo.getGroupProperties(baseGroupID);
-          Color gCol = gp.getColor(true, dacx.cRes);
+          Color gCol = gp.getColor(true, dacx.getColorResolver());
         
           int iNum = rootInstance.getInstanceForNodeInGroup(rootNodeID, baseGroupID);
           boolean present = (iNum != -1);

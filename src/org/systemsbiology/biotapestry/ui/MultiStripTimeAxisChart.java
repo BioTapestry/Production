@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.TreeMap;
 import java.awt.Font;
 import java.awt.font.FontRenderContext;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.DoubMinMax;
 import org.systemsbiology.biotapestry.util.PatternPaint;
@@ -84,8 +84,8 @@ public class MultiStripTimeAxisChart extends MultiStripChart {
   ** Null constructor
   */
   
-  public MultiStripTimeAxisChart(BTState appState) {
-    super(appState);
+  public MultiStripTimeAxisChart(DataAccessContext dacx) {
+    super(dacx);
     ticCandidates_ = new int[] {1,2,3,4,5,6,8,10,12,15,20,25,30,40,50,100,150,200,250,500,1000};
     dataTimeRange_ = new TimeBounds(0, 1, "");
     focusTimeRange_ = new TimeBounds(0, 1, ""); 
@@ -241,10 +241,10 @@ public class MultiStripTimeAxisChart extends MultiStripChart {
   
   private void drawAxis(Graphics2D g2, ChartTransform transform, Axis axis, 
                         Dimension dim, BasicStroke selectedStroke) {
-    Font mFont = appState_.getFontMgr().getFixedFont(FontManager.STRIP_CHART_AXIS);
+    Font mFont = dacx_.getFontManager().getFixedFont(FontManager.STRIP_CHART_AXIS);
     GeneralPath path = new GeneralPath();
     
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     boolean isSuffix = tad.unitsAreASuffix();
     
     int x1 = AXIS_MARGIN_;
@@ -362,7 +362,7 @@ public class MultiStripTimeAxisChart extends MultiStripChart {
   
   private Axis axisCalc(Font mFont, FontRenderContext frc, TimeBounds dataBounds, Dimension dim) {
   
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();    
+    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();    
     
     String biggestLabel = "";    
     if (tad.haveNamedStages()) {
@@ -436,12 +436,12 @@ public class MultiStripTimeAxisChart extends MultiStripChart {
     }
     
     int ticVal;
-    Double lokey = (Double)ticsPerRemainder.firstKey();
+    Double lokey = ticsPerRemainder.firstKey();
     if (lokey == null) {
       ticVal = ticCandidates_[ticCandidates_.length - 1];
     } else {
       SortedSet<Integer> set = ticsPerRemainder.get(lokey);
-      Integer firstTic = (Integer)set.first();
+      Integer firstTic = set.first();
       ticVal = firstTic.intValue();
     }
     

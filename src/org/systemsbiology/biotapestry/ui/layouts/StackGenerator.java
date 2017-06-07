@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
@@ -83,7 +83,7 @@ public class StackGenerator {
   ** Build a stacked layout order from existing layout
   */
   
-  public SortedMap<Integer, List<String>> buildStackOrder(Set<String> gascCores, DataAccessContext icx) {    
+  public SortedMap<Integer, List<String>> buildStackOrder(Set<String> gascCores, StaticDataAccessContext icx) {    
     //
     // Get bounds of all the GASC cores and track row gaps:
     //
@@ -91,10 +91,10 @@ public class StackGenerator {
     HashMap<String, Rectangle2D> coreBounds = new HashMap<String, Rectangle2D>();
     Iterator<String> gcit = gascCores.iterator();
     int maxY = Integer.MIN_VALUE;
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     while (gcit.hasNext()) {
       String gascCore = gcit.next(); 
-      NodeProperties np = icx.getLayout().getNodeProperties(gascCore);
+      NodeProperties np = icx.getCurrentLayout().getNodeProperties(gascCore);
       INodeRenderer rend = np.getRenderer();
       Node node = genome.getNode(gascCore);
       Rectangle2D currRect = rend.getBounds(node, icx, null);

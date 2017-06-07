@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -214,14 +214,14 @@ public class RectangularTreeEngine {
     //
     
     HashSet<String> allNodes = new HashSet<String>();
-    Iterator<Node> nit = rcx.getGenome().getAllNodeIterator();
+    Iterator<Node> nit = rcx.getCurrentGenome().getAllNodeIterator();
     while (nit.hasNext()) {
       Node node = nit.next();
       allNodes.add(node.getID());
     }
     
     Set<Link> linksWithFeedback = new HashSet<Link>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String src = link.getSource();
@@ -593,8 +593,8 @@ public class RectangularTreeEngine {
     int row = cAndR.row;
    
     Point2D loc = new Point2D.Double();
-    double x = center.getX() - ((double)dims.height / 2.0) + (grid.getColSpace() * col);
-    double y = center.getY() - ((double)dims.width / 2.0) + (grid.getRowSpace() * (row + 2));
+    double x = center.getX() - (dims.height / 2.0) + (grid.getColSpace() * col);
+    double y = center.getY() - (dims.width / 2.0) + (grid.getRowSpace() * (row + 2));
     UiUtil.forceToGrid(x, y, loc, 10.0);
     return (loc);         
   }  

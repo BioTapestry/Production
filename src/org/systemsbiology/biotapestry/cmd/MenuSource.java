@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,7 +35,10 @@ import javax.swing.AbstractAction;
 import javax.swing.JComponent;
 import javax.swing.JMenu;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNodeToModule;
@@ -44,9 +47,11 @@ import org.systemsbiology.biotapestry.cmd.flow.add.AddSubGroup;
 import org.systemsbiology.biotapestry.cmd.flow.display.DisplayPaths;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditGroupProperties;
 import org.systemsbiology.biotapestry.cmd.flow.move.Mover;
+import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuilderPluginArg;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveModuleOrPart;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveSubGroup;
 import org.systemsbiology.biotapestry.cmd.flow.select.Selection;
+import org.systemsbiology.biotapestry.cmd.flow.simulate.SimulationLaunch;
 import org.systemsbiology.biotapestry.cmd.flow.userPath.PathStop;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
@@ -60,6 +65,10 @@ import org.systemsbiology.biotapestry.genome.NetworkOverlay;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
+import org.systemsbiology.biotapestry.plugin.ModelBuilderPlugIn;
+import org.systemsbiology.biotapestry.plugin.PlugInManager;
+import org.systemsbiology.biotapestry.plugin.SimulatorPlugIn;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
@@ -75,6 +84,7 @@ import org.systemsbiology.biotapestry.ui.menu.XPlatMenuItem;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMenuItem.XPType;
 import org.systemsbiology.biotapestry.ui.menu.XPlatPlaceholder;
 import org.systemsbiology.biotapestry.ui.menu.XPlatSeparator;
+import org.systemsbiology.biotapestry.ui.menu.XPlatTab;
 import org.systemsbiology.biotapestry.ui.menu.XPlatToggleAction;
 import org.systemsbiology.biotapestry.ui.menu.XPlatToolBar;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -105,6 +115,7 @@ public class MenuSource {
   private final static String MENU_BAR_KEY_ = "MenuBar";  
   private final static String TOOL_BAR_KEY_ = "ToolBar"; 
   private final static String MODEL_TREE_KEY_ = "ModelTreeMenu";
+  private final static String TAB_KEY_ = "TabMenu";
   private final static String POPUP_KEY_ = "PopupMenu";
   
   ////////////////////////////////////////////////////////////////////////////
@@ -116,7 +127,10 @@ public class MenuSource {
   private FlowMeister flom_;
   private boolean viewerOnly_;
   private boolean doGaggle_;
-    
+  private PlugInManager pluginManager_;
+  private UIComponentSource uics_;
+  private TabSource tSrc_;
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -128,10 +142,13 @@ public class MenuSource {
   ** Constructor 
   */ 
   
-  public MenuSource(FlowMeister flom, boolean viewerOnly, boolean doGaggle) {
-    flom_ = flom;
-    viewerOnly_ = viewerOnly;
-    doGaggle_ = doGaggle;   
+  public MenuSource(UIComponentSource uics, TabSource tSrc, CmdSource cSrc) {
+	  flom_ = cSrc.getFloM();
+	  uics_ = uics;
+	  viewerOnly_ = !uics_.getIsEditor();
+	  doGaggle_ = uics_.getDoGaggle();
+	  tSrc_ = tSrc;
+	  pluginManager_ = uics_.getPlugInMgr();
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -164,6 +181,7 @@ public class MenuSource {
       menuRet.add(getXPlatToolBarKey());
       menuRet.add(getXPlatTreeKey());
       menuRet.add(getXPlatPopupKey());
+      menuRet.add(getXPlatTabKey());
       popupTypes.add(PopType.GENE);
       popupTypes.add(PopType.NODE);
       popupTypes.add(PopType.LINK);
@@ -189,6 +207,10 @@ public class MenuSource {
   
   public String getXPlatTreeKey() {
     return (MODEL_TREE_KEY_);
+  }
+
+  public String getXPlatTabKey() {
+    return (TAB_KEY_);
   }
   
   public String getXPlatPopupKey() {
@@ -223,6 +245,27 @@ public class MenuSource {
     return (keyBind);
   }
    
+   
+  /*************
+   * getTabs
+   ************* 
+   * 
+   * Returns an Array of the current set of tabs based on tabOrder_
+   * which contains XPlatTab objects, which house information needed
+   * by the WebClient
+   * 
+   * 
+   */
+  public ArrayList<XPlatTab> getTabs() {
+    
+    ArrayList<XPlatTab> tabs = new ArrayList<XPlatTab>();
+    for(TabSource.AnnotatedTabData tab : tSrc_.getTabs()) {
+      tabs.add(new XPlatTab(tab.dbID, tab.tnd.getTitle(), tab.tnd.getFullTitle()));
+    }
+   return tabs; 
+    
+  }
+  
   /***************************************************************************
   **
   ** Get specified menu bar:
@@ -260,6 +303,15 @@ public class MenuSource {
      return (defineEditorTreePopup(dacx));
    }
    
+   
+   public XPlatMenu getXPlatTabPopup(DataAccessContext dacx) throws InvalidMenuRequestException {
+     if (viewerOnly_) {
+       throw new InvalidMenuRequestException(TAB_KEY_);
+     }
+     return (defineEditorTabPopup(dacx));
+   }
+   
+   
    /***************************************************************************
    **
    ** Get specified popup. Throws exception if the requested popup is not supported
@@ -280,9 +332,9 @@ public class MenuSource {
    public XPlatMenu getXPlatPopup(PopType pType, String objectID, boolean forSelected, 
                                   NetModuleFree.IntersectionExtraInfo forModule, DataAccessContext rcx)
                                     throws InvalidMenuRequestException {
-     Genome genome = rcx.getGenome();
-     Layout layout = rcx.getLayout();
-     String overlayKey = rcx.oso.getCurrentOverlay();
+     Genome genome = rcx.getCurrentGenome();
+     Layout layout = rcx.getCurrentLayout();
+     String overlayKey = rcx.getOSO().getCurrentOverlay();
      switch (pType) {
        case GENE:         
          return (defineNodeMenuPopup(genome, objectID, true, overlayKey, forSelected, rcx));
@@ -318,8 +370,11 @@ public class MenuSource {
   ** Fill in if items are active or inactive:
   */ 
   
-  public void activateXPlatPopup(XPlatMenu xpMenu, BuildInfo bifo, String objectID, Object subID, DataAccessContext rcx) {
+  public void activateXPlatPopup(XPlatMenu xpMenu, BuildInfo bifo, String objectID, 
+                                 Object subID, DataAccessContext rcx, 
+                                 UIComponentSource uics, CmdSource cSrc) {
     
+    StaticDataAccessContext sdacx = new StaticDataAccessContext(rcx);
     Iterator<XPlatMenuItem> iit = xpMenu.getItems();
     while (iit.hasNext()) {
       XPlatMenuItem xpmi = iit.next();
@@ -335,7 +390,7 @@ public class MenuSource {
       XPType xpt = xpmi.getType();
       switch (xpt) {
         case MENU:
-          activateXPlatPopup((XPlatMenu)xpmi, bifo, objectID, subID, rcx);
+          activateXPlatPopup((XPlatMenu)xpmi, bifo, objectID, subID, rcx, uics, cSrc);
           break;
         case ACTION:
         case CHECKBOX_ACTION:
@@ -344,12 +399,12 @@ public class MenuSource {
           ControlFlow.OptArgs args = xpa.getActionArg();
           ControlFlow cf = flom_.getControlFlow(key, args);
           Intersection inter = new Intersection(objectID, subID, 0.0);
-          boolean isEnabled = cf.isValid(inter, true, false, rcx);
+          boolean isEnabled = cf.isValid(inter, true, false, sdacx, uics);
           xpa.setEnabled(isEnabled);
           if (xpt == XPType.CHECKBOX_ACTION) {
             XPlatToggleAction xpta = (XPlatToggleAction)xpa;
             if (cf instanceof ControlFlow.FlowForPopToggle) {
-              xpta.setChecked(((ControlFlow.FlowForPopToggle)cf).shouldCheck());
+              xpta.setChecked(((ControlFlow.FlowForPopToggle)cf).shouldCheck(cSrc));
             }
           }
           break;           
@@ -375,16 +430,17 @@ public class MenuSource {
     }
       
     XPlatMenuBar menuBar = new XPlatMenuBar();
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     
     //
     // File Menu
     //
     XPlatMenu fMenu = new XPlatMenu(rMan.getString("command.File"), rMan.getChar("command.FileMnem"));
     menuBar.addMenu(fMenu);
-    
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.NEW_TAB));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.NEW_MODEL));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LOAD));
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LOAD_AS_NEW_TABS));
     fMenu.addItem(new XPlatPlaceholder("RECENT"));
     fMenu.addItem(new XPlatSeparator());
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SAVE));
@@ -493,11 +549,7 @@ public class MenuSource {
     eMenu.addItem(new XPlatToggleAction(flom_, rMan, FlowMeister.MainFlow.PULLDOWN, "PULLDOWN", null, false, "pullDownFam"));
     
     eMenu.addItem(new XPlatSeparator());    
-    XPlatMenu imageMenu = new XPlatMenu(rMan.getString("command.imageMenu"), rMan.getChar("command.imageMenuMnem"));
-    eMenu.addItem(imageMenu);
-    
-    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.ASSIGN_IMAGE_TO_MODEL)); 
-    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.DROP_IMAGE_FOR_MODEL));
+ 
     
     XPlatMenu overlayMenu = new XPlatMenu(rMan.getString("command.overlayMenu"), rMan.getChar("command.overlayMenuMnem"));
     eMenu.addItem(overlayMenu); 
@@ -601,22 +653,73 @@ public class MenuSource {
     
     XPlatMenu sMenu = new XPlatMenu(rMan.getString("command.Tools"), rMan.getChar("command.ToolsMnem"));
     menuBar.addMenu(sMenu);
-    //sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LAUNCH_SIMULATION));
-    //sMenu.addItem(new JSeparator());
+    
     sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.BUILD_FROM_DIALOG));
     sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.DROP_ALL_INSTRUCTIONS));
     sMenu.addItem(new XPlatSeparator());
     sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.ADD_QPCR_TO_ROOT_INSTANCES));
-    sMenu.addItem(new XPlatSeparator());
+    sMenu.addItem(new XPlatSeparator());  
     sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.NETWORK_SEARCH));  
     sMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.GET_MODEL_COUNTS));
+    
+    
+    sMenu.addItem(new XPlatSeparator());  
+    XPlatMenu builderPluginMenu = new XPlatMenu(rMan.getString("command.modelBuilderPluginMenu"), rMan.getChar("command.modelBuilderMnem"));
+    sMenu.addItem(builderPluginMenu);
+    
+    int builderIndex = 0;
+    Iterator<ModelBuilderPlugIn> mbIterator = pluginManager_.getBuilderIterator();
+    // Only one builder plugin at a time is supported
+    if (mbIterator.hasNext()) {
+      ModelBuilderPlugIn plugIn = mbIterator.next();
+      String name = plugIn.getMenuName();
+      XPlatMenu thisPluginMenu = new XPlatMenu(name, Integer.toString(builderIndex).charAt(0));
 
+      BuilderPluginArg args = new BuilderPluginArg(name, builderIndex);
+      
+      XPlatAction launchBuilderItem = new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LAUNCH_WORKSHEET, null, null, false, args);
+      thisPluginMenu.addItem(launchBuilderItem);
+      
+      XPlatAction launchTrackerItem = new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LAUNCH_LINK_DRAWING_TRACKER, null, null, false, args);
+      thisPluginMenu.addItem(launchTrackerItem);
+      
+      builderPluginMenu.addItem(thisPluginMenu);
+    }
+    
+    sMenu.addItem(new XPlatSeparator());
+    XPlatMenu simulatorPluginMenu = new XPlatMenu(rMan.getString("command.simulatorPluginMenu"), rMan.getChar("command.simulatorMnem"));
+    sMenu.addItem(simulatorPluginMenu);
+    
+    {
+    	int engineIndex = 0;
+    	Iterator<SimulatorPlugIn> simIterator = pluginManager_.getEngineIterator();
+	    while (simIterator.hasNext()) {
+	    	SimulatorPlugIn plugIn = simIterator.next();
+	    	String name = plugIn.getMenuName();
+	    	XPlatMenu thisPluginMenu = new XPlatMenu(name, Integer.toString(engineIndex).charAt(0));
+
+	    	SimulationLaunch.SimulationPluginArg args = new SimulationLaunch.SimulationPluginArg(name, engineIndex);
+	    	
+	    	XPlatAction launchSimItem = new XPlatAction(flom_, rMan, FlowMeister.MainFlow.LAUNCH_SIM_PLUGIN, null, null, false, args);
+	    	thisPluginMenu.addItem(launchSimItem);
+	    	
+	    	XPlatAction recoverSimItem = new XPlatAction(flom_, rMan, FlowMeister.MainFlow.RECOVER_SIMULATION, null, null, false, args);
+	    	thisPluginMenu.addItem(recoverSimItem);
+	    	
+	    	simulatorPluginMenu.addItem(thisPluginMenu);
+	    	engineIndex += 1;
+	    }
+    }
+    
     //
     // Data Menu
     //
     
     XPlatMenu dMenu = new XPlatMenu(rMan.getString("command.Data"), rMan.getChar("command.DataMnem"));
     menuBar.addMenu(dMenu);
+  
+    dMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.GET_DATA_SHARING_STATE));
+    dMenu.addItem(new XPlatSeparator());
     
     dMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.CHANGE_MODEL_DATA));
     dMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.DEFINE_TIME_AXIS));    
@@ -628,14 +731,16 @@ public class MenuSource {
     XPlatMenu dMenu2 = new XPlatMenu(rMan.getString("command.DataTimeCourse"), rMan.getChar("command.DataTimeCourseMnem"));
     dMenu.addItem(dMenu2);
     dMenu2.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TIME_COURSE_TABLE_SETUP));
-    dMenu2.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TIME_COURSE_REGION_HIERARCHY));
-    
+    dMenu2.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TIME_COURSE_REGION_HIERARCHY));    
+    dMenu2.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TIME_COURSE_REGION_TOPOLOGY));
     
     dMenu2.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TIME_COURSE_TABLE_MANAGE));
        
     XPlatMenu dMenu3 = new XPlatMenu(rMan.getString("command.DataTemporalInputs"), rMan.getChar("command.DataTemporalInputsMnem"));
     dMenu.addItem(dMenu3);
     dMenu3.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TEMPORAL_INPUT_TABLE_MANAGE));
+    dMenu3.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TEMPORAL_INPUT_DERIVE));
+    dMenu3.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.TEMPORAL_INPUT_DROP_ALL));
    
     //
     // Gaggle Menu
@@ -672,7 +777,8 @@ public class MenuSource {
   ** Fill in if menubar items are active or inactive:
   */ 
   
-  public void activateXPlatMenuBar(XPlatMenuBar xpMenuBar, BuildInfo bifo, MainCommands mcmd, BTState appState) throws InvalidMenuRequestException {
+  public void activateXPlatMenuBar(XPlatMenuBar xpMenuBar, BuildInfo bifo, MainCommands mcmd, 
+                                   UIComponentSource uics, CmdSource cSrc) throws InvalidMenuRequestException {
     if (viewerOnly_) {
       throw new InvalidMenuRequestException(MENU_BAR_KEY_);
     }
@@ -681,7 +787,7 @@ public class MenuSource {
     Iterator<XPlatMenu> ipt = xpMenuBar.getMenus();
     while (ipt.hasNext()) {
       XPlatMenu xpMenu = ipt.next();
-      activateXPlatMenu(xpMenu, bifo, fes, appState);
+      activateXPlatMenu(xpMenu, bifo, fes, uics, cSrc);
     }
     return;
   }
@@ -691,7 +797,8 @@ public class MenuSource {
   ** Fill in if menu items are active or inactive:
   */ 
   
-  public void activateXPlatMenu(XPlatMenu xpMenu, BuildInfo bifo, Map<FlowMeister.FlowKey, Boolean> fes, BTState appState) {
+  public void activateXPlatMenu(XPlatMenu xpMenu, BuildInfo bifo, Map<FlowMeister.FlowKey, Boolean> fes, 
+                                UIComponentSource uics, CmdSource cSrc) {
   
     int itemCount = 0;
     Iterator<XPlatMenuItem> iit = xpMenu.getItems();
@@ -708,7 +815,7 @@ public class MenuSource {
       }
       switch (xpmi.getType()) {
         case MENU:
-          activateXPlatMenu((XPlatMenu)xpmi, bifo, fes, appState);
+          activateXPlatMenu((XPlatMenu)xpmi, bifo, fes, uics, cSrc);
           break;
         case ACTION:
         case CHECKBOX_ACTION:
@@ -721,9 +828,9 @@ public class MenuSource {
             XPlatToggleAction xpta = (XPlatToggleAction)xpa;
             ControlFlow cf = flom_.getControlFlow(key, null);
             if (cf instanceof ControlFlow.FlowForPopToggle) {
-              xpta.setChecked(((ControlFlow.FlowForPopToggle)cf).shouldCheck());
+              xpta.setChecked(((ControlFlow.FlowForPopToggle)cf).shouldCheck(cSrc));
             } else if (cf instanceof PathStop) {
-              xpta.setChecked(appState.getPathController().getCurrentPathIndex() == itemCount);
+              xpta.setChecked(uics.getPathController().getCurrentPathIndex() == itemCount);
             }            
           }
           break;           
@@ -749,7 +856,7 @@ public class MenuSource {
       throw new IllegalStateException();
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatToolBar toolBar = new XPlatToolBar();
  
     toolBar.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.SAVE, true));    
@@ -822,7 +929,7 @@ public class MenuSource {
       throw new IllegalStateException();
     }
    
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatToolBar toolBar = new XPlatToolBar();
 
     toolBar.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.ZOOM_OUT, true));    
@@ -859,10 +966,23 @@ public class MenuSource {
       throw new IllegalStateException();
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu fMenu = new XPlatMenu(rMan.getString("command.currentModelMenu"), rMan.getChar("command.currentModelMenuMnem"));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ADD_GENOME_INSTANCE));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ADD_DYNAMIC_GENOME_INSTANCE));
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ADD_MODEL_TREE_GROUP_NODE));
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.EDIT_GROUP_NODE_NAV_MAP));
+    
+    XPlatMenu imageMenu = new XPlatMenu(rMan.getString("command.imageMenu"), rMan.getChar("command.imageMenuMnem"));
+    fMenu.addItem(imageMenu);
+    
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ASSIGN_IMAGE_TO_MODEL)); 
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.DROP_IMAGE_FOR_MODEL));
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ASSIGN_IMAGE_TO_GROUPING_NODE)); 
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.DROP_IMAGE_FOR_GROUPING_NODE));
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.ASSIGN_MAPPING_IMAGE_TO_GROUPING_NODE)); 
+    imageMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.DROP_MAPPING_IMAGE_FOR_GROUPING_NODE));
+
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.COPY_GENOME_INSTANCE));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.DELETE_GENOME_INSTANCE));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.DELETE_GENOME_INSTANCE_KIDS_ONLY));
@@ -873,6 +993,26 @@ public class MenuSource {
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.TreeFlow.SET_CURRENT_OVERLAY_FOR_FIRST_VIEW));
     return (fMenu);
   }
+  
+  
+  
+  public XPlatMenu defineEditorTabPopup(DataAccessContext dacx) {
+
+    if (viewerOnly_) {
+      throw new IllegalStateException();
+    }
+    
+    ResourceManager rMan = dacx.getRMan();
+    XPlatMenu fMenu = new XPlatMenu(rMan.getString("command.currentTabMenu"), rMan.getChar("command.currentTabMenuMnem"));
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.DROP_THIS_TAB));    
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.DROP_ALL_BUT_THIS_TAB));
+    fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.MainFlow.RETITLE_TAB));
+    
+    return (fMenu);
+  }
+  
+  
+  
   
   /***************************************************************************
   **
@@ -885,7 +1025,7 @@ public class MenuSource {
       throw new InvalidMenuRequestException(PopType.OVERLAY);
     }
       
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu fMenu = new XPlatMenu();
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.EDIT_CURRENT_OVERLAY, null, "EDITOR"));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DELETE_CURRENT_OVERLAY, null, "EDITOR"));
@@ -903,7 +1043,7 @@ public class MenuSource {
       throw new InvalidMenuRequestException(PopType.NOTE);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu fMenu = new XPlatMenu();
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.EDIT_NOTE, null, "EDITOR"));
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DELETE_NOTE, null, "EDITOR"));
@@ -921,7 +1061,7 @@ public class MenuSource {
       throw new InvalidMenuRequestException(PopType.LINK_POINT);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu fMenu = new XPlatMenu();
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DELETE_LINK_POINT, null, "EDITOR"));
     return (fMenu);
@@ -939,7 +1079,7 @@ public class MenuSource {
       throw new InvalidMenuRequestException(PopType.MODULE_LINK_POINT);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu fMenu = new XPlatMenu();
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.DELETE_MODULE_LINK_POINT, null, "EDITOR"));
     return (fMenu);
@@ -952,7 +1092,7 @@ public class MenuSource {
      
   public XPlatMenu defineRegionPopup(GenomeInstance gi, String groupID, DataAccessContext dacx) {
     XPlatMenu fMenu = new XPlatMenu();
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     EditGroupProperties.GroupArg ga = new EditGroupProperties.GroupArg(groupID, false);
     
     fMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.TOGGLE));
@@ -1030,7 +1170,7 @@ public class MenuSource {
       return (null);
     }
   
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     
     XPlatMenu sgMenu = new XPlatMenu(rMan.getString("groupPopup.SubGroups"), rMan.getChar("groupPopup.SubGroupsMnem"), "SGMG", "EDITOR");
     sgMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.CREATE_SUB_GROUP, null, "EDITOR"));
@@ -1067,7 +1207,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     
     XPlatMenu sgMenu = new XPlatMenu(name, '\0', "sgMenu", "EDITOR");
        
@@ -1114,7 +1254,7 @@ public class MenuSource {
     // guys are accessible from included menu.
     //
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu sgMenu = new XPlatMenu(rMan.getString("groupPopup.SubGroups"), rMan.getChar("groupPopup.SubGroupsMnem"), null, "EDITOR");
     
     String active = parent.getActiveSubset();
@@ -1162,7 +1302,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan; 
+    ResourceManager rMan = dacx.getRMan(); 
    
     XPlatMenu asgm = new XPlatMenu(rMan.getString("groupPopup.ActivateSubgroup"), rMan.getChar("nodePopup.RemoveFromSubGroupMnem"), null, "EDITOR");
           
@@ -1210,7 +1350,7 @@ public class MenuSource {
     }
     
     MenuResult retval = new MenuResult();             
-    ResourceManager rMan = dacx.rMan;     
+    ResourceManager rMan = dacx.getRMan();     
     retval.canInclude = new XPlatMenu(rMan.getString("groupPopup.IncludeSubgroup"), rMan.getChar("groupPopup.IncludeSubgroupMnem"), null, "EDITOR");
     if (haveActive) {
       retval.canInclude.setEnabled(false);
@@ -1259,7 +1399,7 @@ public class MenuSource {
 
   public XPlatMenu defineLinkMenuPopup(boolean forSelMenu, DataAccessContext dacx) {
       
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu rMenu = (forSelMenu) ? new XPlatMenu(rMan.getString("command.selectedItemMenu"), rMan.getChar("command.selectedItemMenuMnem"), null, null) 
                                    : new XPlatMenu("DONT_CARE", 'D', null, null);
     
@@ -1273,6 +1413,14 @@ public class MenuSource {
       rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.ANALYZE_PATHS, null, "VIEWER"));
     } else {   
       rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.ANALYZE_PATHS_WITH_QPCR, null, "EDITOR"));
+      int builderIndex = 0;
+      Iterator<ModelBuilderPlugIn> mbIterator = pluginManager_.getBuilderIterator();
+      if (mbIterator.hasNext()) {
+        ModelBuilderPlugIn plugIn = mbIterator.next();
+        String name = plugIn.getMenuName();
+        BuilderPluginArg args = new BuilderPluginArg(name, builderIndex);
+        rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.LINK_WORKSHEET, null, "EDITOR", args));
+      }
     }
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.SELECT_LINK_SOURCE, null, null));
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.SELECT_LINK_TARGETS, null, null));
@@ -1322,7 +1470,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan;      
+    ResourceManager rMan = dacx.getRMan();      
     XPlatMenu toMenu = new XPlatMenu(rMan.getString("linkPopup.topoOps"), rMan.getChar("linkPopup.topoOpsMnem"), null, "EDITOR");     
     toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.INSERT_GENE_IN_LINK, null, "EDITOR"));
     toMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.INSERT_NODE_IN_LINK, null, "EDITOR"));
@@ -1345,7 +1493,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
       
     XPlatMenu loMenu = new XPlatMenu(rMan.getString("linkPopup.layoutOps"), rMan.getChar("linkPopup.layoutOpsMnem"), null, "EDITOR");
       
@@ -1384,7 +1532,7 @@ public class MenuSource {
       throw new InvalidMenuRequestException(PopType.MODULE_LINK);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu rMenu = new XPlatMenu("DONT_CARE", 'D', null, null);     
      
     rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.MODULE_LINK_PROPERTIES, null, "EDITOR"));    
@@ -1412,7 +1560,7 @@ public class MenuSource {
       return (null);
     }
   
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
            
     XPlatMenu loMenu = new XPlatMenu(rMan.getString("linkPopup.layoutOps"), rMan.getChar("linkPopup.layoutOpsMnem"), null, "EDITOR");
        
@@ -1439,7 +1587,7 @@ public class MenuSource {
   public XPlatMenu defineNodeMenuPopup(Genome genome, String nodeID, boolean doGene,
                                        String overlayKey, boolean forSelMenu, DataAccessContext dacx) {
   
-    ResourceManager rMan = dacx.rMan;    
+    ResourceManager rMan = dacx.getRMan();    
     XPlatMenu rMenu = (forSelMenu) ? new XPlatMenu(rMan.getString("command.selectedItemMenu"), rMan.getChar("command.selectedItemMenuMnem"), null, null) 
                                    : new XPlatMenu("DONT_CARE", 'D', null, null);     
      
@@ -1541,7 +1689,7 @@ public class MenuSource {
     
     XPlatMenu[] retval = new XPlatMenu[3];
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
       
     XPlatMenu pmMenu = new XPlatMenu(rMan.getString("genePopup.pertManage"), rMan.getChar("genePopup.pertManageMnem"), null, "EDITOR");
     retval[0] = pmMenu;
@@ -1596,7 +1744,7 @@ public class MenuSource {
 
   private XPlatMenu sourceGeneration(Genome genome, String targNodeID, DataAccessContext dacx) {
       
-    ResourceManager rMan = dacx.rMan; 
+    ResourceManager rMan = dacx.getRMan(); 
     
     XPlatMenu parpaMenu = new XPlatMenu(rMan.getString("nodePopup.sourceGenes"), rMan.getChar("nodePopup.sourceGenesMnem"), "sourceMenu_", null);
        
@@ -1632,7 +1780,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     FlowMeister flom = flom_;
     
     XPlatMenu pertSrcMenu = new XPlatMenu(rMan.getString("nodePopup.qpcrSourceGenes"), rMan.getChar("nodePopup.qpcrSourceGenesMnem"), null, "EDITOR");
@@ -1642,7 +1790,9 @@ public class MenuSource {
     }
   
     PerturbationData pd = dacx.getExpDataSrc().getPertData();
-    Set<String> sources = pd.getPerturbationSources(targNodeID);
+    PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
+
+    Set<String> sources = pd.getPerturbationSources(targNodeID, pdms);
     if (sources.size() == 0) {
       pertSrcMenu.setEnabled(false);
       return (pertSrcMenu);
@@ -1686,7 +1836,7 @@ public class MenuSource {
      
     XPlatMenu[] retval = new XPlatMenu[2];
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu anmMenu = new XPlatMenu(rMan.getString("nodePopup.addToNetModule"), rMan.getChar("nodePopup.addToNetModuleMnem"), null, "EDITOR");
     retval[0] = anmMenu;
    
@@ -1744,7 +1894,7 @@ public class MenuSource {
       return (null);
     }
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu sgMenu = new XPlatMenu(rMan.getString("nodePopup.SubGroups"), rMan.getChar("nodePopup.SubGroupsMnem"), null, "EDITOR");
         
     boolean haveInstance = genome instanceof GenomeInstance;
@@ -1797,7 +1947,7 @@ public class MenuSource {
     // Only take those subgroups we do not belong to:
     //
     
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
     XPlatMenu sgaMenu = new XPlatMenu(rMan.getString("nodePopup.AddToSubGroup"), rMan.getChar("nodePopup.AddToSubGroupMnem"), null, "EDITOR");
     
     int count = 0;
@@ -1841,7 +1991,7 @@ public class MenuSource {
     // Only take those subgroups we do belong to:
     //
     
-    ResourceManager rMan = dacx.rMan; 
+    ResourceManager rMan = dacx.getRMan(); 
     XPlatMenu sgdMenu = new XPlatMenu(rMan.getString("nodePopup.RemoveFromSubGroup"), rMan.getChar("nodePopup.RemoveFromSubGroupMnem"), null, "EDITOR");
  
     int count = 0;
@@ -1865,7 +2015,7 @@ public class MenuSource {
   public XPlatMenu defineNetModulePopup(Layout layout, String overlayKey, String moduleID, 
                                         NetModuleFree.IntersectionExtraInfo ei, DataAccessContext dacx) {
    
-     ResourceManager rMan = dacx.rMan;
+     ResourceManager rMan = dacx.getRMan();
      XPlatMenu rMenu = new XPlatMenu("DONT_CARE", 'D', null, null);
              
      rMenu.addItem(new XPlatAction(flom_, rMan, FlowMeister.PopFlow.ZOOM_TO_NET_MODULE, null, null));
@@ -1926,7 +2076,7 @@ public class MenuSource {
     
     XPlatMenu[] retval = new XPlatMenu[2];
      
-    ResourceManager rMan = dacx.rMan;
+    ResourceManager rMan = dacx.getRMan();
       
     XPlatMenu wcMenu = new XPlatMenu(rMan.getString("modulePopup.MoveWithContents"), rMan.getChar("modulePopup.MoveWithContentsMnem"), null, "EDITOR");
     retval[0] = wcMenu;

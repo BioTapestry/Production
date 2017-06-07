@@ -160,6 +160,10 @@ public class ModelDataDialogFactory extends DialogFactory {
       displayProperties(mData);
     }
 
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -230,7 +234,13 @@ public class ModelDataDialogFactory extends DialogFactory {
     }   
     public boolean haveResults() {
       return (haveResult);
-    }      
+    } 
+
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}   
+    
     public void setForApply(boolean forApply) {
       forApply_ = forApply;
       return;

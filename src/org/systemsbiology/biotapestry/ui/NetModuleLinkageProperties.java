@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,9 +34,9 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.Vector2D;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
@@ -81,7 +81,7 @@ public class NetModuleLinkageProperties extends LinkProperties implements Clonea
   ** Simple constructor
   */
 
-  public NetModuleLinkageProperties(BTState appState, String id, String ovrKey) {
+  public NetModuleLinkageProperties(String id, String ovrKey) {
     super(new NetModuleLinkageFree());
     this.id_ = id;
     this.ovrKey_ = ovrKey;
@@ -103,7 +103,7 @@ public class NetModuleLinkageProperties extends LinkProperties implements Clonea
   ** For UI-based drawing
   */   
   
-  public NetModuleLinkageProperties(BTState appState, String myID, String ovrKey, String srcID, String linkID, 
+  public NetModuleLinkageProperties(String myID, String ovrKey, String srcID, String linkID, 
                                     Point2D start, Point2D end, Vector2D startOff, Vector2D endOff) {
     super(new NetModuleLinkageFree());
     this.srcTag_ = srcID;
@@ -804,14 +804,12 @@ public class NetModuleLinkageProperties extends LinkProperties implements Clonea
     public String treeID;
     public Point2D startPt;
     public Vector2D toStartSide;
- //   public Vector2D toEndSide;
     
     
     public DirectLinkExtraInfo(String treeID, Point2D startPt, Vector2D toStartSide) { //, Vector2D toEndSide) {
       this.treeID = treeID;
       this.startPt = startPt;
       this.toStartSide = toStartSide;
-  //    this.toEndSide = toEndSide;
     }
   }
   
@@ -821,19 +819,15 @@ public class NetModuleLinkageProperties extends LinkProperties implements Clonea
   */  
       
   public static class NetModuleLinkagePropertiesWorker extends AbstractFactoryClient {
- 
-    private BTState appState_;
     
-    
-    public NetModuleLinkagePropertiesWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public NetModuleLinkagePropertiesWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
-      appState_ = appState;
       myKeys_.add("nModLinkProp");
       installWorker(new LinkSegment.LinkSegmentWorker(whiteboard), new MySegmentGlue());
-      installWorker(new NetModuleBusDrop.NetModuleBusDropWorker(appState_, whiteboard), new MyBusDropGlue());
+      installWorker(new NetModuleBusDrop.NetModuleBusDropWorker(whiteboard), new MyBusDropGlue());
       installWorker(new SuggestedDrawStyle.SuggestedDrawStyleWorker(whiteboard), new MyStyleGlue());     
     }
-  
+
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("nModLinkProp")) {
@@ -847,7 +841,7 @@ public class NetModuleLinkageProperties extends LinkProperties implements Clonea
     private NetModuleLinkageProperties buildFromXML(String elemName, Attributes attrs) throws IOException {
       String id = AttributeExtractor.extractAttribute(elemName, attrs, "nModLinkProp", "id", true);
       FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-      NetModuleLinkageProperties newProp = new NetModuleLinkageProperties(appState_, id, board.netOvrProps.getReference());
+      NetModuleLinkageProperties newProp = new NetModuleLinkageProperties(id, board.netOvrProps.getReference());
       LinkProperties.buildFromXMLSupport(elemName, attrs, newProp, board, "nModLinkProp");
       return (newProp);
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,6 @@ package org.systemsbiology.biotapestry.cmd.undo;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ChangeEvent;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -32,6 +31,7 @@ import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
 
 /****************************************************************************
 **
@@ -60,8 +60,8 @@ public class CompoundPreEventCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public CompoundPreEventCmd(BTState appState, DataAccessContext dacx) {
-    super(appState, dacx);
+  public CompoundPreEventCmd(DataAccessContext dacx) {
+    super(dacx);
     ev_ = new ArrayList<ChangeEvent>();
   }  
   
@@ -105,7 +105,7 @@ public class CompoundPreEventCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    EventManager mgr = appState_.getEventMgr();
+    EventManager mgr = uics_.getEventMgr();
     int num = ev_.size();
     int numMCE = 0;
     for (int i = 0; i < num; i++) {
@@ -132,6 +132,8 @@ public class CompoundPreEventCmd extends BTUndoCmd {
         mgr.sendSelectionChangeEvent((SelectionChangeEvent)ce);
       } else if (ce instanceof OverlayDisplayChangeEvent) {
         mgr.sendOverlayDisplayChangeEvent((OverlayDisplayChangeEvent)ce);
+      } else if (ce instanceof ModelBuilder.MBChangeEvent) {
+        mgr.sendModelBuildChangeEvent((ModelBuilder.MBChangeEvent)ce);       
       } else {
         throw new IllegalArgumentException();
       }

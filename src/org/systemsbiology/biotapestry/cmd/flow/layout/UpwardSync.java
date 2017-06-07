@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,15 +22,16 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 import java.awt.geom.Point2D;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.ui.BusProperties;
@@ -73,8 +74,7 @@ public class UpwardSync extends AbstractControlFlow  {
   ** Constructor 
   */ 
   
-  public UpwardSync(BTState appState) {
-    super(appState);
+  public UpwardSync() {
     name = "command.ApplyKidLayouts"; 
     desc = "command.ApplyKidLayouts"; 
     mnem = "command.ApplyKidLayoutsMnem"; 
@@ -110,10 +110,11 @@ public class UpwardSync extends AbstractControlFlow  {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -132,30 +133,16 @@ public class UpwardSync extends AbstractControlFlow  {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-      
+  public static class StepState extends AbstractStepState {
+    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
-    }
-    
-    /***************************************************************************
-    **
-    ** Next step...
-    */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
     }
 
     /***************************************************************************
@@ -166,16 +153,16 @@ public class UpwardSync extends AbstractControlFlow  {
     private DialogAndInProcessCmd stepDoIt() {
       DBGenome dbg = dacx_.getDBGenome();
       boolean showOverlayOpts = (dbg.getNetworkOverlayCount() > 0);    
-      LayoutPropagationDialog propDialog = new LayoutPropagationDialog(appState_, dacx_, showOverlayOpts);
+      LayoutPropagationDialog propDialog = new LayoutPropagationDialog(uics_, dacx_, showOverlayOpts);
       propDialog.setVisible(true);
       if (!propDialog.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
       }
       LayoutDerivation ld = propDialog.getLayoutDerivation();       
    //   Layout lor = dacx_.lSrc.getLayoutForGenomeKey(dbg.getID());
-      UndoSupport support = new UndoSupport(appState_, "undo.applyKidLayouts");
+      UndoSupport support = uFac_.provideUndoSupport("undo.applyKidLayouts", dacx_);
       UpwardLayoutSynch uls = new UpwardLayoutSynch();   
-      uls.synchronizeRootLayoutFromChildrenAsynch(appState_, dacx_, support, ld, appState_.getZoomTarget().getRawCenterPoint(), appState_.getCommonView());
+      uls.synchronizeRootLayoutFromChildrenAsynch(uics_, dacx_, support, ld, dacx_.getZoomTarget().getRawCenterPoint(), uics_.getCommonView());
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));      
          
       /*
@@ -198,29 +185,30 @@ public class UpwardSync extends AbstractControlFlow  {
   public static class UpwardLayoutSynch implements BackgroundWorkerOwner {
     
     private BackgroundWorkerControlManager bwcm_;
-    private BTState appState_;
+    private UIComponentSource myUics_;
+    private StaticDataAccessContext dacxR_;
     private boolean cancelled_;
     
-    public void synchronizeRootLayoutFromChildrenAsynch(BTState appState, DataAccessContext dacx,
+    public void synchronizeRootLayoutFromChildrenAsynch(UIComponentSource myUics, StaticDataAccessContext dacx,
                                                         UndoSupport support, LayoutDerivation ld, Point2D center, 
                                                         BackgroundWorkerControlManager bwcm) { 
       
-      appState_ = appState;
+      myUics_ = myUics;
       bwcm_ = bwcm;
       cancelled_ = false;
       
       // Issue #187: Can run this command from any level.
-      DataAccessContext dacxR = dacx.getContextForRoot();
+      dacxR_ = dacx.getContextForRoot();
       
       UpwardLayoutSynchRunner runner = 
-        new UpwardLayoutSynchRunner(appState_, dacxR, support, ld, center);
+        new UpwardLayoutSynchRunner(dacxR_, support, ld, center);
       //
       // We may need to do lots of link relayout operations.  This MUST occur on a background
       // thread!
       // 
 
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState_, bwcm_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(myUics_, dacxR_, bwcm_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       runner.setClient(bwc);
       bwc.launchWorker();
       return;
@@ -245,7 +233,7 @@ public class UpwardSync extends AbstractControlFlow  {
     }
         
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      (new LayoutStatusReporter(myUics_, dacxR_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
       return;
     }
   }  
@@ -257,29 +245,27 @@ public class UpwardSync extends AbstractControlFlow  {
     
   private static class UpwardLayoutSynchRunner extends BackgroundWorker {
 
-    private DataAccessContext rcx_;
-    private BTState appState_; 
+    private StaticDataAccessContext rcx_;
     private UndoSupport support_;
     private LayoutDerivation ld_;
     private Point2D center_;
 
-    public UpwardLayoutSynchRunner(BTState appState, DataAccessContext dac,
+    public UpwardLayoutSynchRunner(StaticDataAccessContext dacx,
                                    UndoSupport support, LayoutDerivation ld, Point2D center) {
       super(new LinkRouter.RoutingResult());
-      rcx_ = dac;
-      appState_ = appState; 
+      rcx_ = dacx;
       support_ = support;
       ld_ = ld;
       center_ = center;
     }
     
     public Object runCore() throws AsynchExitRequestException {     
-      LinkRouter.RoutingResult result = synchronizeRootLayoutFromChildren(appState_, rcx_,
+      LinkRouter.RoutingResult result = synchronizeRootLayoutFromChildren(rcx_,
                                                                           support_,
                                                                           ld_, center_,
                                                                           this, 0.0, 1.0);
       
-      appState_.getDB().clearAllDynamicProxyCaches();
+      rcx_.getGenomeSource().clearAllDynamicProxyCaches();
       return (result);
     }
     
@@ -293,7 +279,7 @@ public class UpwardSync extends AbstractControlFlow  {
   ** Synchronize root from children
   */  
  
-  private static LinkRouter.RoutingResult synchronizeRootLayoutFromChildren(BTState appState, DataAccessContext rcxR,
+  private static LinkRouter.RoutingResult synchronizeRootLayoutFromChildren(StaticDataAccessContext rcxR,
                                                                             UndoSupport support,
                                                                             LayoutDerivation ld,
                                                                             Point2D center,
@@ -302,20 +288,20 @@ public class UpwardSync extends AbstractControlFlow  {
                                                                             throws AsynchExitRequestException {
 
 
-    LayoutRubberStamper lrs = new LayoutRubberStamper(appState);
-    String lorKey = rcxR.getLayoutID();
+    LayoutRubberStamper lrs = new LayoutRubberStamper();
+    String lorKey = rcxR.getCurrentLayoutID();
     
-    Map<String, BusProperties.RememberProps> rootRemember = rcxR.getLayout().buildRememberProps(rcxR);
-    Map<String, SpecialSegmentTracker> rootSpecials = rcxR.getLayout().rememberSpecialLinks();
+    Map<String, BusProperties.RememberProps> rootRemember = rcxR.getCurrentLayout().buildRememberProps(rcxR);
+    Map<String, SpecialSegmentTracker> rootSpecials = rcxR.getCurrentLayout().rememberSpecialLinks();
 
     //
     // Figure out what we need to do with overlays:
     //
     
-    Layout.PadNeedsForLayout padFixups = rcxR.getLayout().findAllNetModuleLinkPadRequirements(rcxR); 
-    Map<String, Layout.OverlayKeySet> globalModKeys = rcxR.fgho.fullModuleKeysPerLayout();    
+    Layout.PadNeedsForLayout padFixups = rcxR.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcxR); 
+    Map<String, Layout.OverlayKeySet> globalModKeys = rcxR.getFGHO().fullModuleKeysPerLayout();    
     Layout.OverlayKeySet loModKeys = globalModKeys.get(lorKey);   
-    Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = rcxR.getLayout().getModuleShapeParams(rcxR, loModKeys, center);    
+    Map<NetModule.FullModuleKey, NetModuleShapeFixer.ModuleRelocateInfo> moduleShapeRecovery = rcxR.getCurrentLayout().getModuleShapeParams(rcxR, loModKeys, center);    
    
     //
     // Now change each layout with the rubber stamper:
@@ -325,7 +311,7 @@ public class UpwardSync extends AbstractControlFlow  {
     LinkRouter.RoutingResult rr = null;
     DatabaseChange dc = null;
     if (support != null) {
-      dc = rcxR.lSrc.startLayoutUndoTransaction(lorKey);
+      dc = rcxR.getLayoutSource().startLayoutUndoTransaction(lorKey);
     }
     try {      
       rr = lrs.upwardCopy(rcxR, ld, rootRemember,
@@ -336,24 +322,24 @@ public class UpwardSync extends AbstractControlFlow  {
       //
 
       if (rootRemember != null) {
-        rcxR.getLayout().restoreLabelLocations(rootRemember, rcxR, null);
+        rcxR.getCurrentLayout().restoreLabelLocations(rootRemember, rcxR, null);
       }
           
       if (rootSpecials != null) {
-        rcxR.getLayout().restoreSpecialLinks(rootSpecials);
+        rcxR.getCurrentLayout().restoreSpecialLinks(rootSpecials);
       }      
 
       if (support != null) {
-        dc = rcxR.lSrc.finishLayoutUndoTransaction(dc);
-        support.addEdit(new DatabaseChangeCmd(appState, rcxR, dc));
+        dc = rcxR.getLayoutSource().finishLayoutUndoTransaction(dc);
+        support.addEdit(new DatabaseChangeCmd(rcxR, dc));
       }
     } catch (AsynchExitRequestException ex) {
-      if (support != null) rcxR.lSrc.rollbackLayoutUndoTransaction(dc);
+      if (support != null) rcxR.getLayoutSource().rollbackLayoutUndoTransaction(dc);
       throw ex;
     }
     
     // Need to do this AFTER layout trans, since it does its own support changes 
-    ModificationCommands.repairNetModuleLinkPadsLocally(appState, padFixups, rcxR, false, support);      
+    ModificationCommands.repairNetModuleLinkPadsLocally(padFixups, rcxR, false, support);      
     return (rr);
   }
 }

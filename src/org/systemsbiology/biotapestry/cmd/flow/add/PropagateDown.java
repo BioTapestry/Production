@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,14 +34,13 @@ import java.util.TreeSet;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.DBNode;
@@ -58,6 +57,7 @@ import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.dialogs.GroupAssignmentDialog;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.Vector2D;
 
@@ -85,8 +85,7 @@ public class PropagateDown extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PropagateDown(BTState appState) {
-    super(appState);  
+  public PropagateDown() {  
     name = "command.PropagateDown";
     desc =  "command.PropagateDown";
     icon = "Propagate24.gif";
@@ -122,9 +121,10 @@ public class PropagateDown extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_);
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepState")) {
         next = ans.stepState();
@@ -144,45 +144,37 @@ public class PropagateDown extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  public static class StepState extends AbstractStepState {
+       
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepState";
     }
-    
+
     /***************************************************************************
     **
     ** Do the step
     */ 
        
     private DialogAndInProcessCmd stepState() {
-      Database db = appState_.getDB();
-      if (db.haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan(); 
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan(); 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("instructWarning.PropDownMessage"), 
                                       rMan.getString("instructWarning.PropDownTitle"),
                                       JOptionPane.WARNING_MESSAGE);
       }
-      String genomeKey = appState_.getGenome();
-      String layoutKey = appState_.getLayoutKey();    
-      Map<String, Intersection> selections = appState_.getSUPanel().getSelections();
+      Map<String, Intersection> selections = uics_.getSUPanel().getSelections();
       ArrayList<Intersection> toDown = new ArrayList<Intersection>(selections.values());
       if (toDown.size() > 0) {
-        propagateDown(appState_, genomeKey, layoutKey, toDown);
+        if (dacx_.currentGenomeIsRootDBGenome()) {
+          propagateDown(toDown);
+        }
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -192,25 +184,20 @@ public class PropagateDown extends AbstractControlFlow {
     ** Propagate the selected items down from the full genome to the VfA
     */  
    
-    private boolean propagateDown(BTState appState, String genomeKey, String layoutKey, List<Intersection> intersections) {
-  
-      //double offset = (double)width;
-      Database db = appState.getDB();
-      Genome genome = db.getGenome();
-      if (!genome.getID().equals(genomeKey)) {  // Only works for root genome
-        return (false);
+    private boolean propagateDown(List<Intersection> intersections) {
+ 
+      if (!dacx_.currentGenomeIsRootDBGenome()) {
+        throw new IllegalStateException();
       }
-      DataAccessContext rcxR = new DataAccessContext(appState, genome, db.getLayout(layoutKey));
       
+      Genome genome = dacx_.getCurrentGenome();
       //
-      // The first question is, which VfG to propagate to?  If there is only
+      // The first question is, which VfA to propagate to?  If there is only
       // one, there is no question.  If there is more than one, we need to
       // offer the user a dialog box.
       //
-  
-      
-      
-      Iterator<GenomeInstance> iit = rcxR.getGenomeSource().getInstanceIterator();
+
+      Iterator<GenomeInstance> iit = dacx_.getGenomeSource().getInstanceIterator();
       ArrayList<GenomeInstance> roots = new ArrayList<GenomeInstance>();
       while (iit.hasNext()) {
         GenomeInstance gi = iit.next();
@@ -223,9 +210,9 @@ public class PropagateDown extends AbstractControlFlow {
         throw new IllegalStateException();
       }
       
-      DataAccessContext rcxVfA;
+      StaticDataAccessContext rcxVfA;
       if (numRoots == 1) {
-        rcxVfA = new DataAccessContext(appState, roots.get(0), appState.getLayoutForGenomeKey(roots.get(0).getID()));
+        rcxVfA = new StaticDataAccessContext(dacx_, roots.get(0), dacx_.getLayoutSource().getLayoutForGenomeKey(roots.get(0).getID()));
       } else {
         int useIndex = 0;
         ArrayList<ChoiceMap> targsToSort = new ArrayList<ChoiceMap>();
@@ -237,16 +224,16 @@ public class PropagateDown extends AbstractControlFlow {
         Collections.sort(targsToSort);
         ChoiceMap[] targets = new ChoiceMap[numRoots];
         targsToSort.toArray(targets);
-        DownPropState down = appState.getDownProp();
+        DownPropState down = cmdSrc_.getDownProp();
         for (int i = 0; i < numRoots; i++) {
           ChoiceMap cmap = targsToSort.get(i);
           if ((down.lastGI != null) && ((GenomeInstance)cmap.item).getID().equals(down.lastGI)) {
             useIndex = i;
           }
         }
-        ResourceManager rMan = appState.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         ChoiceMap targetChoice = 
-          (ChoiceMap)JOptionPane.showInputDialog(appState.getTopFrame(), 
+          (ChoiceMap)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                                  rMan.getString("propagate.PropChoose"), 
                                                  rMan.getString("propagate.PropTitle"),     
                                                  JOptionPane.QUESTION_MESSAGE, null, 
@@ -256,7 +243,7 @@ public class PropagateDown extends AbstractControlFlow {
         }
         
         GenomeInstance target = (GenomeInstance)targetChoice.item;
-        rcxVfA = new DataAccessContext(appState, target, appState.getLayoutForGenomeKey(target.getID()));
+        rcxVfA = new StaticDataAccessContext(dacx_, target, dacx_.getLayoutSource().getLayoutForGenomeKey(target.getID()));
         down.lastGI = target.getID();
       }
       
@@ -284,17 +271,17 @@ public class PropagateDown extends AbstractControlFlow {
       }
   
       //
-      // Adding in a node may mess up existing net module linkages.  Record exisiting
+      // Adding in a node may mess up existing net module linkages.  Record existing
       // state before changing anything:
       //
       
-      Layout.PadNeedsForLayout padFixups = rcxVfA.getLayout().findAllNetModuleLinkPadRequirements(rcxVfA);    
+      Layout.PadNeedsForLayout padFixups = rcxVfA.getCurrentLayout().findAllNetModuleLinkPadRequirements(rcxVfA);    
       
       //
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState, "undo.propagateDown");      
+      UndoSupport support = uFac_.provideUndoSupport("undo.propagateDown", rcxVfA);      
       
       // Next step is to figure out what groups the nodes are going into.  If
       // the node already is instanced in a group of the VFG, it must go into a
@@ -306,12 +293,12 @@ public class PropagateDown extends AbstractControlFlow {
    
       Group selectedGroup = null;
       if ((nodeList.size() > 0) || (geneList.size() > 0)) {
-        Iterator<Group> grit = rcxVfA.getGenomeAsInstance().getGroupIterator();
+        Iterator<Group> grit = rcxVfA.getCurrentGenomeAsInstance().getGroupIterator();
         ArrayList<Group> groupList = new ArrayList<Group>();
         while (grit.hasNext()) {
           // Cut out groups that are subsets
           Group group = grit.next();
-          if (group.isASubset(rcxVfA.getGenomeAsInstance())) {
+          if (group.isASubset(rcxVfA.getCurrentGenomeAsInstance())) {
             continue;
           }
           boolean present = false;
@@ -348,22 +335,22 @@ public class PropagateDown extends AbstractControlFlow {
   
         Iterator<Node> git = geneList.iterator();
         Iterator<Node> nit = nodeList.iterator();
-        Rectangle approxBounds = rcxR.getLayout().getApproxBounds(nit, git, rcxR);
+        Rectangle approxBounds = dacx_.getCurrentLayout().getApproxBounds(nit, git, dacx_);
         git = geneList.iterator();
         nit = nodeList.iterator();      
-        Point2D defaultCenter = rcxR.getLayout().getApproxCenter(nit, git);
+        Point2D defaultCenter = dacx_.getCurrentLayout().getApproxCenter(nit, git);
         if (defaultCenter == null) {  // should not happen...
           defaultCenter = new Point2D.Double(approxBounds.getCenterX(), approxBounds.getCenterY());
         }
         
         Point2D directCenter = null;            
-        if (rcxVfA.getGenomeAsInstance().hasZeroOrOneInstancePerNodeAfterAdditions(geneList, nodeList)) {
+        if (rcxVfA.getCurrentGenomeAsInstance().hasZeroOrOneInstancePerNodeAfterAdditions(geneList, nodeList)) {
           directCenter = (Point2D)defaultCenter.clone();
         }      
         
         if (groupList.size() == 0) {
           GroupCreationSupport handler = 
-            new GroupCreationSupport(appState, rcxVfA, true, approxBounds,defaultCenter, directCenter);
+            new GroupCreationSupport(uics_, rcxVfA, true, approxBounds,defaultCenter, directCenter, uFac_);
           selectedGroup = handler.handleCreation(support);
           if (selectedGroup == null) {
             return (false);
@@ -372,13 +359,13 @@ public class PropagateDown extends AbstractControlFlow {
           newGroup = true;
           wasForcedDirect = handler.wasForcedDirect();
         } else {
-          GroupAssignmentDialog gad = new GroupAssignmentDialog(appState, rcxVfA, support,groupList, approxBounds, directCenter);
+          GroupAssignmentDialog gad = new GroupAssignmentDialog(uics_, rcxVfA, support,groupList, approxBounds, directCenter, uFac_);
           gad.setVisible(true);
           selectedGroupID = gad.getResult();
           if (selectedGroupID == null) {
             return (false);
           }
-          selectedGroup = rcxVfA.getGenomeAsInstance().getGroup(selectedGroupID);
+          selectedGroup = rcxVfA.getCurrentGenomeAsInstance().getGroup(selectedGroupID);
           newGroup = gad.isNewGroup();
         }
   
@@ -409,8 +396,8 @@ public class PropagateDown extends AbstractControlFlow {
           } else {
             git = geneList.iterator();
             nit = nodeList.iterator();
-            Point2D goingInCentroid = rcxR.getLayout().getApproxCenter(nit, git);        
-            GroupProperties gp = rcxVfA.getLayout().getGroupProperties(selectedGroupID);
+            Point2D goingInCentroid = dacx_.getCurrentLayout().getApproxCenter(nit, git);        
+            GroupProperties gp = rcxVfA.getCurrentLayout().getGroupProperties(selectedGroupID);
             if (goingInCentroid == null) {
               offset = new Vector2D(0.0, 0.0);
             } else {
@@ -418,8 +405,8 @@ public class PropagateDown extends AbstractControlFlow {
             }
           }
         } else {
-          Point2D existCentroid = rcxVfA.getLayout().getApproxCenterForGroup(rcxVfA.getGenomeAsInstance(), selectedGroupID, false);
-          Point2D existOrigCentroid = rcxR.getLayout().getApproxCenterForGroup(rcxVfA.getGenomeAsInstance(), selectedGroupID, true);
+          Point2D existCentroid = rcxVfA.getCurrentLayout().getApproxCenterForGroup(rcxVfA.getCurrentGenomeAsInstance(), selectedGroupID, false);
+          Point2D existOrigCentroid = dacx_.getCurrentLayout().getApproxCenterForGroup(rcxVfA.getCurrentGenomeAsInstance(), selectedGroupID, true);
           if ((existCentroid == null) || (existOrigCentroid == null)) {
             offset = new Vector2D(0.0, 0.0);
           } else {
@@ -435,12 +422,12 @@ public class PropagateDown extends AbstractControlFlow {
         Iterator<Node> glit = geneList.iterator();
         while (glit.hasNext()) {
           Gene gene = (Gene)glit.next();
-          PropagateSupport.propagateNode(appState, true, rcxVfA, (DBGene)gene, rcxR.getLayout(), offset, selectedGroup, support);
+          PropagateSupport.propagateNode(true, rcxVfA, (DBGene)gene, dacx_.getCurrentLayout(), offset, selectedGroup, support);
         }
         Iterator<Node> nlit = nodeList.iterator();
         while (nlit.hasNext()) {
           Node node = nlit.next();
-          PropagateSupport.propagateNode(appState, false, rcxVfA, (DBNode)node, rcxR.getLayout(), offset, selectedGroup, support);  
+          PropagateSupport.propagateNode(false, rcxVfA, (DBNode)node, dacx_.getCurrentLayout(), offset, selectedGroup, support);  
         }
       }
       
@@ -455,7 +442,7 @@ public class PropagateDown extends AbstractControlFlow {
         String id = inter.getObjectID();
         Linkage link = genome.getLinkage(id);
         if (link != null) {
-          dbLinkages.addAll(resolveLinkages(inter, rcxR.getLayout()));
+          dbLinkages.addAll(resolveLinkages(inter, dacx_.getCurrentLayout()));
         }
       }
       
@@ -464,7 +451,7 @@ public class PropagateDown extends AbstractControlFlow {
       //
       
       if (dbLinkages.size() == 0) {
-        AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+        AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
         support.finish();
         return (true);
       }
@@ -475,36 +462,36 @@ public class PropagateDown extends AbstractControlFlow {
       // tuple that is going to drive this operation.
       //
       
-      GroupTupleResult tupResult = calculateGroupTwoTuples(rcxVfA.getGenomeAsInstance(), dbLinkages, selectedGroup);
+      GroupTupleResult tupResult = calculateGroupTwoTuples(rcxVfA.getCurrentGenomeAsInstance(), dbLinkages, selectedGroup);
       Set<String> surviving = tupResult.survivingLinks;
   
       //
       // Lots of things can go wrong:
       //
       
-      ResourceManager rMan = appState.getRMan();    
+      ResourceManager rMan = dacx_.getRMan();    
       if (tupResult.result == GroupTupleResult.MISSING_ENDPOINT) {
-        JOptionPane.showMessageDialog(appState.getTopFrame(), rMan.getString("propagate.MissingEndpoint"), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("propagate.MissingEndpoint"), 
                                       rMan.getString("propagate.MissingEndpointTitle"),
                                       JOptionPane.ERROR_MESSAGE);
         if (surviving.isEmpty()) {
-          AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+          AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
           support.finish();
           return (false);  // But note that nodes have propagated!
         }
       } else if (tupResult.result == GroupTupleResult.NO_COMMON_GROUPINGS) {
-        JOptionPane.showMessageDialog(appState.getTopFrame(), rMan.getString("propagate.NoCommonGroupings"), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("propagate.NoCommonGroupings"), 
                                       rMan.getString("propagate.NoCommonGroupingsTitle"),
                                       JOptionPane.ERROR_MESSAGE);
-        AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+        AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
         support.finish();
         return (false);  // But note that nodes have propagated!      
       
       } else if (tupResult.result == GroupTupleResult.TARGET_GROUP_NOT_PRESENT) {
-        JOptionPane.showMessageDialog(appState.getTopFrame(), rMan.getString("propagate.TargetGroupNotPresent"), 
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("propagate.TargetGroupNotPresent"), 
                                       rMan.getString("propagate.TargetGroupNotPresentTitle"),
                                       JOptionPane.ERROR_MESSAGE);
-        AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+        AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
         support.finish();
         return (false);  // But note that nodes have propagated! 
       }
@@ -528,19 +515,19 @@ public class PropagateDown extends AbstractControlFlow {
         while (gtit.hasNext()) {
           GenomeInstance.GroupTuple gt = gtit.next();
           // FIX ME?? Message format
-          Group sg = rcxVfA.getGenomeAsInstance().getGroup(gt.getSourceGroup());
-          Group tg = rcxVfA.getGenomeAsInstance().getGroup(gt.getTargetGroup());        
+          Group sg = rcxVfA.getCurrentGenomeAsInstance().getGroup(gt.getSourceGroup());
+          Group tg = rcxVfA.getCurrentGenomeAsInstance().getGroup(gt.getTargetGroup());        
           String desc = sg.getName() + " --> " + tg.getName();
           values[count++] = new ChoiceMap(desc, gt);
         }   
         ChoiceMap tupleChoice = 
-          (ChoiceMap)JOptionPane.showInputDialog(appState.getTopFrame(), 
+          (ChoiceMap)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                                  rMan.getString("propagate.TupleChoose"), 
                                                  rMan.getString("propagate.TupleTitle"),     
                                                  JOptionPane.QUESTION_MESSAGE, null, 
                                                  values, values[0]);
         if (tupleChoice == null) {
-          AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+          AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
           support.finish();
           return (false); // But note that nodes have propagated!
         } else {
@@ -554,9 +541,9 @@ public class PropagateDown extends AbstractControlFlow {
         DBLinkage dbLink = (DBLinkage)genome.getLinkage(lnkKey);
         GenomeInstance.GroupTuple chosen = (oneChosen != null) ? oneChosen :
                                              (GenomeInstance.GroupTuple)tupResult.singleTuplePerLink.get(lnkKey);
-        PropagateSupport.propagateLinkage(appState, rcxVfA, dbLink, rcxR, chosen, support);
+        PropagateSupport.propagateLinkage(rcxVfA, dbLink, dacx_, chosen, support);
       }
-      AddCommands.finishNetModPadFixups(appState, null, null, rcxVfA, padFixups, support);
+      AddCommands.finishNetModPadFixups(null, null, rcxVfA, padFixups, support);
       support.finish();
       return (true);
     }
@@ -671,9 +658,6 @@ public class PropagateDown extends AbstractControlFlow {
   
       return (new GroupTupleResult(resultVal, retval, surviving, null));
     }
-   
-    
-    
   }
 
   /***************************************************************************

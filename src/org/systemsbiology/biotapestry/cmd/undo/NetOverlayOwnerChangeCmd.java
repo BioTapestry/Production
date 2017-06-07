@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.NetworkOverlay;
@@ -53,8 +52,8 @@ public class NetOverlayOwnerChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public NetOverlayOwnerChangeCmd(BTState appState, DataAccessContext dacx, NetworkOverlayOwnerChange restore) {
-    super(appState, dacx);
+  public NetOverlayOwnerChangeCmd(DataAccessContext dacx, NetworkOverlayOwnerChange restore) {
+    super(dacx);
     restore_ = restore;
   }
 

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -189,6 +189,7 @@ public interface INodeRenderer extends IRenderer {
   
   public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, 
                                                      Point2D pt, DataAccessContext icx);
+
   
   /***************************************************************************
   **

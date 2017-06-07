@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,13 +39,12 @@ import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Gene;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.util.Vector2D;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.util.AsynchExitRequestException;
@@ -83,17 +82,17 @@ public class HaloLayout implements SpecialtyLayout {
       this.tag_ = tag;  
     }
      
-    public EnumChoiceContent<StartSeed> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<StartSeed>(appState.getRMan().getString("haloLayout." + tag_), this));
+    public EnumChoiceContent<StartSeed> generateCombo(StaticDataAccessContext dacx) {
+      return (new EnumChoiceContent<StartSeed>(dacx.getRMan().getString("haloLayout." + tag_), this));
     }
    
-    public static Vector<EnumChoiceContent<StartSeed>> getChoices(BTState appState, boolean haveSelected) {
+    public static Vector<EnumChoiceContent<StartSeed>> getChoices(StaticDataAccessContext dacx, boolean haveSelected) {
       Vector<EnumChoiceContent<StartSeed>> retval = new Vector<EnumChoiceContent<StartSeed>>();
       for (StartSeed ss: values()) {
         if ((ss == SELECTED_START) && !haveSelected) {
           continue;
         }
-        retval.add(ss.generateCombo(appState));    
+        retval.add(ss.generateCombo(dacx));    
       }
       return (retval);
     }
@@ -127,7 +126,6 @@ public class HaloLayout implements SpecialtyLayout {
   //
   ////////////////////////////////////////////////////////////////////////////    
    
-  private BTState appState_;
   private SpecialtyLayoutData sld_;
   
   //
@@ -149,6 +147,7 @@ public class HaloLayout implements SpecialtyLayout {
   private List<GeneAndSatelliteCluster> termClusters_; 
   private Set<String> geneSources_;
   private Set<String> nonGeneSources_;
+  private StaticDataAccessContext preForkRcx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -161,9 +160,9 @@ public class HaloLayout implements SpecialtyLayout {
   ** Constructor
   */
 
-  public HaloLayout(BTState appState) {
-    appState_ = appState;
-  }  
+  public HaloLayout(StaticDataAccessContext rcx) {
+    preForkRcx_ = rcx;
+  }
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -177,7 +176,7 @@ public class HaloLayout implements SpecialtyLayout {
   */
   
   public SpecialtyLayout forkForSubset(SpecialtyLayoutData sld) {
-    HaloLayout retval = new HaloLayout(appState_);
+    HaloLayout retval = new HaloLayout(preForkRcx_);
     retval.sld_ = sld;
     return (retval);
   }
@@ -224,16 +223,16 @@ public class HaloLayout implements SpecialtyLayout {
   ** Answer if the network topology can be handled by this layout
   */
   
-  public int topologyIsHandled(DataAccessContext rcx) {
+  public int topologyIsHandled(StaticDataAccessContext rcx) {
     
-    Genome genome = rcx.getGenome();
-    GenomeSubset subset = new GenomeSubset(appState_, genome.getID(), new Point2D.Double());  
-    List<GeneAndSatelliteCluster> termClusters = GeneAndSatelliteCluster.findTerminalTargets(appState_, subset, false, UiUtil.GRID_SIZE, false); // last two args do not matter here...
+    GenomeSubset subset = new GenomeSubset(rcx, new Point2D.Double());  
+    List<GeneAndSatelliteCluster> termClusters = GeneAndSatelliteCluster.findTerminalTargets(subset, false, UiUtil.GRID_SIZE, false); // last two args do not matter here...
    
     Map<String, Point2D> fakeNolo = new HashMap<String, Point2D>();
+    Genome genome = rcx.getCurrentGenome();
     InvertedSrcTrg ist = new InvertedSrcTrg(genome);
     Map<String, PadCalculatorToo.PadResult> fakePC= new HashMap<String, PadCalculatorToo.PadResult>();
-    SpecialtyLayoutEngine.NodePlaceSupport nps = new SpecialtyLayoutEngine.NodePlaceSupport(genome, rcx.getLayout(), fakeNolo, fakePC, ist);
+    SpecialtyLayoutEngine.NodePlaceSupport nps = new SpecialtyLayoutEngine.NodePlaceSupport(genome, rcx.getCurrentLayout(), fakeNolo, fakePC, ist);
     
     GeneAndSatelliteCluster.fillTargetClusters(termClusters, nps, rcx);
     
@@ -273,9 +272,8 @@ public class HaloLayout implements SpecialtyLayout {
     // "KEEP COLORS" because we will be providing a pre-filled map to use:
     sld_.results.colorStrategy = ColorTypes.KEEP_COLORS;
     HaloLayoutParams hlParams = (HaloLayoutParams)sld_.param;
-    Genome baseGenome = sld_.genome;
      
-    double traceOffset = (double)hlParams.traceMult * UiUtil.GRID_SIZE;
+    double traceOffset = hlParams.traceMult * UiUtil.GRID_SIZE;
     
     //
     // Get the listing of terminal targets, gene sources, and non-gene sources.
@@ -283,7 +281,7 @@ public class HaloLayout implements SpecialtyLayout {
     // NOTE: The cluster map will include singleton nodes!
     //
  
-    termClusters_ = GeneAndSatelliteCluster.findTerminalTargets(sld_.appState, sld_.subset, false, traceOffset, hlParams.textToo);
+    termClusters_ = GeneAndSatelliteCluster.findTerminalTargets(sld_.subset, false, traceOffset, hlParams.textToo);
     GeneAndSatelliteCluster.fillTargetClusters(termClusters_, sld_.nps, sld_.rcx);
     HashMap<String, GeneAndSatelliteCluster> clusterMap = new HashMap<String, GeneAndSatelliteCluster>();
     int numClust = termClusters_.size();
@@ -295,17 +293,17 @@ public class HaloLayout implements SpecialtyLayout {
       throw new AsynchExitRequestException();
     }
    
-    geneSources_ = findGeneSources(baseGenome);
+    geneSources_ = findGeneSources(sld_.genome);
 
-    nonGeneSources_ = findNonGeneSources(baseGenome);
+    nonGeneSources_ = findNonGeneSources(sld_.genome);
     Iterator<String> ngsit = nonGeneSources_.iterator();
     while (ngsit.hasNext()) {
       String nonGene = ngsit.next();
-      calcNonGeneSrcPadChanges(nonGene, baseGenome, sld_.results.padChanges);
+      calcNonGeneSrcPadChanges(nonGene, sld_.genome, sld_.results.padChanges);
     }
     HashMap<String, Integer> nonGeneSizeMap = new HashMap<String, Integer>();
     
-    DataAccessContext bgc = new DataAccessContext(sld_.rcx, baseGenome, sld_.rcx.getLayout());
+    StaticDataAccessContext bgc = new StaticDataAccessContext(sld_.rcx, sld_.genome, sld_.rcx.getCurrentLayout());
     nonGeneSizes(nonGeneSources_, bgc, nonGeneSizeMap);
     
     double traceWidth = geneSources_.size() * TRACE_OFFSET_X_;
@@ -407,7 +405,7 @@ public class HaloLayout implements SpecialtyLayout {
     // Assign source leads based on this ordering
     //
     
-    List<String> srcLeads = orderInitialSourceLeads(baseGenome, clusterMap, clustCounts, sourceCounts, nonGeneSources_);
+    List<String> srcLeads = orderInitialSourceLeads(clusterMap, clustCounts, sourceCounts, nonGeneSources_);
     int numCurr = currClusters.size();
     for (int i = 0; i < numCurr; i++) {
       GeneAndSatelliteCluster clust = currClusters.get(i);
@@ -425,7 +423,7 @@ public class HaloLayout implements SpecialtyLayout {
     //
     
     sourceToTrace_ = new HashMap<String, Integer>();
-    HashMap currentSourceToTrace = new HashMap();
+    HashMap<String, Integer> currentSourceToTrace = new HashMap<String, Integer>();
     TreeMap<Integer, String> traceToSource = new TreeMap<Integer, String>();
     Integer firstTrace = new Integer(0);
     sourceToTrace_.put(startSrc, firstTrace);
@@ -464,11 +462,11 @@ public class HaloLayout implements SpecialtyLayout {
     HashMap<String, Integer> srcLocs = new HashMap<String, Integer>();
     tracePaddingFromSources(srcs, 0, geneSrcToTraceNumberPerClusterRun_, specialTracePads, srcLocs);   
     
-    placeTargetClusters(center, clustCounts, 0, clusterMap, clusterRunSpecialPads_, runNum, baseGenome, sld_.lo, sld_.results.nodeLocations, runStart, traceStart);
+    placeTargetClusters(center, clustCounts, 0, clusterMap, clusterRunSpecialPads_, runNum, runStart, traceStart);
     clusterRunStarts_.put(new Integer(0), traceStart);
     traceBoundary_ = (Point2D)traceStart.clone();
 
-    DataAccessContext bgc4 = new DataAccessContext(sld_.rcx, baseGenome, sld_.rcx.getLayout());
+    StaticDataAccessContext bgc4 = new StaticDataAccessContext(sld_.rcx, sld_.genome, sld_.rcx.getCurrentLayout());
     placeSources(srcs, 0, runStart, traceWidth,
                  geneSrcToTraceNumberPerClusterRun_, clusterRunStarts_, 
                  srcLocs, clusterRunSpecialPads_, bgc4, sld_.results.nodeLocations);
@@ -478,7 +476,7 @@ public class HaloLayout implements SpecialtyLayout {
       throw new AsynchExitRequestException();
     }    
 
-    Map remainingClusters = tossPlacedClusters(currClusters, allSrcToClusters);    
+    Map<String, List<GeneAndSatelliteCluster>> remainingClusters = tossPlacedClusters(currClusters, allSrcToClusters);    
     int currTrace = 1; // 0 is placed
     currClustRun++;
     
@@ -487,10 +485,10 @@ public class HaloLayout implements SpecialtyLayout {
     //
  
     while (!remainingClusters.isEmpty()) {
-      Integer maxTrace = (Integer)traceToSource.lastKey();
+      Integer maxTrace = traceToSource.lastKey();
       String currSource = null;
       if (maxTrace.intValue() >= currTrace) {
-        currSource = (String)traceToSource.get(new Integer(currTrace));
+        currSource = traceToSource.get(Integer.valueOf(currTrace));
       } else {
         switch (hlParams.startType) {
           case GREEDY_START:
@@ -505,21 +503,21 @@ public class HaloLayout implements SpecialtyLayout {
         }
       }
       remainingSrcs.remove(currSource);  
-      List nextClusters = (List)remainingClusters.get(currSource);
+      List<GeneAndSatelliteCluster> nextClusters = remainingClusters.get(currSource);
       if ((nextClusters != null) && !nextClusters.isEmpty()) {
         srcLeads = orderNewSources(nextClusters, remainingClusters, sourceToTrace_);
         srcs.clear();
         srcs.addAll(srcLeads);
         srcs.removeAll(nonGeneSources_);  // _only_ gene sources 
         assignSourceTraces(sourceToTrace_, traceToSource, currentSourceToTrace, srcLeads, nonGeneSizeMap, nextClusters, remainingClusters);
-        clustCounts = new ArrayList();
-        sourceCounts = new ArrayList();        
-        orderFollowingTargetClusters(nextClusters, remainingClusters, currentSourceToTrace, clustCounts);
+        clustCounts = new ArrayList<TaggedByCount>();
+        sourceCounts = new ArrayList<TaggedByCount>();        
+        orderFollowingTargetClusters(nextClusters, currentSourceToTrace, clustCounts);
         recordClusterRunNumber(clusterToClusterRunNumber_, clustCounts, currClustRun);
-        srcLeads = orderFollowingSourceLeads(baseGenome, clusterMap, clustCounts, nonGeneSources_);
+        srcLeads = orderFollowingSourceLeads(clusterMap, clustCounts, nonGeneSources_);
         int numNext = nextClusters.size();
         for (int i = 0; i < numNext; i++) {
-          GeneAndSatelliteCluster clust = (GeneAndSatelliteCluster)nextClusters.get(i);
+          GeneAndSatelliteCluster clust = nextClusters.get(i);
           clust.calcPadChanges(sld_.subset, srcLeads, sld_.nps, sld_.results.lengthChanges, sld_.results.extraGrowthChanges);
         }
         recordTraceForClusterRun(geneSrcToTraceNumberPerClusterRun_, 
@@ -527,7 +525,7 @@ public class HaloLayout implements SpecialtyLayout {
                                  srcLeads, currClustRun, nonGeneSources_);
         runNum = sourcesInboundToRun(nextClusters);
         
-        specialTracePads = new HashMap();
+        specialTracePads = new HashMap<Integer, Integer>();
         Integer ccRunObj = new Integer(currClustRun);
         clusterRunSpecialPads_.put(ccRunObj, specialTracePads);
         srcLocs.clear();
@@ -537,10 +535,9 @@ public class HaloLayout implements SpecialtyLayout {
         runStart = new Point2D.Double();
         traceStart = new Point2D.Double();
         placeTargetClusters(lastRunStart, clustCounts, currClustRun, clusterMap, 
-                            clusterRunSpecialPads_, runNum, baseGenome, sld_.lo, 
-                            sld_.results.nodeLocations, runStart, traceStart);
+                            clusterRunSpecialPads_, runNum, runStart, traceStart);
         clusterRunStarts_.put(ccRunObj, traceStart);
-        DataAccessContext bgc3 = new DataAccessContext(sld_.rcx, baseGenome, sld_.rcx.getLayout());
+        StaticDataAccessContext bgc3 = new StaticDataAccessContext(sld_.rcx, sld_.genome, sld_.rcx.getCurrentLayout());
         placeSources(srcs, currClustRun++, traceBoundary_, traceWidth,
                      geneSrcToTraceNumberPerClusterRun_, clusterRunStarts_, 
                      srcLocs, clusterRunSpecialPads_,
@@ -554,8 +551,8 @@ public class HaloLayout implements SpecialtyLayout {
       currTrace++;
     }
     
-    DataAccessContext bgc2 = new DataAccessContext(sld_.rcx, baseGenome, sld_.rcx.getLayout());
-    placeSingletonClusters(runStart, singletonClusters, clusterMap, bgc2, sld_.results.nodeLocations);
+    StaticDataAccessContext bgc2 = new StaticDataAccessContext(sld_.rcx, sld_.genome, sld_.rcx.getCurrentLayout());
+    placeSingletonClusters(runStart, singletonClusters, clusterMap, bgc2);
 
     
     //
@@ -566,7 +563,7 @@ public class HaloLayout implements SpecialtyLayout {
     if (!traceToSource.isEmpty()) {
       Integer minTrace = traceToSource.firstKey();
       Integer maxTrace = traceToSource.lastKey();
-      double actualWidth = ((double)(maxTrace.intValue() - minTrace.intValue())) * TRACE_OFFSET_X_;
+      double actualWidth = (maxTrace.intValue() - minTrace.intValue()) * TRACE_OFFSET_X_;
       double traceFixup = traceWidth - actualWidth - (2.0 * TRACE_OFFSET_X_);
       if (traceFixup != 0.0) {
         Iterator<String> pit = sld_.results.nodeLocations.keySet().iterator();
@@ -611,23 +608,19 @@ public class HaloLayout implements SpecialtyLayout {
                                                                    clusterRunSpecialPads_,
                                                                    clusterToClusterRunNumber_,
                                                                    geneSrcToTraceNumberPerClusterRun_,
-                                                                   sourceToTrace_, traceBoundary_, 
-                                                                   sld_.genome, sld_.lo,
-                                                                   sld_.results.nodeLocations, sld_.results.padChanges);
+                                                                   sourceToTrace_, traceBoundary_);
       sld_.results.setLinkPointsForSrc(srcID, spec);
     }
     
-    Iterator ngstcit = nonGeneSrcToClusters_.keySet().iterator();
+    Iterator<String> ngstcit = nonGeneSrcToClusters_.keySet().iterator();
     while (ngstcit.hasNext()) {
-      String srcID = (String)ngstcit.next();
+      String srcID = ngstcit.next();
       SpecialtyLayoutLinkData spec = buildLinkSegmentsToClusters(srcID, nonGeneSrcToClusters_,
                                                                    clusterRunStarts_,
                                                                    clusterRunSpecialPads_,
                                                                    clusterToClusterRunNumber_,
                                                                    nonGeneSrcToTraceNumberPerClusterRun_,
-                                                                   sourceToTrace_, traceBoundary_, 
-                                                                   sld_.genome, sld_.lo,
-                                                                   sld_.results.nodeLocations, sld_.results.padChanges);
+                                                                   sourceToTrace_, traceBoundary_);
       sld_.results.setLinkPointsForSrc(srcID, spec);
     } 
     
@@ -665,8 +658,8 @@ public class HaloLayout implements SpecialtyLayout {
   ** Get the parameter dialog
   */
   
-  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(Genome genome, String selectedID, boolean forSubset) {
-    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(appState_, genome,  
+  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(UIComponentSource uics, Genome genome, String selectedID, boolean forSubset) {
+    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(uics, preForkRcx_, genome,  
                                                                   SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType.HALO, 
                                                                   selectedID, this));
   }
@@ -783,22 +776,23 @@ public class HaloLayout implements SpecialtyLayout {
   ** Assign colors
   */
   
-  private void assignColors(Map srcToTraceNumberPerClusterRun,
-                            Map nonGeneSrcToTraceNumberPerClusterRun,
-                            Genome genome, List clusters, 
-                            Set geneSources, Set nonGeneSources, Map placement,
-                            Map nodeColors, Map linkColors) {
+  private void assignColors(Map<String, Map<Integer, Integer>> srcToTraceNumberPerClusterRun,
+                            Map<String, Map<Integer, Integer>> nonGeneSrcToTraceNumberPerClusterRun,
+                            Genome genome, List<GeneAndSatelliteCluster> clusters, 
+                            Set<String> geneSources, Set<String> nonGeneSources, Map<String, Point2D> placement,
+                            Map<String, String> nodeColors, Map<String, String> linkColors) {
     
     //
     // Need to build up a top-down list of sources
     //
     
-    ArrayList srcTopToBottom = new ArrayList();
-    ArrayList junkList = new ArrayList();
-    Iterator git = geneSources.iterator();
+    ColorResolver mb = sld_.rcx.getColorResolver();
+    ArrayList<TaggedByCount> srcTopToBottom = new ArrayList<TaggedByCount>();
+    ArrayList<String> junkList = new ArrayList<String>();
+    Iterator<String> git = geneSources.iterator();
     while (git.hasNext()) {
-      String gene = (String)git.next();
-      Point2D ptLoc = (Point2D)placement.get(gene);
+      String gene = git.next();
+      Point2D ptLoc = placement.get(gene);
       if (ptLoc == null) {  // FIX ME! If network does not match inferelator criteria, some srcs not placed.
         junkList.add(gene);
         continue;
@@ -813,11 +807,11 @@ public class HaloLayout implements SpecialtyLayout {
     //
     
     if (!srcTopToBottom.isEmpty()) {
-      TaggedByCount genetc = (TaggedByCount)srcTopToBottom.get(0);
+      TaggedByCount genetc = srcTopToBottom.get(0);
       int newMin = genetc.count - 1;
       int numJ = junkList.size();
       for (int i = 0; i < numJ; i++) {
-        String gene = (String)junkList.get(i);
+        String gene = junkList.get(i);
         TaggedByCount tbc = new TaggedByCount(gene, newMin);
         srcTopToBottom.add(0, tbc);
       }
@@ -827,16 +821,16 @@ public class HaloLayout implements SpecialtyLayout {
     // Need to build a min/max cluster# map for each source.
     //    
       
-    HashMap minMaxClustPerSrc = new HashMap();
-    Iterator sit = srcToTraceNumberPerClusterRun.keySet().iterator();
+    HashMap<String, MinMax> minMaxClustPerSrc = new HashMap<String, MinMax>();
+    Iterator<String> sit = srcToTraceNumberPerClusterRun.keySet().iterator();
     while (sit.hasNext()) {
-      String srcID = (String)sit.next();
+      String srcID = sit.next();
       MinMax mm = new MinMax(Integer.MAX_VALUE, Integer.MIN_VALUE);
       minMaxClustPerSrc.put(srcID, mm);
-      Map perSrc = (Map)srcToTraceNumberPerClusterRun.get(srcID);
-      Iterator psit = perSrc.keySet().iterator();
+      Map<Integer, Integer> perSrc = srcToTraceNumberPerClusterRun.get(srcID);
+      Iterator<Integer> psit = perSrc.keySet().iterator();
       while (psit.hasNext()) {
-        Integer currClust = (Integer)psit.next();
+        Integer currClust = psit.next();
         int clustNum = currClust.intValue();
         if (clustNum < mm.min) {
           mm.min = clustNum;
@@ -849,15 +843,15 @@ public class HaloLayout implements SpecialtyLayout {
     
     // Add in same info for non-gene sources:
     
-    Iterator ngsit = nonGeneSrcToTraceNumberPerClusterRun.keySet().iterator();
+    Iterator<String> ngsit = nonGeneSrcToTraceNumberPerClusterRun.keySet().iterator();
     while (ngsit.hasNext()) {
-      String srcID = (String)ngsit.next();
+      String srcID = ngsit.next();
       MinMax mm = new MinMax(Integer.MAX_VALUE, Integer.MIN_VALUE);
       minMaxClustPerSrc.put(srcID, mm);
-      Map perSrc = (Map)nonGeneSrcToTraceNumberPerClusterRun.get(srcID);
-      Iterator psit = perSrc.keySet().iterator();
+      Map<Integer, Integer> perSrc = nonGeneSrcToTraceNumberPerClusterRun.get(srcID);
+      Iterator<Integer> psit = perSrc.keySet().iterator();
       while (psit.hasNext()) {
-        Integer currClust = (Integer)psit.next();
+        Integer currClust = psit.next();
         int clustNum = currClust.intValue();
         if (clustNum < mm.min) {
           mm.min = clustNum;
@@ -868,22 +862,21 @@ public class HaloLayout implements SpecialtyLayout {
       }
     }
     
-    Database db = sld_.appState.getDB();
-    int numCol = db.getNumColors();
+    int numCol = mb.getNumColors();
     
-    HashMap minMaxClustPerColor = new HashMap();
+    HashMap<String, MinMax> minMaxClustPerColor = new HashMap<String, MinMax>();
     
     int currCol = 0;
-    Iterator ngit = nonGeneSources.iterator();
+    Iterator<String> ngit = nonGeneSources.iterator();
     while (ngit.hasNext()) {
-      String nonGene = (String)ngit.next();
-      MinMax mms = (MinMax)minMaxClustPerSrc.get(nonGene);
+      String nonGene = ngit.next();
+      MinMax mms = minMaxClustPerSrc.get(nonGene);
       // Another hack for non-standard sources:
       if (mms == null) {
         mms = new MinMax(0, 0);
       }
-      String nextCol = db.getGeneColor(currCol);
-      MinMax mmc = (MinMax)minMaxClustPerColor.get(nextCol);
+      String nextCol = mb.getGeneColor(currCol);
+      MinMax mmc = minMaxClustPerColor.get(nextCol);
       if ((mmc == null) || (mms.min > mmc.max)) {
         nodeColors.put(nonGene, nextCol);
         minMaxClustPerColor.put(nextCol, mms);        
@@ -896,15 +889,15 @@ public class HaloLayout implements SpecialtyLayout {
      
     int numSrc = srcTopToBottom.size();
     for (int i = 0; i < numSrc; i++) {
-      TaggedByCount gene = (TaggedByCount)srcTopToBottom.get(i);
+      TaggedByCount gene = srcTopToBottom.get(i);
       String srcID = gene.id;
-      MinMax mms = (MinMax)minMaxClustPerSrc.get(srcID);
+      MinMax mms = minMaxClustPerSrc.get(srcID);
       // Another hack for non-standard sources:
       if (mms == null) {
         mms = new MinMax(0, 0);
       }
-      String nextCol = db.getGeneColor(currCol);
-      MinMax mmc = (MinMax)minMaxClustPerColor.get(nextCol);
+      String nextCol = mb.getGeneColor(currCol);
+      MinMax mmc = minMaxClustPerColor.get(nextCol);
       if ((mmc == null) || (mms.min > mmc.max)) {
         nodeColors.put(srcID, nextCol);
         minMaxClustPerColor.put(nextCol, mms);        
@@ -918,8 +911,8 @@ public class HaloLayout implements SpecialtyLayout {
       
       int checkCol = (currCol + 1) % numCol;
       for (int j = 0; j < (numCol - 1); j++) {
-        nextCol = db.getGeneColor(checkCol);
-        mmc = (MinMax)minMaxClustPerColor.get(nextCol);
+        nextCol = mb.getGeneColor(checkCol);
+        mmc = minMaxClustPerColor.get(nextCol);
         if ((mmc == null) || (mms.min > mmc.max)) {
           nodeColors.put(srcID, nextCol);
           minMaxClustPerColor.put(nextCol, mms);        
@@ -934,7 +927,7 @@ public class HaloLayout implements SpecialtyLayout {
       // 
      
       if (checkCol == currCol) {
-        nextCol = db.getGeneColor(checkCol);
+        nextCol = mb.getGeneColor(checkCol);
         nodeColors.put(srcID, nextCol);
         MinMax mmCombo = new MinMax(mmc.min, mms.max);
         minMaxClustPerColor.put(nextCol, mmCombo);        
@@ -942,19 +935,19 @@ public class HaloLayout implements SpecialtyLayout {
       }
     }
     
-    Iterator lit = genome.getLinkageIterator();
+    Iterator<Linkage> lit = genome.getLinkageIterator();
     while (lit.hasNext()) {
-      Linkage link = (Linkage)lit.next();
+      Linkage link = lit.next();
       String lsource = link.getSource();
       if (geneSources.contains(lsource) || nonGeneSources.contains(lsource)) {
-        String color = (String)nodeColors.get(lsource);
+        String color = nodeColors.get(lsource);
         linkColors.put(link.getID(), color);
       }
     }
     
     int numClust = clusters.size();
     for (int i = 0; i < numClust; i++) {
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusters.get(i);
+      GeneAndSatelliteCluster tc = clusters.get(i);
       tc.colorTheCluster(genome, nodeColors, linkColors);
     }
     return;   
@@ -1004,9 +997,9 @@ public class HaloLayout implements SpecialtyLayout {
   */
   
   
-  private Point2D sourcePos(String srcID, Point2D basePos, DataAccessContext rcx) { 
-    INodeRenderer rend = rcx.getLayout().getNodeProperties(srcID).getRenderer();
-    Node srcNode = rcx.getGenome().getNode(srcID);
+  private Point2D sourcePos(String srcID, Point2D basePos, StaticDataAccessContext rcx) { 
+    INodeRenderer rend = rcx.getCurrentLayout().getNodeProperties(srcID).getRenderer();
+    Node srcNode = rcx.getCurrentGenome().getNode(srcID);
 
     Vector2D offset = rend.getLaunchPadOffset(0, srcNode, rcx);
     offset.scale(-1.0);
@@ -1020,7 +1013,7 @@ public class HaloLayout implements SpecialtyLayout {
   ** Calculate size of all non-genes, in terms of runs
   */
   
-  private void nonGeneSizes(Set<String> ngSrcID, DataAccessContext rcx, Map<String, Integer> sizeMap) {
+  private void nonGeneSizes(Set<String> ngSrcID, StaticDataAccessContext rcx, Map<String, Integer> sizeMap) {
     Iterator<String> ngit = ngSrcID.iterator();
     while (ngit.hasNext()) {
       String nonGene = ngit.next();
@@ -1037,12 +1030,12 @@ public class HaloLayout implements SpecialtyLayout {
   ** Calculate size of a non-gene, in terms of runs
   */
   
-  private int nonGeneSize(String srcID, DataAccessContext rcx) { 
-    INodeRenderer rend = rcx.getLayout().getNodeProperties(srcID).getRenderer();
-    Node srcNode = rcx.getGenome().getNode(srcID);
+  private int nonGeneSize(String srcID, StaticDataAccessContext rcx) { 
+    INodeRenderer rend = rcx.getCurrentLayout().getNodeProperties(srcID).getRenderer();
+    Node srcNode = rcx.getCurrentGenome().getNode(srcID);
     // not placed yet, so absolute location is bogus, but size is not:
     Rectangle bounds  = rend.getBounds(srcNode, rcx, null);   
-    int numTracks = (int)Math.ceil((((double)bounds.width) / 2.0) / TRACE_OFFSET_X_);
+    int numTracks = (int)Math.ceil((bounds.width / 2.0) / TRACE_OFFSET_X_);
     return (numTracks);
   }  
   
@@ -1109,21 +1102,22 @@ public class HaloLayout implements SpecialtyLayout {
   ** Place sources
   */
   
-  private void placeSources(Set srcs, int clusterRun, Point2D basePt, double traceOffset,
-                            Map srcToTraceNumberPerClusterRun, 
-                            Map<Integer, Point2D> clusterRunStarts, Map srcLocs, Map clusterRunSpecialPads,
-                            DataAccessContext rcx,
-                            Map placement) {
+  private void placeSources(Set<String> srcs, int clusterRun, Point2D basePt, double traceOffset,
+                            Map<String, Map<Integer, Integer>> srcToTraceNumberPerClusterRun, 
+                            Map<Integer, Point2D> clusterRunStarts, Map<String, Integer> srcLocs, 
+                            Map<Integer, Map<Integer, Integer>> clusterRunSpecialPads,
+                            StaticDataAccessContext rcx,
+                            Map<String, Point2D> placement) {
     double startX = basePt.getX() - traceOffset;
     
     Integer crObj = new Integer(clusterRun);
-    Iterator sit = srcs.iterator();
+    Iterator<String> sit = srcs.iterator();
     while (sit.hasNext()) {
-      String srcID = (String)sit.next();
-      Map perSrc = (Map)srcToTraceNumberPerClusterRun.get(srcID);
-      Integer traceNum = (Integer)perSrc.get(crObj);
+      String srcID = sit.next();
+      Map<Integer, Integer> perSrc = srcToTraceNumberPerClusterRun.get(srcID);
+      Integer traceNum = perSrc.get(crObj);
       double runY = getClusterRunTraceY(clusterRunStarts, clusterRunSpecialPads, clusterRun, traceNum.intValue());
-      Integer xOff = (Integer)srcLocs.get(srcID);
+      Integer xOff = srcLocs.get(srcID);
       double srcX = startX + (xOff.doubleValue() * SRC_OFFSET_X_);
       Point2D pt = new Point2D.Double(srcX, runY);
       Point2D ptSrc = sourcePos(srcID, pt, rcx);       
@@ -1138,15 +1132,15 @@ public class HaloLayout implements SpecialtyLayout {
   */
   
   private void placeNonGeneSources(Point2D basePt, Point2D traceBoundary,
-                                   Map nonGeneSrcToTraceNumberPerClusterRun, 
-                                   Map sourceToTrace, 
-                                   Map placement) {
+                                   Map<String, Map<Integer, Integer>> nonGeneSrcToTraceNumberPerClusterRun, 
+                                   Map<String, Integer> sourceToTrace, 
+                                   Map<String, Point2D> placement) {
     
-    Iterator sit = nonGeneSrcToTraceNumberPerClusterRun.keySet().iterator();
+    Iterator<String> sit = nonGeneSrcToTraceNumberPerClusterRun.keySet().iterator();
     while (sit.hasNext()) {
-      String srcID = (String)sit.next();
-      Point2D placePt = (Point2D)placement.get(srcID);
-      Integer trace = (Integer)sourceToTrace.get(srcID);
+      String srcID = sit.next();
+      Point2D placePt = placement.get(srcID);
+      Integer trace = sourceToTrace.get(srcID);
       if ((placePt == null) && (trace != null)) {
         double traceX = getMainTraceX(srcID, sourceToTrace, traceBoundary).doubleValue();
         placePt = new Point2D.Double(traceX, basePt.getY());
@@ -1162,17 +1156,17 @@ public class HaloLayout implements SpecialtyLayout {
   ** Place targetClusters
   */
   
-  private void placeTargetClusters(Point2D startPoint, List clustCounts, int runNum,
-                                   Map clusterMap, Map clusterRunSpecialPads, int traceCount,
-                                   Genome genome, Layout lo,
-                                   Map placement, Point2D runStart, Point2D traceStart) {
+  private void placeTargetClusters(Point2D startPoint, List<TaggedByCount> clustCounts, int runNum,
+                                   Map<String, GeneAndSatelliteCluster> clusterMap, 
+                                   Map<Integer, Map<Integer, Integer>> clusterRunSpecialPads, 
+                                   int traceCount, Point2D runStart, Point2D traceStart) {
     double startX = startPoint.getX();
 
     double maxNodeSpace = (FIRST_ROW_PAD_ * UiUtil.GRID_SIZE);  // Minimum space needed...
     int num = clustCounts.size();
     for (int i = 0; i < num; i++) {    
-      TaggedByCount tbc = (TaggedByCount)clustCounts.get(i);
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(tbc.id);
+      TaggedByCount tbc = clustCounts.get(i);
+      GeneAndSatelliteCluster tc = clusterMap.get(tbc.id);
       GeneAndSatelliteCluster.ClusterDims oh = tc.getClusterDims(sld_.nps, sld_.rcx);
       double needs = oh.getFullHeightIncrement();
       if (needs > maxNodeSpace) {
@@ -1187,9 +1181,9 @@ public class HaloLayout implements SpecialtyLayout {
     
     int tcount = 0;      
     for (int i = 0; i < num; i++) {    
-      TaggedByCount tbc = (TaggedByCount)clustCounts.get(i);
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(tbc.id);
-      Point2D base = new Point2D.Double(startX + ((double)tcount * OFFSET_X_), traceY);
+      TaggedByCount tbc = clustCounts.get(i);
+      GeneAndSatelliteCluster tc = clusterMap.get(tbc.id);
+      Point2D base = new Point2D.Double(startX + (tcount * OFFSET_X_), traceY);
       tc.locateAsTarget(base, sld_.nps, sld_.rcx, maxNodeSpaceObj);
       tcount++;
     }
@@ -1204,17 +1198,16 @@ public class HaloLayout implements SpecialtyLayout {
   ** Place singleton clusters
   */
   
-  private void placeSingletonClusters(Point2D startPoint, Set singletonClusters,
-                                      Map clusterMap, DataAccessContext rcx,
-                                      Map placement) {
+  private void placeSingletonClusters(Point2D startPoint, Set<String> singletonClusters,
+                                      Map<String, GeneAndSatelliteCluster> clusterMap, StaticDataAccessContext rcx) {
     double startX = startPoint.getX(); 
-    TreeSet fixedOrder = new TreeSet(singletonClusters);
+    TreeSet<String> fixedOrder = new TreeSet<String>(singletonClusters);
     
     double maxNodeSpace = (FIRST_ROW_PAD_ * UiUtil.GRID_SIZE);  // Minimum space needed...
-    Iterator sit = fixedOrder.iterator();
+    Iterator<String> sit = fixedOrder.iterator();
     while (sit.hasNext()) {
-      String singID = (String)sit.next();
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(singID);
+      String singID = sit.next();
+      GeneAndSatelliteCluster tc = clusterMap.get(singID);
       GeneAndSatelliteCluster.ClusterDims oh = tc.getClusterDims(sld_.nps, sld_.rcx);
       double needs = oh.getFullHeightIncrement();
       if (needs > maxNodeSpace) {
@@ -1225,15 +1218,15 @@ public class HaloLayout implements SpecialtyLayout {
     
     double startY = startPoint.getY() + VERTICAL_CLUSTER_PAD_;
   
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     double currX = startX;
     sit = fixedOrder.iterator();
     while (sit.hasNext()) {
-      String singID = (String)sit.next();
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(singID);
+      String singID = sit.next();
+      GeneAndSatelliteCluster tc = clusterMap.get(singID);
       Point2D base = new Point2D.Double(currX, startY);
       tc.locateAsTarget(base, sld_.nps, sld_.rcx, maxNodeSpaceObj);
-      INodeRenderer rend = rcx.getLayout().getNodeProperties(singID).getRenderer();
+      INodeRenderer rend = rcx.getCurrentLayout().getNodeProperties(singID).getRenderer();
       Node singNode = genome.getNode(singID);
       // This works OK since there will be NO pad changes on this singleton:
       double width = rend.getWidth(singNode, rcx);
@@ -1297,7 +1290,7 @@ public class HaloLayout implements SpecialtyLayout {
                                                              Map<String, List<GeneAndSatelliteCluster>> srcToClust, 
                                                              Map<String, List<GeneAndSatelliteCluster>> nonGeneSrcToClusters, 
                                                              Set<String> singletonClusters) {
-    ArrayList retval = new ArrayList();
+    ArrayList<TaggedByCount> retval = new ArrayList<TaggedByCount>();
     int num = allClusters.size();
     singletonClusters.clear();
     for (int i = 0; i < num; i++) {
@@ -1305,7 +1298,7 @@ public class HaloLayout implements SpecialtyLayout {
       singletonClusters.add(clust.getCoreID());
     }
     
-    HashSet allSrc = new HashSet(srcGenes);
+    HashSet<String> allSrc = new HashSet<String>(srcGenes);
     allSrc.addAll(srcNonGenes);
     Iterator<String> sit = allSrc.iterator();
     while (sit.hasNext()) {
@@ -1350,18 +1343,18 @@ public class HaloLayout implements SpecialtyLayout {
     // We also record the count of future clusters targeted by each source.
     //
     
-    HashSet runClusts = new HashSet();
+    HashSet<String> runClusts = new HashSet<String>();
     int num = currClusters.size();
     for (int i = 0; i < num; i++) {
       GeneAndSatelliteCluster clust = currClusters.get(i);
       runClusts.add(clust.getCoreID());
     }
     
-    HashMap<String, Set> srcToNonCurrClusts = new HashMap<String, Set>();
+    HashMap<String, Set<String>> srcToNonCurrClusts = new HashMap<String, Set<String>>();
     
     for (int i = 0; i < num; i++) {
       GeneAndSatelliteCluster clust = currClusters.get(i);
-      HashSet clustSet = new HashSet();
+      HashSet<String> clustSet = new HashSet<String>();
       Iterator<String> sit = clust.getInputs().iterator();
       while (sit.hasNext()) {
         String sID = sit.next();
@@ -1390,7 +1383,7 @@ public class HaloLayout implements SpecialtyLayout {
     Iterator<String> kit = srcToNonCurrClusts.keySet().iterator();
     while (kit.hasNext()) {
       String key = kit.next();
-      Set nonCurr = srcToNonCurrClusts.get(key);
+      Set<String> nonCurr = srcToNonCurrClusts.get(key);
       sourceCounts.add(new TaggedByCount(key, nonCurr.size()));
     }
     
@@ -1405,7 +1398,7 @@ public class HaloLayout implements SpecialtyLayout {
   ** entering into the cluster run.
   */
   
-  private List<String> orderInitialSourceLeads(Genome genome, Map<String, GeneAndSatelliteCluster> clusterMap, 
+  private List<String> orderInitialSourceLeads(Map<String, GeneAndSatelliteCluster> clusterMap, 
                                                List<TaggedByCount> clustCounts, 
                                                List<TaggedByCount> sourceCounts, Set<String> nonGeneSources) {
     //
@@ -1413,7 +1406,7 @@ public class HaloLayout implements SpecialtyLayout {
     // total cluster count.
     //    
     
-    ArrayList retval = new ArrayList();
+    ArrayList<String> retval = new ArrayList<String>();
     int num = clustCounts.size();
     for (int i = num - 1; i >= 0; i--) {
       TaggedByCount tbc = clustCounts.get(i);
@@ -1435,8 +1428,8 @@ public class HaloLayout implements SpecialtyLayout {
     }
     
     for (int i = 0; i < num; i++) {
-      TaggedByCount tbc = (TaggedByCount)clustCounts.get(i);
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(tbc.id);
+      TaggedByCount tbc = clustCounts.get(i);
+      GeneAndSatelliteCluster tc = clusterMap.get(tbc.id);
       tc.orderByTraceOrder(retval, sld_.nps);
     }
 
@@ -1448,14 +1441,14 @@ public class HaloLayout implements SpecialtyLayout {
   ** Count the sources inbound to the run
   */
   
-  private int sourcesInboundToRun(List currClusters) {
-    HashSet srcs = new HashSet();    
+  private int sourcesInboundToRun(List<GeneAndSatelliteCluster> currClusters) {
+    HashSet<String> srcs = new HashSet<String>();    
     int num = currClusters.size();    
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = (GeneAndSatelliteCluster)currClusters.get(i);
-      Iterator sit = clust.getInputs().iterator();
+      GeneAndSatelliteCluster clust = currClusters.get(i);
+      Iterator<String> sit = clust.getInputs().iterator();
       while (sit.hasNext()) {
-        String sID = (String)sit.next();
+        String sID = sit.next();
         srcs.add(sID);
       }
     }
@@ -1467,45 +1460,47 @@ public class HaloLayout implements SpecialtyLayout {
   ** Assign the source traces
   */
   
-  private void assignSourceTraces(Map sourceToTrace, SortedMap traceToSource, 
-                                  Map currentSourceToTrace, List newSources, Map nonGeneSizes, 
-                                  List nextClusters, Map remainingClusters) {
-    Integer lastKey = (Integer)traceToSource.lastKey();
+  private void assignSourceTraces(Map<String, Integer> sourceToTrace, SortedMap<Integer, String> traceToSource, 
+                                  Map<String, Integer> currentSourceToTrace, 
+                                  List<String> newSources, Map<String, Integer> nonGeneSizes, 
+                                  List<GeneAndSatelliteCluster> nextClusters, 
+                                  Map<String,List<GeneAndSatelliteCluster>> remainingClusters) {
+    Integer lastKey = traceToSource.lastKey();
     int currTrace = lastKey.intValue() + 1;
     
-    Map downstreamClusters = tossPlacedClusters(nextClusters, remainingClusters);
+    Map<String, List<GeneAndSatelliteCluster>> downstreamClusters = tossPlacedClusters(nextClusters, remainingClusters);
 
     //
     // FIX ME!  Adding useless space if non-gene nodes not next to each other!
     //
     
-    Set nonGeneKeys = nonGeneSizes.keySet();
+    Set<String> nonGeneKeys = nonGeneSizes.keySet();
     int num = newSources.size();
     for (int i = 0; i < num; i++) {
-      String src = (String)newSources.get(i);
-      currentSourceToTrace.put(src, new Integer(i));
+      String src = newSources.get(i);
+      currentSourceToTrace.put(src, Integer.valueOf(i));
       // No trace is needed if gene source is all done in the current row, though
       // it is added to the currentSourceToTrace map to handle need of current cluster placement!
       if (!nonGeneKeys.contains(src)) {
-        List lowerRows = (List)downstreamClusters.get(src);
+        List<GeneAndSatelliteCluster> lowerRows = downstreamClusters.get(src);
         if ((lowerRows == null) || lowerRows.isEmpty()) {
           continue;
         }
       }
-      Integer ngSize = (Integer)nonGeneSizes.get(src);
+      Integer ngSize = nonGeneSizes.get(src);
       int traceExtra = (ngSize == null) ? 0 : ngSize.intValue();
       // Extra trace width only added if we don't have enough space
       // for the nonGene node:
       if (traceExtra != 0) {
         Integer lastNonTrace = null;
         Integer lastNonWidth = null;
-        Iterator tsit = traceToSource.keySet().iterator();
+        Iterator<Integer> tsit = traceToSource.keySet().iterator();
         while (tsit.hasNext()) {
-          Integer trace = (Integer)tsit.next();
-          String lastSrc = (String)traceToSource.get(trace);
+          Integer trace = tsit.next();
+          String lastSrc = traceToSource.get(trace);
           if (nonGeneKeys.contains(lastSrc)) {
             lastNonTrace = trace;
-            lastNonWidth = (Integer)nonGeneSizes.get(lastSrc);
+            lastNonWidth = nonGeneSizes.get(lastSrc);
           }
         }
         if (lastNonTrace != null) {
@@ -1518,7 +1513,7 @@ public class HaloLayout implements SpecialtyLayout {
         }
         currTrace += traceExtra;
       }
-      Integer newTrace = new Integer(currTrace);
+      Integer newTrace = Integer.valueOf(currTrace);
       sourceToTrace.put(src, newTrace);
       traceToSource.put(newTrace, src);
       currTrace += (1 + traceExtra);      
@@ -1533,35 +1528,37 @@ public class HaloLayout implements SpecialtyLayout {
   ** sources are added last.
   */
   
-  private List orderNewSources(List currClusters, Map srcToClust, Map sourceToTrace) {
+  private List<String> orderNewSources(List<GeneAndSatelliteCluster> currClusters, 
+                                       Map<String, List<GeneAndSatelliteCluster>> srcToClust, 
+                                       Map<String, Integer> sourceToTrace) {
     
-    ArrayList sourceCounts = new ArrayList();
-    HashSet runClusts = new HashSet();
+    ArrayList<TaggedByCount> sourceCounts = new ArrayList<TaggedByCount>();
+    HashSet<String> runClusts = new HashSet<String>();
     int num = currClusters.size();
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = (GeneAndSatelliteCluster)currClusters.get(i);
+      GeneAndSatelliteCluster clust = currClusters.get(i);
       runClusts.add(clust.getCoreID());
     }
     
-    HashMap newSrcToNonCurrClusts = new HashMap();    
+    HashMap<String, Set<String>> newSrcToNonCurrClusts = new HashMap<String, Set<String>>();    
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = (GeneAndSatelliteCluster)currClusters.get(i);
-      Iterator sit = clust.getInputs().iterator();
+      GeneAndSatelliteCluster clust = currClusters.get(i);
+      Iterator<String> sit = clust.getInputs().iterator();
       while (sit.hasNext()) {
-        String sID = (String)sit.next();
+        String sID = sit.next();
         if (sourceToTrace.keySet().contains(sID)) {
           continue;  // Not new...
         }
-        List clusts = (List)srcToClust.get(sID);
+        List<GeneAndSatelliteCluster> clusts = srcToClust.get(sID);
         if (clusts == null) {
           continue;
         }
         int cNum = clusts.size();
         for (int j = 0; j < cNum; j++) {
-          GeneAndSatelliteCluster oClust = (GeneAndSatelliteCluster)clusts.get(j);
-          Set currSrcToNonCurrClust = (Set)newSrcToNonCurrClusts.get(sID);
+          GeneAndSatelliteCluster oClust = clusts.get(j);
+          Set<String> currSrcToNonCurrClust = newSrcToNonCurrClusts.get(sID);
           if (currSrcToNonCurrClust == null) {
-            currSrcToNonCurrClust = new HashSet();
+            currSrcToNonCurrClust = new HashSet<String>();
             newSrcToNonCurrClusts.put(sID, currSrcToNonCurrClust); 
           }          
           if (!runClusts.contains(oClust.getCoreID())) {  // Don't count current run
@@ -1571,19 +1568,19 @@ public class HaloLayout implements SpecialtyLayout {
       }
     }
     
-    Iterator kit = newSrcToNonCurrClusts.keySet().iterator();
+    Iterator<String> kit = newSrcToNonCurrClusts.keySet().iterator();
     while (kit.hasNext()) {
-      String key = (String)kit.next();
-      Set nonCurr = (Set)newSrcToNonCurrClusts.get(key);
+      String key = kit.next();
+      Set<String> nonCurr = newSrcToNonCurrClusts.get(key);
       sourceCounts.add(new TaggedByCount(key, nonCurr.size()));
     }
     
     Collections.sort(sourceCounts);  // Future clusters targeted by source
     
-    ArrayList retval = new ArrayList();
+    ArrayList<String> retval = new ArrayList<String>();
     int snum = sourceCounts.size();
     for (int i = snum - 1; i >= 0; i--) {
-      TaggedByCount tbc = (TaggedByCount)sourceCounts.get(i);
+      TaggedByCount tbc = sourceCounts.get(i);
       retval.add(tbc.id);
     }
     
@@ -1596,18 +1593,18 @@ public class HaloLayout implements SpecialtyLayout {
   ** going to the cluster with the lowest (average?) link column assignment. 
   */
   
-  private void orderFollowingTargetClusters(List currClusters, Map srcToClust, 
-                                            Map sourceToTrace, List clustCounts) {
+  private void orderFollowingTargetClusters(List<GeneAndSatelliteCluster> currClusters,
+                                            Map<String, Integer> sourceToTrace, List<TaggedByCount> clustCounts) {
         
     int num = currClusters.size();
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = (GeneAndSatelliteCluster)currClusters.get(i);
-      Iterator sit = clust.getInputs().iterator();
+      GeneAndSatelliteCluster clust = currClusters.get(i);
+      Iterator<String> sit = clust.getInputs().iterator();
       int sum = 0;
       int count = 0;
       while (sit.hasNext()) {
-        String sID = (String)sit.next();
-        Integer trace = (Integer)sourceToTrace.get(sID);
+        String sID = sit.next();
+        Integer trace = sourceToTrace.get(sID);
         if (trace == null) {  // If source is illegal and not being handled...
           continue;
         }
@@ -1627,22 +1624,23 @@ public class HaloLayout implements SpecialtyLayout {
   ** node accordingly
   */
   
-  private List orderFollowingSourceLeads(Genome genome, Map clusterMap, List clustCounts, Set nonGeneSources) {
-    ArrayList retval = new ArrayList();
+  private List<String> orderFollowingSourceLeads(Map<String, GeneAndSatelliteCluster> clusterMap, 
+                                                 List<TaggedByCount> clustCounts, Set<String> nonGeneSources) {
+    ArrayList<String> retval = new ArrayList<String>();
     int num = clustCounts.size();
     for (int i = num - 1; i >= 0; i--) {
-      TaggedByCount tbc = (TaggedByCount)clustCounts.get(i);
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(tbc.id);
-      Iterator iit = tc.getInputs().iterator();
+      TaggedByCount tbc = clustCounts.get(i);
+      GeneAndSatelliteCluster tc = clusterMap.get(tbc.id);
+      Iterator<String> iit = tc.getInputs().iterator();
       while (iit.hasNext()) {
-        String srcID = (String)iit.next();
+        String srcID = iit.next();
         if (!retval.contains(srcID)) {
           retval.add(srcID);
         }
       }
-      Iterator ngsit = nonGeneSources.iterator();
+      Iterator<String> ngsit = nonGeneSources.iterator();
       while (ngsit.hasNext()) {
-        String nonGene = (String)ngsit.next();
+        String nonGene = ngsit.next();
         if (tc.isATarget(nonGene) && (!retval.contains(nonGene))) {
           retval.add(nonGene);
         }
@@ -1650,8 +1648,8 @@ public class HaloLayout implements SpecialtyLayout {
     }
     
     for (int i = 0; i < num; i++) {
-      TaggedByCount tbc = (TaggedByCount)clustCounts.get(i);
-      GeneAndSatelliteCluster tc = (GeneAndSatelliteCluster)clusterMap.get(tbc.id);
+      TaggedByCount tbc = clustCounts.get(i);
+      GeneAndSatelliteCluster tc = clusterMap.get(tbc.id);
       tc.orderByTraceOrder(retval, sld_.nps);
     }
 
@@ -1664,7 +1662,6 @@ public class HaloLayout implements SpecialtyLayout {
   */
   
   private void recordClusterRunNumber(Map<String, int[]> clusterToClusterRunNumber, List<TaggedByCount> clustOrder, int currRun) {
-    Integer currRunObj = new Integer(currRun);
     int num = clustOrder.size();
     for (int i = 0; i < num; i++) {
       TaggedByCount clust = clustOrder.get(i);
@@ -1692,12 +1689,12 @@ public class HaloLayout implements SpecialtyLayout {
       String srcID = srcLeads.get(i);
       Map<String, Map<Integer, Integer>> targMap = (nonGeneSources.contains(srcID)) ? nonGeneSrcToTraceNumberPerClusterRun
                                                                                     : srcToTraceNumberPerClusterRun;
-      Map perSrc = (Map)targMap.get(srcID);
+      Map<Integer, Integer> perSrc = targMap.get(srcID);
       if (perSrc == null) {
-        perSrc = new HashMap();
+        perSrc = new HashMap<Integer, Integer>();
         targMap.put(srcID, perSrc);
       }
-      perSrc.put(currRunObj, new Integer(count++));  // FIX ME: Reverse??
+      perSrc.put(currRunObj, Integer.valueOf(count++));  // FIX ME: Reverse??
     }
     return;
   }  
@@ -1707,8 +1704,8 @@ public class HaloLayout implements SpecialtyLayout {
   ** Get the X of the mainline trace
   */
   
-  private Double getMainTraceX(String srcID, Map sourceToTrace, Point2D traceBoundary) {
-    Integer traceNum = (Integer)sourceToTrace.get(srcID);
+  private Double getMainTraceX(String srcID, Map<String, Integer> sourceToTrace, Point2D traceBoundary) {
+    Integer traceNum = sourceToTrace.get(srcID);
     if (traceNum == null) {
       double retval = UiUtil.forceToGridValue(traceBoundary.getX() - (1.0 * TRACE_OFFSET_X_) + UiUtil.GRID_SIZE, UiUtil.GRID_SIZE);
       return (new Double(retval));
@@ -1722,19 +1719,19 @@ public class HaloLayout implements SpecialtyLayout {
   ** Get the full y requirements for all the traces for a run
   */
   
-  private double getClusterRunTraceYRequirements(Map clusterRunSpecialPads, int runNum, int maxTrace) {
+  private double getClusterRunTraceYRequirements(Map<Integer, Map<Integer, Integer>> clusterRunSpecialPads, int runNum, int maxTrace) {
     Integer runObj = new Integer(runNum);
-    Map specialPads = (Map)clusterRunSpecialPads.get(runObj);
+    Map<Integer, Integer> specialPads = clusterRunSpecialPads.get(runObj);
     int sum = 0;
     for (int i = 0; i < maxTrace; i++) {
-      Integer specPad = (Integer)specialPads.get(new Integer(i));
+      Integer specPad = specialPads.get(Integer.valueOf(i));
       if (specPad != null) {
         sum += specPad.intValue();
       } else {
         sum++;
       }
     }
-    return ((double)sum * PER_TRACE_);
+    return (sum * PER_TRACE_);
   }    
  
   /***************************************************************************
@@ -1742,21 +1739,21 @@ public class HaloLayout implements SpecialtyLayout {
   ** Get the Y of a source trace for a given cluster run
   */
   
-  private double getClusterRunTraceY(Map<Integer, Point2D> clusterRunStarts, Map clusterRunSpecialPads, 
+  private double getClusterRunTraceY(Map<Integer, Point2D> clusterRunStarts, Map<Integer, Map<Integer, Integer>> clusterRunSpecialPads, 
                                      int runNum, int traceNum) {
-    Integer runObj = new Integer(runNum);
+    Integer runObj = Integer.valueOf(runNum);
     Point2D runBase = clusterRunStarts.get(runObj);
-    Map specialPads = (Map)clusterRunSpecialPads.get(runObj);
+    Map<Integer, Integer> specialPads = clusterRunSpecialPads.get(runObj);
     int sum = 0;
     for (int i = 0; i < traceNum; i++) {
-      Integer specPad = (Integer)specialPads.get(new Integer(i));
+      Integer specPad = specialPads.get(Integer.valueOf(i));
       if (specPad != null) {
         sum += specPad.intValue();
       } else {
         sum++;
       }
     }
-    double startY = runBase.getY() - ((double)sum * PER_TRACE_);
+    double startY = runBase.getY() - (sum * PER_TRACE_);
     return (startY);
   }  
 
@@ -1765,14 +1762,13 @@ public class HaloLayout implements SpecialtyLayout {
   ** Build the link segments for the given source
   */
   
-  private SpecialtyLayoutLinkData buildLinkSegmentsToClusters(String srcID, Map<String, List<GeneAndSatelliteCluster>> srcToClusters,
-                                                                Map clusterRunStarts,
-                                                                Map clusterRunSpecialPads,
-                                                                Map clusterToClusterRunNumber,
-                                                                Map srcToTraceNumberPerClusterRun, 
-                                                                Map sourceToTrace, Point2D traceBoundary, 
-                                                                Genome genome, Layout lo,
-                                                                Map placement, Map padChanges) {
+  private SpecialtyLayoutLinkData buildLinkSegmentsToClusters(String srcID, 
+                                                              Map<String, List<GeneAndSatelliteCluster>> srcToClusters,
+                                                              Map<Integer, Point2D> clusterRunStarts,
+                                                              Map<Integer, Map<Integer, Integer>> clusterRunSpecialPads,
+                                                              Map<String, int[]> clusterToClusterRunNumber,
+                                                              Map<String, Map<Integer, Integer>> srcToTraceNumberPerClusterRun, 
+                                                              Map<String, Integer> sourceToTrace, Point2D traceBoundary) {
     
     
     
@@ -1782,18 +1778,18 @@ public class HaloLayout implements SpecialtyLayout {
     // Start at the nearest cluster and work outward
     //
     
-    Map perSrc = (Map)srcToTraceNumberPerClusterRun.get(srcID);
+    Map<Integer, Integer> perSrc = srcToTraceNumberPerClusterRun.get(srcID);
     Double traceXObj = getMainTraceX(srcID, sourceToTrace, traceBoundary);
     double traceX = traceXObj.doubleValue();
     
-    HashMap clustMap = new HashMap();
-    ArrayList ordering = new ArrayList();
+    HashMap<String, GeneAndSatelliteCluster> clustMap = new HashMap<String, GeneAndSatelliteCluster>();
+    ArrayList<TaggedByPair> ordering = new ArrayList<TaggedByPair>();
     List<GeneAndSatelliteCluster> clusts = srcToClusters.get(srcID);
     int num = clusts.size();
     for (int i = 0; i < num; i++) {
       GeneAndSatelliteCluster clust = clusts.get(i);
       clustMap.put(clust.getCoreID(), clust);
-      int[] pos = (int[])clusterToClusterRunNumber.get(clust.getCoreID());
+      int[] pos = clusterToClusterRunNumber.get(clust.getCoreID());
       if (pos != null) {
         TaggedByPair tbp = new TaggedByPair(clust.getCoreID(), pos[0], pos[1]);
         ordering.add(tbp);
@@ -1806,7 +1802,6 @@ public class HaloLayout implements SpecialtyLayout {
     // Each cluster may have multiple traces inbound:
     //
     
-    int onum = ordering.size();
     int currClustRun = Integer.MIN_VALUE;
     double runY = Double.NEGATIVE_INFINITY;
     
@@ -1816,23 +1811,23 @@ public class HaloLayout implements SpecialtyLayout {
     lps.lastAttach = null;
     lps.lastRun = null;
     
-    Point2D runBase = null;
+    //Point2D runBase = null;
 
     num = ordering.size();
     for (int i = 0; i < num; i++) {
-      TaggedByPair clust = (TaggedByPair)ordering.get(i);
-      GeneAndSatelliteCluster cluster = (GeneAndSatelliteCluster)clustMap.get(clust.id);
+      TaggedByPair clust = ordering.get(i);
+      GeneAndSatelliteCluster cluster = clustMap.get(clust.id);
      
       lps.isRunStart = false;
       if (currClustRun != clust.val1) {
         currClustRun = clust.val1;
         lps.isRunStart = true;
-        Integer traceNum = (Integer)perSrc.get(new Integer(currClustRun));
+        Integer traceNum = perSrc.get(Integer.valueOf(currClustRun));
         runY = getClusterRunTraceY(clusterRunStarts, clusterRunSpecialPads, 
                                    currClustRun, traceNum.intValue());
       
         lps.runPt = new Point2D.Double(traceX, runY);
-        runBase = (Point2D)clusterRunStarts.get(new Integer(clust.val1));
+        //runBase = clusterRunStarts.get(Integer.valueOf(clust.val1));
       }
      // Point2D clustPt = new Point2D.Double(runBase.getX() + ((double)clust.val2 * OFFSET_X_), runY); 
       MetaClusterPointSource mcps = new MetaClusterPointSource(srcID, null, MetaClusterPointSource.FOR_PURE_TARG);
@@ -1898,13 +1893,7 @@ public class HaloLayout implements SpecialtyLayout {
     String id;
     int val1;
     int val2;
-
-    TaggedByPair(String id) {
-      this.id = id;
-      this.val1 = 0;
-      this.val2 = 0;
-    }    
-    
+   
     TaggedByPair(String id, int val1, int val2) {
       this.id = id;
       this.val1 = val1;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.Iterator;
 ** refactoring to get Genome dependencies out of simple graph algorithms
 */
 
-public class SimplePathTracker {
+public class SimplePathTracker<T extends Link> {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -49,7 +49,7 @@ public class SimplePathTracker {
   //
   ////////////////////////////////////////////////////////////////////////////
  
-  private HashSet<SimplePath> paths_;
+  private HashSet<SimplePath<T>> paths_;
   private int pathLimit_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -64,7 +64,7 @@ public class SimplePathTracker {
   */
 
   public SimplePathTracker() {
-    paths_ = new HashSet<SimplePath>();
+    paths_ = new HashSet<SimplePath<T>>();
     pathLimit_ = Integer.MAX_VALUE;
   }  
   
@@ -74,7 +74,7 @@ public class SimplePathTracker {
   */
 
   public SimplePathTracker(int pathLimit) {
-    paths_ = new HashSet<SimplePath>();
+    paths_ = new HashSet<SimplePath<T>>();
     pathLimit_ = pathLimit;
   }  
   
@@ -89,7 +89,7 @@ public class SimplePathTracker {
   ** Get the paths
   */
   
-  public Iterator<SimplePath> getPaths() {
+  public Iterator<SimplePath<T>> getPaths() {
     return (paths_.iterator());
   }  
   
@@ -98,7 +98,7 @@ public class SimplePathTracker {
   ** Add a new path; returns true if over the limit
   */
   
-  public boolean addNewPath(SimplePath path) {
+  public boolean addNewPath(SimplePath<T> path) {
     paths_.add(path);
     return (paths_.size() >= pathLimit_);
   }
@@ -108,12 +108,12 @@ public class SimplePathTracker {
   ** Get the set of existing tails 
   */
   
-  public Set<SimplePath> getTails(String nodeID) {
-    HashSet<SimplePath> retval = new HashSet<SimplePath>();
-    Iterator<SimplePath> pit = paths_.iterator();
+  public Set<SimplePath<T>> getTails(String nodeID) {
+    HashSet<SimplePath<T>> retval = new HashSet<SimplePath<T>>();
+    Iterator<SimplePath<T>> pit = paths_.iterator();
     while (pit.hasNext()) {
-      SimplePath path = pit.next();
-      SimplePath tail = path.tail(nodeID);
+      SimplePath<T> path = pit.next();
+      SimplePath<T> tail = path.tail(nodeID);
       if ((tail != null) && (tail.getDepth() != 0)) {
         retval.add(tail);
       }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,8 +32,9 @@ import java.util.Scanner;
 
 import javax.swing.filechooser.FileFilter;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.PathAndFileSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
@@ -106,7 +107,6 @@ public class FileChooserWrapperFactory extends DialogFactory {
 	  private XPlatUIDialog xplatDialog_;
 	  private ServerControlFlowHarness scfh_;
 	  private XPlatPrimitiveElementFactory primElemFac_; 
-	  private ResourceManager rMan_;
 	  private BuildArgs ba_;
 	  private List<String> fileNames_;
 	  
@@ -115,12 +115,12 @@ public class FileChooserWrapperFactory extends DialogFactory {
 		  BuildArgs ba
       ){
 		  this.scfh_ = cfh;
-		  this.rMan_ = scfh_.getBTState().getRMan();
-		  this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan_);
+		  ResourceManager rMan = scfh_.getDataAccessContext().getRMan();
+		  this.primElemFac_ = new XPlatPrimitiveElementFactory(rMan);
 		  this.ba_ = ba;
 	  }
 	  
-	  public boolean isModal() {
+	  public boolean dialogIsModal() {
 		  return (true);
 	  }
 
@@ -135,7 +135,7 @@ public class FileChooserWrapperFactory extends DialogFactory {
 		  this.xplatDialog_.createCollectionList("main", "bottom");
 		  		  
 		  List<Map<String,Object>> selCol = new ArrayList<Map<String,Object>>();
-		  List<Map<String, Object>> files = getServerFiles(this.ba_.appState);
+		  List<Map<String, Object>> files = getServerFiles(this.scfh_.getPathAndFileSource());
 		  
 		  Map<String,Object> fileName = new HashMap<String,Object>();
 		  fileName.put("label","File Name");
@@ -222,12 +222,17 @@ public class FileChooserWrapperFactory extends DialogFactory {
 	 */
 	public SimpleUserFeedback checkForErrors(UserInputs ui) {
 	  				
+	  PathAndFileSource pafs = this.scfh_.getPathAndFileSource();
 		if(ui != null && Collections.binarySearch(this.fileNames_,((FileChooserResults)ui).fileName) >= 0) {
-			((FileChooserResults)ui).filePath = this.ba_.appState.getFullServletContextPath() + this.ba_.appState.getServerBtpDirectory().toString() + "/";
+			((FileChooserResults)ui).filePath = pafs.getFullServletContextPath() + pafs.getServerBtpDirectory().toString() + "/";
 		} else {
 			// TODO: file name requested was not found in the list of approved file names; this should produce an error
 		}
 		
+		return null;
+	}
+
+	public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
 		return null;
 	}
 	  
@@ -247,11 +252,11 @@ public class FileChooserWrapperFactory extends DialogFactory {
   *
   */  
   
-  protected static List<Map<String,Object>> getServerFiles(BTState appState) {   
+  protected static List<Map<String,Object>> getServerFiles(PathAndFileSource pafs) {   
 	  
-	  String modelListFileName = appState.getServerBtpFileList();
-	  String configDirectory = appState.getFullServletContextPath() + appState.getServerConfigDirectory().toString() + "/";
-	  String fileDirectory = appState.getFullServletContextPath() + appState.getServerBtpDirectory().toString() + "/";
+	  String modelListFileName = pafs.getServerBtpFileList();
+	  String configDirectory = pafs.getFullServletContextPath() + pafs.getServerConfigDirectory().toString() + "/";
+	  String fileDirectory = pafs.getFullServletContextPath() + pafs.getServerBtpDirectory().toString() + "/";
 	  
 	  Scanner scanner = null;
   
@@ -321,35 +326,31 @@ public class FileChooserWrapperFactory extends DialogFactory {
     
     DialogMode mode;
     FileFilter myFilter;
-    BTState appState;
     FilePreparer fPrep;
     String pref;
     String prefSuffix;
     List<FileFilter> filters; 
     List<String> suffixes;
           
-    public BuildArgs(DialogMode mode, BTState appState, FilePreparer fPrep, FileFilter daFilter, String pref) {
+    public BuildArgs(DialogMode mode, FilePreparer fPrep, FileFilter daFilter, String pref) {
       super(null);
       this.mode = mode;
-      this.appState = appState;
       this.fPrep = fPrep;
       this.myFilter = daFilter;
       this.pref = pref;
     }
     
-    public BuildArgs(DialogMode mode, BTState appState, FilePreparer fPrep, List<FileFilter> filters, String pref) {
+    public BuildArgs(DialogMode mode,FilePreparer fPrep, List<FileFilter> filters, String pref) {
       super(null);
       this.mode = mode;
-      this.appState = appState;
       this.fPrep = fPrep;
       this.filters = filters;
       this.pref = pref;
     }
 
-    public BuildArgs(BTState appState, FilePreparer fPrep, 
+    public BuildArgs(FilePreparer fPrep, 
                      List<FileFilter> filters, List<String> suffixes, String prefSuffix, String prefDir) {
       super(null);
-      this.appState = appState;
       this.fPrep = fPrep;
       this.filters = filters;
       this.suffixes = suffixes;
@@ -399,7 +400,7 @@ public class FileChooserWrapperFactory extends DialogFactory {
     ** These are required.
     */  
  
-    public boolean isModal() {
+    public boolean dialogIsModal() {
       return (true);
     }
     
@@ -471,6 +472,11 @@ public class FileChooserWrapperFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }
+    
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}   
      
     public boolean isForApply() {
       return (false);

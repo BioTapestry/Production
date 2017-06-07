@@ -22,9 +22,11 @@ package org.systemsbiology.biotapestry.ui.dialogs.factory;
 import java.util.Map;
 import java.util.Set;
 
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
+import org.systemsbiology.biotapestry.ui.xplat.XPlatResponse;
 import org.systemsbiology.biotapestry.ui.xplat.dialog.XPlatUIDialog;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 
@@ -96,8 +98,8 @@ public class SerializableDialogPlatform implements DialogPlatform {
     ** Report any errors
     */
      
-    public SimpleUserFeedback checkForErrors(UserInputs ui);
-
+    public XPlatResponse checkForErrors(UserInputs ui);
+    public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc);
     public XPlatUIDialog getDialog();
     public XPlatUIDialog getDialog(FlowKey keyVal);
     

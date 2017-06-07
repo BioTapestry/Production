@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -48,7 +48,7 @@ import javax.swing.event.ChangeListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumn;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
@@ -60,6 +60,7 @@ import org.systemsbiology.biotapestry.timeCourse.ExpressionEntry;
 import org.systemsbiology.biotapestry.timeCourse.PerturbedTimeCourseGene;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseGene;
 import org.systemsbiology.biotapestry.ui.dialogs.pertManage.PertSourcesDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
@@ -74,6 +75,7 @@ import org.systemsbiology.biotapestry.util.TrackingDoubleRenderer;
 import org.systemsbiology.biotapestry.util.TrackingUnit;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -90,13 +92,14 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   ////////////////////////////////////////////////////////////////////////////  
 
   private HashMap<String, TabData> tabData_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
+  private UndoFactory uFac_; 
   private JTabbedPane tabPane_;
   private HashMap<Integer, TabData> tabMap_;
   private TabData tdatf_;
-  private DataAccessContext dacx_;
-  private ArrayList confidenceEnum_;
-  private ArrayList expressEnum_;
+  private ArrayList<EnumCell> confidenceEnum_;
+  private ArrayList<EnumCell> expressEnum_;
   
   private static final long serialVersionUID = 1L;
  
@@ -106,23 +109,24 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   ** sources first
   */ 
   
-  public static PerturbExpressionEntryDialog perturbExpressionEntryDialogWrapper(BTState appState, DataAccessContext dacx, List<TimeCourseData.TCMapping> mappedIDs) {
+  public static PerturbExpressionEntryDialog perturbExpressionEntryDialogWrapper(UIComponentSource uics, DataAccessContext dacx, 
+                                                                                 List<TimeCourseDataMaps.TCMapping> mappedIDs, UndoFactory uFac) {
     
     PerturbationData pd = dacx.getExpDataSrc().getPertData();
     boolean haveDefs = pd.getSourceDefKeys().hasNext();
  
     if (!haveDefs) {
-      ResourceManager rMan = appState.getRMan();
-      int ok = JOptionPane.showConfirmDialog(appState.getTopFrame(), rMan.getString("tcentryp.needSourcesDefined"),
+      ResourceManager rMan = dacx.getRMan();
+      int ok = JOptionPane.showConfirmDialog(uics.getTopFrame(), rMan.getString("tcentryp.needSourcesDefined"),
                                              rMan.getString("tcentryp.needSourcesDefinedTitle"), 
                                              JOptionPane.YES_NO_OPTION);
       if (ok != JOptionPane.YES_OPTION) {
         return (null);
       }
-      appState.getCommonView().launchPerturbationsManagementWindow(new PertFilterExpression(PertFilterExpression.ALWAYS_OP), dacx);
+      uics.getCommonView().launchPerturbationsManagementWindow(new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP), dacx, uics, uFac);
       return (null);
     }
-    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(appState, dacx, mappedIDs, null);
+    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, dacx, mappedIDs, null, uFac);
     return (peed);
   }  
   
@@ -132,18 +136,18 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   ** sources first
   */
   
-  public static PerturbExpressionEntryDialog launchIfPerturbSourcesExist(BTState appState, DataAccessContext dacx, String mid) {
+  public static PerturbExpressionEntryDialog launchIfPerturbSourcesExist(UIComponentSource uics, DataAccessContext dacx, String mid, UndoFactory uFac) {
     PerturbationData pd = dacx.getExpDataSrc().getPertData();
     boolean haveDefs = pd.getSourceDefKeys().hasNext();
     if (!haveDefs) {
-      ResourceManager rMan = appState.getRMan();
-      JOptionPane.showMessageDialog(appState.getTopFrame(), 
+      ResourceManager rMan = dacx.getRMan();
+      JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcentryp.cannotEditWithoutSources"), 
                                     rMan.getString("tcentryp.cannotEditWithoutSourcesTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }
-    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(appState, dacx, null, mid);
+    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, dacx, null, mid, uFac);
     return (peed);
   }  
  
@@ -158,11 +162,13 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   ** Constructor 
   */ 
   
-  private PerturbExpressionEntryDialog(BTState appState, DataAccessContext dacx, List<TimeCourseData.TCMapping> mappedIDs, String mid) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tcentryp.title"), true);
-    appState_ = appState;
+  private PerturbExpressionEntryDialog(UIComponentSource uics, DataAccessContext dacx, List<TimeCourseDataMaps.TCMapping> mappedIDs, 
+                                       String mid, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tcentryp.title"), true);
     dacx_ = dacx;
-    ResourceManager rMan = appState_.getRMan();
+    uics_ = uics;
+    uFac_ = uFac;
+    ResourceManager rMan = dacx_.getRMan();
     boolean doForTable = (mid != null);
     if (doForTable) {
       String format = rMan.getString("tcentryp.forTableTitle");
@@ -189,10 +195,10 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     tabMap_ = new HashMap<Integer, TabData>();
     if (!doForTable) {
       tabPane_ = new JTabbedPane();      
-      Iterator<TimeCourseData.TCMapping> midit = mappedIDs.iterator();
+      Iterator<TimeCourseDataMaps.TCMapping> midit = mappedIDs.iterator();
       int index = 0;
       while (midit.hasNext()) {
-        TimeCourseData.TCMapping tcm = midit.next();
+        TimeCourseDataMaps.TCMapping tcm = midit.next();
         if (tcd.getTimeCourseDataCaseInsensitive(tcm.name) == null) {
           continue;
         } 
@@ -210,9 +216,9 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
         public void stateChanged(ChangeEvent ev) {
           try {     
             stopTheEditing(false);
-            tdatf_ = (TabData)tabMap_.get(new Integer(tabPane_.getSelectedIndex()));
+            tdatf_ = tabMap_.get(new Integer(tabPane_.getSelectedIndex()));
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -234,9 +240,9 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     // Finish building and display:
     //    
 
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -286,10 +292,10 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   */ 
   
   private Vector<TrueObjChoiceContent> buildPertOptions(Iterator<PertSources> pKeys) {
-    PerturbationData pd = appState_.getDB().getPertData();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     Vector<TrueObjChoiceContent> pertOptions = new Vector<TrueObjChoiceContent>();
     if (!pKeys.hasNext()) {
-      TrueObjChoiceContent tocc = new TrueObjChoiceContent(appState_.getRMan().getString("tcentryp.noSourceSpecified"), null);
+      TrueObjChoiceContent tocc = new TrueObjChoiceContent(dacx_.getRMan().getString("tcentryp.noSourceSpecified"), null);
       pertOptions.add(tocc);
     } else {
       while (pKeys.hasNext()) {
@@ -307,7 +313,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   */ 
   
   private TabData buildATab(String mappedID) {       
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
 
     final TabData tdat = new TabData();
@@ -334,7 +340,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           int state = ev.getStateChange();
           updateForSource(tdat, item, (state == ItemEvent.DESELECTED));
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -347,24 +353,24 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     tdat.addSources.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          PertSourcesDialog psd = new PertSourcesDialog(appState_, null, tdat.dataCache.keySet().iterator());
-          psd.show();
+          PertSourcesDialog psd = new PertSourcesDialog(uics_, dacx_, null, tdat.dataCache.keySet().iterator());
+          psd.setVisible(true);
           if (!psd.haveResult()) {
             return;
           }
           PertSources pss = psd.getResult();
-          PerturbationData pd = appState_.getDB().getPertData();
+          PerturbationData pd = dacx_.getExpDataSrc().getPertData();
           TrueObjChoiceContent tocc = new TrueObjChoiceContent(pss.getDisplayString(pd, PertSources.BRACKET_FOOTS), pss);
           tdat.currSources.add(tocc);
           // Ditch placeholder if it was there:
-          TrueObjChoiceContent firstSrc = (TrueObjChoiceContent)tdat.currSources.get(0);
+          TrueObjChoiceContent firstSrc = tdat.currSources.get(0);
           if (firstSrc.val == null) {
             tdat.currSources.remove(0);
           }
           UiUtil.replaceComboItems(tdat.perturbSources, tdat.currSources);
           tdat.perturbSources.setSelectedItem(tocc);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -378,13 +384,13 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           tdat.dataCache.remove(pss);
           tdat.currSources.remove(tocc);
           if (tdat.currSources.isEmpty()) {
-            tocc = new TrueObjChoiceContent(appState_.getRMan().getString("tcentryp.noSourceSpecified"), null);
+            tocc = new TrueObjChoiceContent(dacx_.getRMan().getString("tcentryp.noSourceSpecified"), null);
             tdat.currSources.add(tocc);
           }        
           UiUtil.replaceComboItems(tdat.perturbSources, tdat.currSources);
           UiUtil.initCombo(tdat.perturbSources);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -397,27 +403,27 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           TrueObjChoiceContent tocc = (TrueObjChoiceContent)tdat.perturbSources.getSelectedItem();
           int editIndex = tdat.perturbSources.getSelectedIndex();
           PertSources editOrig = ((PertSources)tocc.val).clone();
-          PertSourcesDialog psd = new PertSourcesDialog(appState_, (PertSources)tocc.val, tdat.dataCache.keySet().iterator());
-          psd.show();
+          PertSourcesDialog psd = new PertSourcesDialog(uics_, dacx_, (PertSources)tocc.val, tdat.dataCache.keySet().iterator());
+          psd.setVisible(true);
           if (!psd.haveResult()) {
             return;
           }
           PertSources pss = psd.getResult();
           // Gotta shift cache key on edit:
           if (!pss.equals(editOrig)) {
-            CachedValues cv = (CachedValues)tdat.dataCache.remove(editOrig);
+            CachedValues cv = tdat.dataCache.remove(editOrig);
             if (cv == null) {
               throw new IllegalStateException();
             }
             tdat.dataCache.put(pss, cv);
           }
-          PerturbationData pd = appState_.getDB().getPertData();
+          PerturbationData pd = dacx_.getExpDataSrc().getPertData();
           tocc = new TrueObjChoiceContent(pss.getDisplayString(pd, PertSources.BRACKET_FOOTS), pss);
           tdat.currSources.set(editIndex, tocc);
           UiUtil.replaceComboItems(tdat.perturbSources, tdat.currSources);
           tdat.perturbSources.setSelectedItem(tocc);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -447,27 +453,27 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     UiUtil.gbcSet(gbc, 0, spRow++, 10, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
     subPanel.add(tcGeneControls, gbc);
               
-    tdat.est = new EditableTable(appState_, new TimeCourseTableModel(appState_, tdat), appState_.getTopFrame());
+    tdat.est = new EditableTable(uics_, dacx_, new TimeCourseTableModel(uics_, dacx_, tdat), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.singleSelectOnly = true;
     etp.tableIsUnselectable = false;
-    etp.perColumnEnums = new HashMap();
-    HashMap tdrxMap = new HashMap();
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    HashMap<Integer, TrackingUnit> tdrxMap = new HashMap<Integer, TrackingUnit>();
     tdat.tujv = new TrackingUnit.JustAValue(false);
-    tdrxMap.put(new Integer(TimeCourseTableModel.CTRL_VALUE), tdat.tujv);
-    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.CTRL_VALUE), new EditableTable.EnumCellInfo(false, expressEnum_, tdrxMap));
-    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.PERT_VALUE), new EditableTable.EnumCellInfo(false, expressEnum_));
-    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.CONFIDENCE), new EditableTable.EnumCellInfo(false, confidenceEnum_));
+    tdrxMap.put(Integer.valueOf(TimeCourseTableModel.CTRL_VALUE), tdat.tujv);
+    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.CTRL_VALUE), new EditableTable.EnumCellInfo(false, expressEnum_, tdrxMap, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.PERT_VALUE), new EditableTable.EnumCellInfo(false, expressEnum_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(TimeCourseTableModel.CONFIDENCE), new EditableTable.EnumCellInfo(false, confidenceEnum_, EnumCell.class));
     JPanel tablePan = tdat.est.buildEditableTable(etp);
-    HashMap tdrMap = new HashMap();
+    HashMap<Integer, TrackingUnit> tdrMap = new HashMap<Integer, TrackingUnit>();
     List valList = ((TimeCourseTableModel)tdat.est.getModel()).getValueColumn();
     TrackingUnit tu = new TrackingUnit.ListTrackingUnit(valList, ExpressionEntry.VARIABLE);
-    tdrMap.put(new Integer(TimeCourseTableModel.ACTIVITY), tu);
+    tdrMap.put(Integer.valueOf(TimeCourseTableModel.ACTIVITY), tu);
     List val2List = ((TimeCourseTableModel)tdat.est.getModel()).getValueColumnToo();
     tdat.tuo = new TrackingUnit.ListTrackingUnitWithOverride(val2List, ExpressionEntry.VARIABLE, false);
-    tdrMap.put(new Integer(TimeCourseTableModel.CTRL_ACTIV), tdat.tuo);
-    tdat.est.getTable().setDefaultRenderer(ProtoDouble.class, new TrackingDoubleRenderer(tdrMap, appState_));
+    tdrMap.put(Integer.valueOf(TimeCourseTableModel.CTRL_ACTIV), tdat.tuo);
+    tdat.est.getTable().setDefaultRenderer(ProtoDouble.class, new TrackingDoubleRenderer(tdrMap, uics_.getHandlerAndManagerSource()));
     // FIX ME, MAKE AVAILABLE FROM SUPERCLASS   
     ((DefaultTableCellRenderer)tdat.est.getTable().getDefaultRenderer(String.class)).setHorizontalAlignment(JLabel.CENTER);
     tdat.est.setEnabled(false);
@@ -520,7 +526,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     if (item.val == null) {
       return;
     }
-    CachedValues cv = (CachedValues)tdat.dataCache.get(item.val);
+    CachedValues cv = tdat.dataCache.get(item.val);
     if (cv == null) {  // Deleted entry is gone...
       return;
     }
@@ -641,7 +647,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     tdat.noteLab.setEnabled(enabled);
     tdat.setCtrlExpressionBox.setEnabled(enabled);
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String srcFormat = rMan.getString("tcentryp.setForSource");
     String pertName = (item.val == null) ? rMan.getString("tcentryp.notSpecified") : item.name;
     String borderHeading = MessageFormat.format(srcFormat, new Object[] {pertName}); 
@@ -676,7 +682,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           ece.revalidate();
           forButton.est.getModel().fireTableDataChanged();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -711,7 +717,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           ((TimeCourseTableModel)forButton.est.getModel()).reviseControlExpressionDisplay();
           forButton.est.getModel().fireTableDataChanged();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -847,11 +853,11 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       }
     }
   
-    TimeCourseTableModel(BTState appState, TabData td) {
-      super(appState, NUM_COL_);
+    TimeCourseTableModel(UIComponentSource uics, DataAccessContext dacx, TabData td) {
+      super(uics, dacx, NUM_COL_);
       tdat_ = td;
-      String displayUnits = appState_.getDB().getTimeAxisDefinition().unitDisplayString();
-      ResourceManager rMan = appState_.getRMan();
+      String displayUnits = dacx_.getExpDataSrc().getTimeAxisDefinition().unitDisplayString();
+      ResourceManager rMan = dacx_.getRMan();
       String timeColumnHeading = MessageFormat.format(rMan.getString("tcentryp.timeColFormat"), new Object[] {displayUnits});
 
       colNames_ = new String[] {timeColumnHeading,
@@ -910,7 +916,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           return (super.isCellEditable(r, c));
         }   
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (false);
     }
@@ -1036,7 +1042,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
         int showVal = hidVal.intValue();
         EnumCell displayCell = null; 
         for (int i = 0; i < numEnum; i++) {
-          EnumCell ecr = (EnumCell)expressEnum_.get(i);
+          EnumCell ecr = expressEnum_.get(i);
           if (ecr.value == showVal) {
             displayCell = new EnumCell(ecr);
             columns_[CTRL_VALUE].add(displayCell);
@@ -1095,15 +1101,15 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   ** Build table rows
   */ 
   
-  private List buildTableRows(TabData tDat, PertSources pss) {
+  private List<TimeCourseTableModel.TableRow> buildTableRows(TabData tDat, PertSources pss) {
     TimeCourseTableModel tctm = (TimeCourseTableModel)tDat.est.getModel();
-    ArrayList retval = new ArrayList(); 
+    ArrayList<TimeCourseTableModel.TableRow> retval = new ArrayList<TimeCourseTableModel.TableRow>(); 
 
-    Iterator bit = tDat.gene.getExpressions();
+    Iterator<ExpressionEntry> bit = tDat.gene.getExpressions();
     
-    Iterator eeit = null;
+    Iterator<ExpressionEntry> eeit = null;
     PerturbedTimeCourseGene ptcg = null;
-    Iterator lceeit = null;
+    Iterator<ExpressionEntry> lceeit = null;
     if (pss != null) {
       ptcg = tDat.gene.getPerturbedState(pss);
       eeit = (ptcg != null) ? ptcg.getExpressions() : null;
@@ -1111,12 +1117,12 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     }
 
     while (bit.hasNext()) {
-      ExpressionEntry entry = (ExpressionEntry)bit.next();
-      ExpressionEntry pertEntry = (eeit == null) ? null : (ExpressionEntry)eeit.next();
-      ExpressionEntry crtlEntry = (lceeit == null) ? null : (ExpressionEntry)lceeit.next();
+      ExpressionEntry entry = bit.next();
+      ExpressionEntry pertEntry = (eeit == null) ? null : eeit.next();
+      ExpressionEntry crtlEntry = (lceeit == null) ? null : lceeit.next();
       TimeCourseTableModel.TableRow tr = tctm.new TableRow();    
       Integer timeIndex = new Integer(entry.getTime());
-      tr.time = TimeAxisDefinition.getTimeDisplay(appState_, timeIndex, false, false);
+      tr.time = TimeAxisDefinition.getTimeDisplay(dacx_, timeIndex, false, false);
       tr.hiddenTime = timeIndex;
       tr.region = entry.getRegion();
       
@@ -1124,10 +1130,10 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       // record base expression and activity:
       //
     
-      int normExpr = entry.getExpressionForSource(ExpressionEntry.NO_SOURCE_SPECIFIED);
+      int normExpr = entry.getExpressionForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
       tr.hiddenRegValue = new Integer(normExpr);   
       if (normExpr == ExpressionEntry.VARIABLE) {
-        double normAct = entry.getVariableLevelForSource(ExpressionEntry.NO_SOURCE_SPECIFIED);
+        double normAct = entry.getVariableLevelForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
         tr.hiddenRegActiv = new ProtoDouble(normAct);
       } else {
         tr.hiddenRegActiv = null;
@@ -1137,10 +1143,10 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       // record local control expression:
       //
       
-      int ctrlExpr = (crtlEntry == null) ? ExpressionEntry.NO_DATA : crtlEntry.getExpressionForSource(ExpressionEntry.NO_SOURCE_SPECIFIED);
+      int ctrlExpr = (crtlEntry == null) ? ExpressionEntry.NO_DATA : crtlEntry.getExpressionForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
       tr.hiddenLocCtrlValue = new Integer(ctrlExpr);
       tr.hiddenLocCtrlActivity = ((crtlEntry != null) && (ctrlExpr == ExpressionEntry.VARIABLE)) 
-        ? new ProtoDouble(crtlEntry.getVariableLevelForSource(ExpressionEntry.NO_SOURCE_SPECIFIED)) : null;
+        ? new ProtoDouble(crtlEntry.getVariableLevelForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED)) : null;
 
       //
       // Install displayed:
@@ -1151,7 +1157,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       
       int ssize = expressEnum_.size();
       for (int i = 0; i < ssize; i++) {
-        EnumCell ecr = (EnumCell)expressEnum_.get(i);
+        EnumCell ecr = expressEnum_.get(i);
         if (ecr.value == useExp) {
           tr.ctrlValue = new EnumCell(ecr);
           break;
@@ -1165,16 +1171,16 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       //
       
       int pertExpr = (pertEntry == null) ? ExpressionEntry.NO_DATA 
-                                         : pertEntry.getExpressionForSource(ExpressionEntry.NO_SOURCE_SPECIFIED);
+                                         : pertEntry.getExpressionForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
       for (int i = 0; i < ssize; i++) {
-        EnumCell ecr = (EnumCell)expressEnum_.get(i);
+        EnumCell ecr = expressEnum_.get(i);
         if (ecr.value == pertExpr) {
           tr.pertValue = new EnumCell(ecr);
           break;
         }
       }
       tr.activity = ((pertEntry != null) && (pertExpr == ExpressionEntry.VARIABLE)) 
-        ? new ProtoDouble(pertEntry.getVariableLevelForSource(ExpressionEntry.NO_SOURCE_SPECIFIED)) 
+        ? new ProtoDouble(pertEntry.getVariableLevelForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED)) 
         : new ProtoDouble("");
 
       //
@@ -1187,7 +1193,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       int showConf = TimeCourseGene.mapEntryConfidence(myConf, entryConfidence);
       int csize = confidenceEnum_.size();
       for (int i = 0; i < csize; i++) {
-        EnumCell ecr = (EnumCell)confidenceEnum_.get(i);
+        EnumCell ecr = confidenceEnum_.get(i);
         if (ecr.value == showConf) {
           tr.confidence = new EnumCell(ecr);
           break;
@@ -1218,7 +1224,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     }    
 
     TimeCourseData tcData = dacx_.getExpDataSrc().getTimeCourseData();
-    UndoSupport support = new UndoSupport(appState_, "undo.tcpertentry");
+    UndoSupport support = uFac_.provideUndoSupport("undo.tcpertentry", dacx_);
     tdit = tabData_.values().iterator();
     while (tdit.hasNext()) {
       TabData tdat = tdit.next();
@@ -1227,7 +1233,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       tdat.gene.clearPerturbedStates();
       applyCacheData(tdat);   
       tcc = tcData.finishGeneUndoTransaction(gName, tcc);
-      support.addEdit(new TimeCourseChangeCmd(appState_, dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
     }
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();
@@ -1245,7 +1251,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
     while (ckit.hasNext()) {
       PertSources pss = ckit.next();
       CachedValues cv = tdat.dataCache.get(pss);
-      PerturbedTimeCourseGene ptcg = new PerturbedTimeCourseGene(appState_, pss.clone(), cv.confidence, cv.isInternal);
+      PerturbedTimeCourseGene ptcg = new PerturbedTimeCourseGene(dacx_, pss.clone(), cv.confidence, cv.isInternal);
       if (tdat.setCtrlExpressionBox.isSelected()) {
         ptcg.setForDistinctControlExpr();
       }   
@@ -1270,7 +1276,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
         }
         ptcg.addExpression(entry, ctrlEntry);
       }
-      tdat.gene.setPerturbedState((PertSources)pss.clone(), ptcg);
+      tdat.gene.setPerturbedState(pss.clone(), ptcg);
     }
     return;
   }
@@ -1297,8 +1303,8 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       return (true);
     }
 
-    ResourceManager rMan = appState_.getRMan();
-    PerturbationData pd = appState_.getDB().getPertData();
+    ResourceManager rMan = dacx_.getRMan();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     Iterator<PertSources> ckit = tdat.dataCache.keySet().iterator();
     while (ckit.hasNext()) {
       PertSources pss = ckit.next();
@@ -1341,11 +1347,11 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
           if (!prod.valid) {
             String format = rMan.getString("tcentryf.badActivityValueFormat"); 
             String desc = MessageFormat.format(format, new Object[] {tdat.gene.getName(), pss.getDisplayString(pd, PertSources.BRACKET_FOOTS)}); 
-            DoubleEditor.triggerWarningWithTag(appState_, appState_.getTopFrame(), desc, prod.textValue);
+            DoubleEditor.triggerWarningWithTag(uics_.getHandlerAndManagerSource(), uics_.getTopFrame(), desc, prod.textValue);
             return (false);
           }
           if ((prod.value < 0.0) || (prod.value > 1.0)) {
-            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+            JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                           rMan.getString("tcentry.badActivityValue"), 
                                           rMan.getString("tcentry.badActivityValueTitle"),
                                           JOptionPane.ERROR_MESSAGE);
@@ -1355,12 +1361,12 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       }
      
       if (haveVar && haveFixed) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcentry.mixed"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcentry.mixed"),
                                       rMan.getString("tcentry.mixedTitle"),
                                       JOptionPane.WARNING_MESSAGE);
       }
       if (mixedRow) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tcentryf.mixedRow"),
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcentryf.mixedRow"),
                                       rMan.getString("tcentryf.mixedTitleRow"),
                                       JOptionPane.WARNING_MESSAGE);
       }

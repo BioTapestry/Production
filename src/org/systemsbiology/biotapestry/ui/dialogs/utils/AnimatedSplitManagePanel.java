@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.AnimatedSplitPane;
 import org.systemsbiology.biotapestry.util.AnimatedSplitPaneLayoutManager;
@@ -40,6 +40,7 @@ import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -75,7 +76,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   private int currEditDepth_;
   private String[] editStack_;
   protected boolean editInProgress_;
-  protected BTState appState_;
+  protected UIComponentSource uics_;
   protected DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
@@ -91,8 +92,8 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   ** Constructor 
   */ 
   
-  public AnimatedSplitManagePanel(BTState appState, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String key) {
-    appState_ = appState;
+  public AnimatedSplitManagePanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String key) {
+    uics_ = uics;
     dacx_ = dacx;
     pet_ = pet;
     myKey_ = key;
@@ -100,7 +101,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
     currEditDepth_ = 0;
     editStack_ = null;
     setLayout(new GridLayout(1, 1));
-    rMan_ = appState_.getRMan();
+    rMan_ = dacx_.getRMan();
        
     topPanel_ = new AnimatedSplitPaneLayoutManager.PanelForSplit();
     topPanel_.setLayout(new GridBagLayout());
@@ -327,7 +328,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   
   protected JPanel commonTableBuild(ReadOnlyTable rot, String title, 
                                     ReadOnlyTable.ButtonHandler bh, 
-                                    List allTabs, List<ReadOnlyTable.ColumnWidths> colWidths, String key) {    
+                                    List<ReadOnlyTable> allTabs, List<ReadOnlyTable.ColumnWidths> colWidths, String key) {    
     JPanel display = new JPanel();
     display.setBorder(BorderFactory.createEtchedBorder());
     display.setLayout(new GridBagLayout());
@@ -374,7 +375,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
         try {   
           doAJoin(targKey);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -388,7 +389,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
         try {   
           doADuplication(targKey);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -402,7 +403,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
         try {   
           doAFilterJump(targKey);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -438,7 +439,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   */ 
   
   protected void finishConstruction() {
-    asp_ = new AnimatedSplitPane(appState_, topPanel_, editPanel_, this);
+    asp_ = new AnimatedSplitPane(uics_, dacx_, topPanel_, editPanel_, this);
     add(asp_);
     return;
   }

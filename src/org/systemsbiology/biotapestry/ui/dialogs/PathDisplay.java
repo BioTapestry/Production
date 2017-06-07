@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -57,29 +57,23 @@ import javax.swing.event.ListSelectionListener;
 import org.systemsbiology.biotapestry.analysis.Path;
 import org.systemsbiology.biotapestry.analysis.PathRanker;
 import org.systemsbiology.biotapestry.analysis.SignedTaggedLink;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
-import org.systemsbiology.biotapestry.cmd.flow.DesktopControlFlowHarness;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.display.PathGenerator;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.FreestandingSourceBundle;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 import org.systemsbiology.biotapestry.db.LocalWorkspaceSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
-import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
-import org.systemsbiology.biotapestry.ui.LocalDispOptMgr;
-import org.systemsbiology.biotapestry.ui.dialogs.factory.DesktopDialogPlatform;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
  
@@ -114,6 +108,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   private int defaultDepth_;
   private JComboBox depthCombo_;
   
+  private String tabKey_;
   private String srcID_;
   private String targID_;
   private String phonyGenomeID_;
@@ -125,7 +120,6 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   private PathDisplayTracker pathTracker_;
   private PathRanker pathRanker_;
   private int maxDepth_;
-  private BTState appState_;
   private FontRenderContext frci_;
   private ModelViewPanel msp_;
   private LocalWorkspaceSource lws_;
@@ -136,7 +130,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   private CardLayout myCard_;
   private boolean neverAPath_;
   private int origDefaultDepth_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext rcx_;
   private int crazyPath_;
   
   private List<PathGenerator.StrungOutPath> requestPaths_;
@@ -145,7 +139,10 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   private String layoutID_;
   
   private LocalGenomeSource pSrc_;
-  private String truID_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
+  private HarnessBuilder hBld_;
+  private String truID_; 
 
   private static final long serialVersionUID = 1L;
    
@@ -160,8 +157,9 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   ** Constructor 
   */ 
   
-  public PathDisplay(BTState appState, String srcID, String targID, boolean showQPCR) {
-    this(appState, false, DEFAULT_DEPTH_, showQPCR);
+  public PathDisplay(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, String tabKey, String srcID, String targID, boolean showQPCR) {
+    this(uics, dacx, hBld, false, DEFAULT_DEPTH_, showQPCR);
+    tabKey_ = tabKey;
     srcID_ = srcID;
     targID_ = targID;
   }
@@ -171,9 +169,8 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   ** Constructor 
   */ 
   
-  public PathDisplay(BTState appState) {
-    this(appState, true, COMPRESSED_DEFAULT_DEPTH_, false);
-    
+  public PathDisplay(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld) {
+    this(uics, dacx, hBld, true, COMPRESSED_DEFAULT_DEPTH_, false);
   }
 
   /***************************************************************************
@@ -181,8 +178,10 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   ** Constructor. 
   */ 
   
-  public PathDisplay(BTState appState, boolean compressedLayout, int defaultDepth, boolean showQPCR) {
-    appState_ = appState;
+  public PathDisplay(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, boolean compressedLayout, int defaultDepth, boolean showQPCR) {
+    uics_ = uics;
+    dacx_ = dacx;
+    hBld_ = hBld;
     showQPCR_ = showQPCR;
     URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/LinkPlus.gif");  
     ImageIcon[] icons = new ImageIcon[NUM_ICONS_];   
@@ -194,13 +193,13 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
     ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/LinkAvoid.gif");
     icons[AVOID_ICON_] = new ImageIcon(ugif);    
         
-    ResourceManager rMan = appState_.getRMan(); 
 
     defaultDepth_ = defaultDepth;
     ignore_ = false;
     origDefaultDepth_ = defaultDepth;
     srcID_ = null;
     targID_ = null;
+    tabKey_ = null;
     frci_ = new FontRenderContext(new AffineTransform(), true, true);
     selected_ = null;
     
@@ -208,19 +207,16 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
     // Build the path panel. Note that the view components have a reference to this RenderingContext. Change this, and they see it too.
     //
     
-    LocalGenomeSource currGSrc = new LocalGenomeSource(new DBGenome(appState_, "foo", "bar"), new DBGenome(appState_, "foo", "bar"));
-    lls_ = new LocalLayoutSource(new Layout(appState_,"__BOGUSKEY__", "bar"), currGSrc);
+    LocalGenomeSource currGSrc = new LocalGenomeSource();
+    lls_ = new LocalLayoutSource(new Layout("__BOGUSKEY__", "bar"), currGSrc);
     lws_ = new LocalWorkspaceSource();
-    rcx_ = new DataAccessContext(null, null, false, false, 0.0,
-                                appState_.getFontMgr(), new LocalDispOptMgr(appState_.getDisplayOptMgr().getDisplayOptions().clone()), 
-                                frci_, currGSrc, appState_.getDB(), false, 
-                                new FullGenomeHierarchyOracle(currGSrc, lls_), appState_.getRMan(), 
-                                new LocalGroupSettingSource(), lws_, lls_,
-                                new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), 
-                                appState_.getDB(), appState_.getDB()
-    );
     
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, false, true, rcx_);
+    UiUtil.fixMePrintout("What happens if TAB IS CHANGED????");
+    rcx_ = StaticDataAccessContext.getCustomDACX9(dacx_, currGSrc, lls_, lws_, frci_);
+  
+    currGSrc.install(new DBGenome(rcx_, "foo", "bar"), new DBGenome(rcx_, "foo", "bar"));
+    
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, false, true, rcx_);
     hidingPanel_ = new JPanel();
     myCard_ = new CardLayout();
     hidingPanel_.setLayout(myCard_);
@@ -247,7 +243,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
     bottomHalf.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();    
         
-    JLabel label = new JLabel(rMan.getString("showPath.depth"));
+    JLabel label = new JLabel(rcx_.getRMan().getString("showPath.depth"));
 
     depthCombo_ = new JComboBox();
     depthCombo_.addActionListener(new ActionListener() {
@@ -259,9 +255,9 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
           int newDepth = depthCombo_.getSelectedIndex() + 1;
           refreshPath(newDepth, true, false);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         } catch (OutOfMemoryError oom) {
-          appState_.getExceptionHandler().displayOutOfMemory(oom);
+          uics_.getExceptionHandler().displayOutOfMemory(oom);
         }
       }
     });
@@ -282,7 +278,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
     listRenderer_ = new PathRenderer(new ArrayList<PathGenerator.StrungOutPath>(), icons);
     pathList_.setCellRenderer(listRenderer_);
 
-    label = new JLabel(rMan.getString("showPath.paths"));
+    label = new JLabel(rcx_.getRMan().getString("showPath.paths"));
      
     if (compressedLayout) {
       UiUtil.gbcSet(gbc, 2, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);
@@ -345,7 +341,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
 
     sendRequest(depth, longerOK);
     labelNoPath(neverAPath_, crazyPath_);
-    
+    UiUtil.fixMePrintout("What about tab changes???");
     if (!neverAPath_) {
       if (longerOK) {
         maxDepth_ = Math.max(10, defaultDepth_ + 4);
@@ -430,8 +426,9 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   ** Handles new data
   */   
 
-  public void installNewData(LocalGenomeSource pSrc, String trueGenomeID, String srcID, String targID, Path matchPath) {
+  public void installNewData(LocalGenomeSource pSrc, String tabKey, String trueGenomeID, String srcID, String targID, Path matchPath) {
    
+    tabKey_ = tabKey;
     srcID_ = srcID;
     targID_ = targID; 
     if (pSrc != null) {
@@ -489,7 +486,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   */
   
   private void labelNoPath(boolean neverAPath, int crazyDepth) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = rcx_.getRMan();
     String noPath;
     if (neverAPath) {
       String form = rMan.getString("showPath.noPath");
@@ -584,7 +581,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
         pathTracker_.newPathSelected(currentPathList);
       }
     } catch (Exception ex) {
-      appState_.getExceptionHandler().displayException(ex);
+      uics_.getExceptionHandler().displayException(ex);
     }
     return;
   }
@@ -680,7 +677,7 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
         setForeground((avoid) ? Color.lightGray : Color.black);
         
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (this);             
     }
@@ -700,18 +697,16 @@ public class PathDisplay extends JPanel implements ListSelectionListener, ModelV
   
   public void sendRequest(int depth, boolean longerOK) {
 
-    DesktopControlFlowHarness dcf = new DesktopControlFlowHarness(appState_, new DesktopDialogPlatform(appState_.getTopFrame()));
-    ControlFlow myControlFlow = appState_.getFloM().getControlFlow(FlowMeister.OtherFlowKey.PATH_MODEL_GENERATION, null);
-    DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
-    PathGenerator.StepState agis = (PathGenerator.StepState)myControlFlow.getEmptyStateForPreload(dacx);    
+    
+    HarnessBuilder.PreHarness pH = hBld_.buildHarness(FlowMeister.OtherFlowKey.PATH_MODEL_GENERATION);
+    PathGenerator.StepState agis = (PathGenerator.StepState)pH.getCmdState();  
     if (pSrc_ != null) {
       // Legacy worksheet application
       agis.setLegacyData(pSrc_, truID_, srcID_, targID_, depth);
     } else {   
       agis.setSourceTargAndDepth(srcID_, targID_, depth, longerOK);
     }
-    dcf.initFlow(myControlFlow, dacx);
-    DialogAndInProcessCmd daipc = dcf.runFlow(agis);
+    DialogAndInProcessCmd daipc = hBld_.runHarness(pH);
     Map<String, Object> res = daipc.commandResults;
     
     

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,10 +28,9 @@ import java.util.List;
 import java.util.TreeMap;
 
 import org.systemsbiology.biotapestry.analysis.AllPathsResult;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
-import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
@@ -70,8 +69,7 @@ public class AllPathsLayoutBuilder {
   // PRIVATE VARIABLES
   //
   ////////////////////////////////////////////////////////////////////////////
-  
-  private BTState appState_;
+
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -84,8 +82,7 @@ public class AllPathsLayoutBuilder {
   ** Constructor
   */
 
-  public AllPathsLayoutBuilder(BTState appState) {
-    appState_ = appState;
+  public AllPathsLayoutBuilder() {
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -101,10 +98,9 @@ public class AllPathsLayoutBuilder {
   ** in the rcx!
   */
   
-  public void buildNeighborLayout(AllPathsResult allPaths, DataAccessContext rcx, Layout colorRef) {
+  public void buildNeighborLayout(AllPathsResult allPaths, StaticDataAccessContext rcx, Layout colorRef) {
       
-    Layout retval = rcx.getLayout();
-    GenomeSource src = rcx.getGenomeSource();
+    Layout retval = rcx.getCurrentLayout();
     
     TreeMap<Integer, List<String>> depthMap = new TreeMap<Integer, List<String>>();
       
@@ -130,7 +126,8 @@ public class AllPathsLayoutBuilder {
     // Place the nodes in partial order; assign colors
     //
     
-    int maxCol = rcx.cRes.getNumColors();
+    ColorResolver cRes = rcx.getColorResolver();
+    int maxCol = cRes.getNumColors();
     int colCount = 0;
 
     Iterator<Integer> dit = depthMap.keySet().iterator();
@@ -144,12 +141,12 @@ public class AllPathsLayoutBuilder {
       while (dnit.hasNext()) {
         String nodeID = dnit.next();
         double x = fullCount++ * 250.0;
-        int type = rcx.getGenome().getNode(nodeID).getNodeType();
-        NodeProperties np = new NodeProperties(rcx.cRes, retval, type, nodeID, x, 300.0, false);
+        int type = rcx.getCurrentGenome().getNode(nodeID).getNodeType();        
+        NodeProperties np = new NodeProperties(cRes, type, nodeID, x, 300.0, false);
         NodeProperties exNp = (colorRef == null) ? null : colorRef.getNodeProperties(nodeID);
         String existingCol = (exNp == null) ? null : exNp.getColorName();
         if (existingCol == null) {
-          existingCol = rcx.cRes.getGeneColor(colCount);
+          existingCol = cRes.getGeneColor(colCount);
           colCount = (colCount + 1) % maxCol;
         }
         np.setColor(existingCol);
@@ -168,7 +165,7 @@ public class AllPathsLayoutBuilder {
     
     HashMap<String, String> linkColRecover = new HashMap<String, String>();
     HashSet<String> newLinks = new HashSet<String>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String linkID = link.getID();
@@ -181,7 +178,7 @@ public class AllPathsLayoutBuilder {
         LinkProperties exLp = (colorRef == null) ? null : colorRef.getLinkPropertiesForSource(lsrc);
         String existingCol = (exLp == null) ? null : exLp.getColorName();
         if (existingCol == null) {
-          existingCol = rcx.cRes.getGeneColor(colCount);
+          existingCol = rcx.getColorResolver().getGeneColor(colCount);
           colCount = (colCount + 1) % maxCol;
         }
         colRecover.put(lsrc, existingCol);
@@ -224,12 +221,12 @@ public class AllPathsLayoutBuilder {
     // We have no group properties here at this point.
     //
       
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      Genome genome = Layout.determineLayoutTarget(rcx.getGenome());
+    if (rcx.getCurrentGenome() instanceof GenomeInstance) {
+      Genome genome = Layout.determineLayoutTarget(rcx.getCurrentGenome());
       Iterator<Group> grit = ((GenomeInstance)genome).getGroupIterator();
       while (grit.hasNext()) {
         Group myGroup = grit.next();
-        GroupProperties gp = new GroupProperties(0, myGroup.getID(), new Point2D.Double(0.0, 0.0), 0, rcx.cRes);
+        GroupProperties gp = new GroupProperties(0, myGroup.getID(), new Point2D.Double(0.0, 0.0), 0, rcx.getColorResolver());
         gp.setDoNotRender(true);
         retval.setGroupProperties(myGroup.getID(), gp);
       }
@@ -237,7 +234,7 @@ public class AllPathsLayoutBuilder {
     
     SpecialtyLayout wlo;
     SpecialtyLayoutEngineParams sbParams;
-    wlo = new StackedBlockLayout(appState_);
+    wlo = new StackedBlockLayout(rcx);
     sbParams = StackedBlockLayout.getDefaultParams(false);
     StackedBlockLayoutParams slbParams = (StackedBlockLayoutParams)sbParams;
     slbParams.grouping = StackedBlockLayout.SrcTypes.SRCS_BY_CURR_POSITION;
@@ -248,11 +245,11 @@ public class AllPathsLayoutBuilder {
       
     Point2D center = new Point2D.Double(0.0, 0.0);
     try {     
-      GenomeSubset subset = new GenomeSubset(appState_, src, rcx.getGenomeID(), center);
+      GenomeSubset subset = new GenomeSubset(rcx, center);
       ArrayList<GenomeSubset> sList = new ArrayList<GenomeSubset>();
       sList.add(subset);
       NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null, null);
-      SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(appState_, sList, rcx, wlo, sa, center, sbParams, false, false);   
+      SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(sList, rcx, wlo, sa, center, sbParams, false, false);   
       sle.specialtyLayout(null, null, 0.0, 0.0);
     } catch (AsynchExitRequestException aerex) {
       throw new IllegalStateException();

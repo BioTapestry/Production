@@ -22,7 +22,10 @@ package org.systemsbiology.biotapestry.cmd.undo;
 
 import javax.swing.undo.AbstractUndoableEdit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
@@ -38,8 +41,10 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  protected BTState appState_;
-  protected DataAccessContext dacx_;
+  protected UIComponentSource uics_;
+  protected StaticDataAccessContext dacx_;
+  protected CmdSource cSrc_;
+  protected TabSource tSrc_;
   private static final long serialVersionUID = 1L;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -50,20 +55,11 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
 
   /***************************************************************************
   **
-  ** Build the command
- 
-  
-  public BTUndoCmd() {
-  }
-  
-  /***************************************************************************
-  **
   ** Migrate to this constructor now!
   */ 
    
-  public BTUndoCmd(BTState appState, DataAccessContext dacx) {
-    appState_ = appState;
-    dacx_ = new DataAccessContext(dacx);
+  public BTUndoCmd(DataAccessContext dacx) {
+    dacx_ = new StaticDataAccessContext(dacx);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -72,6 +68,19 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** We can add the app state when the command is registered with support. This
+  ** allows us to avoid needing to pass appState around so much!
+  */ 
+  
+  public void setAppState(TabSource tSrc, CmdSource cSrc, UIComponentSource uics) {
+    tSrc_ = tSrc;
+    uics_ = uics;
+    cSrc_ = cSrc;
+    return;
+  }
+
   /***************************************************************************
   **
   ** Answer if the command has permanent effects

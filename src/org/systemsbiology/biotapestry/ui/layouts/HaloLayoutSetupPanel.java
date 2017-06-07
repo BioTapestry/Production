@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ import java.util.Vector;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -53,7 +53,7 @@ public class HaloLayoutSetupPanel extends JPanel implements SpecialtyLayoutSetup
   private HaloLayout.HaloLayoutParams params_;
   private JComboBox strategyCombo_;
   private JComboBox overlayOptionCombo_;
-  private BTState appState_;
+  private StaticDataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
  
@@ -68,14 +68,14 @@ public class HaloLayoutSetupPanel extends JPanel implements SpecialtyLayoutSetup
   ** Constructor 
   */ 
   
-  public HaloLayoutSetupPanel(BTState appState, Genome genome, 
+  public HaloLayoutSetupPanel(StaticDataAccessContext dacx, Genome genome, 
                               String selectedID, HaloLayout halo, HaloLayout.HaloLayoutParams params) {
-    appState_ = appState;
+    dacx_ = dacx;
     haveResult_ = false;
-    params_ = (HaloLayout.HaloLayoutParams)params.clone();
+    params_ = params.clone();
     params_.selected = selectedID;
 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
 
@@ -84,7 +84,7 @@ public class HaloLayoutSetupPanel extends JPanel implements SpecialtyLayoutSetup
     }    
 
     JLabel strategyLabel = new JLabel(rMan.getString("haloLayout.strategyType"));
-    strategyCombo_ = new JComboBox(HaloLayout.StartSeed.getChoices(appState_, params_.selected != null));
+    strategyCombo_ = new JComboBox(HaloLayout.StartSeed.getChoices(dacx, params_.selected != null));
     
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     add(strategyLabel, gbc);
@@ -92,7 +92,7 @@ public class HaloLayoutSetupPanel extends JPanel implements SpecialtyLayoutSetup
     add(strategyCombo_, gbc);
     
     JLabel overlayLabel = new JLabel(rMan.getString("haloLayout.overlayOptions"));
-    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(appState);
+    Vector<ChoiceContent> relayoutChoices = NetOverlayProperties.getRelayoutOptions(dacx_);
     overlayOptionCombo_ = new JComboBox(relayoutChoices);
     
     boolean activate = (genome == null) || (genome.getNetworkOverlayCount() > 0);
@@ -147,8 +147,8 @@ public class HaloLayoutSetupPanel extends JPanel implements SpecialtyLayoutSetup
   */
   
   public void displayProperties() {
-    strategyCombo_.setSelectedItem(params_.startType.generateCombo(appState_));
-    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(appState_, params_.overlayOption));
+    strategyCombo_.setSelectedItem(params_.startType.generateCombo(dacx_));
+    overlayOptionCombo_.setSelectedItem(NetOverlayProperties.relayoutForCombo(dacx_, params_.overlayOption));
     return;
   }
   

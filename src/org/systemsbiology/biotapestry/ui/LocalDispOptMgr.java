@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -82,5 +82,28 @@ public class LocalDispOptMgr implements MinimalDispOptMgr {
   public void turnOnSpecialLinkBranches(UndoSupport support, DataAccessContext dacx, boolean doFinish) {     
     options_.setBranchMode(DisplayOptions.OUTLINED_BUS_BRANCHES);
     return;
+  }
+  
+  public void changeUndo(DisplayOptionsChange doc) {
+    throw new UnsupportedOperationException();
+    
+  }
+  
+    public void changeRedo(DisplayOptionsChange doc) {
+    throw new UnsupportedOperationException();
+    
+  }
+    
+  public void setDisplayOptionsForIO(DisplayOptions dop) {
+    throw new UnsupportedOperationException();  
+  }  
+  
+  public void modifyForPertDataChange(UndoSupport sup, DataAccessContext dac) {
+    throw new UnsupportedOperationException();
+    
+  }
+      
+  public DisplayOptionsChange setDisplayOptions(DisplayOptions dop) {
+    throw new UnsupportedOperationException();
   }
 }

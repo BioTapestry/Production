@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,13 +24,13 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.NetModule;
@@ -63,8 +63,7 @@ public class EditNetModule extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditNetModule(BTState appState) {
-    super(appState);
+  public EditNetModule() {
     name = "modulePopup.editModuleProps";
     desc = "modulePopup.editModuleProps";
     mnem = "modulePopup.editModulePropsMnem";
@@ -83,8 +82,8 @@ public class EditNetModule extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
   
   /***************************************************************************
@@ -100,9 +99,7 @@ public class EditNetModule extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGetPropsEditDialog")) {
           next = ans.stepGetPropsEditDialog();      
         } else if (ans.getNextStep().equals("stepExtractAndInstallPropsData")) {
@@ -123,34 +120,29 @@ public class EditNetModule extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
     private String modID_;
-    private DataAccessContext dacx_;
- 
        
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepGetPropsEditDialog";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-      
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepGetPropsEditDialog";
     }
     
     /***************************************************************************
@@ -171,8 +163,8 @@ public class EditNetModule extends AbstractControlFlow {
       
     private DialogAndInProcessCmd stepGetPropsEditDialog() {  
       NetModulePropertiesDialogFactory.NetModulePropsArgs ba = 
-        new NetModulePropertiesDialogFactory.NetModulePropsArgs(appState_, dacx_.getGenome(), modID_);
-      NetModulePropertiesDialogFactory nopd = new NetModulePropertiesDialogFactory(cfh);
+        new NetModulePropertiesDialogFactory.NetModulePropsArgs(dacx_, modID_);
+      NetModulePropertiesDialogFactory nopd = new NetModulePropertiesDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nopd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractAndInstallPropsData";
@@ -198,12 +190,12 @@ public class EditNetModule extends AbstractControlFlow {
       
       NetOverlayOwner owner = dacx_.getCurrentOverlayOwner();
       int ownerMode = owner.overlayModeForOwner();
-      String ovrKey = dacx_.oso.getCurrentOverlay(); 
+      String ovrKey = dacx_.getOSO().getCurrentOverlay(); 
       NetworkOverlay novr = owner.getNetworkOverlay(ovrKey);
-      NetOverlayProperties nop = dacx_.getLayout().getNetOverlayProperties(ovrKey);
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(ovrKey);
       NetModule nmod = novr.getModule(modID_);
       NetModuleProperties nmop = nop.getNetModuleProperties(modID_);
-      Layout.NetModuleLinkPadRequirements padNeeds = dacx_.getLayout().findNetModuleLinkPadRequirements(owner.getID(), ovrKey, modID_, dacx_);
+      Layout.NetModuleLinkPadRequirements padNeeds = dacx_.getCurrentLayout().findNetModuleLinkPadRequirements(owner.getID(), ovrKey, modID_, dacx_);
       HashSet<String> existingMembers = new HashSet<String>();
       Iterator<NetModuleMember> memit = nmod.getMemberIterator();
       while (memit.hasNext()) {
@@ -214,22 +206,22 @@ public class EditNetModule extends AbstractControlFlow {
       // Start the operation:
       //
              
-      UndoSupport support = new UndoSupport(appState_, "undo.netModProp");
+      UndoSupport support = uFac_.provideUndoSupport("undo.netModProp", dacx_);
       boolean submit = false;
       
       if (crq.submit || crq.submitTags || crq.submitNV) {
      
         NetModuleChange nmc = nmod.changeNameAndDescription(crq.nameToSubmit, crq.descToSubmit, owner.getID(), ownerMode, ovrKey);
-        support.addEdit(new NetOverlayChangeCmd(appState_, dacx_, nmc));
+        support.addEdit(new NetOverlayChangeCmd(dacx_, nmc));
         if (crq.submitTags) {
-          nmc = nmod.replaceAllTags(crq.newTags, dacx_.getGenomeID(), ownerMode, ovrKey);
-          support.addEdit(new NetOverlayChangeCmd(appState_, dacx_, nmc));
+          nmc = nmod.replaceAllTags(crq.newTags, dacx_.getCurrentGenomeID(), ownerMode, ovrKey);
+          support.addEdit(new NetOverlayChangeCmd(dacx_, nmc));
         }
         if (crq.submitNV) {
-          nmc = nmod.replaceAllNVPairs(crq.newNvpl, dacx_.getGenomeID(), ownerMode, ovrKey);
-          support.addEdit(new NetOverlayChangeCmd(appState_, dacx_, nmc));
+          nmc = nmod.replaceAllNVPairs(crq.newNvpl, dacx_.getCurrentGenomeID(), ownerMode, ovrKey);
+          support.addEdit(new NetOverlayChangeCmd(dacx_, nmc));
         }
-        support.addEvent(new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         submit = true;
       }
     
@@ -269,30 +261,30 @@ public class EditNetModule extends AbstractControlFlow {
         }
         
         
-        Layout.PropChange lpc = dacx_.getLayout().replaceNetModuleProperties(modID_, changedProps, ovrKey);     
+        Layout.PropChange lpc = dacx_.getCurrentLayout().replaceNetModuleProperties(modID_, changedProps, ovrKey);     
         if (lpc != null) {
-          PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+          PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
           support.addEdit(mov);
-          support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+          support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
           submit = true;
         }
         if (crq.doLinks) {
-          Layout.PropChange[] lpcs = dacx_.getLayout().applySameColorToModuleAndLinks(ovrKey, modID_, crq.color1, false, null, dacx_);
+          Layout.PropChange[] lpcs = dacx_.getCurrentLayout().applySameColorToModuleAndLinks(ovrKey, modID_, crq.color1, false, null, dacx_);
           if (lpcs.length > 0) {
-            PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpcs);
+            PropChangeCmd mov = new PropChangeCmd(dacx_, lpcs);
             support.addEdit(mov);     
-            support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+            support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
             submit = true;
           }
         }
       }
     
       NetModule.FullModuleKey fmk = new NetModule.FullModuleKey(ownerMode, owner.getID(), ovrKey, modID_);
-      Layout.PropChange[] lpcs = dacx_.getLayout().fixNetModuleLinkPads(fmk, padNeeds, dacx_, false);
+      Layout.PropChange[] lpcs = dacx_.getCurrentLayout().fixNetModuleLinkPads(fmk, padNeeds, dacx_, false);
       if (lpcs.length > 0) {
-        PropChangeCmd lpc = new PropChangeCmd(appState_, dacx_, lpcs);
+        PropChangeCmd lpc = new PropChangeCmd(dacx_, lpcs);
         support.addEdit(lpc);     
-        support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
         submit = true;
       }     
       

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,7 +39,7 @@ import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 ** This holds a set of build instructions for a genome instance
 */
 
-public class InstanceInstructionSet {
+public class InstanceInstructionSet implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -76,19 +76,7 @@ public class InstanceInstructionSet {
   */
 
   public InstanceInstructionSet(InstanceInstructionSet other) {
-    this.instruct_ = new ArrayList<BuildInstructionInstance>();
-    int size = other.instruct_.size();
-    for (int i = 0; i < size; i++) {
-      BuildInstructionInstance otherBii = other.instruct_.get(i);
-      this.instruct_.add(new BuildInstructionInstance(otherBii));  
-    }
-    this.regions_ = new ArrayList<RegionInfo>();
-    int rSize = other.regions_.size();
-    for (int i = 0; i < rSize; i++) {
-      RegionInfo otherRI = other.regions_.get(i);
-      this.regions_.add(new RegionInfo(otherRI));  
-    }
-    this.instanceID_ = other.instanceID_;
+    copyGuts(other);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -96,6 +84,43 @@ public class InstanceInstructionSet {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Clone
+  */
+
+  @Override
+  public InstanceInstructionSet clone() {
+    try {
+      InstanceInstructionSet retval = (InstanceInstructionSet)super.clone();
+      retval.copyGuts(this);
+      return (retval);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  }
+
+  /***************************************************************************
+  **
+  ** Copy guts
+  */
+
+  private void copyGuts(InstanceInstructionSet other) {
+    this.instruct_ = new ArrayList<BuildInstructionInstance>();
+    int size = other.instruct_.size();
+    for (int i = 0; i < size; i++) {
+      BuildInstructionInstance otherBii = other.instruct_.get(i);
+      this.instruct_.add(otherBii.clone());  
+    }
+    this.regions_ = new ArrayList<RegionInfo>();
+    int rSize = other.regions_.size();
+    for (int i = 0; i < rSize; i++) {
+      RegionInfo otherRI = other.regions_.get(i);
+      this.regions_.add(otherRI.clone());
+    }
+    this.instanceID_ = other.instanceID_;
+  }
 
   /***************************************************************************
   **
@@ -395,7 +420,7 @@ public class InstanceInstructionSet {
   ** Used for each region
   */
   
-  public static class RegionInfo {
+  public static class RegionInfo implements Cloneable {
     public String name;
     public String abbrev;
     
@@ -409,10 +434,27 @@ public class InstanceInstructionSet {
       this.abbrev = other.abbrev;
     }
 
+    /***************************************************************************
+    **
+    ** Clone
+    */
+  
+    @Override
+    public RegionInfo clone() {
+      try {
+        RegionInfo retval = (RegionInfo)super.clone();
+        return (retval);
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    }
+
+    @Override
     public int hashCode() {
       return (name.hashCode() + abbrev.hashCode());
     }    
 
+    @Override
     public boolean equals(Object other) {
       if (other == this) {
         return (true);

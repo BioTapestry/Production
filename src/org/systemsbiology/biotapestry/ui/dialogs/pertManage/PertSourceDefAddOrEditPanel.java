@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@ import java.util.Map;
 import javax.swing.JButton;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
@@ -75,7 +75,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
   private PerturbationData pd_;
   private PertManageHelper pmh_;
   private EditableTable estAnnot_;
-  private ArrayList annotList_;
+  private ArrayList<EnumCell> annotList_;
   private JButton proxJump_;
   private HashSet allMerge_;
   
@@ -92,10 +92,10 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertSourceDefAddOrEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(appState, dacx, parent, pet, myKey, 4);
+  public PertSourceDefAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
+    super(uics, dacx, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
 
     //
     // Source name:
@@ -119,7 +119,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertSrcsAndTargsManagePanel.MANAGER_KEY, 
                                 PertSrcsAndTargsManagePanel.SRC_KEY, whichRow); 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -131,7 +131,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     //
     
     JLabel expLabel = new JLabel(rMan_.getString("psdae.experiment"));
-    Vector exps = pd.getPertDictionary().getExperimentTypes();
+    Vector<TrueObjChoiceContent> exps = pd.getPertDictionary().getExperimentTypes();
     experimentField_ = new JComboBox(exps);     
     UiUtil.gbcSet(gbc_, 0, rowNum_, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
     add(expLabel, gbc_);
@@ -147,7 +147,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertPropertiesManagePanel.MANAGER_KEY, 
                                 PertPropertiesManagePanel.PERT_KEY, whichRow); 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -160,7 +160,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
 
     JLabel proxSLab = new JLabel(rMan_.getString("psdae.proxySign"));
     proxyLab_ = new JLabel(rMan_.getString("psdae.proxyFor"));
-    Vector proxs = new Vector(PertSource.getProxySignValues(appState_));
+    Vector<ObjChoiceContent> proxs = new Vector<ObjChoiceContent>(PertSource.getProxySignValues(dacx_));
     proxySignField_ = new JComboBox(proxs);
     proxySignField_.addItemListener(new ItemListener() {
       public void itemStateChanged(ItemEvent ev) {
@@ -170,7 +170,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
           proxyLab_.setEnabled(index != PertSource.NO_PROXY_INDEX);
           proxJump_.setEnabled(index != PertSource.NO_PROXY_INDEX);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -192,7 +192,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
           pet_.jumpToRemoteEdit(PertSrcsAndTargsManagePanel.MANAGER_KEY, 
                                 PertSrcsAndTargsManagePanel.SRC_KEY, whichRow);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });    
@@ -205,8 +205,8 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     // Build the values table tabs.
     //
 
-    annotList_ = new ArrayList();
-    estAnnot_ = new EditableTable(appState_, new EditableTable.OneEnumTableModel(appState_, "psdae.annot", annotList_), parent_);
+    annotList_ = new ArrayList<EnumCell>();
+    estAnnot_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "psdae.annot", annotList_), parent_);
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);
     JPanel annotTablePan = estAnnot_.buildEditableTable(etp);
     JPanel annotTableWithButton = pmh_.addEditButton(annotTablePan, "psdae.annotEdit", true, new ActionListener() {
@@ -215,7 +215,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
           String who = pmh_.getSelectedEnumVal(estAnnot_);        
           pet_.jumpToRemoteEdit(PertAnnotManagePanel.MANAGER_KEY, PertAnnotManagePanel.ANNOT_KEY, who);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -322,15 +322,15 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
   */
   
   protected void updateOptions() {
-    Vector srcVec = pd_.getSourceNameOptions();
-    Vector exps = pd_.getPertDictionary().getExperimentTypes();
+    Vector<TrueObjChoiceContent> srcVec = pd_.getSourceNameOptions();
+    Vector<TrueObjChoiceContent> exps = pd_.getPertDictionary().getExperimentTypes();
     UiUtil.replaceComboItems(srcField_, srcVec);  
     UiUtil.replaceComboItems(experimentField_, exps);     
     UiUtil.replaceComboItems(proxyName_, srcVec);     
       
     annotList_ = pmh_.buildAnnotEnum();
-    HashMap perColumnEnums = new HashMap();
-    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_));      
+    HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList_, EnumCell.class));      
     estAnnot_.refreshEditorsAndRenderers(perColumnEnums);
     ((EditableTable.OneEnumTableModel)estAnnot_.getModel()).setCurrentEnums(annotList_);      
     
@@ -385,7 +385,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     //
   
     Iterator tdit = estAnnot_.getModel().getValuesFromTable().iterator();
-    ArrayList annotResult = new ArrayList();
+    ArrayList<String> annotResult = new ArrayList<String>();
     while (tdit.hasNext()) {
       EditableTable.OneEnumTableModel.TableRow ent = (EditableTable.OneEnumTableModel.TableRow)tdit.next();
       EnumCell ec = ent.enumChoice;
@@ -403,7 +403,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
       resultSource_ = new PertSource(nextKey, srcKey, expKey, annotResult);
       resultSource_.setProxySign(pSignResult); 
     } else {
-      resultSource_ = (PertSource)pd_.getSourceDef(currKey_).clone();
+      resultSource_ = pd_.getSourceDef(currKey_).clone();
       resultSource_.setSourceNameKey(srcKey);
       resultSource_.setExpType(expKey);
       resultSource_.setProxySign(pSignResult);
@@ -411,9 +411,9 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     }
     
     
-    Iterator sdkit = pd_.getSourceDefKeys();
+    Iterator<String> sdkit = pd_.getSourceDefKeys();
     while (sdkit.hasNext()) {
-      String sdkey = (String)sdkit.next();
+      String sdkey = sdkit.next();
       PertSource pschk =  pd_.getSourceDef(sdkey);
       if (pschk.compareSrcAndType(resultSource_) == 0) {  // just compares source/pert type
         boolean problem = false;
@@ -490,7 +490,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     
     String proxSign = ps.getProxySign();
     boolean haveAProx = !proxSign.equals(PertSource.mapProxySignIndex(PertSource.NO_PROXY_INDEX));
-    ObjChoiceContent occP = PertSource.getProxySignValue(appState_, proxSign);
+    ObjChoiceContent occP = PertSource.getProxySignValue(dacx_, proxSign);
     proxySignField_.setSelectedItem(occP);
     proxyName_.setEnabled(haveAProx);
     proxyLab_.setEnabled(haveAProx);

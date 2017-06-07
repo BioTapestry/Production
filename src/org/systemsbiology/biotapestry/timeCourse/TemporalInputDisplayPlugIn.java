@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,8 +22,10 @@ package org.systemsbiology.biotapestry.timeCourse;
 import java.util.List;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
 import org.systemsbiology.biotapestry.plugin.InternalNodeDataDisplayPlugIn;
@@ -37,7 +39,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
 
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -61,14 +63,14 @@ public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn
   
   /***************************************************************************
   **
-  ** Internal plugins need to have access to internal state
+  ** Internal plugins need to have access to data state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+  public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
-
+  
   /***************************************************************************
   **
   ** Determine data requirements
@@ -84,7 +86,7 @@ public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (false);
   }
    
@@ -103,7 +105,7 @@ public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String nodeId) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String nodeId) {
     return (null);
   }
  
@@ -112,11 +114,10 @@ public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn
   ** Show the Temporal Input Data
   */
   
-  public String getDataAsHTML(String genomeIDX, String nodeID) {
-    StringBuffer buf = new StringBuffer(); 
-    Database db = appState_.getDB();
-  
-    TemporalInputRangeData trd = db.getTemporalInputRangeData();
+  public String getDataAsHTML(String dbID, String genomeIDX, String nodeID) {
+    StringBuffer buf = new StringBuffer();
+    StaticDataAccessContext dacx = new StaticDataAccessContext(new TabPinnedDynamicDataAccessContext(ddacx_, dbID)).getContextForRoot();   
+    TemporalInputRangeData trd = dacx.getTemporalRangeSrc().getTemporalInputRangeData();
     if ((trd == null) || !trd.haveData()) {
       return ("");
     }
@@ -125,13 +126,13 @@ public class TemporalInputDisplayPlugIn implements InternalNodeDataDisplayPlugIn
     
     nodeID = GenomeItemInstance.getBaseID(nodeID);
     
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     String desc = rMan.getString("dataWindow.temporalInputs");
     buf.append("<center><h1>"); 
     buf.append(desc); 
     buf.append("</h1>\n");
 
-    List<String> dataKeys = trd.getTemporalInputRangeEntryKeysWithDefault(nodeID);
+    List<String> dataKeys = trd.getTemporalInputRangeEntryKeysWithDefault(nodeID, dacx.getGenomeSource());
     boolean gotData = false;
     if (dataKeys != null) {
       Iterator<String> dkit = dataKeys.iterator();

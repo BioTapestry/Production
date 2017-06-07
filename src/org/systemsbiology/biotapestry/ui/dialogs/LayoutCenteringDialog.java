@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,8 @@ import javax.swing.ButtonGroup;
 import javax.swing.JCheckBox;
 import javax.swing.JRadioButton;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -72,8 +73,8 @@ public class LayoutCenteringDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public LayoutCenteringDialog(BTState appState, boolean emptyRoot, boolean haveOverlays) {
-    super(appState, "layoutCenterDialog.title", new Dimension(500, 250), 4);
+  public LayoutCenteringDialog(UIComponentSource uics, DataAccessContext dacx, boolean emptyRoot, boolean haveOverlays) {
+    super(uics, dacx, "layoutCenterDialog.title", new Dimension(500, 250), 4);
 
     //
     // If the root is empty, we must be tracking overlays.  The only choice is whether they want to
@@ -98,7 +99,7 @@ public class LayoutCenteringDialog extends BTStashResultsDialog {
             try {
               ignoreOverlaysBox_.setEnabled(doCentersButton_.isSelected());
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
             return;
           }
@@ -126,7 +127,7 @@ public class LayoutCenteringDialog extends BTStashResultsDialog {
             try {
               ignoreOverlaysBox_.setEnabled(!doMatchupsButton_.isSelected());
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
             return;
           }

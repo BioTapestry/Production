@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,8 +28,8 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.parser.ParserClient;
 import org.systemsbiology.biotapestry.qpcr.QPCRData;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.MinMax;
@@ -39,7 +39,7 @@ import org.systemsbiology.biotapestry.util.MinMax;
 ** This handles QPCR formatting
 */
 
-class QpcrXmlFormatFactory implements ParserClient {
+public class QpcrXmlFormatFactory implements ParserClient {
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -74,7 +74,8 @@ class QpcrXmlFormatFactory implements ParserClient {
   private String regionRestrictKey_;
   private Set<String> sourceKeys_;
   private Set<String> nullSourceKeys_;
-  private Set<String> defaultNullSpanKeys_;  
+  private Set<String> defaultNullSpanKeys_;
+  @SuppressWarnings("unused")
   private Object container_;
   private TargetGene currTarg_;
   private Perturbation currPerturb_;
@@ -101,7 +102,7 @@ class QpcrXmlFormatFactory implements ParserClient {
   private NullTimeSpan pendingDefaultNullTimeSpan_;
   private long origSerialNumber_;
   
-  private BTState appState_;
+  private TabPinnedDynamicDataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -114,9 +115,8 @@ class QpcrXmlFormatFactory implements ParserClient {
   ** Constructor
   */
 
-   QpcrXmlFormatFactory(BTState appState, boolean mapsAreIllegal, boolean serialNumberIsIllegal) {
+   public QpcrXmlFormatFactory(boolean mapsAreIllegal, boolean serialNumberIsIllegal) {
     
-    appState_ = appState;
     mapsAreIllegal_ = mapsAreIllegal;
     serialNumberIsIllegal_ = serialNumberIsIllegal;
     allKeys_ = new HashSet<String>();
@@ -142,30 +142,7 @@ class QpcrXmlFormatFactory implements ParserClient {
     defaultNullSpanKeys_ = NullTimeSpan.keywordsOfInterest(true);
     allKeys_ = new HashSet<String>();
     allKeys_.addAll(qpcrKeys_);
-    /*
-    allKeys_.addAll(targKeys_);
-    allKeys_.addAll(nullPertKeys_);
-    allKeys_.addAll(footKeys_);    
-    allKeys_.addAll(pertKeys_); 
-    allKeys_.addAll(batchKeys_);
-    allKeys_.addAll(measKeys_);
-    allKeys_.addAll(spanKeys_);
-    allKeys_.add(regionRestrictKey_);
-    allKeys_.addAll(sourceKeys_);
-    allKeys_.addAll(nullSourceKeys_);    
-    allKeys_.add(nameKey_);
-    allKeys_.add(colKey_);
-    allKeys_.add(colRangeKey_);    
-    allKeys_.add(dmKey_);
-    allKeys_.add(useKey_);
-    allKeys_.addAll(nullTargKeys_); 
-    allKeys_.addAll(nullSpanKeys_); 
-    allKeys_.addAll(defaultNullSpanKeys_);     
-    allKeys_.add("sup");
-    allKeys_.add("sub");
-    allKeys_.add("i"); 
-     */
-    
+  
     buf_ = new StringBuffer();
     charTarg_ = NO_TARGET_;
     pendingDefaultNullTimeSpan_ = null;
@@ -176,6 +153,16 @@ class QpcrXmlFormatFactory implements ParserClient {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  ** 
+  ** Set the data access context
+  */
+ 
+  public void setContext(DynamicDataAccessContext dacx) {
+    dacx_ = new TabPinnedDynamicDataAccessContext(dacx);
+    return;
+  }
 
   /***************************************************************************
   ** 
@@ -233,7 +220,7 @@ class QpcrXmlFormatFactory implements ParserClient {
           charTarg_ = NO_TARGET_;          
           break;
         case PERT_TARGET_:
-          currNPert_.setNote(buf_.toString(), qpcr_);
+          currNPert_.setNote(buf_.toString(), qpcr_, dacx_);
           //currNPert_.setNote(CharacterEntityMapper.unmapEntitiesNotTags(buf_.toString(), false));
           charTarg_ = NO_TARGET_;          
           break;
@@ -290,9 +277,9 @@ class QpcrXmlFormatFactory implements ParserClient {
     }
     
     if (qpcrKeys_.contains(elemName)) {
-      QPCRData qpcr = QPCRData.buildFromXML(appState_, elemName, attrs, serialNumberIsIllegal_);
+      QPCRData qpcr = QPCRData.buildFromXML(dacx_, elemName, attrs, serialNumberIsIllegal_);
       if (qpcr != null) {
-        appState_.getDB().getPertData().setLegacyQPCR(new QpcrLegacyPublicExposed(qpcr));
+        dacx_.getExpDataSrc().getPertData().setLegacyQPCR(new QpcrLegacyPublicExposed(qpcr, dacx_));
         qpcr_ = qpcr;
         origSerialNumber_ = qpcr_.getSerialNumber();
       }
@@ -306,7 +293,7 @@ class QpcrXmlFormatFactory implements ParserClient {
         currTarg_ = tgene;
       }
     } else if (nullPertKeys_.contains(elemName)) {
-      NullPerturb np = NullPerturb.buildFromXML(appState_, elemName, attrs);
+      NullPerturb np = NullPerturb.buildFromXML(dacx_, elemName, attrs);
       if (np != null) {
         if (pendingDefaultNullTimeSpan_ != null) {
           qpcr_.setNullPerturbationsDefaultTimeSpan(pendingDefaultNullTimeSpan_);
@@ -354,12 +341,12 @@ class QpcrXmlFormatFactory implements ParserClient {
         currNullTarg_ = nt;
       } 
     } else if (nullSpanKeys_.contains(elemName)) {
-      NullTimeSpan nts = NullTimeSpan.buildFromXML(appState_, elemName, attrs);
+      NullTimeSpan nts = NullTimeSpan.buildFromXML(dacx_, elemName, attrs);
       if (nts != null) {
         currNullTarg_.addTimeSpan(nts);
       }
     } else if (defaultNullSpanKeys_.contains(elemName)) {
-      NullTimeSpan nts = NullTimeSpan.buildFromXML(appState_, elemName, attrs);
+      NullTimeSpan nts = NullTimeSpan.buildFromXML(dacx_, elemName, attrs);
       //
       // Here is the rub.  If the default null time span is defined, we cannot change
       // the time axis definition.  But legacy loads will show up with the old default
@@ -368,7 +355,7 @@ class QpcrXmlFormatFactory implements ParserClient {
       //
       if (nts != null) {        
          MinMax mm = TimeAxisDefinition.getLegacyDefaultTimeSpan();
-         NullTimeSpan legNts = new NullTimeSpan(appState_, mm.min, mm.max);
+         NullTimeSpan legNts = new NullTimeSpan(dacx_, mm.min, mm.max);
         if (!legNts.equals(nts)) {
           qpcr_.setNullPerturbationsDefaultTimeSpan(nts);
         } else {
@@ -376,7 +363,7 @@ class QpcrXmlFormatFactory implements ParserClient {
         }
       } 
     } else if (spanKeys_.contains(elemName)) {
-      TimeSpan span = TimeSpan.buildFromXML(appState_, elemName, attrs);
+      TimeSpan span = TimeSpan.buildFromXML(dacx_, elemName, attrs);
       if (span != null) {
         currPerturb_.addTime(span);
         currSpan_ = span;
@@ -387,7 +374,7 @@ class QpcrXmlFormatFactory implements ParserClient {
         currSpan_.addRegionRestriction(region);
       }        
     } else if (batchKeys_.contains(elemName)) {
-      Batch bat = Batch.buildFromXML(appState_, elemName, attrs);
+      Batch bat = Batch.buildFromXML(dacx_, elemName, attrs);
       if (bat != null) {
         if (Batch.isForNull(elemName)) {
           currNullTarg_.addBatch(bat);
@@ -397,7 +384,7 @@ class QpcrXmlFormatFactory implements ParserClient {
         currBatch_ = bat;
       }      
     } else if (measKeys_.contains(elemName)) {
-      Measurement meas = Measurement.buildFromXML(appState_, elemName, attrs, qpcr_.getThresholdValue());
+      Measurement meas = Measurement.buildFromXML(dacx_, elemName, attrs, qpcr_.getThresholdValue());
       if (meas != null) {
         currBatch_.addMeasurement(meas);
       }      

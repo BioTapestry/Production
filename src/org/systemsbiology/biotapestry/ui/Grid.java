@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import java.util.Collections;
 import java.util.TreeMap;
 import java.awt.geom.Point2D;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.Vector2D;
@@ -99,7 +99,7 @@ public class Grid implements Cloneable {
       // Try for a 3:4 aspect ratio:
       //
       int numPos = positions.length;
-      double blocks = (double)numPos / 12.0;
+      double blocks = numPos / 12.0;
       double scale = Math.sqrt(blocks);
       numCols = (int)Math.round(scale * 4.0);
       numRows = (int)Math.ceil((double)numPos / (double)numCols);
@@ -116,15 +116,15 @@ public class Grid implements Cloneable {
       }
 
       colSpace = size.width / (double)numCols;
-      colSpace = (((double)Math.round(colSpace / 10.0)) * 10.0);     
+      colSpace = Math.round(colSpace / 10.0) * 10.0;     
       rowSpace = (size.height / (double)numRows) + 50;
-      rowSpace = (((double)Math.round(rowSpace / 10.0)) * 10.0);
+      rowSpace = Math.round(rowSpace / 10.0) * 10.0;
     } else if (layoutMode == VARIABLE_RECTANGLE) {
       //
       // Try for a 3:4 aspect ratio:
       //
       int numPos = positions.length;
-      double blocks = (double)numPos / 12.0; // 12 = 3 * 4, i.e. has desired ratio.
+      double blocks = numPos / 12.0; // 12 = 3 * 4, i.e. has desired ratio.
       double scale = Math.sqrt(blocks);
       numCols = (int)Math.round(scale * 4.0);
       numRows = (int)Math.ceil((double)numPos / (double)numCols);
@@ -349,7 +349,7 @@ public class Grid implements Cloneable {
         colSpaceOverride[i] = colSpace;
       }
     }
-    space = ((double)Math.round(space / 10.0)) * 10.0;
+    space = Math.round(space / 10.0) * 10.0;
     colSpaceOverride[col] = space;
     return;
   }
@@ -380,7 +380,7 @@ public class Grid implements Cloneable {
         rowSpaceOverride[i] = rowSpace;
       }
     }
-    space = ((double)Math.round(space / 10.0)) * 10.0;
+    space = Math.round(space / 10.0) * 10.0;
     rowSpaceOverride[row] = space;
     return;
   }  
@@ -516,7 +516,7 @@ public class Grid implements Cloneable {
     double x = corner.getX();
     double y = corner.getY();
     if ((colSpaceOverride == null) || (colSpaceOverride.length == 0)) {
-      x += (getColSpace() * ((double)col + 0.5));
+      x += (getColSpace() * (col + 0.5));
     } else {
       int firstNonZero = Integer.MIN_VALUE;
       for (int i = 0; i < col; i++) {
@@ -532,7 +532,7 @@ public class Grid implements Cloneable {
     }
     
     if ((rowSpaceOverride == null) || (rowSpaceOverride.length == 0)) {
-      y += (getRowSpace() * ((double)row + 0.5));
+      y += (getRowSpace() * (row + 0.5));
     } else {
       int firstNonZero = Integer.MIN_VALUE;
       for (int i = 0; i < row; i++) {
@@ -640,6 +640,7 @@ public class Grid implements Cloneable {
   ** Build the grid bounds
   */
   
+  @SuppressWarnings("unused")
   public GridBounds buildBounds(Genome genome, Layout layout, String srcID, int srcPos, Set<String> linkSet) {
 
     RowAndColumn rac = getRowAndColumn(srcPos);
@@ -671,7 +672,7 @@ public class Grid implements Cloneable {
   */     
 
   public String splitLinksUp(RowData targRD, int step, int srcRow, Map<Integer, Point2D> splitPoints,
-                             DataAccessContext rcx, int colNum, SlotTracker tracker,
+                             StaticDataAccessContext rcx, int colNum, SlotTracker tracker,
                              GridBounds bounds) {
 
     //
@@ -732,7 +733,7 @@ public class Grid implements Cloneable {
       //
       // Relocate opposite segment to riser point:
       //
-      relocToRiser(splitPoints, targRD.rowNum, rcx.getLayout(), oppLink);    
+      relocToRiser(splitPoints, targRD.rowNum, rcx.getCurrentLayout(), oppLink);    
       //
       // Split the runner out to the opposite maximum into segments:
       //
@@ -750,12 +751,12 @@ public class Grid implements Cloneable {
   public void doRiserSplits(int startRow, int endRow, int step,
                             String targLink, Map<Integer, Point2D> splitPoints, 
                             double rowSpace, int colNum, SlotTracker tracker,
-                            DataAccessContext rcx, GridBounds bounds) {
+                            StaticDataAccessContext rcx, GridBounds bounds) {
 
-    Linkage maxLink = rcx.getGenome().getLinkage(targLink);
-    LinkProperties lp = rcx.getLayout().getLinkProperties(targLink);
+    Linkage maxLink = rcx.getCurrentGenome().getLinkage(targLink);
+    LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(targLink);
     BusProperties bp = (BusProperties)lp;
-    NodeProperties srcProp = rcx.getLayout().getNodeProperties(maxLink.getSource());
+    NodeProperties srcProp = rcx.getCurrentLayout().getNodeProperties(maxLink.getSource());
     Point2D srcLoc = srcProp.getLocation();
     // Always install a riser above the source row if there is a target in it.
     int loopStart = (step == 1) ? startRow + 1 : startRow;
@@ -775,7 +776,7 @@ public class Grid implements Cloneable {
 
   public void doRiserSplit(Map<Integer, Point2D> splitPoints, String targLinkID, 
                            Linkage targLink, int row, int startRow,
-                           DataAccessContext rcx,
+                           StaticDataAccessContext rcx,
                            double rowSpace, 
                            BusProperties bp, Point2D srcLoc, 
                            int colNum, SlotTracker tracker) {      
@@ -796,15 +797,15 @@ public class Grid implements Cloneable {
     Vector2D colDelt = new Vector2D(10.0, 0.0);
     String src = targLink.getSource();
     int slotNum = tracker.getColSlotForSource(colNum, src);
-    colDelt.scale((double)slotNum + 2.0);            
-    NodeProperties np = rcx.getLayout().getNodeProperties(src);
-    Node node = rcx.getGenome().getNode(src);      
+    colDelt.scale(slotNum + 2.0);            
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(src);
+    Node node = rcx.getCurrentGenome().getNode(src);      
     Vector2D lpo = np.getRenderer().getLaunchPadOffset(lpad, node, rcx);      
     Point2D xCalc = lpo.add(colDelt.add(srcLoc));
 
     Point2D split = new Point2D.Double(xCalc.getX(), riserY);
     UiUtil.forceToGrid(split.getX(), split.getY(), split, 10.0); 
-    rcx.getLayout().splitBusLink(segID, split, bp, null, rcx);
+    rcx.getCurrentLayout().splitBusLink(segID, split, bp, null, rcx);
     splitPoints.put(new Integer(row), split);
     return;
   }      
@@ -815,17 +816,17 @@ public class Grid implements Cloneable {
   */    
 
   public double calcRiserY(Linkage targLink, int row, int startRow, double rowSpace, 
-                           SlotTracker tracker, DataAccessContext rcx) {      
+                           SlotTracker tracker, StaticDataAccessContext rcx) {      
 
     Vector2D rowDelt = new Vector2D(0.0, rowSpace);
-    rowDelt.scale((double)(row - startRow));
+    rowDelt.scale(row - startRow);
     String src = targLink.getSource();
     Vector2D rowOffDelt = new Vector2D(0.0, -10.0); 
     int slotNum = tracker.getRowSlotForSource(row, src);      
-    rowOffDelt.scale((double)slotNum + 2.0);
-    NodeProperties np = rcx.getLayout().getNodeProperties(src);
+    rowOffDelt.scale(slotNum + 2.0);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(src);
     Point2D srcLoc = np.getLocation();
-    Node node = rcx.getGenome().getNode(src);
+    Node node = rcx.getCurrentGenome().getNode(src);
     int lPad = targLink.getLaunchPad();
     Vector2D lpo = np.getRenderer().getLaunchPadOffset(lPad, node, rcx);      
     Point2D split = lpo.add(rowOffDelt.add(rowDelt.add(srcLoc)));
@@ -839,13 +840,13 @@ public class Grid implements Cloneable {
   ** Do all split operations on a runner
   */    
 
-  public void doRunnerSplits(String targLinkID, DataAccessContext rcx,
+  public void doRunnerSplits(String targLinkID, StaticDataAccessContext rcx,
                              SortedMap<Integer, SortedMap<Integer, String>> targs, 
                              SortedSet<Integer> keys,
                              int rowNum, int startRow, double rowSpace,
                              SlotTracker tracker, boolean lowerFirst) {
 
-    LinkProperties lp = rcx.getLayout().getLinkProperties(targLinkID);
+    LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(targLinkID);
     BusProperties bp = (BusProperties)lp;                          
     Iterator<Integer> kit = keys.iterator();
     while (kit.hasNext()) {
@@ -869,11 +870,11 @@ public class Grid implements Cloneable {
   */    
 
   public void doRunnerSplit(String targLinkID, String linkID,
-                            BusProperties bp, DataAccessContext rcx, int rowNum, 
+                            BusProperties bp, StaticDataAccessContext rcx, int rowNum, 
                             int startRow, SlotTracker tracker, double rowSpace) {
 
     LinkSegmentID segID = LinkSegmentID.buildIDForDrop(targLinkID);
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     Linkage targLink = genome.getLinkage(targLinkID);      
 
     //
@@ -888,17 +889,17 @@ public class Grid implements Cloneable {
 
     Linkage link = genome.getLinkage(linkID);
     Node node = genome.getNode(link.getTarget());
-    NodeProperties np = rcx.getLayout().getNodeProperties(link.getTarget());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(link.getTarget());
     Point2D genePoint = np.getLocation();
     Vector2D lpo = np.getRenderer().getLandingPadOffset(link.getLandingPad(), node, link.getSign(), rcx);
     Vector2D lpox = new Vector2D(lpo.getX(), 0.0);
     Vector2D offset = new Vector2D(0.0, -10.0);
     int slotNum = tracker.getRowSlotForSource(rowNum, link.getSource());
-    offset.scale((double)slotNum + 2.0);
+    offset.scale(slotNum + 2.0);
     Point2D xCalc = offset.add(lpox.add(genePoint));
     Point2D split = new Point2D.Double(xCalc.getX(), riserY);
     UiUtil.forceToGrid(split.getX(), split.getY(), split, 10.0);      
-    rcx.getLayout().splitBusLink(segID, split, bp, null, rcx);
+    rcx.getCurrentLayout().splitBusLink(segID, split, bp, null, rcx);
 
     //
     // Do the relocation:
@@ -913,7 +914,7 @@ public class Grid implements Cloneable {
         if (end.equals(split)) {      
            LinkSegmentID relocSeg = LinkSegmentID.buildIDForSegment(ls.getID());
            relocSeg.tagIDWithEndpoint(LinkSegmentID.END);
-           rcx.getLayout().relocateSegmentOnTree(bp, relocSeg, dropID, null, null);
+           rcx.getCurrentLayout().relocateSegmentOnTree(bp, relocSeg, dropID, null, null);
            break;
         }
       }

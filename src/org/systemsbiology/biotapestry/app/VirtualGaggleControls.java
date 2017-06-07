@@ -64,7 +64,9 @@ public class VirtualGaggleControls {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private CmdSource cSrc_;
+  private ResourceManager rMan_;
  
   private JButton gaggleInstallButton_;
   private JButton gaggleUpdateGooseButton_;
@@ -87,14 +89,14 @@ public class VirtualGaggleControls {
   ** Constructor 
   */ 
   
-  public VirtualGaggleControls(BTState appState) {
-    appState_ = appState;
-    appState_.setGaggleControls(this);
-    boolean doGaggle = appState_.getDoGaggle();
-    ResourceManager rMan = appState_.getRMan();   
+  public VirtualGaggleControls(UIComponentSource uics, CmdSource cSrc, ResourceManager rMan) {
+    uics_ = uics;
+    cSrc_ = cSrc;
+    rMan_ = rMan;
+    boolean doGaggle = uics_.getDoGaggle();
     if (doGaggle) {
-      gaggleGooseChooseMenu_ = new JMenu(rMan.getString("command.gooseChoose"));
-      gaggleGooseChooseMenu_.setMnemonic(rMan.getChar("command.gooseChooseMnem"));
+      gaggleGooseChooseMenu_ = new JMenu(rMan_.getString("command.gooseChoose"));
+      gaggleGooseChooseMenu_.setMnemonic(rMan_.getChar("command.gooseChooseMnem"));
       gaggleGooseCombo_ = new FixedJComboBox(250);
       gaggleGooseCombo_.addActionListener(new ActionListener() {
         public void actionPerformed(ActionEvent ev) {
@@ -102,14 +104,14 @@ public class VirtualGaggleControls {
             if (managingGaggleControls_) {
               return;
             }
-            GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+            GooseAppInterface goose = uics_.getGooseMgr().getGoose();
             if ((goose != null) && goose.isActivated()) {
               ObjChoiceContent occ = (ObjChoiceContent)gaggleGooseCombo_.getSelectedItem();
               goose.setCurrentGaggleTarget((occ == null) ? null : occ.val);
               setCurrentGaggleTarget(gaggleGooseCombo_.getSelectedIndex());
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -130,7 +132,7 @@ public class VirtualGaggleControls {
   */ 
   
   public void stockToolBarPre(MenuSource.BuildInfo bifot) {
-    boolean doGaggle = appState_.getDoGaggle();
+    boolean doGaggle = uics_.getDoGaggle();
     if (doGaggle) {
       if (gaggleUpdateGooseButton_ != null) {
         bifot.components.put("GOOSE_UP", gaggleUpdateGooseButton_);
@@ -149,7 +151,7 @@ public class VirtualGaggleControls {
   */ 
   
   public void stockToolBarPost(MenuSource.BuildInfo bifot) {
-    boolean doGaggle = appState_.getDoGaggle();
+    boolean doGaggle = uics_.getDoGaggle();
    
     if (doGaggle) {
       JButton gagup = (JButton)bifot.components.get("GOOSE_UP");
@@ -255,7 +257,7 @@ public class VirtualGaggleControls {
   */    
   
   public void triggerGaggleState(FlowMeister.MainFlow whichAction, boolean activate) {
-    MainCommands mcmd = appState_.getMainCmds();
+    MainCommands mcmd = cSrc_.getMainCmds();
     if (whichAction == FlowMeister.MainFlow.GAGGLE_PROCESS_INBOUND) {
       MainCommands.ChecksWithSpecialButton gpi = (MainCommands.ChecksWithSpecialButton)mcmd.getCachedAction(FlowMeister.MainFlow.GAGGLE_PROCESS_INBOUND, true);
       gpi.setButtonCondition(activate);
@@ -274,17 +276,17 @@ public class VirtualGaggleControls {
   */ 
     
   public void updateGaggleTargetActions() {
-    MainCommands mcmd = appState_.getMainCmds();
-    GooseAppInterface goose = appState_.getGooseMgr().getGoose();
+    MainCommands mcmd = cSrc_.getMainCmds();
+    GooseAppInterface goose = uics_.getGooseMgr().getGoose();
     if ((goose != null) && goose.isActivated()) {
-      if (!appState_.isHeadless()) {
+      if (!uics_.isHeadless()) {
         managingGaggleControls_ = true;
         SelectionSupport ss = goose.getSelectionSupport();
         List<String> targets = ss.getGooseList();
         int numTarg = targets.size();
         if (gaggleGooseChooseMenu_ != null) {
           gaggleGooseChooseMenu_.removeAll();     
-          GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(GooseAppInterface.BOSS_NAME, new Integer(0));
+          GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(GooseAppInterface.BOSS_NAME, Integer.valueOf(0));
            MainCommands.ChecksForEnabled scupa = mcmd.getActionNoCache(FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, false, args);
           JCheckBoxMenuItem jcb = new JCheckBoxMenuItem(scupa);
           gaggleGooseChooseMenu_.add(jcb);   
@@ -299,7 +301,7 @@ public class VirtualGaggleControls {
           String gooseName = targets.get(i);
           ObjChoiceContent occ = new ObjChoiceContent(gooseName, gooseName);
           if (gaggleGooseChooseMenu_ != null) {
-            GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(occ.val, new Integer(i + 1));
+            GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(occ.val, Integer.valueOf(i + 1));
             MainCommands.ChecksForEnabled scupa = mcmd.getActionNoCache(FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, false, args);
             JCheckBoxMenuItem jcb = new JCheckBoxMenuItem(scupa);
             gaggleGooseChooseMenu_.add(jcb);
@@ -322,29 +324,28 @@ public class VirtualGaggleControls {
         
         managingGaggleControls_ = false;      
       } else {
-        FlowMeister flom = appState_.getFloM();
+        FlowMeister flom = cSrc_.getFloM();
         SelectionSupport ss = goose.getSelectionSupport();
         List<String> targets = ss.getGooseList();
         int numTarg = targets.size();
-        ResourceManager rMan = appState_.getRMan(); 
         
-        gaggleXPlatMenu_ = new XPlatMenu(rMan.getString("command.gooseChoose"), rMan.getChar("command.gooseChooseMnem"));       
-        GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(GooseAppInterface.BOSS_NAME, new Integer(0));
+        gaggleXPlatMenu_ = new XPlatMenu(rMan_.getString("command.gooseChoose"), rMan_.getChar("command.gooseChooseMnem"));       
+        GaggleOps.GaggleArg args = new GaggleOps.GaggleArg(GooseAppInterface.BOSS_NAME, Integer.valueOf(0));
         ControlFlow scupa = flom.getControlFlow(FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, args);
-        XPlatToggleAction xpta = new XPlatToggleAction(flom, rMan, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam");
+        XPlatToggleAction xpta = new XPlatToggleAction(flom, rMan_, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam");
         gaggleXPlatMenu_.addItem(xpta);
         
         gaggleXPlat_ = new XPlatComboBox("");
-        gaggleXPlat_.addItem(new XPlatComboOption(flom, rMan, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam"));
+        gaggleXPlat_.addItem(new XPlatComboOption(flom, rMan_, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam"));
         
          
         for (int i = 0; i < numTarg; i++) {
           String gooseName = targets.get(i);
-          args = new GaggleOps.GaggleArg(gooseName, new Integer(i + 1));
+          args = new GaggleOps.GaggleArg(gooseName, Integer.valueOf(i + 1));
           scupa = flom.getControlFlow(FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, args);
-          xpta = new XPlatToggleAction(flom, rMan, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam");
+          xpta = new XPlatToggleAction(flom, rMan_, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam");
           gaggleXPlatMenu_.addItem(xpta);
-          gaggleXPlat_.addItem(new XPlatComboOption(flom, rMan, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam"));          
+          gaggleXPlat_.addItem(new XPlatComboOption(flom, rMan_, FlowMeister.MainFlow.SET_CURRENT_GAGGLE_TARGET, scupa.getName(), null, args, "gaggleFam"));          
         } 
       }
     }

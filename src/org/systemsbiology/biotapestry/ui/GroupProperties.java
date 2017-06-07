@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,14 +24,15 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.ui.freerender.GroupFree;
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.ColorResolver;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 
 /****************************************************************************
@@ -95,7 +96,7 @@ public class GroupProperties {
   private Point2D labelLocation_;
   private boolean hideLabel_;
   private boolean hideLabelTopOnly_;
-  private ArrayList hideInModels_;
+  private ArrayList<String> hideInModels_;
   private GroupFree renderer_;
   private boolean skipRender_;
   
@@ -111,17 +112,8 @@ public class GroupProperties {
   */
 
   public GroupProperties(int count, String ref, Point2D groupCenter, int order, ColorResolver colR) {
-    this(count, ref, null, groupCenter, order, colR);
-  }
-  
-  /***************************************************************************
-  **
-  ** Simple default Constructor (deprecated; use above)
-  */
-
-  public GroupProperties(int count, String ref, Layout layout, Point2D groupCenter, int order,  ColorResolver colR) {
     this(ref, groupCenter, order, colR.activeColorCycle(count), colR.inactiveColorCycle(count));
-  }  
+  }
   
   /***************************************************************************
   **
@@ -140,7 +132,7 @@ public class GroupProperties {
     groupID_ = ref;
     hideLabel_ = false;
     hideLabelTopOnly_ = false;
-    hideInModels_ = new ArrayList();
+    hideInModels_ = new ArrayList<String>();
     renderer_ = new GroupFree();
     skipRender_ = false;
   }  
@@ -150,7 +142,7 @@ public class GroupProperties {
   ** Simple Constructor for subgroups
   */
 
-  public GroupProperties(String ref, Layout layout, int layer, Point2D labelLoc, int order, ColorResolver colR) {
+  public GroupProperties(String ref, int layer, Point2D labelLoc, int order, ColorResolver colR) {
     colorTag_ = colR.distinctActiveColor();
     inactiveColorTag_ = colR.distinctInactiveColor();
     style_ = AUTOBOUND;
@@ -162,7 +154,7 @@ public class GroupProperties {
     groupID_ = ref;
     hideLabel_ = false;
     hideLabelTopOnly_ = false;    
-    hideInModels_ = new ArrayList();
+    hideInModels_ = new ArrayList<String>();
     renderer_ = new GroupFree();
     skipRender_ = false;
   }  
@@ -188,7 +180,7 @@ public class GroupProperties {
     }
     this.hideLabel_ = other.hideLabel_;
     this.hideLabelTopOnly_ = other.hideLabelTopOnly_;
-    this.hideInModels_ = (ArrayList)other.hideInModels_.clone();
+    this.hideInModels_ = new ArrayList<String>(other.hideInModels_);
     this.skipRender_ = other.skipRender_;
   }
   
@@ -213,7 +205,7 @@ public class GroupProperties {
     }
     this.hideLabel_ = other.hideLabel_;
     this.hideLabelTopOnly_ = other.hideLabelTopOnly_;
-    this.hideInModels_ = (ArrayList)other.hideInModels_.clone();
+    this.hideInModels_ = new ArrayList<String>(other.hideInModels_);
     skipRender_ = false;
   }  
   
@@ -222,7 +214,7 @@ public class GroupProperties {
   ** Constructor
   */
 
-  public GroupProperties(BTState appState, Layout layout, String ref, String color,
+  public GroupProperties(String ref, String color,
                          String inactiveColorStr, String style, String layer, 
                          String tpad, String bpad, String lpad, String rpad, 
                          String nameX, String nameY, String order, String hideStr, String hideStrTopOnly) throws IOException {
@@ -272,7 +264,7 @@ public class GroupProperties {
     
     hideLabel_ = Boolean.valueOf(hideStr).booleanValue();
     hideLabelTopOnly_ = Boolean.valueOf(hideStrTopOnly).booleanValue();
-    hideInModels_ = new ArrayList();
+    hideInModels_ = new ArrayList<String>();
     skipRender_ = false;
   }
 
@@ -328,6 +320,23 @@ public class GroupProperties {
     return (colR.getColor(isActive ? colorTag_ : inactiveColorTag_));
   }
   
+  /***************************************************************************
+  **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    String nk = ctm.get(colorTag_);
+    if (nk != null) {
+      colorTag_ = nk;
+    }
+    nk = ctm.get(inactiveColorTag_);
+    if (nk != null) {
+      inactiveColorTag_ = nk;
+    }
+    return;
+  }  
+
   /***************************************************************************
   **
   ** Get the color tag
@@ -593,8 +602,7 @@ public class GroupProperties {
   **
   */
   
-  public static GroupProperties buildFromXML(BTState appState, Layout layout, 
-                                             Attributes attrs) throws IOException {
+  public static GroupProperties buildFromXML(Attributes attrs) throws IOException {
                                              
     String ref = null;
     String color = null;
@@ -656,7 +664,7 @@ public class GroupProperties {
       throw new IOException();
     }
     
-    return (new GroupProperties(appState, layout, ref, color, inactive, style, 
+    return (new GroupProperties(ref, color, inactive, style, 
                                 layer, tpad, bpad, lpad, rpad, 
                                 nameX, nameY, order, hideStr, hideStrTopOnly));
   }
@@ -667,10 +675,10 @@ public class GroupProperties {
   ** Return possible style values
   */
   
-  public static Vector<ChoiceContent> getLabelHidingChoices(BTState appState) {
+  public static Vector<ChoiceContent> getLabelHidingChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_LABEL_MODES_; i++) {
-      retval.add(labelHidingForCombo(appState, i));
+      retval.add(labelHidingForCombo(dacx, i));
     }
     return (retval);
   }
@@ -680,11 +688,11 @@ public class GroupProperties {
   ** Get a combo box element
   */
   
-  public static ChoiceContent labelHidingForCombo(BTState appState, int mode) {
+  public static ChoiceContent labelHidingForCombo(DataAccessContext dacx, int mode) {
     if ((mode < 0) || (mode >= NUM_LABEL_MODES_)) {
       throw new IllegalArgumentException();
     }
-    return (new ChoiceContent(appState.getRMan().getString("groupPropLabelHiding." + mapLabelHiding(mode)), mode));
+    return (new ChoiceContent(dacx.getRMan().getString("groupPropLabelHiding." + mapLabelHiding(mode)), mode));
   }
   
  

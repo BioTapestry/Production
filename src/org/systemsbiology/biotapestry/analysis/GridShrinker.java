@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -83,6 +83,7 @@ public class GridShrinker {
   ** Shrink the grid
   */
 
+  @SuppressWarnings("unused")
   public List<GridElement> shrinkGrid(List<GridElement> gridElements, Modes mode) {
     //
     // Make sure ids are unique, while sorting the grid elements and creating a
@@ -109,7 +110,7 @@ public class GridShrinker {
     ArrayList<GridElement> retval = new ArrayList<GridElement>();
     for (int i = 0; i < geSize; i++) {
       GridElement ge = gridElements.get(i);
-      Rectangle2D currTarg = (Rectangle2D)workingMap.get(ge.id);
+      Rectangle2D currTarg = workingMap.get(ge.id);
       retval.add(buildNewElement(ge, currTarg, emptyX, emptyY)); 
     }    
     
@@ -257,7 +258,7 @@ public class GridShrinker {
     double rowDelta = 0.0;
     while (rit.hasNext()) {
       Integer row = rit.next();
-      if ((double)row.intValue() < cornerY) {
+      if (row.intValue() < cornerY) {
         rowDelta += UiUtil.GRID_SIZE;
       }
     }
@@ -266,7 +267,7 @@ public class GridShrinker {
     double colDelta = 0.0;
     while (cit.hasNext()) {
       Integer col = cit.next();
-      if ((double)col.intValue() < cornerX) {
+      if (col.intValue() < cornerX) {
         colDelta += UiUtil.GRID_SIZE;
       }
     }

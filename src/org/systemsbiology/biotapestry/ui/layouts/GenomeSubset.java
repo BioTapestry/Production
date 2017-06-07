@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,17 +21,12 @@ package org.systemsbiology.biotapestry.ui.layouts;
 
 import java.awt.Rectangle;
 import java.awt.geom.Point2D;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.GenomeSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -58,16 +53,15 @@ public class GenomeSubset {
   private HashSet<String> linkSuperSet_;
   private boolean isComplete_;
   private Point2D center_;
-  private GenomeSource src_;
   private Rectangle origNodeBounds_;
   private Rectangle origModuleBounds_;  // may be null; overlay-based layouts only!
   private String moduleID_;  // for overlay-based layouts only!
   private String overlayID_;  // for overlay-based layouts only!
   private String groupID_;  // for region-only layout!
-  private BTState appState_;
+  private StaticDataAccessContext rcx_;
    
-  public GenomeSubset(BTState appState, String genomeID, Set<String> selectedNodes, Point2D center) {
-    appState_ = appState;
+  public GenomeSubset(StaticDataAccessContext rcx, String genomeID, Set<String> selectedNodes, Point2D center) {
+    rcx_ = rcx;
     baseGenomeID_ = genomeID;
     nodes_ = new HashSet<String>(selectedNodes);
     internalLinks_ = new HashSet<String>();
@@ -90,27 +84,17 @@ public class GenomeSubset {
   // Sticks everybody into the subset!
   //
   
-  public GenomeSubset(BTState appState, String genomeID, Point2D center) {
-    this(appState, appState.getDB().getGenome(genomeID), center);
-    baseGenomeID_ = genomeID;
-  }
-  
-  //
-  // Sticks everybody into the subset!
-  //
-  
-  public GenomeSubset(BTState appState, GenomeSource src, String genomeID, Point2D center) {
-    this(appState, src.getGenome(genomeID), center);
-    src_ = src;
-    baseGenomeID_ = genomeID;
+  public GenomeSubset(StaticDataAccessContext rcx, Point2D center) {
+    this(rcx, rcx.getGenomeSource().getGenome(rcx.getCurrentGenomeID()), center);
+    baseGenomeID_ = rcx.getCurrentGenomeID();
   }
    
   //
   // Sticks everybody into the subset!
   //
   
-  private GenomeSubset(BTState appState, Genome baseGenome, Point2D center) {
-    appState_ = appState;
+  private GenomeSubset(StaticDataAccessContext rcx, Genome baseGenome, Point2D center) {
+    rcx_ = rcx;
     nodes_ = new HashSet<String>();        
     Iterator<Node> nit = baseGenome.getAllNodeIterator();
     while (nit.hasNext()) {
@@ -139,9 +123,9 @@ public class GenomeSubset {
     center_ = (Point2D)center.clone();
   }
   
-  public void setOrigBounds(DataAccessContext rcx) { 
-    DataAccessContext irx = new DataAccessContext(rcx, getBaseGenome(), rcx.getLayout());
-    origNodeBounds_ = irx.getLayout().getPartialBounds(nodes_, false, false, null, null, false, irx);
+  public void setOrigBounds(StaticDataAccessContext rcx) { 
+    StaticDataAccessContext irx = new StaticDataAccessContext(rcx, getBaseGenome(), rcx.getCurrentLayout());
+    origNodeBounds_ = irx.getCurrentLayout().getPartialBounds(nodes_, false, false, null, null, false, irx);
     center_ = new Point2D.Double(origNodeBounds_.getCenterX(), origNodeBounds_.getCenterY());
     UiUtil.forceToGrid(center_, UiUtil.GRID_SIZE);
     return;
@@ -226,32 +210,15 @@ public class GenomeSubset {
   
   /***************************************************************************
   **
-  ** Get the genome source
-  **
-  */
-  
-  public GenomeSource getGenomeSource() {
-    if (src_ == null) {
-      return (appState_.getDB());
-    } else {
-      return (src_);
-    }
-  }
-  
-
-  /***************************************************************************
-  **
   ** Get the base genome
   **
   */
   
   public Genome getBaseGenome() {
-    if (src_ == null) {
-      return (appState_.getDB().getGenome(baseGenomeID_));
-    } else if (baseGenomeID_ != null) {
-      return (src_.getGenome(baseGenomeID_));
+    if (baseGenomeID_ != null) {
+      return (rcx_.getGenomeSource().getGenome(baseGenomeID_));
     } else {
-      return (src_.getGenome());
+      return (rcx_.getGenomeSource().getRootDBGenome());
     }
   }
   

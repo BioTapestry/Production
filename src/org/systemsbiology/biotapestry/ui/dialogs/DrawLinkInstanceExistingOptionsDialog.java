@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,18 +39,13 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
-import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.Intersection;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -84,8 +79,9 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
   private boolean haveOld_;
   private boolean haveOldInstance_;
   private ModelViewPanel msp_;
-  private BTState appState_;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext rcx_; // for local display
+  private StaticDataAccessContext dacx_; // the real thing
+  private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
   
@@ -100,13 +96,15 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public DrawLinkInstanceExistingOptionsDialog(BTState appState, Genome rootGenome, 
+  public DrawLinkInstanceExistingOptionsDialog(UIComponentSource uics, StaticDataAccessContext dacx, 
+                                               Genome rootGenome, 
                                                GenomeInstance tgi, 
                                                Set<String> existingOptions, 
                                                Set<String> existingInstanceOptions) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("licreateExisting.title"), true);
-    appState_ = appState;
-    ResourceManager rMan = appState.getRMan();    
+    super(uics.getTopFrame(), dacx.getRMan().getString("licreateExisting.title"), true);
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(700, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -155,7 +153,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
           try { 
             updateLinkDisplay(false, existingCombo_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -188,7 +186,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
           try { 
             updateLinkDisplay(false, existingInstanceCombo_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -206,17 +204,9 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
     //
     
     // Note this is NOT legit, hitting the database from a dialog!
-    Database db = appState_.getDB();
-    rcx_ = new DataAccessContext(null, null, false, false, 0.0,
-                                appState_.getFontMgr(), appState_.getDisplayOptMgr(), 
-                                appState_.getFontRenderContext(), db, db, false, 
-                                new FullGenomeHierarchyOracle(db, db), appState_.getRMan(), 
-                                new LocalGroupSettingSource(), db, db,
-                                new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), db, db
-      );    
+    rcx_ = dacx_.getCustomDACX3();
     
-
-    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, rcx_);
+    ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, rcx_);
     msp_ = mvpwz.getModelView();
     UiUtil.gbcSet(gbc, 0, currRow, 4, 5, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(mvpwz, gbc);
@@ -235,7 +225,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
             DrawLinkInstanceExistingOptionsDialog.this.dispose();
           }
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -247,7 +237,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
           DrawLinkInstanceExistingOptionsDialog.this.setVisible(false);
           DrawLinkInstanceExistingOptionsDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -262,7 +252,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
     //
     UiUtil.gbcSet(gbc, 0, currRow, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame()); 
+    setLocationRelativeTo(uics_.getTopFrame()); 
     // Gotta delay since we need viewport size fixed first:
     //  setActiveFields(activeOld, activeOldInstance);
   }
@@ -310,7 +300,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
         boolean isDrawOldInstance = (drawOldInstance_ == null) ? false : drawOldInstance_.isSelected();
         setActiveFields(isDrawOld, isDrawOldInstance);   
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
     }
   }
@@ -329,9 +319,9 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
         // This has to happen AFTER the window is up!
         setActiveFields(activeOld, activeOldInstance);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        uics_.getExceptionHandler().displayOutOfMemory(oom);
       }
       return;
     }
@@ -384,7 +374,7 @@ public class DrawLinkInstanceExistingOptionsDialog extends JDialog {
     String genomeID = genome.getID();
     
     rcx_.setGenome(rcx_.getGenomeSource().getGenome(genomeID));
-    rcx_.setLayout(rcx_.lSrc.getLayoutForGenomeKey(genomeID));
+    rcx_.setLayout(rcx_.getLayoutSource().getLayoutForGenomeKey(genomeID));
     
     Linkage link = genome.getLinkage(linkID); 
     Intersection linkInt = Intersection.pathIntersection(link, rcx_);

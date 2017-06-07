@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,16 +19,15 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import java.util.ArrayList;
+import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.ModelDataChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.ModelData;
+import org.systemsbiology.biotapestry.db.ModelDataSource;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.ui.DataLocator;
 import org.systemsbiology.biotapestry.ui.dialogs.ModelDataDialogFactory;
@@ -53,8 +52,7 @@ public class EditModelData extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditModelData(BTState appState) {
-    super(appState);
+  public EditModelData() {
     name =  "command.ChangeModelData";
     desc = "command.ChangeModelData";
     mnem =  "command.ChangeModelDataMnem";
@@ -77,11 +75,11 @@ public class EditModelData extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        EditModelDataState ans = new EditModelDataState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        EditModelDataState ans = new EditModelDataState(cfh);
         next = ans.stepGetModelDataEditDialog();
       } else {
-        EditModelDataState ans = (EditModelDataState)last.currStateX;    
+        EditModelDataState ans = (EditModelDataState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepExtractAndInstallModelEditData")) {
           next = ans.stepExtractAndInstallModelEditData(last);      
         } else {
@@ -100,26 +98,16 @@ public class EditModelData extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class EditModelDataState implements DialogAndInProcessCmd.CmdState {
-     
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }
+  public static class EditModelDataState extends AbstractStepState  {
         
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public EditModelDataState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public EditModelDataState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepGetModelDataEditDialog";
-      dacx_ = dacx;
     }
   
     /***************************************************************************
@@ -128,10 +116,10 @@ public class EditModelData extends AbstractControlFlow {
     */ 
       
     private DialogAndInProcessCmd stepGetModelDataEditDialog() { 
-      Database db = appState_.getDB();
+      ModelDataSource db = dacx_.getModelDataSource();
       ModelData mdat = db.getModelData();
       ModelDataDialogFactory.BuildArgs ba = new ModelDataDialogFactory.BuildArgs(mdat);
-      ModelDataDialogFactory mddf = new ModelDataDialogFactory(cfh);
+      ModelDataDialogFactory mddf = new ModelDataDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = mddf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractAndInstallModelEditData";
@@ -151,14 +139,14 @@ public class EditModelData extends AbstractControlFlow {
         return (retval);
       }  
          
-      Database db = appState_.getDB();    
+      ModelDataSource db = dacx_.getModelDataSource();
       ModelData mdat = new ModelData();
       String date = crq.dateResult;
       mdat.setDate(date);
       String attrib = crq.attribResult;
       mdat.setAttribution(attrib);
       
-      ArrayList<String> keys = Splitter.stringBreak(crq.keyResult, "\n", 0, true);
+      List<String> keys = Splitter.stringBreak(crq.keyResult, "\n", 0, true);
       //
       // Each separate edit caused a new pile of blank lines to appear
       // at the end of the keys, resulting in the key slowly migrating
@@ -180,13 +168,13 @@ public class EditModelData extends AbstractControlFlow {
       }
       mdat.setKey(keys);
          
-      ModelDataChangeCmd mdcc = new ModelDataChangeCmd(appState_, dacx_, db.getModelData(), mdat);
+      ModelDataChangeCmd mdcc = new ModelDataChangeCmd(dacx_, db.getModelData(), mdat);
       db.setModelData(mdat);
   
-      UndoSupport support = new UndoSupport(appState_, "undo.mdata");
+      UndoSupport support = uFac_.provideUndoSupport("undo.mdata", dacx_);
       support.addEdit(mdcc);
       
-      new DataLocator(appState_, dacx_).setDataLocations(support, date, attrib, keys);
+      new DataLocator(uics_.getGenomePresentation(), dacx_).setDataLocations(support, date, attrib, keys);
    
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();

@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
@@ -43,6 +44,7 @@ import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
+import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.ui.INodeRenderer;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkRouter;
@@ -96,7 +98,7 @@ public class PadCalculatorToo {
 
   public List<String> legacyIOFixupForSlashNodes(GenomeSource gSrc, LayoutSource lSrc) {
  
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     ArrayList<String> fixList = new ArrayList<String>();
     legacyIOFixupForSlashNodes(genome.getID(), gSrc, lSrc);
     Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
@@ -190,18 +192,16 @@ public class PadCalculatorToo {
   **
   */
 
-  public List<String> checkForGeneSrcPadErrors(GenomeSource gSrc, LayoutSource lSrc) {      
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+  public List<String> checkForGeneSrcPadErrors(GenomeSource gSrc) {      
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     ArrayList<String> fixList = new ArrayList<String>();
    
-    Layout lo = lSrc.getLayoutForGenomeKey(genome.getID());
-    checkForGeneSrcErrorsInGenome(genome, lo, fixList);
+    checkForGeneSrcErrorsInGenome(genome, gSrc, fixList);
     Iterator<GenomeInstance> git = gSrc.getInstanceIterator();
     while (git.hasNext()) {
       GenomeInstance gi = git.next();
       if (gi.getVfgParent() == null) {
-        lo = lSrc.getLayoutForGenomeKey(gi.getID());
-        checkForGeneSrcErrorsInGenome(gi, lo, fixList);
+        checkForGeneSrcErrorsInGenome(gi, gSrc, fixList);
       }
     }
    
@@ -213,7 +213,7 @@ public class PadCalculatorToo {
   ** Look for non-zero gene source pad assignment errors for IO fixup.
   */
 
-  private void checkForGeneSrcErrorsInGenome(Genome genome, Layout lo, List<String> fixList) {
+  private void checkForGeneSrcErrorsInGenome(Genome genome, GenomeSource gSrc, List<String> fixList) {
     //
     // Super simple:  If we start at a gene, we MUST have a zero source pad.  Period.
     //
@@ -227,7 +227,15 @@ public class PadCalculatorToo {
       if (!lim.sharedNamespace) {
         if (link.getLaunchPad() != 0) {
           link.setLaunchPad(0);
+          // Actually tries to get node name from the backing store, which has not been set (we are not
+          // switching tabs):
+          if (srcNode instanceof NodeInstance) {
+            ((NodeInstance)srcNode).setGenomeSource(gSrc);
+          }
           fixList.add(srcNode.getName());
+          if (srcNode instanceof NodeInstance) {
+            ((NodeInstance)srcNode).setGenomeSource(null);
+          }
         }
       }
     }
@@ -242,7 +250,7 @@ public class PadCalculatorToo {
 
   public List<IOFixup> checkForPadErrors(GenomeSource gSrc, LayoutSource lSrc) {      
     Map<Integer, NodeProperties.PadLimits> limMap = NodeProperties.getFixedPadLimits();
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     ArrayList<IOFixup> fixList = new ArrayList<IOFixup>();
    
     checkForPadErrorsInGenome(lSrc, genome, limMap, fixList);
@@ -645,12 +653,11 @@ public class PadCalculatorToo {
     Iterator<Linkage> pit = pendingList.iterator();
     while (pit.hasNext()) {
       Linkage link = pit.next();
-      String linkID = link.getID();
       int landPad = link.getLandingPad();
       if (trgPads.isEmpty()) {
-        landPad = getClosestOccupiedNonSource(linkID, landPad, padLimits, srcPad, minPadNum);
+        landPad = getClosestOccupiedNonSource(landPad, padLimits, srcPad, minPadNum);
       } else {
-        landPad = getClosestUnoccupiedNonSource(linkID, landPad, padLimits, trgPads, srcPad);
+        landPad = getClosestUnoccupiedNonSource(landPad, padLimits, trgPads, srcPad);
       }
       Integer lp = new Integer(landPad);
       trgPads.remove(lp);
@@ -668,7 +675,7 @@ public class PadCalculatorToo {
   **
   */
   
-  private int getClosestOccupiedNonSource(String linkID, int landPad, NodeProperties.PadLimits padLimits,
+  private int getClosestOccupiedNonSource(int landPad, NodeProperties.PadLimits padLimits,
                                           Integer srcPad, int minPadNum) {
                                            
     
@@ -709,7 +716,7 @@ public class PadCalculatorToo {
   **
   */
   
-  private int getClosestUnoccupiedNonSource(String linkID, int landPad, NodeProperties.PadLimits padLimits,
+  private int getClosestUnoccupiedNonSource(int landPad, NodeProperties.PadLimits padLimits,
                                             SortedSet<Integer> trgPads, Integer srcPad) {
     
     Integer retval;
@@ -785,7 +792,7 @@ public class PadCalculatorToo {
   ** the nearby list is ordered by distance.
   */
   
-  private Integer getClosestUnoccupiedFromRankedCandidates(int landPad, SortedSet<Integer> usedPads, List<Integer> nearby) {    
+  private Integer getClosestUnoccupiedFromRankedCandidates(SortedSet<Integer> usedPads, List<Integer> nearby) {    
     int numNear = (nearby == null) ? 0 : nearby.size();
     for (int i = 0; i < numNear; i++) {
       Integer check = nearby.get(i);
@@ -816,7 +823,7 @@ public class PadCalculatorToo {
       return (new PadResult(padLimits.getForcedLaunch(), padLimits.getForcedLanding()));
     }
  
-    DBGenome genome = (DBGenome)gSrc.getGenome();
+    DBGenome genome = (DBGenome)gSrc.getRootDBGenome();
     
     TreeSet<Integer> trgPads = new TreeSet<Integer>();
     TreeSet<Integer> overflow = new TreeSet<Integer>();
@@ -1126,19 +1133,19 @@ public class PadCalculatorToo {
   ** regions to allow the layout algorithm to succeed.
   */  
    
-  public Map<String, LinkPlacementGrid.TerminalRegion> generateTerminalRegionsForCollisions(DataAccessContext rcx,
+  public Map<String, LinkPlacementGrid.TerminalRegion> generateTerminalRegionsForCollisions(StaticDataAccessContext rcx,
                                                                                             LinkPlacementGrid grid, Set<String> inboundLinks, 
                                                                                             String targetID, Set<String> needAltTargs, 
                                                                                             Map<String, Set<String>> okGroupMap) {
   
-    Genome genome = rcx.getGenome();
+    Genome genome = rcx.getCurrentGenome();
     TreeSet<Integer> usedPads = new TreeSet<Integer>();
     HashSet<Point> usedEmerg = new HashSet<Point>();
     HashSet<Integer> grabbedPads = new HashSet<Integer>();
     Node node = genome.getNode(targetID);
     
    
-    NodeProperties np = rcx.getLayout().getNodeProperties(targetID);
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(targetID);
     INodeRenderer trgRenderer = np.getRenderer();
     boolean dropSource = trgRenderer.sharedPadNamespaces();
       
@@ -1191,7 +1198,7 @@ public class PadCalculatorToo {
         grabbedPads.add(lpadObj);
         closestObj = lpadObj;
       } else {          
-        closestObj = getClosestUnoccupiedFromRankedCandidates(lpad, usedPads, nearby);
+        closestObj = getClosestUnoccupiedFromRankedCandidates(usedPads, nearby);
       }
 
       while (closestObj != null) {
@@ -1204,7 +1211,7 @@ public class PadCalculatorToo {
           weAreDone = true;
           break;
         }
-        closestObj = getClosestUnoccupiedFromRankedCandidates(lpad, usedPads, nearby);
+        closestObj = getClosestUnoccupiedFromRankedCandidates(usedPads, nearby);
       }      
       
       //
@@ -1437,7 +1444,7 @@ public class PadCalculatorToo {
         landings = new ArrayList<LinkTargPad>();
         targetPadsPerNode_.put(trgID, landings);
       } 
-      landings.add(new LinkTargPad(linkID, trgID, landingPad));
+      landings.add(new LinkTargPad(linkID, landingPad));
       return;
     }    
   }   
@@ -1560,7 +1567,7 @@ public class PadCalculatorToo {
       if (srcCollide || forceUnique) {
         int landPad;
         if (srcCollide && trgPads.isEmpty()) {
-          landPad = getClosestOccupiedNonSource(ltp.linkID, ltp.landPad, padLimits, srcPad, minPadNum);
+          landPad = getClosestOccupiedNonSource(ltp.landPad, padLimits, srcPad, minPadNum);
         } else if (!trgPads.isEmpty()) {
           landPad = getClosestUnoccupied(ltp.landPad, trgPads);
         } else {
@@ -1589,17 +1596,17 @@ public class PadCalculatorToo {
     
     double minDist = Double.POSITIVE_INFINITY;
     Point2D minDistPt = null;
-    NodeProperties srcProp = rcx.getLayout().getNodeProperties(srcID);
+    NodeProperties srcProp = rcx.getCurrentLayout().getNodeProperties(srcID);
     Point2D srcLoc = srcProp.getLocation();
     
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       if (!link.getSource().equals(srcID)) {
         continue;
       }
       String trgID = link.getTarget();
-      Point2D trgLoc = rcx.getLayout().getNodeProperties(trgID).getLocation();
+      Point2D trgLoc = rcx.getCurrentLayout().getNodeProperties(trgID).getLocation();
       Vector2D vec = new Vector2D(srcLoc, trgLoc);
       double vecLen = vec.length();
       if (vecLen < minDist) {
@@ -1611,7 +1618,7 @@ public class PadCalculatorToo {
       return (null);
     }
     
-    return (srcProp.getRenderer().suggestLaunchPad(rcx.getGenome().getNode(srcID), rcx.getLayout(), minDistPt));
+    return (srcProp.getRenderer().suggestLaunchPad(rcx.getCurrentGenome().getNode(srcID), rcx.getCurrentLayout(), minDistPt));
   }
 
   /***************************************************************************
@@ -1626,7 +1633,7 @@ public class PadCalculatorToo {
     // landing pad there.  If less than the maximum number of pads, we do not share.
     //
     
-    NodeProperties myProp = rcx.getLayout().getNodeProperties(nodeID);
+    NodeProperties myProp = rcx.getCurrentLayout().getNodeProperties(nodeID);
     Point2D myLoc = myProp.getLocation();
     
     //
@@ -1634,7 +1641,7 @@ public class PadCalculatorToo {
     //
     
     HashMap<String, DistanceRank> srcToDist = new HashMap<String, DistanceRank>();
-    Iterator<Linkage> lit = rcx.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String trgID = link.getTarget();
@@ -1642,7 +1649,7 @@ public class PadCalculatorToo {
         continue;
       }
       String srcID = link.getSource();
-      Point2D srcLoc = rcx.getLayout().getNodeProperties(srcID).getLocation();
+      Point2D srcLoc = rcx.getCurrentLayout().getNodeProperties(srcID).getLocation();
       Vector2D vec = new Vector2D(myLoc, srcLoc);
       double vecLen = vec.length();
       DistanceRank rank = new DistanceRank(srcID, vecLen);
@@ -1655,7 +1662,7 @@ public class PadCalculatorToo {
     //
     
     Set<String> sourceSet = srcToDist.keySet();
-    lit = rcx.getGenome().getLinkageIterator();
+    lit = rcx.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String srcID = link.getSource();
@@ -1666,12 +1673,12 @@ public class PadCalculatorToo {
       if (trgID.equals(nodeID)) {
         continue;
       }
-      Point2D trgLoc = rcx.getLayout().getNodeProperties(trgID).getLocation();
+      Point2D trgLoc = rcx.getCurrentLayout().getNodeProperties(trgID).getLocation();
       Vector2D vec = new Vector2D(myLoc, trgLoc);
       double vecLen = vec.length();
       DistanceRank rank = srcToDist.get(srcID);
       if (rank.distance > vecLen) {
-        Point2D srcLoc = rcx.getLayout().getNodeProperties(srcID).getLocation();
+        Point2D srcLoc = rcx.getCurrentLayout().getNodeProperties(srcID).getLocation();
         Vector2D vecSt = new Vector2D(srcLoc, trgLoc);
         Vector2D vecMy = new Vector2D(srcLoc, myLoc);
         // Sibling must be significantly closer to source than me to win out
@@ -1688,13 +1695,13 @@ public class PadCalculatorToo {
     
     HashMap<String, SortedSet<PadDotRanking>> ptForSrc = new HashMap<String, SortedSet<PadDotRanking>>();
     INodeRenderer renderer = myProp.getRenderer();
-    Node node = rcx.getGenome().getNode(nodeID);
+    Node node = rcx.getCurrentGenome().getNode(nodeID);
     Iterator<String> kit = srcToDist.keySet().iterator();
     while (kit.hasNext()) {
       String srcKey = kit.next();
       DistanceRank rank = srcToDist.get(srcKey);
-      Point2D srcLoc = rcx.getLayout().getNodeProperties(rank.id).getLocation();
-      SortedSet<PadDotRanking> pads = renderer.suggestLandingPads(node, rcx.getLayout(), srcLoc);
+      Point2D srcLoc = rcx.getCurrentLayout().getNodeProperties(rank.id).getLocation();
+      SortedSet<PadDotRanking> pads = renderer.suggestLandingPads(node, rcx.getCurrentLayout(), srcLoc);
       ptForSrc.put(srcKey, pads);
     }
     
@@ -1717,7 +1724,7 @@ public class PadCalculatorToo {
     // Build a model of the node pads:
     //
     
-    PadModel model = new PadModel(nodeID, rcx.getLayout());
+    PadModel model = new PadModel(nodeID, rcx.getCurrentLayout());
 
     //
     // Go through all the links, and for those that impinge on the node,
@@ -1729,12 +1736,12 @@ public class PadCalculatorToo {
     ArrayList<String> waitingSource = new ArrayList<String>();
     ArrayList<String> waitingTarget = new ArrayList<String>();
 
-    resolveForcedLaunch(rcx.getGenome(), nodeID, padConstraints, model, retLaunch, waitingSource);
-    resolveForcedLanding(rcx.getGenome(), nodeID, padConstraints, model, retLand, waitingTarget);
+    resolveForcedLaunch(rcx.getCurrentGenome(), nodeID, padConstraints, model, retLaunch, waitingSource);
+    resolveForcedLanding(rcx.getCurrentGenome(), nodeID, padConstraints, model, retLand, waitingTarget);
     
-    assignBestLaunch(rcx.getGenome(), nodeID, model, retLaunch, retLand, 
+    assignBestLaunch(rcx.getCurrentGenome(), nodeID, model, retLaunch, retLand, 
                      bestLaunch, waitingSource, waitingTarget);    
-    assignBestLanding(rcx.getGenome(), model, retLand, padsForSrc, waitingTarget);
+    assignBestLanding(rcx.getCurrentGenome(), model, retLand, padsForSrc, waitingTarget);
     
     //
     // Build up the results:
@@ -1749,9 +1756,9 @@ public class PadCalculatorToo {
     while (kit.hasNext()) {
       String linkID = kit.next();
       Integer launch = retLaunch.get(linkID);
-      int launchPad = (launch == null) ? rcx.getGenome().getLinkage(linkID).getLaunchPad() : launch.intValue();
+      int launchPad = (launch == null) ? rcx.getCurrentGenome().getLinkage(linkID).getLaunchPad() : launch.intValue();
       Integer land = retLand.get(linkID);
-      int landPad = (land == null) ? rcx.getGenome().getLinkage(linkID).getLandingPad() : land.intValue();
+      int landPad = (land == null) ? rcx.getCurrentGenome().getLinkage(linkID).getLandingPad() : land.intValue();
       retval.put(linkID, new PadResult(launchPad, landPad));
     }
     
@@ -1974,7 +1981,7 @@ public class PadCalculatorToo {
   private void assignBestLanding(Genome genome, PadModel model, Map<String, Integer> retLanding, 
                                  Map<String, SortedSet<PadDotRanking>> padsForSrc, List<String> waitingTarget) {                     
 
-    PadAssign assign = buildPadAssign(genome, model, retLanding, padsForSrc, waitingTarget);                                   
+    PadAssign assign = buildPadAssign(genome, model, padsForSrc, waitingTarget);                                   
     
     List<PadChoice> assignments = assign.getAssignments();
     int size = assignments.size();
@@ -1991,7 +1998,7 @@ public class PadCalculatorToo {
   ** Build a landing pad assignment widget
   */
   
-  private PadAssign buildPadAssign(Genome genome, PadModel model, Map<String, Integer> retLanding, 
+  private PadAssign buildPadAssign(Genome genome, PadModel model,
                                    Map<String, SortedSet<PadDotRanking>> padsForSrc, List<String> waitingTarget) {
     
     PadAssign retval = new PadAssign();                          
@@ -2063,12 +2070,10 @@ public class PadCalculatorToo {
   private static class LinkTargPad {
     
     String linkID;
-    String targID;
     int landPad;
         
-    LinkTargPad(String linkID, String targID, int landPad) {
+    LinkTargPad(String linkID, int landPad) {
       this.linkID = linkID;
-      this.targID = targID;
       this.landPad = landPad;      
     }
   }    

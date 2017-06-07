@@ -46,7 +46,7 @@ public interface ExternalNodeDataDisplayPlugIn extends DataDisplayPlugIn {
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String[] modelNameChain, String nodeName, String regionName);
+  public boolean requiresPerInstanceDisplay(String tabName, String[] modelNameChain, String nodeName, String regionName);
    
   /***************************************************************************
   **
@@ -61,7 +61,7 @@ public interface ExternalNodeDataDisplayPlugIn extends DataDisplayPlugIn {
   ** Get callback worker
   */
   
-  public PluginCallbackWorker getCallbackWorker(String[] modelNameChain, String nodeName, String regionName);
+  public PluginCallbackWorker getCallbackWorker(String tabName, String[] modelNameChain, String nodeName, String regionName);
   
   
   /***************************************************************************
@@ -72,6 +72,6 @@ public interface ExternalNodeDataDisplayPlugIn extends DataDisplayPlugIn {
   ** provides the names of all the models down from the root ("Full Genome") 
   */
   
-  public String getDataAsHTML(String[] modelNameChain, String nodeName, String regionName);
+  public String getDataAsHTML(String tabName, String[] modelNameChain, String nodeName, String regionName);
 
 }

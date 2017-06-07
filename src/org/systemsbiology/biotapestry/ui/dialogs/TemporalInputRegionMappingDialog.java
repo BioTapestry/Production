@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,13 +36,14 @@ import java.util.HashMap;
 
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.util.EnumCell;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -65,10 +66,11 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   private EditableTable est_;
   private String groupID_;
   private TemporalInputRangeData tird_; 
-  private ArrayList regions_;
-  private ArrayList models_;
-  private BTState appState_;
+  private ArrayList<EnumCell> regions_;
+  private ArrayList<EnumCell> models_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
     
@@ -83,20 +85,21 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   ** Constructor 
   */ 
   
-  public TemporalInputRegionMappingDialog(BTState appState, DataAccessContext dacx, String groupID, String groupName) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("tirmd.title"), true);
+  public TemporalInputRegionMappingDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, String groupID, String groupName) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("tirmd.title"), true);
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
     groupID_ = groupID;
-    appState_ = appState;
     
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 400);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
 
-    tird_ = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    tird_ = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     regions_ = buildRegionEnum(tird_);
     models_ = buildModelEnum();
   
@@ -114,22 +117,22 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
     
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(lab, gbc);
-    est_ = new EditableTable(appState_, new TemporalInputRegionMappingTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics, dacx, new TemporalInputRegionMappingTableModel(uics_, dacx_, uFac_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
     etp.singleSelectOnly = true;
-    etp.perColumnEnums = new HashMap();
-    etp.perColumnEnums.put(new Integer(0), new EditableTable.EnumCellInfo(true, regions_));
-    etp.perColumnEnums.put(new Integer(1), new EditableTable.EnumCellInfo(false, models_));  
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(0), new EditableTable.EnumCellInfo(true, regions_, EnumCell.class));
+    etp.perColumnEnums.put(new Integer(1), new EditableTable.EnumCellInfo(false, models_, EnumCell.class));  
     JPanel tablePan = est_.buildEditableTable(etp);
     
     UiUtil.gbcSet(gbc, 0, 1, 1, 6, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 7, 1, true, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -205,8 +208,11 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
     
     private static final long serialVersionUID = 1L;
     
-    TemporalInputRegionMappingTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    private UndoFactory uFac_;
+    
+    TemporalInputRegionMappingTableModel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+      super(uics, dacx, NUM_COL_);
+      uFac_ = uFac;
       colNames_ = new String[] {"tirmap.region",
                                 "tirmap.model"};
       colClasses_ = new Class[] {EnumCell.class,
@@ -214,7 +220,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
     }
     
     public List getValuesFromTable() {
-      ArrayList retval = new ArrayList();
+      ArrayList<GroupUsage> retval = new ArrayList<GroupUsage>();
       for (int i = 0; i < rowCount_; i++) {
         EnumCell rec = (EnumCell)columns_[REGION_].get(i);
         EnumCell mec = (EnumCell)columns_[MODEL_].get(i);
@@ -224,6 +230,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
       return (retval);
     }
     
+    @Override
     public boolean addRow(int[] rows) {
       super.addRow(rows);
       int lastIndex = rowCount_ - 1;
@@ -234,6 +241,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
       return (true);
     }
   
+    @Override
     public void extractValues(List prsList) {
       super.extractValues(prsList);
       Iterator rit = prsList.iterator();
@@ -246,7 +254,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
     }
  
     boolean applyValues() {
-      List vals = getValuesFromTable();
+      List<GroupUsage> vals = getValuesFromTable();
       if (vals.isEmpty()) {
         return (true);
       }
@@ -256,10 +264,10 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
       //
 
       for (int i = 0; i < rowCount_; i++) {
-        GroupUsage gu = (GroupUsage)vals.get(i);
+        GroupUsage gu = vals.get(i);
         if ((gu.mappedGroup == null) || (gu.mappedGroup.trim().equals(""))) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), rMan.getString("tirmd.blankGroup"),
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tirmd.blankGroup"),
                                         rMan.getString("tirmd.blankGroupTitle"),
                                         JOptionPane.ERROR_MESSAGE);          
           return (false);
@@ -270,9 +278,9 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
       // Undo/Redo support
       //
     
-      UndoSupport support = new UndoSupport(appState_, "undo.tirmd");
+      UndoSupport support = uFac_.provideUndoSupport("undo.tirmd", dacx_);
       TemporalInputChange tic = tird_.setTemporalRangeGroupMap(groupID_, vals);
-      support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));  
+      support.addEdit(new TemporalInputChangeCmd(dacx_, tic));  
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();   
       return (true);
@@ -292,7 +300,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   */
   
   private void displayProperties() {
-    List entries = tableEntries();
+    List<RegUseEnumCellPair> entries = tableEntries();
     est_.getModel().extractValues(entries);
     return;
   }
@@ -313,32 +321,32 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   ** 
   */
   
-  private List tableEntries() {
-    ArrayList retval = new ArrayList();
-    List keys = tird_.getCustomTemporalRangeGroupKeys(groupID_);
+  private List<RegUseEnumCellPair> tableEntries() {
+    ArrayList<RegUseEnumCellPair> retval = new ArrayList<RegUseEnumCellPair>();
+    List<GroupUsage> keys = tird_.getCustomTemporalRangeGroupKeys(groupID_);
     if (keys == null) {
       return (retval);
     }
    
-    Iterator kit = keys.iterator();
+    Iterator<GroupUsage> kit = keys.iterator();
     while (kit.hasNext()) {
-      GroupUsage gu = (GroupUsage)kit.next();
+      GroupUsage gu = kit.next();
       RegUseEnumCellPair ruecp = new RegUseEnumCellPair();
       retval.add(ruecp);
-      Iterator rit = regions_.iterator();
+      Iterator<EnumCell> rit = regions_.iterator();
       while (rit.hasNext()) {
-        EnumCell cell = (EnumCell)rit.next();
+        EnumCell cell = rit.next();
         if (cell.internal.equals(gu.mappedGroup)) {
           ruecp.regEC = new EnumCell(cell);
           break;
         }
       }
       if (gu.usage == null) {
-        ruecp.modEC = new EnumCell((EnumCell)models_.get(0));
+        ruecp.modEC = new EnumCell(models_.get(0));
       } else {
-        Iterator mit = models_.iterator();
+        Iterator<EnumCell> mit = models_.iterator();
         while (mit.hasNext()) {
-          EnumCell cell = (EnumCell)mit.next();
+          EnumCell cell = mit.next();
           if (cell.internal == null) {
             continue;
           }
@@ -358,12 +366,12 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   ** 
   */
   
-  private ArrayList buildRegionEnum(TemporalInputRangeData tird) {  
-    ArrayList retval = new ArrayList();
-    Iterator rit = tird.getAllRegions().iterator();
+  private ArrayList<EnumCell> buildRegionEnum(TemporalInputRangeData tird) {  
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    Iterator<String> rit = tird.getAllRegions().iterator();
     int count = 0;
     while (rit.hasNext()) {
-      String regionName = (String)rit.next();   
+      String regionName = rit.next();   
       retval.add(new EnumCell(regionName, regionName, count, count));
       count++;
     }
@@ -376,17 +384,17 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
   ** 
   */
   
-  private ArrayList buildModelEnum() {
-    ArrayList retval = new ArrayList();
-    ResourceManager rMan = appState_.getRMan();
+  private ArrayList<EnumCell> buildModelEnum() {
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    ResourceManager rMan = dacx_.getRMan();
     String modelFormat = rMan.getString("tirmd.modelFormat");
     String allModels = rMan.getString("tirmd.allModels");
     Object[] modelName = new Object[1];
-    Iterator dpit = dacx_.getGenomeSource().getDynamicProxyIterator();
+    Iterator<DynamicInstanceProxy> dpit = dacx_.getGenomeSource().getDynamicProxyIterator();
     retval.add(new EnumCell(allModels, null, 0, 0));
     int count = 1;
     while (dpit.hasNext()) {
-      DynamicInstanceProxy dip = (DynamicInstanceProxy)dpit.next();
+      DynamicInstanceProxy dip = dpit.next();
       modelName[0] = dip.getName();
       String modelId = dip.getID();
       String desc = MessageFormat.format(modelFormat, modelName);          

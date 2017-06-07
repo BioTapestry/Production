@@ -211,7 +211,7 @@ public class PertAnnotations implements Cloneable {
     }
 
     Integer lastNum = (numsOnly.isEmpty()) ? Integer.valueOf(0) : numsOnly.last();
-    lastNum = Integer.valueOf(lastNum.intValue() + 1);    
+    lastNum = Integer.valueOf(lastNum.intValue() + 1);
     mapToKeys_.put(nextLabel, lastNum.toString());
     return (nextLabel);
   } 
@@ -452,8 +452,8 @@ public class PertAnnotations implements Cloneable {
   ** Get the choices for annotations
   */
   
-  public Vector getAnnotationOptions() {
-    Vector retval = new Vector();
+  public Vector<TrueObjChoiceContent> getAnnotationOptions() {
+    Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
     StringBuffer buf = new StringBuffer();
     SortedMap<String, String> fullMap = getFootTagToKeyMap();
     Iterator<String> oit = fullMap.keySet().iterator();
@@ -475,14 +475,14 @@ public class PertAnnotations implements Cloneable {
   ** Get unused tag choices
   */
   
-  public Vector getAvailableTagChoices() {
+  public Vector<TrueObjChoiceContent> getAvailableTagChoices() {
     UniqueLabeller ul = new UniqueLabeller();
     Iterator<String> kit = mapToKeys_.values().iterator();
     while (kit.hasNext()) {
       String tag = kit.next();
       ul.addExistingLabel(tag);
     }
-    Vector retval = new Vector();
+    Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
     for (int i = 0; i < 20; i++) {
       String newKey = ul.getNextLabel();
       retval.add(new TrueObjChoiceContent(newKey, newKey));   
@@ -563,7 +563,7 @@ public class PertAnnotations implements Cloneable {
       }
       return (retval);     
     }  
-     
+
     @SuppressWarnings("unused")
     private PertAnnotations buildFromXML(String elemName, Attributes attrs) throws IOException {
       PertAnnotations pa = new PertAnnotations();

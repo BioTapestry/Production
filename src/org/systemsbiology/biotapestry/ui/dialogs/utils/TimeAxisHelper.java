@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,13 +30,14 @@ import java.text.MessageFormat;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeAxisSetupDialog;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -51,8 +52,10 @@ public class TimeAxisHelper {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
+  
   private JLabel minFieldLabel_;
   private JLabel maxFieldLabel_;
   private JDialog dialog_; 
@@ -74,10 +77,10 @@ public class TimeAxisHelper {
   ** Constructor 
   */ 
   
-  public TimeAxisHelper(BTState appState, DataAccessContext dacx, JDialog dialog, JLabel minFieldLabel, JLabel maxFieldLabel) {
-
-    appState_ = appState;
+  public TimeAxisHelper(UIComponentSource uics, DataAccessContext dacx, JDialog dialog, JLabel minFieldLabel, JLabel maxFieldLabel, UndoFactory uFac) {
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     minFieldLabel_ = minFieldLabel;
     maxFieldLabel_ = maxFieldLabel;
     dialog_ = dialog;
@@ -88,9 +91,10 @@ public class TimeAxisHelper {
   ** Constructor for panel building
   */ 
   
-  public TimeAxisHelper(BTState appState, DataAccessContext dacx, JDialog dialog, int minTime, int maxTime) {
-    appState_ = appState;
+  public TimeAxisHelper(UIComponentSource uics, DataAccessContext dacx, JDialog dialog, int minTime, int maxTime, UndoFactory uFac) {
+    uics_ = uics;
     dacx_ = dacx;
+    uFac_ = uFac;
     dialog_ = dialog;
     enabled_ = true;
     minTime_ = minTime;
@@ -112,7 +116,7 @@ public class TimeAxisHelper {
   public boolean establishTimeAxis() {  
     TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(appState_, dacx_);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx_, uFac_);
       tasd.setVisible(true);
     } else {
       return (true);
@@ -120,8 +124,8 @@ public class TimeAxisHelper {
     
     tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      ResourceManager rMan = appState_.getRMan();
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      ResourceManager rMan = dacx_.getRMan();
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("gicreate.noTimeDefinition"), 
                                     rMan.getString("gicreate.noTimeDefinitionTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -140,7 +144,7 @@ public class TimeAxisHelper {
   
   public void fixMinMaxLabels(boolean doValidate) {  
     TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String minLabel;
     String maxLabel; 
     if (!tad.isInitialized()) {
@@ -185,7 +189,7 @@ public class TimeAxisHelper {
     
   public int timeDisplayToIndex(String display) {
     TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     int timeVal = TimeAxisDefinition.INVALID_STAGE_NAME;
     if (tad.haveNamedStages()) {
       timeVal = tad.getIndexForNamedStage(display);
@@ -275,7 +279,7 @@ public class TimeAxisHelper {
     }
     // Gotta be a span:
     if ((minResult >= maxResult) || (minResult < 0)) {
-      ResourceManager rMan = appState_.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       JOptionPane.showMessageDialog(dialog_, rMan.getString("timeAxisHelper.badBounds"),
                                     rMan.getString("timeAxisHelper.badBoundsTitle"), 
                                     JOptionPane.ERROR_MESSAGE);

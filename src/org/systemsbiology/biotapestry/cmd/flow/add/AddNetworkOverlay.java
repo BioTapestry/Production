@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,14 +23,13 @@ package org.systemsbiology.biotapestry.cmd.flow.add;
 import java.util.HashSet;
 import java.util.Iterator;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayOwnerChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
@@ -63,8 +62,8 @@ public class AddNetworkOverlay extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNetworkOverlay(BTState appState) {
-    super(appState);
+  public AddNetworkOverlay() {
+    super();
     name =  "command.AddNetworkOverlay";
     desc = "command.AddNetworkOverlay";
     icon = "CreateOverlay24.gif";
@@ -99,11 +98,12 @@ public class AddNetworkOverlay extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        AddOverlayState ans = new AddOverlayState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        AddOverlayState ans = new AddOverlayState(cfh);
+        ans.setNextStep("stepGetOverlayCreationDialog");
         next = ans.stepGetOverlayCreationDialog();
       } else {
         AddOverlayState ans = (AddOverlayState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepExtractNewOverlayInfo")) {
           next = ans.stepExtractNewOverlayInfo(last);
         } else if (ans.getNextStep().equals("maybeLetUserDecide")) {
@@ -128,27 +128,17 @@ public class AddNetworkOverlay extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class AddOverlayState implements DialogAndInProcessCmd.CmdState {
+  public static class AddOverlayState extends AbstractStepState {
     
     private String newName;
     private NetOverlayProperties.OvrType overType;
     private boolean hideLinks;
     private boolean changeViz;  
     private NetOverlayOwner owner_;
-    private DataAccessContext dacx_;
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;
     private String nextNextStep;  
-    private BTState appState_;
-    
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }
      
-    public AddOverlayState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      dacx_ = dacx;
+    public AddOverlayState(ServerControlFlowHarness cfh) {
+      super(cfh);
     }
   
     /***************************************************************************
@@ -165,8 +155,8 @@ public class AddNetworkOverlay extends AbstractControlFlow {
         existingNames.add(no.getName());
       }
          
-      NetOverlayCreationDialogFactory.NetOverlayBuildArgs ba = new NetOverlayCreationDialogFactory.NetOverlayBuildArgs(existingNames);
-      NetOverlayCreationDialogFactory nocdf = new NetOverlayCreationDialogFactory(cfh);
+      NetOverlayCreationDialogFactory.NetOverlayBuildArgs ba = new NetOverlayCreationDialogFactory.NetOverlayBuildArgs(existingNames, dacx_);
+      NetOverlayCreationDialogFactory nocdf = new NetOverlayCreationDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractNewOverlayInfo";
@@ -208,13 +198,13 @@ public class AddNetworkOverlay extends AbstractControlFlow {
       // 
        
       changeViz = false;
-      NetModuleFree.CurrentSettings overSettings = appState_.getCurrentOverlaySettings();
+      NetModuleFree.CurrentSettings overSettings = dacx_.getOSO().getCurrentOverlaySettings();
       if ((overType == NetOverlayProperties.OvrType.OPAQUE) && 
           ((overSettings.intersectionMask != NetModuleFree.CurrentSettings.NON_MEMBERS_MASKED) ||
            (overSettings.intersectionMask != NetModuleFree.CurrentSettings.NOTHING_MASKED))) {
-        if (!dacx_.getGenome().isEmpty()) {
-          String message = UiUtil.convertMessageToHtml(dacx_.rMan.getString("overlayAdded.resetViz"));
-          SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, message, dacx_.rMan.getString("overlayAdded.resetVizTitle"));
+        if (!dacx_.getCurrentGenome().isEmpty()) {
+          String message = UiUtil.convertMessageToHtml(dacx_.getRMan().getString("overlayAdded.resetViz"));
+          SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, message, dacx_.getRMan().getString("overlayAdded.resetVizTitle"));
           DialogAndInProcessCmd retval = new DialogAndInProcessCmd(suf, this);      
           nextStep_ = "handleVizResponse";
           nextNextStep = "addNewNetworkOverlay";
@@ -251,32 +241,31 @@ public class AddNetworkOverlay extends AbstractControlFlow {
     */  
        
     private DialogAndInProcessCmd addNewNetworkOverlay() {            
-      UndoSupport support = new UndoSupport(appState_, "undo.newNetworkOverlay");
+      UndoSupport support = uFac_.provideUndoSupport("undo.newNetworkOverlay", dacx_);
       String viewID = dacx_.getNextKey();
-      NetworkOverlay nmView = new NetworkOverlay(appState_, viewID, newName, null);
+      NetworkOverlay nmView = new NetworkOverlay(dacx_, viewID, newName, null);
       NetworkOverlayOwnerChange gc = owner_.addNetworkOverlay(nmView);
       if (gc != null) {
-        NetOverlayOwnerChangeCmd gcc = new NetOverlayOwnerChangeCmd(appState_, dacx_, gc);
+        NetOverlayOwnerChangeCmd gcc = new NetOverlayOwnerChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
        
       NetOverlayProperties noProps = new NetOverlayProperties(viewID, this.overType, hideLinks);
-      Layout.PropChange pc = dacx_.getLayout().setNetOverlayProperties(viewID, noProps);
+      Layout.PropChange pc = dacx_.getCurrentLayout().setNetOverlayProperties(viewID, noProps);
       if (pc != null) {
-        support.addEdit(new PropChangeCmd(appState_, dacx_, pc));
+        support.addEdit(new PropChangeCmd(dacx_, pc));
       }    
        
-      support.addEvent(new ModelChangeEvent(owner_.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE)); 
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), owner_.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE)); 
       
       //
       // FIX ME! This viz change stuff belongs in visibility result??
-      //
-       
-      appState_.getNetOverlayController().setCurrentOverlay(viewID, support, dacx_);
+      // 
+      uics_.getNetOverlayController().setCurrentOverlay(viewID, support, dacx_);
       support.finish();
       if (changeViz) {
-        appState_.getNetOverlayController().setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
+        uics_.getNetOverlayController().setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
       }
        
       //

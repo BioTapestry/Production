@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2013 Institute for Systems Biology 
+ **    Copyright (C) 2003-2017 Institute for Systems Biology 
  **                            Seattle, Washington, USA. 
  **
  **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,8 @@ import java.text.MessageFormat;
 import java.util.Vector;
 import javax.swing.JScrollPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BuildListUtil;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
@@ -62,7 +63,8 @@ public class PertMappingPanel extends JPanel {
   private BuildListUtil tblu_;
   private BuildListUtil sblu_;
   private ArrayList allTabs_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -77,23 +79,24 @@ public class PertMappingPanel extends JPanel {
   ** Constructor 
   */
   
-  public PertMappingPanel(BTState appState, String nodeName, List currEntries, List currSources, boolean msgSeparate, boolean forceDrop) {
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();    
+  public PertMappingPanel(UIComponentSource uics, DataAccessContext dacx, String nodeName, List currEntries, List currSources, boolean msgSeparate, boolean forceDrop) {
+    uics_ = uics;
+    dacx_ = dacx;
+    ResourceManager rMan = dacx_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     setLayout(new GridBagLayout());
-    ds_ = new DialogSupport(appState_, gbc);
+    ds_ = new DialogSupport(uics_, dacx_, gbc);
     int rowNum = 0;
     int columns = 6;
         
-    pd_ = appState.getDB().getPertData();
+    pd_ = dacx_.getExpDataSrc().getPertData();
     
     //
     // Create a list of the target genes available:
     //
 
     Vector targCand = pd_.getTargetOptions(false);    
-    tblu_ = new BuildListUtil(appState_, appState_.getTopFrame(), nodeName, (currEntries == null) ?  new ArrayList() : new ArrayList(currEntries), targCand, forceDrop);
+    tblu_ = new BuildListUtil(uics_, dacx_, uics_.getTopFrame(), nodeName, (currEntries == null) ?  new ArrayList() : new ArrayList(currEntries), targCand, forceDrop);
     targResult_ = tblu_.getBuildListResult();
         
     //
@@ -117,7 +120,7 @@ public class PertMappingPanel extends JPanel {
     //
 
     Vector<TrueObjChoiceContent> srcCand = pd_.getSourceNameOptions();
-    sblu_ = new BuildListUtil(appState_, appState_.getTopFrame(), nodeName, (currSources == null) ?  new ArrayList() : new ArrayList(currSources), srcCand, false);
+    sblu_ = new BuildListUtil(uics_, dacx_, uics_.getTopFrame(), nodeName, (currSources == null) ?  new ArrayList() : new ArrayList(currSources), srcCand, false);
     srcResult_ = sblu_.getBuildListResult();
 
    
@@ -143,7 +146,7 @@ public class PertMappingPanel extends JPanel {
     allTabs_.add(srcResult_);
     
     if (!msgSeparate) {
-      JPanel messagePanel = BuildListUtil.buildMessagePanel(appState_, allTabs_);
+      JPanel messagePanel = BuildListUtil.buildMessagePanel(dacx_, allTabs_);
       rowNum = ds_.addTable(this, messagePanel, 5, rowNum, columns);
     }
   }
@@ -189,7 +192,7 @@ public class PertMappingPanel extends JPanel {
   */
   
   public boolean stashForOKSupport() {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     tblu_.stashForOKSupport(rMan.getString("pertMapping.forTargets"));
     sblu_.stashForOKSupport(rMan.getString("pertMapping.forSources"));
     return (true);

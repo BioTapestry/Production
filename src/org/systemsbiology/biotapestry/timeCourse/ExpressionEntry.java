@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,9 +27,10 @@ import java.text.MessageFormat;
 
 import org.xml.sax.Attributes;
 
+import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -61,12 +62,8 @@ public class ExpressionEntry implements Cloneable {
   
   // Source of expression
 
-  public static final int NO_SOURCE_SPECIFIED  = 0;  
-  public static final int MATERNAL_SOURCE      = 1;
-  public static final int ZYGOTIC_SOURCE       = 2;  
-  public static final int MATERNAL_AND_ZYGOTIC = 3;
-  public static final int NUM_SOURCES          = 4;
-    
+  public enum Source {NO_SOURCE_SPECIFIED, MATERNAL_SOURCE, ZYGOTIC_SOURCE, MATERNAL_AND_ZYGOTIC};
+ 
   // Boundary extrapolation strategies
 
   public static final int NO_STRATEGY_SPECIFIED          = 0;  
@@ -85,9 +82,9 @@ public class ExpressionEntry implements Cloneable {
   private String region_;
   private int time_;
   private int expr_;
-  private int source_;
+  private Source source_;
   private int confidence_;
-  private int strategySource_;
+  private Source strategySource_;
   private int startStrategy_;
   private int endStrategy_;
   private double variable_;
@@ -112,8 +109,8 @@ public class ExpressionEntry implements Cloneable {
   ** Constructor
   */
 
-  public ExpressionEntry(String region, int time, int expr, int source, int confidence, 
-                         int strategySource, int startStrategy, int endStrategy, double variable) {
+  public ExpressionEntry(String region, int time, int expr, Source source, int confidence, 
+                         Source strategySource, int startStrategy, int endStrategy, double variable) {
     region_ = region;
     time_ = time;
     expr_ = expr;
@@ -137,8 +134,8 @@ public class ExpressionEntry implements Cloneable {
   */
 
   public ExpressionEntry(String region, int time) {
-    this(region, time, NOT_EXPRESSED, NO_SOURCE_SPECIFIED, TimeCourseGene.USE_BASE_CONFIDENCE, 
-         NO_SOURCE_SPECIFIED, NO_STRATEGY_SPECIFIED, NO_STRATEGY_SPECIFIED, 0.0);
+    this(region, time, NOT_EXPRESSED, Source.NO_SOURCE_SPECIFIED, TimeCourseGene.USE_BASE_CONFIDENCE, 
+         Source.NO_SOURCE_SPECIFIED, NO_STRATEGY_SPECIFIED, NO_STRATEGY_SPECIFIED, 0.0);
   }  
  
   /***************************************************************************
@@ -147,8 +144,8 @@ public class ExpressionEntry implements Cloneable {
   */
 
   public ExpressionEntry(String region, int time, int expr, int confidence) {
-    this(region, time, expr, NO_SOURCE_SPECIFIED, confidence, 
-         NO_SOURCE_SPECIFIED, NO_STRATEGY_SPECIFIED, NO_STRATEGY_SPECIFIED, 0.0);
+    this(region, time, expr, Source.NO_SOURCE_SPECIFIED, confidence, 
+         Source.NO_SOURCE_SPECIFIED, NO_STRATEGY_SPECIFIED, NO_STRATEGY_SPECIFIED, 0.0);
   }
   
   /***************************************************************************
@@ -156,7 +153,7 @@ public class ExpressionEntry implements Cloneable {
   ** Constructor
   */
 
-  public ExpressionEntry(BTState appState, String region, String time, 
+  public ExpressionEntry(DataAccessContext dacx, String region, String time, 
                          String expr, String source, String confidence,
                          String strategySource, String startStrategy, String endStrategy, String variable) 
     throws IOException {
@@ -168,7 +165,7 @@ public class ExpressionEntry implements Cloneable {
       throw new IOException();
     }
    
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.timeIsOk(time_)) {      
       throw new IOException();
     }    
@@ -199,7 +196,7 @@ public class ExpressionEntry implements Cloneable {
     }
     
     if (source == null) {
-      source_ = NO_SOURCE_SPECIFIED;
+      source_ = Source.NO_SOURCE_SPECIFIED;
     } else {
       source = source.trim();
       try {
@@ -210,7 +207,7 @@ public class ExpressionEntry implements Cloneable {
     }
      
     if (strategySource == null) {
-      strategySource_ = NO_SOURCE_SPECIFIED;
+      strategySource_ = Source.NO_SOURCE_SPECIFIED;
     } else {
       strategySource = strategySource.trim();
       try {
@@ -252,6 +249,31 @@ public class ExpressionEntry implements Cloneable {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+ 
+  /***************************************************************************
+  **
+  ** Discrete to a variable value. May be null.
+  */
+
+  public static Double discreteToVar(int expVal, Double varVal, double weakVal) { 
+    switch (expVal) {
+      case NO_DATA:
+        return (null);
+      case NOT_EXPRESSED:
+        return (Double.valueOf(0.0));
+      case WEAK_EXPRESSION:
+        return (Double.valueOf(weakVal));
+      case EXPRESSED:
+        return (Double.valueOf(1.0));
+      case VARIABLE:
+        if (varVal == null) {
+          throw new IllegalArgumentException();
+        }
+        return (varVal);
+      default:
+        throw new IllegalArgumentException();
+    }
+  }
   
   /***************************************************************************
   **
@@ -273,9 +295,57 @@ public class ExpressionEntry implements Cloneable {
   
   /***************************************************************************
   **
+  ** Needed for merging checks
+  */
+
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return (true);
+    }
+    if (other == null) {
+      return (false);
+    }
+    if (!(other instanceof ExpressionEntry)) {
+      return (false);
+    }
+    ExpressionEntry otherEE = (ExpressionEntry)other;
+    if (!DataUtil.stringsEqual(this.region_, otherEE.region_)) {
+      return (false);
+    }
+    if (this.time_ != otherEE.time_) {
+      return (false);
+    }
+    if (this.expr_ != otherEE.expr_) {
+      return (false);
+    }
+    if (this.source_ != otherEE.source_) {
+      return (false);
+    }
+    if (this.confidence_ != otherEE.confidence_) {
+      return (false);
+    }
+    if (this.strategySource_ != otherEE.strategySource_) {
+      return (false);
+    }
+    if (this.startStrategy_ != otherEE.startStrategy_) {
+      return (false);
+    }
+    if (this.endStrategy_ != otherEE.endStrategy_) {
+      return (false);
+    }
+    if (this.variable_ != otherEE.variable_) {
+      return (false);
+    }
+    return (true);
+  }
+ 
+  /***************************************************************************
+  **
   ** Clone
   */
 
+  @Override
   public ExpressionEntry clone() {
     try {
       ExpressionEntry retval = (ExpressionEntry)super.clone();
@@ -344,15 +414,15 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public int getExpressionForSource(int whichSource) {
-    if ((source_ == NO_SOURCE_SPECIFIED) || (whichSource == NO_SOURCE_SPECIFIED)) {
+  public int getExpressionForSource(Source whichSource) {
+    if ((source_ == Source.NO_SOURCE_SPECIFIED) || (whichSource == Source.NO_SOURCE_SPECIFIED)) {
       return (expr_);
     }
     switch (whichSource) {
       case MATERNAL_SOURCE:
-        return (((source_ == MATERNAL_SOURCE) || (source_ == MATERNAL_AND_ZYGOTIC)) ? expr_ : NOT_EXPRESSED);
+        return (((source_ == Source.MATERNAL_SOURCE) || (source_ == Source.MATERNAL_AND_ZYGOTIC)) ? expr_ : NOT_EXPRESSED);
       case ZYGOTIC_SOURCE:
-        return (((source_ == ZYGOTIC_SOURCE) || (source_ == MATERNAL_AND_ZYGOTIC)) ? expr_ : NOT_EXPRESSED);
+        return (((source_ == Source.ZYGOTIC_SOURCE) || (source_ == Source.MATERNAL_AND_ZYGOTIC)) ? expr_ : NOT_EXPRESSED);
       case NO_SOURCE_SPECIFIED:
       case MATERNAL_AND_ZYGOTIC:
       default:
@@ -366,7 +436,7 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public int getSource() {
+  public Source getSource() {
     return (source_);
   }
   
@@ -376,7 +446,7 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public int getStrategySource() {
+  public Source getStrategySource() {
     return (strategySource_);
   }
   
@@ -386,8 +456,8 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public Integer getQualifiedSource() {
-    return ((expr_ > NOT_EXPRESSED) ? new Integer(source_) : null);
+  public Source getQualifiedSource() {
+    return ((expr_ > NOT_EXPRESSED) ? source_ : null);
   }
   
   /***************************************************************************
@@ -396,18 +466,18 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public double getVariableLevelForSource(int whichSource) {
+  public double getVariableLevelForSource(Source whichSource) {
     if (expr_ != VARIABLE) {
       throw new IllegalStateException();
     }
-    if ((source_ == NO_SOURCE_SPECIFIED) || (whichSource == NO_SOURCE_SPECIFIED)) {
+    if ((source_ == Source.NO_SOURCE_SPECIFIED) || (whichSource == Source.NO_SOURCE_SPECIFIED)) {
       return (variable_);
     }
     switch (whichSource) {
       case MATERNAL_SOURCE:
-        return (((source_ == MATERNAL_SOURCE) || (source_ == MATERNAL_AND_ZYGOTIC)) ? variable_ : 0.0);
+        return (((source_ == Source.MATERNAL_SOURCE) || (source_ == Source.MATERNAL_AND_ZYGOTIC)) ? variable_ : 0.0);
       case ZYGOTIC_SOURCE:
-        return (((source_ == ZYGOTIC_SOURCE) || (source_ == MATERNAL_AND_ZYGOTIC)) ? variable_ : 0.0);
+        return (((source_ == Source.ZYGOTIC_SOURCE) || (source_ == Source.MATERNAL_AND_ZYGOTIC)) ? variable_ : 0.0);
       case NO_SOURCE_SPECIFIED:
       case MATERNAL_AND_ZYGOTIC:
       default:
@@ -448,14 +518,14 @@ public class ExpressionEntry implements Cloneable {
   ** only time we get back the strategy is if we actually ask for it with the right source!
   */
   
-  public int getStartStrategy(int whichSource) {
+  public int getStartStrategy(Source whichSource) {
     switch (whichSource) {
       case MATERNAL_SOURCE:
-        return (((strategySource_ == MATERNAL_SOURCE) || (strategySource_ == MATERNAL_AND_ZYGOTIC)) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
+        return (((strategySource_ == Source.MATERNAL_SOURCE) || (strategySource_ == Source.MATERNAL_AND_ZYGOTIC)) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
       case ZYGOTIC_SOURCE:
-        return (((strategySource_ == ZYGOTIC_SOURCE) || (strategySource_ == MATERNAL_AND_ZYGOTIC)) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
+        return (((strategySource_ == Source.ZYGOTIC_SOURCE) || (strategySource_ == Source.MATERNAL_AND_ZYGOTIC)) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
       case NO_SOURCE_SPECIFIED:
-        return ((strategySource_ == NO_SOURCE_SPECIFIED) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
+        return ((strategySource_ == Source.NO_SOURCE_SPECIFIED) ? startStrategy_ : NO_STRATEGY_SPECIFIED);
       case MATERNAL_AND_ZYGOTIC:
       default:
         throw new IllegalArgumentException();
@@ -467,14 +537,14 @@ public class ExpressionEntry implements Cloneable {
   ** Get the ending extrapolation strategy
   */
   
-  public int getEndStrategy(int whichSource) {
+  public int getEndStrategy(Source whichSource) {
     switch (whichSource) {
       case MATERNAL_SOURCE:
-        return (((strategySource_ == MATERNAL_SOURCE) || (strategySource_ == MATERNAL_AND_ZYGOTIC)) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
+        return (((strategySource_ == Source.MATERNAL_SOURCE) || (strategySource_ == Source.MATERNAL_AND_ZYGOTIC)) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
       case ZYGOTIC_SOURCE:
-        return (((strategySource_ == ZYGOTIC_SOURCE) || (strategySource_ == MATERNAL_AND_ZYGOTIC)) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
+        return (((strategySource_ == Source.ZYGOTIC_SOURCE) || (strategySource_ == Source.MATERNAL_AND_ZYGOTIC)) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
       case NO_SOURCE_SPECIFIED:
-        return ((strategySource_ == NO_SOURCE_SPECIFIED) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
+        return ((strategySource_ == Source.NO_SOURCE_SPECIFIED) ? endStrategy_ : NO_STRATEGY_SPECIFIED);
       case MATERNAL_AND_ZYGOTIC:
       default:
         throw new IllegalArgumentException();
@@ -486,7 +556,7 @@ public class ExpressionEntry implements Cloneable {
   ** Set the starting extrapolation strategy
   */
   
-  public void setStartAndEndStrategy(int startStrategy, int endStrategy, int whichSource) {
+  public void setStartAndEndStrategy(int startStrategy, int endStrategy, Source whichSource) {
     strategySource_ = whichSource;
     startStrategy_ = startStrategy;
     endStrategy_ = endStrategy;
@@ -499,7 +569,7 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public void setSource(int src) {
+  public void setSource(Source src) {
     source_ = src;
     return;
   }
@@ -562,7 +632,7 @@ public class ExpressionEntry implements Cloneable {
     out.print("\" expr=\"");
     out.print(mapExpression(expr_));    
 
-    if (source_ != NO_SOURCE_SPECIFIED) {
+    if (source_ != Source.NO_SOURCE_SPECIFIED) {
       out.print("\" source=\"");
       out.print(mapToSourceTag(source_));
     }
@@ -582,7 +652,7 @@ public class ExpressionEntry implements Cloneable {
       out.print(invert);
     }
     
-    if (strategySource_ != NO_SOURCE_SPECIFIED) {
+    if (strategySource_ != Source.NO_SOURCE_SPECIFIED) {
       out.print("\" stratSource=\"");
       out.print(mapToSourceTag(strategySource_));
     }
@@ -603,6 +673,7 @@ public class ExpressionEntry implements Cloneable {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("Expression: region_ = " + region_ + " time = " + time_ +
             " expr = " + expr_ + " confidence = " + confidence_ + " variable = " + variable_);
@@ -619,9 +690,9 @@ public class ExpressionEntry implements Cloneable {
   ** Answer if the set says a maternal channel is in use
   */
 
-  public static boolean hasMaternalChannel(Set<Integer> sources) { 
-    return (sources.contains(new Integer(ExpressionEntry.MATERNAL_SOURCE)) ||
-            sources.contains(new Integer(ExpressionEntry.MATERNAL_AND_ZYGOTIC)));
+  public static boolean hasMaternalChannel(Set<ExpressionEntry.Source> sources) { 
+    return (sources.contains(ExpressionEntry.Source.MATERNAL_SOURCE) ||
+            sources.contains(ExpressionEntry.Source.MATERNAL_AND_ZYGOTIC));
   }
   
   /***************************************************************************
@@ -629,9 +700,9 @@ public class ExpressionEntry implements Cloneable {
   ** Answer if the set says a zygotic channel is in use
   */
 
-  public static boolean hasZygoticChannel(Set<Integer> sources) { 
-    return (sources.contains(new Integer(ExpressionEntry.ZYGOTIC_SOURCE)) ||
-            sources.contains(new Integer(ExpressionEntry.MATERNAL_AND_ZYGOTIC)));
+  public static boolean hasZygoticChannel(Set<ExpressionEntry.Source> sources) { 
+    return (sources.contains(ExpressionEntry.Source.ZYGOTIC_SOURCE) ||
+            sources.contains(ExpressionEntry.Source.MATERNAL_AND_ZYGOTIC));
   }
   
   /***************************************************************************
@@ -639,8 +710,8 @@ public class ExpressionEntry implements Cloneable {
   ** Answer if the set says a no source channel is in use
   */
 
-  public static boolean hasNoSourceChannel(Set<Integer> sources) { 
-    return (sources.contains(new Integer(ExpressionEntry.NO_SOURCE_SPECIFIED)));
+  public static boolean hasNoSourceChannel(Set<ExpressionEntry.Source> sources) { 
+    return (sources.contains(ExpressionEntry.Source.NO_SOURCE_SPECIFIED));
   }
  
   /***************************************************************************
@@ -648,8 +719,8 @@ public class ExpressionEntry implements Cloneable {
   ** Build display name
   */
 
-  public static String buildZygoticDisplayName(BTState appState, String name) { 
-    String format = appState.getRMan().getString("expressionChannel.zygoticSource");    
+  public static String buildZygoticDisplayName(DataAccessContext dacx, String name) { 
+    String format = dacx.getRMan().getString("expressionChannel.zygoticSource");    
     String desc = MessageFormat.format(format, new Object[] {name}); 
     return (desc);
   }
@@ -659,8 +730,8 @@ public class ExpressionEntry implements Cloneable {
   ** Build display name
   */
 
-  public static String buildMaternalDisplayName(BTState appState, String name) { 
-    String format = appState.getRMan().getString("expressionChannel.maternalSource");    
+  public static String buildMaternalDisplayName(DataAccessContext dacx, String name) { 
+    String format = dacx.getRMan().getString("expressionChannel.maternalSource");    
     String desc = MessageFormat.format(format, new Object[] {name}); 
     return (desc);
   }
@@ -670,7 +741,7 @@ public class ExpressionEntry implements Cloneable {
   ** Map the source value
   */
 
-  public static String mapToSourceTag(int value) {
+  public static String mapToSourceTag(Source value) {
     switch (value) {
       case NO_SOURCE_SPECIFIED:
         return ("noSource");
@@ -691,15 +762,15 @@ public class ExpressionEntry implements Cloneable {
   ** Map from the source tag
   */
 
-  public static int mapFromSourceTag(String source) {
+  public static Source mapFromSourceTag(String source) {
     if (source.equalsIgnoreCase("noSource")) {
-      return (NO_SOURCE_SPECIFIED);
+      return (Source.NO_SOURCE_SPECIFIED);
     } else if (source.equalsIgnoreCase("maternal")) {
-      return (MATERNAL_SOURCE);
+      return (Source.MATERNAL_SOURCE);
     } else if (source.equalsIgnoreCase("zygotic")) {
-      return (ZYGOTIC_SOURCE);
+      return (Source.ZYGOTIC_SOURCE);
     } else if (source.equalsIgnoreCase("matAndZyg")) {
-      return (MATERNAL_AND_ZYGOTIC);
+      return (Source.MATERNAL_AND_ZYGOTIC);
     } else {
       throw new IllegalArgumentException();
     }
@@ -798,8 +869,8 @@ public class ExpressionEntry implements Cloneable {
   ** Show the expression key
   */
 
-  public static void expressionKeyCSV(BTState appState, PrintWriter out, boolean encodeConfidence) {
-    ResourceManager rMan = appState.getRMan();
+  public static void expressionKeyCSV(DataAccessContext dacx, PrintWriter out, boolean encodeConfidence) {
+    ResourceManager rMan = dacx.getRMan();
     out.println("\"\"");
     out.println("\"\"");
     out.print("\"");
@@ -1019,7 +1090,7 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public static ExpressionEntry buildFromXML(BTState appState, String elemName, 
+  public static ExpressionEntry buildFromXML(DataAccessContext dacx, String elemName, 
                                              Attributes attrs) throws IOException {
     if (!elemName.equals("data")) {
       return (null);
@@ -1069,6 +1140,6 @@ public class ExpressionEntry implements Cloneable {
       throw new IOException();
     }
     
-    return (new ExpressionEntry(appState, region, time, expr, srcStr, confidence, stratSrcStr, startStrategy, endStrategy, variable));
+    return (new ExpressionEntry(dacx, region, time, expr, srcStr, confidence, stratSrcStr, startStrategy, endStrategy, variable));
   }
 }

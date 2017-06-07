@@ -35,9 +35,9 @@ import java.util.TreeSet;
 
 import org.xml.sax.Attributes;
 
-//import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -109,6 +109,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
   ** Constructor: Single Link Properties IO replacement
   */
 
+  @SuppressWarnings("unused")
   public BusProperties(Genome genome, String color, 
                        String lineStyle, String txtX, String txtY, String txtDir, 
                        Linkage forLink) throws IOException {
@@ -369,12 +370,12 @@ public class BusProperties extends LinkProperties implements Cloneable {
   */
   
   public LinkSegment getDirectLinkPath(DataAccessContext icx) {
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     LinkBusDrop targDrop = getTargetDrop();
     Linkage link = genome.getLinkage(targDrop.getTargetRef());
     
     int launch = link.getLaunchPad();
-    NodeProperties npSrc = icx.getLayout().getNodeProperties(link.getSource());
+    NodeProperties npSrc = icx.getCurrentLayout().getNodeProperties(link.getSource());
     INodeRenderer sRender = npSrc.getRenderer();
     Point2D srcLoc = npSrc.getLocation();
     Node src = genome.getNode(link.getSource());
@@ -383,7 +384,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
     
     int land = link.getLandingPad();
     int sign = link.getSign();
-    NodeProperties npTrg = icx.getLayout().getNodeProperties(link.getTarget());    
+    NodeProperties npTrg = icx.getCurrentLayout().getNodeProperties(link.getTarget());    
     INodeRenderer tRender = npTrg.getRenderer();
     Point2D trgLoc = npTrg.getLocation();
     Node trg = genome.getNode(link.getTarget());
@@ -573,6 +574,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
   ** Get the launch pad for the tree
   */
   
+  @SuppressWarnings("unused")
   public int getLaunchPad(Genome genome, Layout layout) {
     //
     // Crank through the bus drops, get the linkages, find the launch pads.
@@ -690,11 +692,11 @@ public class BusProperties extends LinkProperties implements Cloneable {
   
   @Override
   protected boolean srcDropIsNonOrtho(DataAccessContext icx) {
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     Linkage link = genome.getLinkage(getALinkID(genome));
     String src = link.getSource();
     Node srcNode = genome.getNode(src);
-    NodeProperties npSrc = icx.getLayout().getNodeProperties(src);
+    NodeProperties npSrc = icx.getCurrentLayout().getNodeProperties(src);
     INodeRenderer sRender = npSrc.getRenderer();
     Point2D srcLoc = npSrc.getLocation();
     int launch = link.getLaunchPad();
@@ -760,13 +762,13 @@ public class BusProperties extends LinkProperties implements Cloneable {
     if (trg == null) {
       throw new IllegalStateException();
     }
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     Linkage link = genome.getLinkage(trg);
     int sign = link.getSign();
     int land = link.getLandingPad();
     String trgID = link.getTarget();
     Node trgNode = genome.getNode(trgID);    
-    NodeProperties npTrg = icx.getLayout().getNodeProperties(trgID);    
+    NodeProperties npTrg = icx.getCurrentLayout().getNodeProperties(trgID);    
     INodeRenderer tRender = npTrg.getRenderer();
     Point2D trgLoc = npTrg.getLocation();    
     Vector2D lanPO = tRender.getLandingPadOffset(land, trgNode, sign, icx);
@@ -831,11 +833,11 @@ public class BusProperties extends LinkProperties implements Cloneable {
   
   @Override
   protected LinkSegment getSourceDropSegment(DataAccessContext icx, boolean forceToGrid) {
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     Linkage link = genome.getLinkage(getALinkID(genome));
     String src = link.getSource();
     Node srcNode = genome.getNode(src);
-    NodeProperties npSrc = icx.getLayout().getNodeProperties(src);
+    NodeProperties npSrc = icx.getCurrentLayout().getNodeProperties(src);
     INodeRenderer sRender = npSrc.getRenderer();
     Point2D srcLoc = npSrc.getLocation();
     int launch = link.getLaunchPad();
@@ -863,13 +865,13 @@ public class BusProperties extends LinkProperties implements Cloneable {
     if (trg == null) {
       throw new IllegalStateException();
     }
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     Linkage link = genome.getLinkage(trg);
     int sign = link.getSign();
     int land = link.getLandingPad();
     String trgID = link.getTarget();
     Node trgNode = genome.getNode(trgID);    
-    NodeProperties npTrg = icx.getLayout().getNodeProperties(trgID);    
+    NodeProperties npTrg = icx.getCurrentLayout().getNodeProperties(trgID);    
     INodeRenderer tRender = npTrg.getRenderer();
     Point2D trgLoc = npTrg.getLocation();    
     Vector2D lanPO = tRender.getLandingPadOffset(land, trgNode, sign, icx);
@@ -1156,7 +1158,7 @@ public class BusProperties extends LinkProperties implements Cloneable {
       }
     }    
         
-    public RememberProps(BusProperties lp, DataAccessContext rcx) {
+    public RememberProps(BusProperties lp, StaticDataAccessContext rcx) {
       this.myStyle = lp.getDrawStyle().clone();
       this.textPos = (lp.getTextPosition() == null) ? null : (Point2D)lp.getTextPosition().clone();
       
@@ -1250,8 +1252,9 @@ public class BusProperties extends LinkProperties implements Cloneable {
       }
       return;
     }    
-    
-    public void restore(BusProperties lp, DataAccessContext rcx) {
+   
+    @SuppressWarnings("unused")
+    public void restore(BusProperties lp, StaticDataAccessContext rcx) {
       lp.setDrawStyle(myStyle);
       lp.setTextDirection(textDir);
       
@@ -1271,9 +1274,9 @@ public class BusProperties extends LinkProperties implements Cloneable {
       return;
     }  
     
-    public void restoreLabelPosition(BusProperties lp, DataAccessContext rcx, Rectangle2D rect) {
+    public void restoreLabelPosition(BusProperties lp, StaticDataAccessContext rcx, Rectangle2D rect) {
       if (linkagesForTextPos != null) {
-        LinkSegmentID segID = lp.findBestSegmentForLabel(rcx.getGenomeSource(), linkagesForTextPos, textPosSegmentCardinality, rcx.getGenome(), null);      
+        LinkSegmentID segID = lp.findBestSegmentForLabel(rcx.getGenomeSource(), linkagesForTextPos, textPosSegmentCardinality, rcx.getCurrentGenome(), null);      
         LinkSegment seg = lp.getSegmentGeometryForID(segID, rcx, false);        
         Point2D textProjection = seg.pointAtFraction(textPosWeight);
         Vector2D segNorm = seg.getNormal();

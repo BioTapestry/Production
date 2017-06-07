@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.HashSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 
 /****************************************************************************
@@ -83,8 +83,8 @@ public class InternalFunction extends DBGenomeItem {
   ** For UI construction
   */
 
-  public InternalFunction(BTState appState, int functionType, String id) {
-    super(appState, null, id);
+  public InternalFunction(DataAccessContext dacx, int functionType, String id) {
+    super(dacx, null, id);
     functionType_ = functionType;
   }  
 
@@ -93,8 +93,8 @@ public class InternalFunction extends DBGenomeItem {
   ** For XML based construction
   */
 
-  public InternalFunction(BTState appState, String function, String id) throws IOException {
-    super(appState, null, id);
+  public InternalFunction(DataAccessContext dacx, String function, String id) throws IOException {
+    super(dacx, null, id);
     if (function == null) {
       throw new IOException();
     }
@@ -171,8 +171,7 @@ public class InternalFunction extends DBGenomeItem {
   **
   */
   
-  public static InternalFunction buildFromXML(BTState appState, Genome genome,
-                                              Attributes attrs) throws IOException {
+  public static InternalFunction buildFromXML(DataAccessContext dacx, Attributes attrs) throws IOException {
 
     String id = null;
     String func = null;
@@ -192,7 +191,7 @@ public class InternalFunction extends DBGenomeItem {
         } 
       }
     }
-    return (new InternalFunction(appState, func, id));
+    return (new InternalFunction(dacx, func, id));
   }  
 
   /***************************************************************************

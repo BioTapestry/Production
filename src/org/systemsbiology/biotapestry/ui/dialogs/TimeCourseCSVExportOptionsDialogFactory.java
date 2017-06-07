@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -73,7 +73,7 @@ public class TimeCourseCSVExportOptionsDialogFactory extends DialogFactory {
   public ServerControlFlowHarness.Dialog getDialog(DialogBuildArgs ba) { 
    
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
-      return (new DesktopDialog(cfh, buildChoices(appState.getRMan())));
+      return (new DesktopDialog(cfh, buildChoices(dacx.getRMan())));
     }
     throw new IllegalArgumentException();
   }
@@ -143,6 +143,10 @@ public class TimeCourseCSVExportOptionsDialogFactory extends DialogFactory {
       finishConstruction();
     }
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED/PRIVATE METHODS

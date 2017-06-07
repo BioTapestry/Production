@@ -53,6 +53,8 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -79,6 +81,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
   private String currModelID_;
   private Stack<Boolean> skipIt_;
   private BTState appState_;
+  private BTState.AppSources appSrc_;
   
   private static final long serialVersionUID = 1L;
   
@@ -107,6 +110,8 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
   public EmbeddedViewerPanelTestWrapper() {
     super("Embedded BioTapestry Viewer Example");
     appState_ = new BTState("WJRL", new HashMap<String, Object>(), false, false);
+    BTState.AppSources appSrc = appState_.getAppSources();
+
     setSize(1000, 1000);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());    
@@ -127,7 +132,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
         try {
           loadAFile();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          appSrc_.uics.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -147,7 +152,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
           }
           selectAModel();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          appSrc_.uics.getExceptionHandler().displayException(ex);
         }
       }
     });     
@@ -181,7 +186,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
           }
           selectNodesAndLinks();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          appSrc_.uics.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -206,7 +211,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
           }
           selectNodesAndLinks();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          appSrc_.uics.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -221,7 +226,9 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
     // Embedded BioTapestry Viewer:
     //
     
-    EmbeddedViewerPanel evp = new EmbeddedViewerPanel(this, appState_);
+    EmbeddedViewerPanel evp = new EmbeddedViewerPanel(this, appState_, appSrc.uics, 
+                                                      new DynamicDataAccessContext(appState_), 
+                                                      appSrc.hBld, appSrc.cSrc, appSrc.tSrc);
     evp.setBorder(BorderFactory.createTitledBorder("BioTapestry Network View"));
     UiUtil.gbcSet(gbc, 0, 1, 1, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(evp, gbc);
@@ -327,7 +334,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
         String omid = (String)omidit.next();
         ExternalModelInfo exmi = evi_.getModelInfo(omid);
         String[] path = exmi.getModelNameChain();
-        modelGuys.add(new ObjChoiceContent(pathToString(path), omid));
+        modelGuys.add(new ObjChoiceContent(DataUtil.pathToString(path), omid));
         if (currModelID_ == null) {
           currModelID_ = omid;
         }
@@ -441,25 +448,7 @@ public class EmbeddedViewerPanelTestWrapper extends JFrame implements ExternalSe
     skipIt_.pop();
     return;
   }
-    
-  /***************************************************************************
-  **
-  ** Model name generator:
-  */   
-  
-  private String pathToString(String[] path) {
-    StringBuffer buf = new StringBuffer();
-    int skipit = path.length - 1;
-    for (int i = 0; i < path.length; i++) {
-      String mName = path[i];
-      buf.append(mName);
-      if (i < skipit) {
-        buf.append("::");
-      }
-    }
-    return (buf.toString());
-  }
-  
+
   /***************************************************************************
   **
   ** Handle node selection changes

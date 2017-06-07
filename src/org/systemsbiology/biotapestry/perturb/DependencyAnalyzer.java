@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Iterator;
 import java.util.HashMap;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -50,7 +49,7 @@ public class DependencyAnalyzer {
   //////////////////////////////////////////////////////////////////////////// 
   
   private PerturbationData pd_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -63,8 +62,8 @@ public class DependencyAnalyzer {
   ** Constructor
   */
 
-  public DependencyAnalyzer(BTState appState, PerturbationData pd) {
-    appState_ = appState;
+  public DependencyAnalyzer(DataAccessContext dacx, PerturbationData pd) {
+    dacx_ = dacx;
     pd_ = pd;
   }
 
@@ -136,7 +135,7 @@ public class DependencyAnalyzer {
       }
     }
   
-    return (new Dependencies(Dependencies.PRUNE_ANNOT, annotID, null, dpUses, pSIUses, pSUses, null, targUses, null, null));
+    return (new Dependencies(Dependencies.DepType.PRUNE_ANNOT, annotID, null, dpUses, pSIUses, pSUses, null, targUses, null, null));
   }
   
   /***************************************************************************
@@ -194,7 +193,7 @@ public class DependencyAnalyzer {
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_ANNOT, commonKey, new HashSet<String>(joinKeys), dpUses, null, pSUses, null, targUses, null, null));  
+    return (new Dependencies(Dependencies.DepType.MERGE_ANNOT, commonKey, new HashSet<String>(joinKeys), dpUses, null, pSUses, null, targUses, null, null));
   }
   
 
@@ -260,7 +259,7 @@ public class DependencyAnalyzer {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.DESTROY, null, null, retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, retval, null, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -291,7 +290,7 @@ public class DependencyAnalyzer {
         dpUses.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.PRUNE_INVEST, invID, null, dpUses, pSIUses, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.PRUNE_INVEST, invID, null, dpUses, pSIUses, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -319,7 +318,7 @@ public class DependencyAnalyzer {
     // Count the perturbed time course references too!
     //
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
@@ -421,7 +420,7 @@ public class DependencyAnalyzer {
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_INVEST, commonKey, new HashSet<String>(investIDs), null, expUses, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_INVEST, commonKey, new HashSet<String>(investIDs), null, expUses, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -457,7 +456,7 @@ public class DependencyAnalyzer {
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_EXPERIMENTS, commonKey, new HashSet<String>(expIDs), expUsed, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_EXPERIMENTS, commonKey, new HashSet<String>(expIDs), expUsed, null, null, null, null, null, null));
   }
 
   /***************************************************************************
@@ -526,7 +525,7 @@ public class DependencyAnalyzer {
         dpUses.add(id);
       }
     }  
-    return (new Dependencies(Dependencies.PRUNE_CONTROL, ctrl, null, dpUses, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.PRUNE_CONTROL, ctrl, null, dpUses, null, null, null, null, null, null));
   }
     
   /***************************************************************************
@@ -557,7 +556,7 @@ public class DependencyAnalyzer {
         dpUses.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.DESTROY, null, null, dpUses, pSIUses, null, null, null, null, null));  
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, dpUses, pSIUses, null, null, null, null, null));  
   }
   
   /***************************************************************************
@@ -578,7 +577,7 @@ public class DependencyAnalyzer {
       }
     }
     
-    return (new Dependencies(Dependencies.MERGE_EXPR_COND, commonKey, new HashSet<String>(ecIDs), null, expUsed, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_EXPR_COND, commonKey, new HashSet<String>(ecIDs), null, expUsed, null, null, null, null, null));
   }
   
  
@@ -596,7 +595,7 @@ public class DependencyAnalyzer {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.DESTROY, null, null, retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, retval, null, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -625,7 +624,7 @@ public class DependencyAnalyzer {
         dpUsed.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.DESTROY, null, null, dpUsed, null, null, mUsed, null, null, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, dpUsed, null, null, mUsed, null, null, null));
   }
 
   /***************************************************************************
@@ -654,7 +653,7 @@ public class DependencyAnalyzer {
     // Count the perturbed time course references too!
     //
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
@@ -693,7 +692,7 @@ public class DependencyAnalyzer {
     // Even lower:
     //
     
-    retvalClone = new HashMap<String, Integer>(retval);
+    retvalClone =  new HashMap<String, Integer>(retval);
     Iterator<String> sdit = pd_.getSourceDefKeys();
     while (sdit.hasNext()) {
       String psdKey = sdit.next();
@@ -762,7 +761,7 @@ public class DependencyAnalyzer {
         mUsed.add(mkey);
       }
     } 
-    return (new Dependencies(Dependencies.MERGE_MEASURE_SCALES, commonKey, new HashSet<String>(msIDs), null, null, null, mUsed, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_MEASURE_SCALES, commonKey, new HashSet<String>(msIDs), null, null, null, mUsed, null, null, null));
   }
   
   /***************************************************************************
@@ -779,7 +778,7 @@ public class DependencyAnalyzer {
         dpUsed.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_MEASURE_PROPS, commonKey, new HashSet<String>(mpIDs), dpUsed, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_MEASURE_PROPS, commonKey, new HashSet<String>(mpIDs), dpUsed, null, null, null, null, null, null));
   } 
    
   /***************************************************************************
@@ -801,10 +800,10 @@ public class DependencyAnalyzer {
       }
     }
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pPUses);
 
-    return (new Dependencies(Dependencies.MERGE_PERT_PROPS, commonKey, new HashSet<String>(ppIDs), null, null, pPUses, null, null, null, psmd));
+    return (new Dependencies(Dependencies.DepType.MERGE_PERT_PROPS, commonKey, new HashSet<String>(ppIDs), null, null, pPUses, null, null, null, psmd));
   } 
    
   /***************************************************************************
@@ -873,7 +872,7 @@ public class DependencyAnalyzer {
     //
     
     HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
@@ -884,7 +883,7 @@ public class DependencyAnalyzer {
       }
     }
      
-    return (new Dependencies(Dependencies.DESTROY, null, null, dpUses, pSIUses, pSUses, null, null, tcdUses, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, dpUses, pSIUses, pSUses, null, null, tcdUses, null));
   }
 
   /***************************************************************************
@@ -901,7 +900,7 @@ public class DependencyAnalyzer {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.DESTROY, null, null, retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, retval, null, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -918,7 +917,7 @@ public class DependencyAnalyzer {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_TARGETS, commonKey, new HashSet<String>(targIDs), retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_TARGETS, commonKey, new HashSet<String>(targIDs), retval, null, null, null, null, null, null));
   }
   
     
@@ -936,7 +935,7 @@ public class DependencyAnalyzer {
         retval.add(pdp.getID());
       }
     }
-    return (new Dependencies(Dependencies.MERGE_CONTROLS, commonKey, new HashSet<String>(ctrlIDs), retval, null, null, null, null, null, null));
+    return (new Dependencies(Dependencies.DepType.MERGE_CONTROLS, commonKey, new HashSet<String>(ctrlIDs), retval, null, null, null, null, null, null));
   }
   
   /***************************************************************************
@@ -1004,14 +1003,14 @@ public class DependencyAnalyzer {
     //
     
     HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Set<String> forKey = psd.get(sourceDefID);
     if (forKey != null) {
       tcdUses.add(sourceDefID);
     } 
     
-    return (new Dependencies(Dependencies.DESTROY, null, null, dpUses, pSInfoUses, null, null, null, tcdUses, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, dpUses, pSInfoUses, null, null, null, tcdUses, null));
   }
   
   /***************************************************************************
@@ -1019,7 +1018,7 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for pert source definitions
   */
  
-  public Set<String> getMultiSourceDefCollapseMergeSet(Set<String> sdIDs, String commonKey) {
+  public Set<String> getMultiSourceDefCollapseMergeSet(Set<String> sdIDs) {
     
     HashSet<String> sdUsed = new HashSet<String>();    
     Iterator<String> psit = pd_.getExperimentKeys();
@@ -1065,10 +1064,10 @@ public class DependencyAnalyzer {
       }
     }
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(sdIDs);
  
-    return (new Dependencies(Dependencies.MERGE_SOURCE_DEFS, commonKey, new HashSet<String>(sdIDs), null, sdUsed, null, null, null, null, psmd));
+    return (new Dependencies(Dependencies.DepType.MERGE_SOURCE_DEFS, commonKey, new HashSet<String>(sdIDs), null, sdUsed, null, null, null, null, psmd));
   }
  
   /***************************************************************************
@@ -1091,10 +1090,10 @@ public class DependencyAnalyzer {
       }
     }
     
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pSUses);
 
-    return (new Dependencies(Dependencies.MERGE_SOURCE_NAMES, commonKey, new HashSet<String>(srcIDs), null, null, pSUses, null, null, null, psmd));
+    return (new Dependencies(Dependencies.DepType.MERGE_SOURCE_NAMES, commonKey, new HashSet<String>(srcIDs), null, null, pSUses, null, null, null, psmd));
   }
       
   /***************************************************************************
@@ -1150,7 +1149,7 @@ public class DependencyAnalyzer {
     //
     
     HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
@@ -1161,7 +1160,7 @@ public class DependencyAnalyzer {
       }
     }
 
-    return (new Dependencies(Dependencies.DESTROY, null, null, dpUses, pSInfoUses, pSUses, null, null, tcdUses, null));
+    return (new Dependencies(Dependencies.DepType.DESTROY, null, null, dpUses, pSInfoUses, pSUses, null, null, tcdUses, null));
   }
   
   /***************************************************************************
@@ -1205,7 +1204,7 @@ public class DependencyAnalyzer {
       // Count the perturbed time course references too!
       //
 
-      TimeCourseData tcd = appState_.getDB().getTimeCourseData();    
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
       Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
       Iterator<String> tcit = psd.keySet().iterator();
       while (tcit.hasNext()) {
@@ -1248,95 +1247,95 @@ public class DependencyAnalyzer {
   */
  
   public boolean mergeDependencies(Dependencies refs, DataAccessContext dacx, UndoSupport support) {
-    if (refs.type == Dependencies.MERGE_TARGETS) {   
+    if (refs.type == Dependencies.DepType.MERGE_TARGETS) {   
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointTargetRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
-    } else if (refs.type == Dependencies.MERGE_CONTROLS) {   
+    } else if (refs.type == Dependencies.DepType.MERGE_CONTROLS) {   
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointControlRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }  
-    } else if (refs.type == Dependencies.MERGE_SOURCE_NAMES) {
+    } else if (refs.type == Dependencies.DepType.MERGE_SOURCE_NAMES) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
         TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(appState_, dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
         }     
       }          
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergePertSourceNameRefs(refs.pertSources, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
 
-    } else if (refs.type == Dependencies.MERGE_INVEST) {
+    } else if (refs.type == Dependencies.DepType.MERGE_INVEST) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeInvestigatorRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
-    } else if (refs.type == Dependencies.MERGE_MEASURE_SCALES) {
+    } else if (refs.type == Dependencies.DepType.MERGE_MEASURE_SCALES) {
       if ((refs.measureProps != null) && (refs.measureProps.size() > 0)) {
         PertDataChange pdc = pd_.mergeMeasureScaleRefs(refs.measureProps, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }   
-    } else if (refs.type == Dependencies.MERGE_MEASURE_PROPS) {
+    } else if (refs.type == Dependencies.DepType.MERGE_MEASURE_PROPS) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeMeasurePropRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }       
-    } else if (refs.type == Dependencies.MERGE_PERT_PROPS) {
+    } else if (refs.type == Dependencies.DepType.MERGE_PERT_PROPS) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
         TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(appState_, dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
         }     
       }       
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergePertPropRefs(refs.pertSources, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }   
-    } else if (refs.type == Dependencies.MERGE_SOURCE_DEFS) {
+    } else if (refs.type == Dependencies.DepType.MERGE_SOURCE_DEFS) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
         TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(appState_, dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
         }     
       }
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeSourceDefRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
      
-    } else if (refs.type == Dependencies.MERGE_EXPERIMENTS) {
+    } else if (refs.type == Dependencies.DepType.MERGE_EXPERIMENTS) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeExperimentRefs(refs.dataPoints, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }      
-    } else if (refs.type == Dependencies.MERGE_ANNOT) {
+    } else if (refs.type == Dependencies.DepType.MERGE_ANNOT) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointAnnotRefs(refs.dataPoints, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }       
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergeSourceDefAnnotRefs(refs.pertSources, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }       
       if ((refs.targets != null) && (refs.targets.size() > 0)) {
         PertDataChange pdc = pd_.mergeTargetAnnotRefs(refs.targets, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }       
       
-    } else if (refs.type == Dependencies.MERGE_EXPR_COND) {
+    } else if (refs.type == Dependencies.DepType.MERGE_EXPR_COND) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeExperimentCondRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }     
     } else {
       throw new IllegalArgumentException();
@@ -1352,7 +1351,7 @@ public class DependencyAnalyzer {
   
   public boolean killOffDependencies(Dependencies refs, DataAccessContext dacx, UndoSupport support) { 
     
-    if (refs.type == Dependencies.DESTROY) {
+    if (refs.type == Dependencies.DepType.DESTROY) {
       
       //
       // Gotta happen early, as undo prep needs valid refs:
@@ -1364,25 +1363,25 @@ public class DependencyAnalyzer {
           String key = tcrit.next();
           TimeCourseChange[] tcca = tcd.dropPertSourceDependencies(key);
           for (int j = 0; j < tcca.length; j++) {
-            support.addEdit(new TimeCourseChangeCmd(appState_, dacx, tcca[j]));
+            support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
           }
         }        
       }
       
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.deleteDataPoints(refs.dataPoints);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
 
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.deleteExperiments(refs.experiments);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }      
 
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange[] pdc = pd_.deletePertSourceDefs(refs.pertSources);
         for (int j = 0; j < pdc.length; j++) {
-          support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc[j]));
+          support.addEdit(new PertDataChangeCmd(dacx, pdc[j]));
         }
       }
       
@@ -1391,36 +1390,36 @@ public class DependencyAnalyzer {
         while (mpit.hasNext()) {
           String key = mpit.next();
           PertDataChange pdc = pd_.deleteMeasureProp(key);
-          support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(dacx, pdc));
         }        
       } 
          
-    } else if (refs.type == Dependencies.PRUNE_INVEST) {
+    } else if (refs.type == Dependencies.DepType.PRUNE_INVEST) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.dropInvestigator(refs.useKey, refs.experiments);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }       
-    } else if (refs.type == Dependencies.PRUNE_ANNOT) {
+    } else if (refs.type == Dependencies.DepType.PRUNE_ANNOT) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.dropDataPointAnnotations(refs.useKey, refs.dataPoints);
         if (pdc != null) {
-          support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(dacx, pdc));
         }
       }
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.dropSourceDefAnnotations(refs.useKey, refs.pertSources);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }
       if ((refs.targets != null) && (refs.targets.size() > 0)) {
         PertDataChange pdc = pd_.dropTargetAnnotations(refs.useKey, refs.targets);
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(dacx, pdc));
       }     
       
-    } else if (refs.type == Dependencies.PRUNE_CONTROL) {
+    } else if (refs.type == Dependencies.DepType.PRUNE_CONTROL) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
-        PertDataChange pdc = pd_.dropDataPointControls(refs.useKey, refs.dataPoints);
+        PertDataChange pdc = pd_.dropDataPointControls(refs.dataPoints);
         if (pdc != null) {
-          support.addEdit(new PertDataChangeCmd(appState_, dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(dacx, pdc));
         }
       }
     } else {
@@ -1437,34 +1436,35 @@ public class DependencyAnalyzer {
   
   public static class Dependencies {
     
-    public static final int DESTROY              = 0;
-    public static final int PRUNE_INVEST         = 1;
-    public static final int PRUNE_ANNOT          = 2;
-    public static final int PRUNE_CONTROL        = 3;
-    public static final int MERGE_TARGETS        = 4;
-    public static final int MERGE_SOURCE_NAMES   = 5;
-    public static final int MERGE_INVEST         = 6;
-    public static final int MERGE_CONTROLS       = 7;
-    public static final int MERGE_MEASURE_SCALES = 8;
-    public static final int MERGE_ANNOT          = 9;
-    public static final int MERGE_EXPR_COND      = 10;
-    public static final int MERGE_MEASURE_PROPS  = 11;
-    public static final int MERGE_SOURCE_DEFS    = 12;
-    public static final int MERGE_EXPERIMENTS    = 13;
-    public static final int MERGE_PERT_PROPS     = 14;
+    public enum DepType {    
+      DESTROY,
+      PRUNE_INVEST,
+      PRUNE_ANNOT,
+      PRUNE_CONTROL,
+      MERGE_TARGETS,
+      MERGE_SOURCE_NAMES,
+      MERGE_INVEST,
+      MERGE_CONTROLS,
+      MERGE_MEASURE_SCALES,
+      MERGE_ANNOT,
+      MERGE_EXPR_COND,
+      MERGE_MEASURE_PROPS,
+      MERGE_SOURCE_DEFS,
+      MERGE_EXPERIMENTS,
+      MERGE_PERT_PROPS}
     
     public Set<String> dataPoints;
     public Set<String> experiments;
     public Set<String> pertSources;
     public Set<String> measureProps;
     public Set<String> targets;
-    public int type;
+    public DepType type;
     public String useKey;
     public Set<String> abandonKeys;
     public Set<String> timeCourseRefs;
     public Map<String, Set<PertSources>> timeCourseMergeRefs;
         
-    Dependencies(int type, String useKey, Set<String> abandonKeys, Set<String> dataPoints, 
+    Dependencies(DepType type, String useKey, Set<String> abandonKeys, Set<String> dataPoints, 
                            Set<String> experiments, Set<String> pertSources, 
                            Set<String> measureProps, Set<String> targets, Set<String> timeCourseRefs, 
                            Map<String, Set<PertSources>> timeCourseMergeRefs) {

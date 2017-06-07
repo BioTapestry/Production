@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 package org.systemsbiology.biotapestry.timeCourse;
 
 import java.util.Set;
-import java.util.HashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -29,6 +28,11 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.parser.GlueStick;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -37,7 +41,7 @@ import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 ** This is a Temporal Perturbation Range
 */
 
-public class InputTimeRange {
+public class InputTimeRange implements Cloneable {
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -91,6 +95,28 @@ public class InputTimeRange {
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Clone
+  **
+  */  
+  
+  @Override
+  public InputTimeRange clone() { 
+    try {
+      InputTimeRange newVal = (InputTimeRange)super.clone();
+      newVal.ranges_ = new ArrayList<RegionAndRange>();
+      int size = this.ranges_.size();
+      for (int i = 0; i < size; i++) {
+        RegionAndRange rar = this.ranges_.get(i);
+        newVal.ranges_.add(rar.clone());
+      }
+      return (newVal);
+    } catch (CloneNotSupportedException cnse) {
+      throw new IllegalStateException();
+    }
+  } 
+
   /***************************************************************************
   **
   ** Get the name
@@ -200,6 +226,7 @@ public class InputTimeRange {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("InputTimeRange: name_ = " + name_ + " ranges = " + ranges_);
   }
@@ -209,12 +236,55 @@ public class InputTimeRange {
   // PUBLIC CLASS METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+ 
+  /***************************************************************************
+  **
+  ** For XML I/O
+  */  
+      
+  public static class InputTimeRangeWorker extends AbstractFactoryClient {
+    
+    private DataAccessContext dacx_;
+    private RegionAndRange.RegionAndRangeWorker rarw_;
+    
+    public InputTimeRangeWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("inputTimeRange");
+      rarw_ = new RegionAndRange.RegionAndRangeWorker(whiteboard);
+      installWorker(rarw_, new MyRangeGlue());
+    }
+    
+    public void installContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      rarw_.installContext(dacx_);
+      return;
+    }
+    
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("inputTimeRange")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.inputTimeRange = buildFromXML(elemName, attrs);
+        retval = board.inputTimeRange;
+      }
+      return (retval);     
+    }  
+    
+    private InputTimeRange buildFromXML(String elemName, Attributes attrs) throws IOException { 
+      String name = AttributeExtractor.extractAttribute(elemName, attrs, "inputTimeRange", "input", true);
+      name = CharacterEntityMapper.unmapEntities(name, false);
+      return (new InputTimeRange(name));
+    }
+  }
   
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // PUBLIC CLASS METHODS
-  //
-  ////////////////////////////////////////////////////////////////////////////
+  public static class MyRangeGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.inputTimeRange.add(board.regionAndRange);
+      return (null);
+    }
+  }
   
   /***************************************************************************
   **
@@ -239,52 +309,5 @@ public class InputTimeRange {
       return (retval);
     }
     throw new IllegalArgumentException();
-  }
-    
-  /***************************************************************************
-  **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("inputTimeRange");
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Handle the attributes for the keyword
-  **
-  */
-  
-  public static InputTimeRange buildFromXML(String elemName, 
-                                            Attributes attrs) throws IOException {
-    if (!elemName.equals("inputTimeRange")) {
-      return (null);
-    }
-    
-    String name = null;   
-
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("input")) {
-          name = CharacterEntityMapper.unmapEntities(val, false);
-        }
-      }
-    }
-    
-    if (name == null) {
-      throw new IOException();
-    }
-    
-    return (new InputTimeRange(name));
   }
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,9 +23,9 @@ import java.awt.print.PageFormat;
 import java.awt.print.PrinterException;
 import java.awt.print.PrinterJob;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 
@@ -53,8 +53,7 @@ public class Print extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Print(BTState appState) {
-    super(appState);
+  public Print() {
     name =  "command.Print";
     desc =  "command.Print";
     icon =  "Print24.gif";
@@ -97,9 +96,10 @@ public class Print extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_);
+        ans = new StepState(cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -118,22 +118,15 @@ public class Print extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
 
-    private String nextStep_;
-    private BTState appState_;
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToProcess";
     }
      
@@ -148,7 +141,7 @@ public class Print extends AbstractControlFlow {
       pf.setOrientation(PageFormat.LANDSCAPE);
       // FIX ME: Needed for Win32?  Linux won't default to landscape without this?
       //PageFormat pf2 = pj.pageDialog(pf);
-      pj.setPrintable(appState_.getSUPanel(), pf);
+      pj.setPrintable(uics_.getSUPanel(), pf);
       if (pj.printDialog()) {
         try {
           pj.print();

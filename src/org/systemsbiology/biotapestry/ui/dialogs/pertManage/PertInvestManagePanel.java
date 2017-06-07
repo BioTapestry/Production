@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@ import java.util.Map;
 import java.util.TreeSet;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -38,6 +38,7 @@ import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -71,8 +72,9 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   private String pendingKey_;
   private PertSimpleNameEditPanel pip_;
   private PertManageHelper pmh_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -87,15 +89,16 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Constructor 
   */ 
   
-  public PertInvestManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
+  public PertInvestManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
                                PerturbationData pd, PendingEditTracker pet,  
                                PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    uFac_ = uFac;
+    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
     pfet_ = pfet;
     
-    rtdi_ = new ReadOnlyTable(appState_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(appState_, "pdim.invName"), new ReadOnlyTable.EmptySelector()); 
+    rtdi_ = new ReadOnlyTable(uics_, dacx_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, dacx_, "pdim.invName"), new ReadOnlyTable.EmptySelector()); 
        
     //
     // Build the investigator  panel:
@@ -114,7 +117,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     // Edit panels:
     //
  
-    pip_ = new PertSimpleNameEditPanel(appState_, dacx_, parent_, this, "pdim.investName", this, INVEST_KEY);
+    pip_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pdim.investName", this, INVEST_KEY);
     addEditPanel(pip_, INVEST_KEY);
     
     finishConstruction();
@@ -269,19 +272,20 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Handle join operations 
   */ 
   
+  @Override
   public void doAJoin(String key) {
     if (key.equals(INVEST_KEY)) {
       joinKeys_ = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtdi_.getModel()).getSelectedKeys(rtdi_.selectedRows);
       DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-      Map refCounts = da.getAllInvestigatorReferenceCounts(true);
+      Map<String, Integer> refCounts = da.getAllInvestigatorReferenceCounts(true);
       pendingKey_ = pmh_.getMostUsedKey(refCounts, joinKeys_); 
-      TreeSet nameOptions = new TreeSet(String.CASE_INSENSITIVE_ORDER);
+      TreeSet<String> nameOptions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
       int numk = joinKeys_.size();
       for (int i = 0; i < numk; i++) {
-        String nextJk = (String)joinKeys_.get(i);
+        String nextJk = joinKeys_.get(i);
         nameOptions.add(pd_.getInvestigator(nextJk));
       }
-      pip_.setMergeName(pendingKey_, nameOptions, new ArrayList(joinKeys_));
+      pip_.setMergeName(pendingKey_, nameOptions, new ArrayList<String>(joinKeys_));
       pip_.startEditing();
     } else {
       throw new IllegalArgumentException();
@@ -294,13 +298,14 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Handle duplication operations 
   */ 
   
+  @Override
   public void doADuplication(String key) {
     if (key.equals(INVEST_KEY)) {
       String useKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtdi_.getModel()).getSelectedKey(rtdi_.selectedRows);
-      HashSet allInvests = new HashSet();
-      Iterator ikeys = pd_.getInvestigatorKeys();
+      HashSet<String> allInvests = new HashSet<String>();
+      Iterator<String> ikeys = pd_.getInvestigatorKeys();
       while (ikeys.hasNext()) {
-        String iKey = (String)ikeys.next();
+        String iKey = ikeys.next();
         allInvests.add(pd_.getInvestigator(iKey));
       }      
       String copyName = pmh_.getNewUniqueCopyName(allInvests, pd_.getInvestigator(useKey));
@@ -318,10 +323,11 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Handle filter jumps
   */ 
   
+  @Override
   public void doAFilterJump(String key) {
     if (key.equals(INVEST_KEY)) {
       String filterKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtdi_.getModel()).getSelectedKey(rtdi_.selectedRows);   
-      PertFilter invFilter = new PertFilter(PertFilter.INVEST, PertFilter.STR_EQUALS, filterKey);
+      PertFilter invFilter = new PertFilter(PertFilter.Cat.INVEST, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(invFilter);
       pfet_.jumpWithNewFilter(pfe); 
     } else {
@@ -355,16 +361,16 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   protected void displayProperties(boolean fireChange) { 
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     Integer noCount = new Integer(0);    
-    List selKeys = (rtdi_.selectedRows == null) ? null :
+    List<String> selKeys = (rtdi_.selectedRows == null) ? null :
                      ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtdi_.getModel()).getSelectedKeys(rtdi_.selectedRows);  
     rtdi_.rowElements.clear(); 
     
-    Map invRefs = da.getAllInvestigatorReferenceCounts(false);
-    Iterator iit = pd_.getInvestigatorKeys();
+    Map<String, Integer> invRefs = da.getAllInvestigatorReferenceCounts(false);
+    Iterator<String> iit = pd_.getInvestigatorKeys();
     while (iit.hasNext()) {
-      String key = (String)iit.next();
+      String key = iit.next();
       String invest = pd_.getInvestigator(key);
-      Integer count = (Integer)invRefs.get(key);
+      Integer count = invRefs.get(key);
       if (count == null) {
         count = noCount;
       }
@@ -449,10 +455,10 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }       
-    UndoSupport support = new UndoSupport(appState_, "undo.deleteInvestigator");
+    UndoSupport support = uFac_.provideUndoSupport("undo.deleteInvestigator", dacx_);
     da.killOffDependencies(refs, dacx_, support);
     PertDataChange pdc2 = pd_.deleteInvestigator(key);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc2));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -468,11 +474,11 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   private void joinInvestigators(String key, int what) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     String name = pip_.getResult();      
-    UndoSupport support = new UndoSupport(appState_, "undo.mergePertTargets");   
-    DependencyAnalyzer.Dependencies refs = da.getInvestigatorMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertTargets", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getInvestigatorMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergeInvestigatorNames(joinKeys_, pendingKey_, name);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -493,13 +499,13 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   
   public void editAnInvest(String key, int what) { 
     String name = pip_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createInvestigatorName" 
-                                                                           : "undo.editInvestigatorName");      
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createInvestigatorName" 
+                                                                         : "undo.editInvestigatorName", dacx_);      
     if (pendingKey_ == null) {
       pendingKey_ = pd_.getNextDataKey();
     } 
     PertDataChange pdc = pd_.setInvestigator(pendingKey_, name);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -253,7 +253,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     // the link.
     //
     
-    List<Set<String>> existing = matchingLinkSet(genome, pair, fullList);
+    List<Set<String>> existing = matchingLinkSet(pair, fullList);
     real.setSignalMode(signalMode_);
     Iterator<Linkage> lit = genome.getLinkageIterator();
     while (lit.hasNext()) {
@@ -369,7 +369,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
   ** Helper
   */  
   
-  private List<Set<String>> matchingLinkSet(DBGenome genome, DialogBuiltMotifPair pair, List<DialogBuiltMotifPair> fullList) {
+  private List<Set<String>> matchingLinkSet(DialogBuiltMotifPair pair, List<DialogBuiltMotifPair> fullList) {
     DialogBuiltSignalMotif myMotif = (DialogBuiltSignalMotif)pair.real;
     Set<String> retvalPos = new HashSet<String>();
     Set<String> retvalNeg = new HashSet<String>();
@@ -554,7 +554,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     String oldID = oldSig.getSourceId(); 
     if ((oldID != null) || !bd.existingOnly) {
       if (real.getSourceId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
         String newID = newNode.getID();
         real.setSourceId(newID);
         String normSrc = bd.normNames.get(sourceName_);
@@ -577,7 +577,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     oldID = oldSig.getTargetId();    
     if ((oldID != null) || !bd.existingOnly) {       
       if (real.getTargetId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, targetName_, targetType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, targetName_, targetType_, oldID, support);
         String newID = newNode.getID();
         real.setTargetId(newID);
         String normTrg = bd.normNames.get(targetName_);
@@ -600,7 +600,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     oldID = oldSig.getTransFacId();    
     if ((oldID != null) || !bd.existingOnly) {          
       if (real.getTransFacId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, transFacName_, transFacType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, transFacName_, transFacType_, oldID, support);
         String newID = newNode.getID();
         real.setTransFacId(newID);
         String normTF = bd.normNames.get(transFacName_);
@@ -623,7 +623,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     oldID = oldSig.getSignalId();    
     if ((oldID != null) || !bd.existingOnly) {         
       if (real.getSignalId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, "", Node.INTERCELL, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, "", Node.INTERCELL, oldID, support);
         String newID = newNode.getID();
         real.setSignalId(newID);
         String normBl = bd.normNames.get("");
@@ -646,7 +646,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
     oldID = oldSig.getBubbleId();    
     if ((oldID != null) || !bd.existingOnly) {          
       if (real.getBubbleId() == null) {
-        DBNode newNode = genNode(bd.appState,bd.dacx, bd.genome, bd.oldGenome, "", Node.BUBBLE, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, "", Node.BUBBLE, oldID, support);
         String newID = newNode.getID();
         real.setBubbleId(newID);
         String normBl = bd.normNames.get("");
@@ -675,9 +675,9 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
       if (real.getSignalLinkId() == null) {
         PadConstraints pc = padCalc.generatePadConstraints(real.getSourceId(), real.getSignalId(), bd.opm,
                                                            oldSig.getSignalLinkId(), bd.newNodeToOldNode);
-        DBLinkage newLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.appState, bd.dacx, real.getSourceId(), real.getSignalId(), 
-                                                                              Linkage.NONE, bd.oldGenome, 
-                                                                              support, true, oldID, pc, Linkage.LEVEL_NONE, bd.ist);
+        DBLinkage newLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.dacx, real.getSourceId(), real.getSignalId(), 
+                                                                             Linkage.NONE, bd.oldGenome, 
+                                                                             support, true, oldID, pc, Linkage.LEVEL_NONE, bd.ist);
         real.setSignalLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getSignalLinkId(), pc);
         bd.newLinksToOldLinks.put(real.getSignalLinkId(), oldSig.getSignalLinkId()); // May be null
@@ -695,10 +695,10 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
       if (real.getBubbleLinkId() == null) {
         PadConstraints pc = padCalc.generatePadConstraints(real.getSignalId(), real.getBubbleId(), bd.opm,
                                                            oldSig.getBubbleLinkId(), bd.newNodeToOldNode);
-        DBLinkage newLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.appState, bd.dacx, real.getSignalId(), real.getBubbleId(), 
-                                                                              Linkage.POSITIVE, bd.oldGenome, 
-                                                                              support, true, oldID, pc, 
-                                                                              Linkage.LEVEL_NONE, bd.ist);
+        DBLinkage newLink = (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.dacx, real.getSignalId(), real.getBubbleId(), 
+                                                                             Linkage.POSITIVE, bd.oldGenome, 
+                                                                             support, true, oldID, pc, 
+                                                                             Linkage.LEVEL_NONE, bd.ist);
         real.setBubbleLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getBubbleLinkId(), pc);
         bd.newLinksToOldLinks.put(real.getBubbleLinkId(), oldSig.getBubbleLinkId()); // May be null
@@ -716,7 +716,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
       if (real.getTransFacLinkId() == null) {
         PadConstraints pc = padCalc.generatePadConstraints(real.getTransFacId(), real.getBubbleId(), bd.opm,
                                                    oldSig.getTransFacLinkId(), bd.newNodeToOldNode);
-        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.appState, bd.dacx, real.getTransFacId(), real.getBubbleId(), 
+        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.dacx, real.getTransFacId(), real.getBubbleId(), 
                                                                      Linkage.POSITIVE, support, true, oldID, pc, Linkage.LEVEL_NONE, bd.ist);
         real.setTransFacLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getTransFacLinkId(), pc);
@@ -737,7 +737,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
            (signalMode_ == SignalBuildInstruction.SWITCH_SIGNAL))) {
         PadConstraints pc = padCalc.generatePadConstraints(real.getBubbleId(), real.getTargetId(), bd.opm,
                                                    oldSig.getTargetPosLinkId(), bd.newNodeToOldNode);
-        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.appState, bd.dacx, real.getBubbleId(), real.getTargetId(),
+        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.dacx, real.getBubbleId(), real.getTargetId(),
                                                                      Linkage.POSITIVE, support, true, oldID, pc, evidenceLevel_, bd.ist);
         real.setTargetPosLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getTargetPosLinkId(), pc);
@@ -758,7 +758,7 @@ public class DialogBuiltSignalProtoMotif extends DialogBuiltProtoMotif {
            (signalMode_ == SignalBuildInstruction.SWITCH_SIGNAL))) { 
         PadConstraints pc = padCalc.generatePadConstraints(real.getBubbleId(), real.getTargetId(), bd.opm,
                                                    oldSig.getTargetNegLinkId(), bd.newNodeToOldNode);
-        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.appState, bd.dacx, real.getBubbleId(), real.getTargetId(), 
+        DBLinkage newLink = (DBLinkage)AddCommands.autoAddLinkToRoot(bd.dacx, real.getBubbleId(), real.getTargetId(), 
                                                                      Linkage.NEGATIVE, support, true, oldID, pc, evidenceLevel_, bd.ist);
         real.setTargetNegLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getTargetNegLinkId(), pc);

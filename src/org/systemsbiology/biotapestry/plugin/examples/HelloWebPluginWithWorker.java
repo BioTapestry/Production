@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2014 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -66,7 +66,7 @@ public class HelloWebPluginWithWorker implements ExternalNodeDataDisplayPlugIn {
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String[] modelNameChain, String nodeName, String regionName) {
+  public boolean requiresPerInstanceDisplay(String dbID, String[] modelNameChain, String nodeName, String regionName) {
     return (false);
   }
  
@@ -85,7 +85,7 @@ public class HelloWebPluginWithWorker implements ExternalNodeDataDisplayPlugIn {
   ** Get the callback worker 
   */
   
-  public PluginCallbackWorker getCallbackWorker(String[] modelNameChain, String nodeName, String regionName) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String[] modelNameChain, String nodeName, String regionName) {
     //
     // If this HelloWebPluginWithWorker class is loaded in from a jar file in the plugins directory,
     // the HelloWebWorker will be found by the class loader if it too comes in from the same jar file.
@@ -105,7 +105,7 @@ public class HelloWebPluginWithWorker implements ExternalNodeDataDisplayPlugIn {
   ** Since this is plugin is worker-based, we will just return an initial string:
   */
   
-  public String getDataAsHTML(String[] modelNameChain, String nodeName, String regionName) {
+  public String getDataAsHTML(String dbID, String[] modelNameChain, String nodeName, String regionName) {
     return ("<p>Waiting for response....</p>");   
   }
 } 

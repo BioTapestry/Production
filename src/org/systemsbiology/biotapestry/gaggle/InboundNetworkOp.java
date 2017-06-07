@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,10 +22,12 @@ package org.systemsbiology.biotapestry.gaggle;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -48,8 +50,8 @@ public class InboundNetworkOp extends InboundGaggleOp {
   ** Create the op - called on RMI thread
   */
 
-  public InboundNetworkOp(BTState appState, String species, List<BuildInstruction> instruct) {
-    super(appState);
+  public InboundNetworkOp(String species, List<BuildInstruction> instruct) {
+    super();
     instruct_ = new ArrayList<BuildInstruction>();
     int iLen = instruct.size();
     for (int i = 0; i < iLen; i++) {
@@ -66,9 +68,9 @@ public class InboundNetworkOp extends InboundGaggleOp {
   ** Execute the op - called on AWT thread
   */
 
-  public void executeOp() {
-    LoadSaveSupport.NetworkBuilder nb = appState_.getLSSupport().getNetworkBuilder();
-    nb.doNetworkBuild(species_, instruct_, new DataAccessContext(appState_, appState_.getGenome()));
+  public void executeOp(UIComponentSource uics, UndoFactory uFac, DataAccessContext dacx) {
+    LoadSaveSupport.NetworkBuilder nb = uics.getLSSupport().getNetworkBuilder();
+    nb.doNetworkBuild(species_, instruct_, new StaticDataAccessContext(dacx).getContextForRoot());
     return;
   } 
 }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,30 +35,30 @@ import org.systemsbiology.biotapestry.analysis.AllPathsResult;
 import org.systemsbiology.biotapestry.analysis.Path;
 import org.systemsbiology.biotapestry.analysis.PathAnalyzer;
 import org.systemsbiology.biotapestry.analysis.SignedTaggedLink;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.FreestandingSourceBundle;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 import org.systemsbiology.biotapestry.db.LocalWorkspaceSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
 import org.systemsbiology.biotapestry.genome.AbstractGenome;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.nav.LocalGroupSettingSource;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.AllPathsLayoutBuilder;
-import org.systemsbiology.biotapestry.ui.FreezeDriedOverlayOracle;
 import org.systemsbiology.biotapestry.ui.GenomePresentation;
+import org.systemsbiology.biotapestry.ui.IRenderer;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
@@ -66,7 +66,6 @@ import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.LocalDispOptMgr;
 import org.systemsbiology.biotapestry.ui.ViewExporter;
 import org.systemsbiology.biotapestry.ui.ZoomTargetSupport;
-import org.systemsbiology.biotapestry.ui.freerender.NetModuleFree;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
  
@@ -102,8 +101,7 @@ public class PathGenerator extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathGenerator(BTState appState) {
-    super(appState);
+  public PathGenerator() {
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -119,7 +117,8 @@ public class PathGenerator extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     return (false);
   }
 
@@ -130,8 +129,8 @@ public class PathGenerator extends AbstractControlFlow {
   */ 
 
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -149,6 +148,7 @@ public class PathGenerator extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepGeneratePathModel")) {
           next = ans.stepGeneratePathModel();
         } else {
@@ -167,41 +167,49 @@ public class PathGenerator extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.SrcTrgCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.SrcTrgCmdState {
      
-    private Genome targetGenome_;
-    private String nextStep_;    
+    private Genome targetGenome_;  
     private String srcID_;
     private String targID_;
     private int depth_;
     private String trueGenomeID_;
-    private BTState appState_;
     private boolean showQPCR_;
     private boolean longerOK_;
     private LocalGenomeSource pSrc_;
-    private DataAccessContext rcx_;
+    private StaticDataAccessContext rcx_;
     
     private int maxDepth_ = -1;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      trueGenomeID_ = dacx.getCurrentGenomeID();
+      targetGenome_ = dacx.getCurrentGenome();
       
-      appState_ = appState;
-      trueGenomeID_ = dacx.getGenomeID();
-      targetGenome_ = dacx.getGenome();
-      
-      showQPCR_ = appState_.getIsEditor() && appState_.getDB().getPertData().haveData();
+      showQPCR_ = false; // don't yet have uics: uics_.getIsEditor() && dacx_.getExpDataSrc().getPertData().haveData();
       nextStep_ = "stepGeneratePathModel";
     }
   
+    /***************************************************************************
+    **
+    ** Add cfh in if StepState was pre-built
+    */
+     
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      showQPCR_ = uics_.getIsEditor() && dacx_.getExpDataSrc().getPertData().haveData();
+      return;
+    }
+
     /***************************************************************************
     **
     ** Preload init
@@ -244,36 +252,25 @@ public class PathGenerator extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepGeneratePathModel() {
-      
       //
       // Build a local genome source that can support our operations:
       //
-      
+      StaticDataAccessContext dacx = new StaticDataAccessContext(dacx_, trueGenomeID_);
       HashMap<String, String> groupIDMap = new HashMap<String, String>();
-      LocalGenomeSource origGSrc = (pSrc_ == null) ? genLGS(trueGenomeID_, groupIDMap, true) : pSrc_; 
-      String phonyGenomeID = (pSrc_ == null) ? mapGITarget(trueGenomeID_) : trueGenomeID_;
+      LocalGenomeSource origGSrc = (pSrc_ == null) ? genLGS(trueGenomeID_, groupIDMap, true, dacx) : pSrc_; 
+      String phonyGenomeID = (pSrc_ == null) ? mapGITarget(trueGenomeID_, dacx) : trueGenomeID_;
   
-      //
-      // Generate the genome and return the result:
-      //
-      
-      LocalGenomeSource currGSrc = new LocalGenomeSource(new DBGenome(appState_, "foo", "bar"), new DBGenome(appState_, "foo", "bar"));
-      LocalLayoutSource lls = new LocalLayoutSource(new Layout(appState_,"__BOGUSKEY__", "bar"), currGSrc);
+      LocalGenomeSource currGSrc = new LocalGenomeSource();
+      LocalLayoutSource lls = new LocalLayoutSource(new Layout("__BOGUSKEY__", "bar"), currGSrc);
       LocalWorkspaceSource lws = new LocalWorkspaceSource();
-      LocalDispOptMgr llbs = new LocalDispOptMgr(appState_.getDisplayOptMgr().getDisplayOptions().clone());
-            
-      rcx_ = new DataAccessContext(null, null, false, false, 0.0,
-                                  appState_.getFontMgr(), llbs, 
-                                  appState_.getFontRenderContext(), currGSrc, appState_.getDB(), appState_.isWebApplication(), 
-                                  new FullGenomeHierarchyOracle(currGSrc, lls), appState_.getRMan(), 
-                                  new LocalGroupSettingSource(), lws, lls, 
-                                  new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null),
-                                  appState_.getDB(), appState_.getDB()                                  
-      );
-      GenomePresentation myGenomePre = new GenomePresentation(appState_, false, 1.0, false, rcx_);
-      ZoomTargetSupport zts = new ZoomTargetSupport(appState_, myGenomePre, null, rcx_);
-  
-      Results res = generateGenome(trueGenomeID_, phonyGenomeID, srcID_, targID_, depth_, groupIDMap, origGSrc, currGSrc, longerOK_,appState_.isWebApplication(), llbs);
+      LocalDispOptMgr llbs = new LocalDispOptMgr(dacx.getDisplayOptsSource().getDisplayOptions().clone());
+      rcx_ = dacx.getCustomDACX5(currGSrc, lls, lws, llbs);
+      currGSrc.install(new DBGenome(rcx_, "foo", "bar"), new DBGenome(rcx_, "foo", "bar"));
+      GenomePresentation myGenomePre = new GenomePresentation(uics_, false, 1.0, false, rcx_);
+      ZoomTargetSupport zts = new ZoomTargetSupport(myGenomePre, null, rcx_);
+      rcx_.setZoomTargetSupport(zts);
+ 
+      Results res = generateGenome(dacx_, trueGenomeID_, phonyGenomeID, srcID_, targID_, depth_, groupIDMap, origGSrc, currGSrc, longerOK_, llbs);
       
       Map<String, Object> modelMap = new HashMap<String, Object>();
       if (!res.haveAPath) {
@@ -282,8 +279,8 @@ public class PathGenerator extends AbstractControlFlow {
         modelMap.put("neverAPath", longerOK_);
         modelMap.put(
     		"pathMsg", 
-    		!longerOK_ ? appState_.getRMan().getString("showPath.noPathAtDepth") : 
-    		appState_.getRMan().getString("showPath.noPath").replaceAll("\\{0\\}",Integer.toString(CRAZY_DEPTH_))
+    		!longerOK_ ? rcx_.getRMan().getString("showPath.noPathAtDepth") : 
+    		rcx_.getRMan().getString("showPath.noPath").replaceAll("\\{0\\}",Integer.toString(CRAZY_DEPTH_))
 		);
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this, modelMap));
       }  
@@ -338,7 +335,7 @@ public class PathGenerator extends AbstractControlFlow {
       modelMap.put("longerOK", longerOK_);
       modelMap.put("neverAPath",false);
       
-      if (!rcx_.forWeb) {
+      if (!rcx_.isForWeb()) {
         FreestandingSourceBundle fsb = new FreestandingSourceBundle(currGSrc, lls, lws);    
         modelMap.put("pathModel", fsb);
         modelMap.put("pathModelID", phonyGenomeID);
@@ -347,8 +344,8 @@ public class PathGenerator extends AbstractControlFlow {
       } else {
         try {
           ViewExporter vexp = new ViewExporter(myGenomePre, zts);
-          ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(appState_, rcx_, null, null,
-                                                                        null, null, null, null, appState_.getFontMgr()); 
+          ViewExporter.StateForDraw sfd = new ViewExporter.StateForDraw(uics_, rcx_, cmdSrc_, null, null,
+                                                                        null, null, null, null, rcx_.getFontManager(), IRenderer.Mode.NORMAL); 
           Map<String, Object> emg = vexp.exportMapGuts(true, 1.0, null, sfd);
           modelMap.put("pathRenderingMap", emg);
         } catch (IOException ioe) {
@@ -363,9 +360,10 @@ public class PathGenerator extends AbstractControlFlow {
     ** Run the path analysis
     */    
     
-    private Results generateGenome(String trueGenomeID, String phonyGenomeID, String sourceID, String targetID, 
-                                  int depth, Map<String, String> groupIDMap, 
-                                  LocalGenomeSource gSrc, LocalGenomeSource fillIn, boolean longerOK,boolean isWebApp, LocalDispOptMgr llbs) {
+    private Results generateGenome(StaticDataAccessContext dacx, String trueGenomeID, String phonyGenomeID, String sourceID, String targetID, 
+                                   int depth, Map<String, String> groupIDMap, 
+                                   LocalGenomeSource gSrc, LocalGenomeSource fillIn, 
+                                   boolean longerOK, LocalDispOptMgr llbs) {
           	
       if ((sourceID == null) || (targetID == null)) {
         return (new Results(null, null, Integer.MAX_VALUE, false, null));       
@@ -378,7 +376,7 @@ public class PathGenerator extends AbstractControlFlow {
       AllPathsResult result = null;
       int workingDepth = Integer.MAX_VALUE;
       for (int i = depth; i < CRAZY_DEPTH_; i++) {
-        result = new PathAnalyzer().getAllPaths(trueGenomeID, sourceID, targetID, i,  (pSrc_ == null) ? appState_.getDB() : pSrc_);
+        result = new PathAnalyzer().getAllPaths(trueGenomeID, sourceID, targetID, i,  (pSrc_ == null) ? dacx_.getGenomeSource() : pSrc_);
         List<Path> startList = result.getPaths();
         if (!startList.isEmpty()) {
           workingDepth = i;        
@@ -399,20 +397,12 @@ public class PathGenerator extends AbstractControlFlow {
       Collections.sort(paths);
 
       Genome useGenome = Layout.determineLayoutTarget(fillIn, phonyGenomeID);
-      Layout retval = new Layout(appState_, "__BOGUSKEY__", useGenome.getID());
+      Layout retval = new Layout("__BOGUSKEY__", useGenome.getID());
       LocalLayoutSource lls = new LocalLayoutSource(retval, reduced);
-      Layout colorRef = appState_.getLayoutForGenomeKey(trueGenomeID_);
-      DataAccessContext rcx = new DataAccessContext(useGenome, retval, false, false, 0.0,
-                                  appState_.getFontMgr(), llbs, 
-                                  appState_.getFontRenderContext(), fillIn, appState_.getDB(), isWebApp, 
-                                  new FullGenomeHierarchyOracle(fillIn, lls), appState_.getRMan(), 
-                                  new LocalGroupSettingSource(), appState_.getDB(), lls, 
-                                  new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null), 
-                                  appState_.getDB(), appState_.getDB()
-      );
-
-      new AllPathsLayoutBuilder(appState_).buildNeighborLayout(result, rcx, colorRef);     
-      return (new Results(paths, rcx.getLayout(), workingDepth, true, rcx));    
+      Layout colorRef = dacx.getLayoutSource().getLayoutForGenomeKey(trueGenomeID_);
+      StaticDataAccessContext rcx = dacx.getCustomDACX6(useGenome, retval, lls, fillIn, llbs);
+      new AllPathsLayoutBuilder().buildNeighborLayout(result, rcx, colorRef);     
+      return (new Results(paths, rcx.getCurrentLayout(), workingDepth, true, rcx));    
     }
     
     /***************************************************************************
@@ -420,9 +410,9 @@ public class PathGenerator extends AbstractControlFlow {
     ** Create a local genome source that will be able to support the desired exported path model
     */  
     
-    private LocalGenomeSource genLGS(String giKey, Map<String, String> groupIDMap, boolean reduced) {  
-      Database db = appState_.getDB();
-      Genome keyed = db.getGenome(giKey);
+    @SuppressWarnings("unused")
+    private LocalGenomeSource genLGS(String giKey, Map<String, String> groupIDMap, boolean reduced, StaticDataAccessContext rcx) {  
+      Genome keyed = rcx.getGenomeSource().getGenome(giKey);
       List<Genome> keyedCopies = new ArrayList<Genome>();
       DBGenome baseCopy;
       if (keyed instanceof DBGenome) {
@@ -443,10 +433,10 @@ public class PathGenerator extends AbstractControlFlow {
           }
           
           // FIX ME NOW  
-          UiUtil.fixMePrintout("This is where we lose VFN inactivity level. Issue 78");
+          UiUtil.fixMePrintout("This is where we lose VFN inactivity level. Issue 78 (April 2014)");
           keyedCopyGI = kgirt.getBasicGenomeCopy(groupIDMap, keepLinks); 
         }    
-        baseCopy = ((DBGenome)db.getGenome()).getBasicGenomeCopy();
+        baseCopy = rcx.getGenomeSource().getRootDBGenome().getBasicGenomeCopy();
   
         keyedCopies.add(baseCopy);
         keyedCopies.add(keyedCopyGI);
@@ -465,9 +455,8 @@ public class PathGenerator extends AbstractControlFlow {
     ** bundle up LGS creation:
     */  
     
-    private String mapGITarget(String giKey) {  
-      Database db = appState_.getDB();
-      Genome keyed = db.getGenome(giKey);
+    private String mapGITarget(String giKey, StaticDataAccessContext rcx) {  
+      Genome keyed = rcx.getGenomeSource().getGenome(giKey);
       if (keyed instanceof DBGenome) {
         return (giKey);
       } else {
@@ -540,10 +529,11 @@ public class PathGenerator extends AbstractControlFlow {
     */
      
     private String generateLinkTip(String linkID) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       Linkage link = targetGenome_.getLinkage(linkID);  // This could be ANY link through a bus segment
-      PerturbationData pd = appState_.getDB().getPertData();
-      String tip = pd.getToolTip(GenomeItemInstance.getBaseID(link.getSource()), GenomeItemInstance.getBaseID(link.getTarget()), null);
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+      PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+      String tip = pd.getToolTip(GenomeItemInstance.getBaseID(link.getSource()), GenomeItemInstance.getBaseID(link.getTarget()), null, pdms);
       if ((tip == null) || tip.trim().equals("")) {
         return (rMan.getString("pathpanel.noqpcr"));
       }
@@ -570,7 +560,7 @@ public class PathGenerator extends AbstractControlFlow {
      
     private String generateNonSpecificTip(String srcID) {
       Node src = targetGenome_.getNode(srcID);
-      String format = appState_.getRMan().getString("pathpanel.source");
+      String format = dacx_.getRMan().getString("pathpanel.source");
       String desc = MessageFormat.format(format, new Object[] {src.getName()}); 
       return (desc);
     } 
@@ -592,9 +582,9 @@ public class PathGenerator extends AbstractControlFlow {
     Layout aprLayout;
     int depth;
     boolean haveAPath;
-    DataAccessContext rcx;
+    StaticDataAccessContext rcx;
     
-    Results(List<Path> paths, Layout aprLayout, int depth, boolean haveAPath, DataAccessContext rcx) {
+    Results(List<Path> paths, Layout aprLayout, int depth, boolean haveAPath, StaticDataAccessContext rcx) {
       this.paths = paths;
       this.aprLayout = aprLayout;
       this.depth = depth;     

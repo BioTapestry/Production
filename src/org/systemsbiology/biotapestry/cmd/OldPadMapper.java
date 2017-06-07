@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -70,7 +70,7 @@ public class OldPadMapper {
   */
   
   public int getLaunch(String linkID) {
-    PadPair pair = (PadPair)padsPerLink_.get(linkID);
+    PadPair pair = padsPerLink_.get(linkID);
     if (pair == null) {
       throw new IllegalStateException();
     }
@@ -83,7 +83,7 @@ public class OldPadMapper {
   */
   
   public int getLanding(String linkID) {
-    PadPair pair = (PadPair)padsPerLink_.get(linkID);
+    PadPair pair = padsPerLink_.get(linkID);
     if (pair == null) {
       throw new IllegalStateException();
     }
@@ -96,7 +96,7 @@ public class OldPadMapper {
   */
       
   public Integer getNodeLaunch(String nodeID) {
-    return ((Integer)launchPerNode_.get(nodeID));
+    return (launchPerNode_.get(nodeID));
   }
     
   /***************************************************************************

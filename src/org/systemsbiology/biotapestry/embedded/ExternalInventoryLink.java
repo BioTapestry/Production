@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -137,7 +137,7 @@ public class ExternalInventoryLink extends ExternalInventoryItem {
   */ 
   
   public String getSign() {
-    return (DBLinkage.mapSignToDisplay(bArgs_.appState, sign_));
+    return (DBLinkage.mapSignToDisplay(bArgs_.tpdacx, sign_));
   } 
 
   /***************************************************************************

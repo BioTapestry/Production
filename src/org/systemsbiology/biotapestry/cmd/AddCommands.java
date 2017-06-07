@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,14 +25,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
@@ -86,12 +85,12 @@ public class AddCommands {
   **
   */  
  
-  public static void drawIntoNetModuleSupport(BTState appState, Node newNode, List<String> modCandidates, DataAccessContext rcx, String overlayKey, UndoSupport support) { 
+  public static void drawIntoNetModuleSupport(Node newNode, List<String> modCandidates, StaticDataAccessContext rcx, String overlayKey, UndoSupport support) { 
     //
     // If instructed to add to current net module, do so here:
     //
     if ((modCandidates != null) && !modCandidates.isEmpty()) {
-      NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getGenomeID());
+      NetOverlayOwner owner = rcx.getGenomeSource().getOverlayOwnerFromGenomeKey(rcx.getCurrentGenomeID());
       NetworkOverlay nol = owner.getNetworkOverlay(overlayKey);
       int numMod = modCandidates.size();
       for (int i = 0; i < numMod; i++) {
@@ -99,7 +98,7 @@ public class AddCommands {
         NetModule nmod = nol.getModule(moduleID);
         String attachedGroup = nmod.getGroupAttachment();
         if (attachedGroup != null) {
-          GenomeInstance gi = (GenomeInstance)rcx.getGenome();
+          GenomeInstance gi = (GenomeInstance)rcx.getCurrentGenome();
           Group group = gi.getGroup(attachedGroup); 
           if (!group.isInGroup(newNode.getID(), gi)) {
             continue;
@@ -107,7 +106,7 @@ public class AddCommands {
         }        
         NetModuleChange nmc = owner.addMemberToNetworkModule(overlayKey, nmod, newNode.getID());
         if (nmc != null) {
-          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState, rcx, nmc);
+          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(rcx, nmc);
           support.addEdit(gcc);
         }
       }
@@ -120,7 +119,7 @@ public class AddCommands {
   ** Automatically add a derived link to the root model.
   */  
  
-  public static Linkage autoAddLinkToRoot(BTState appState, DataAccessContext rcx, 
+  public static Linkage autoAddLinkToRoot(StaticDataAccessContext rcx, 
                                           String srcID, String targID, int sign,
                                           UndoSupport support, boolean allowDuplicates, 
                                           String oldID, PadConstraints padLimits, 
@@ -148,14 +147,13 @@ public class AddCommands {
     PadCalculatorToo pcalc = new PadCalculatorToo();
     PadCalculatorToo.PadResult pads = pcalc.padCalcFast(rcx.getGenomeSource(), srcID, targID, padLimits, true, ist);
     String linkID = (oldID == null) ? genome.getNextKey() : oldID;
-    DBLinkage newLinkage = new DBLinkage(appState, null, linkID, srcID, targID, sign, 
-                                         pads.landing, pads.launch);
+    DBLinkage newLinkage = new DBLinkage(rcx, null, linkID, srcID, targID, sign, pads.landing, pads.launch);
     if (evidenceLevel != Linkage.LEVEL_NONE) {
       newLinkage.setTargetLevel(evidenceLevel);
     }
     GenomeChange gc = genome.addLinkWithExistingLabel(newLinkage);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
       support.addEdit(gcc);
     }
     if (ist != null) {
@@ -170,13 +168,13 @@ public class AddCommands {
   ** Automatically add a derived link to the root model.
   */  
  
-  public static Linkage autoAddOldOrNewLinkToRoot(BTState appState, DataAccessContext rcx, 
+  public static Linkage autoAddOldOrNewLinkToRoot(StaticDataAccessContext rcx, 
                                                   String srcID, String targID, int sign,
                                                   DBGenome oldGenome, UndoSupport support, 
                                                   boolean allowDuplicates, 
                                                   String oldID, PadConstraints padLimits, 
                                                   int evidenceLevel, InvertedSrcTrg ist) {
-    return (autoAddOldOrNewLinkToRoot(appState, rcx, null, srcID, targID, sign, oldGenome, support, 
+    return (autoAddOldOrNewLinkToRoot(rcx, null, srcID, targID, sign, oldGenome, support, 
                                       allowDuplicates, oldID, padLimits, true, evidenceLevel, ist));   
   }  
   
@@ -185,7 +183,7 @@ public class AddCommands {
   ** Automatically add a derived link to the root model.
   */  
  
-  public static Linkage autoAddOldOrNewLinkToRoot(BTState appState, DataAccessContext rcx, 
+  public static Linkage autoAddOldOrNewLinkToRoot(StaticDataAccessContext rcx, 
                                                   String newName, String srcID, String targID, int sign,
                                                   DBGenome oldGenome, UndoSupport support, 
                                                   boolean allowDuplicates, 
@@ -221,7 +219,7 @@ public class AddCommands {
     String linkID = (oldID == null) ? genome.getNextKey() : oldID;
     DBLinkage newLinkage;
     if (oldLink == null) {
-      newLinkage = new DBLinkage(appState, newName, linkID, srcID, targID, sign, pads.landing, pads.launch);
+      newLinkage = new DBLinkage(rcx, newName, linkID, srcID, targID, sign, pads.landing, pads.launch);
       if (evidenceLevel != Linkage.LEVEL_NONE) {
         newLinkage.setTargetLevel(evidenceLevel);
       }
@@ -237,7 +235,7 @@ public class AddCommands {
     
     GenomeChange gc = genome.addLinkWithExistingLabel(newLinkage);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
       support.addEdit(gcc);
     }
     if (ist != null) {
@@ -254,20 +252,20 @@ public class AddCommands {
   ** do this first when creating denovo layouts from the template engine.
   */  
  
-  public static void junkLayout(BTState appState, DataAccessContext rcx, UndoSupport support) {      
+  public static void junkLayout(StaticDataAccessContext rcx, UndoSupport support) {      
 
-    Genome genome = rcx.getGenome();
-    String loKey = rcx.getLayoutID();
-    Map<String, Layout.OverlayKeySet> allKeys = rcx.fgho.fullModuleKeysPerLayout();
+    Genome genome = rcx.getCurrentGenome();
+    String loKey = rcx.getCurrentLayoutID();
+    Map<String, Layout.OverlayKeySet> allKeys = rcx.getFGHO().fullModuleKeysPerLayout();
     Layout.OverlayKeySet loModKeys = allKeys.get(loKey);   
  
-    DatabaseChange dc = (support != null) ? rcx.lSrc.startLayoutUndoTransaction(loKey) : null;
+    DatabaseChange dc = (support != null) ? rcx.getLayoutSource().startLayoutUndoTransaction(loKey) : null;
     
-    Layout.SupplementalDataCoords sdc = rcx.getLayout().getSupplementalCoords(rcx, loModKeys);
-    rcx.getLayout().dropProperties(rcx);    
-    dc = (support != null) ? rcx.lSrc.finishLayoutUndoTransaction(dc) : null;
+    Layout.SupplementalDataCoords sdc = rcx.getCurrentLayout().getSupplementalCoords(rcx, loModKeys);
+    rcx.getCurrentLayout().dropProperties(rcx);    
+    dc = (support != null) ? rcx.getLayoutSource().finishLayoutUndoTransaction(dc) : null;
     if (dc != null) {
-      support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+      support.addEdit(new DatabaseChangeCmd(rcx, dc));
     }
    
     //
@@ -289,11 +287,11 @@ public class AddCommands {
       UiUtil.forceToGrid(loc, UiUtil.GRID_SIZE);
       String nodeID = node.getID();
       int nodeType = node.getNodeType();
-      NodeProperties np = new NodeProperties(rcx.cRes, rcx.getLayout(), nodeType, nodeID, loc.getX(), loc.getY(), false);
+      NodeProperties np = new NodeProperties(rcx.getColorResolver(), nodeType, nodeID, loc.getX(), loc.getY(), false);
       Layout.PropChange[] lpc = new Layout.PropChange[1];    
-      lpc[0] = rcx.getLayout().setNodeProperties(nodeID, np);
+      lpc[0] = rcx.getCurrentLayout().setNodeProperties(nodeID, np);
       if ((lpc != null) && (support != null)) {
-        PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
         support.addEdit(pcc);
       }
     }
@@ -317,11 +315,11 @@ public class AddCommands {
       LayoutLinkSupport.autoAddCrudeLinkProperties(appState, genome, lo, linkID, support, null);
     }
     */
-    dc = (support != null) ? rcx.lSrc.startLayoutUndoTransaction(loKey) : null;
-    rcx.getLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
-    dc = (support != null) ? rcx.lSrc.finishLayoutUndoTransaction(dc) : null;
+    dc = (support != null) ? rcx.getLayoutSource().startLayoutUndoTransaction(loKey) : null;
+    rcx.getCurrentLayout().applySupplementalDataCoords(sdc, rcx, loModKeys);
+    dc = (support != null) ? rcx.getLayoutSource().finishLayoutUndoTransaction(dc) : null;
     if (dc != null) {
-      support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+      support.addEdit(new DatabaseChangeCmd(rcx, dc));
     }
  
     return;
@@ -332,31 +330,31 @@ public class AddCommands {
   ** Handle details of net module fixups
   */  
  
-  public static void finishNetModPadFixups(BTState appState, DataAccessContext rcxRoot, Layout.PadNeedsForLayout rootFixups, 
-                                           DataAccessContext rcxVfa, Layout.PadNeedsForLayout padFixups, UndoSupport support) {  
+  public static void finishNetModPadFixups(StaticDataAccessContext rcxRoot, Layout.PadNeedsForLayout rootFixups, 
+                                           StaticDataAccessContext rcxVfa, Layout.PadNeedsForLayout padFixups, UndoSupport support) {  
 
     
     //
     // Root layout:
     //
     if (rootFixups != null) {
-      Map<String, Boolean> orpho = rcxRoot.getLayout().orphansOnlyForAll(false);
-      Layout.PropChange[] padLpc = rcxRoot.getLayout().repairAllNetModuleLinkPadRequirements(rcxRoot, rootFixups, orpho);
+      Map<String, Boolean> orpho = rcxRoot.getCurrentLayout().orphansOnlyForAll(false);
+      Layout.PropChange[] padLpc = rcxRoot.getCurrentLayout().repairAllNetModuleLinkPadRequirements(rcxRoot, rootFixups, orpho);
       if ((padLpc != null) && (padLpc.length != 0)) {
-        PropChangeCmd padC = new PropChangeCmd(appState, rcxRoot, padLpc);
+        PropChangeCmd padC = new PropChangeCmd(rcxRoot, padLpc);
         support.addEdit(padC);
-        support.addEvent(new LayoutChangeEvent(rcxRoot.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
+        support.addEvent(new LayoutChangeEvent(rcxRoot.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
       }  
     }
     //
     // Instance layout:
     //
-    Map<String, Boolean> orpho = rcxVfa.getLayout().orphansOnlyForAll(false);
-    Layout.PropChange[] padLpc = rcxVfa.getLayout().repairAllNetModuleLinkPadRequirements(rcxVfa, padFixups, orpho);
+    Map<String, Boolean> orpho = rcxVfa.getCurrentLayout().orphansOnlyForAll(false);
+    Layout.PropChange[] padLpc = rcxVfa.getCurrentLayout().repairAllNetModuleLinkPadRequirements(rcxVfa, padFixups, orpho);
     if ((padLpc != null) && (padLpc.length != 0)) {
-      PropChangeCmd padC = new PropChangeCmd(appState, rcxVfa, padLpc);
+      PropChangeCmd padC = new PropChangeCmd(rcxVfa, padLpc);
       support.addEdit(padC);
-      support.addEvent(new LayoutChangeEvent(rcxVfa.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+      support.addEvent(new LayoutChangeEvent(rcxVfa.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
     } 
     return;
   }

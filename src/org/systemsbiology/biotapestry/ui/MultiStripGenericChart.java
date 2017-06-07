@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,7 @@ import java.awt.Graphics2D;
 import java.awt.Font;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DoubMinMax;
 
 /****************************************************************************
@@ -62,8 +62,8 @@ public class MultiStripGenericChart extends MultiStripChart {
   ** Null constructor
   */
   
-  public MultiStripGenericChart(BTState appState) {
-    super(appState);
+  public MultiStripGenericChart(DataAccessContext dacx) {
+    super(dacx);
     bounds_ = new DoubMinMax(0.0, 100.0);
     return;
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,11 +28,13 @@ import java.util.Map;
 
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.add.AddNodeSupport;
@@ -44,10 +46,7 @@ import org.systemsbiology.biotapestry.cmd.undo.ProxyChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
-import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Group;
@@ -84,8 +83,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ChangeNodeGroup(BTState appState) {
-    super(appState);
+  public ChangeNodeGroup() {
     name = "nodePopup.ChangeNodeGroup";
     desc = "nodePopup.ChangeNodeGroup";
     mnem = "nodePopup.ChangeNodeGroupMnem";
@@ -104,9 +102,9 @@ public class ChangeNodeGroup extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    Genome genome = rcx.getGenome();
-    return ((genome instanceof GenomeInstance) && !(genome instanceof DynamicGenomeInstance));
+ public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    return (rcx.currentGenomeIsAnInstance() && !rcx.currentGenomeIsADynamicInstance());
   }
 
   /***************************************************************************
@@ -116,8 +114,8 @@ public class ChangeNodeGroup extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -135,9 +133,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
           next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -165,9 +161,9 @@ public class ChangeNodeGroup extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.rcxT_.pixDiam = pixDiam;
+    ans.getDACX().setPixDiam(pixDiam);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans); 
-    ans.nextStep_ = "stepDoNodeRegionChange"; 
+    ans.setNextStep("stepDoNodeRegionChange"); 
     return (retval);
   }
 
@@ -176,29 +172,31 @@ public class ChangeNodeGroup extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.MouseClickCmdState {
      
     private Intersection inter_;
     private Intersection newReg_;
-    private DataAccessContext rcxT_;
-    private ServerControlFlowHarness cfh;
-    private String nextStep_;    
-    private BTState appState_;
     private int x;
     private int y;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
+ 
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = "stepBiWarning";
+    }
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepBiWarning";
     }
   
@@ -287,8 +285,8 @@ public class ChangeNodeGroup extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -306,11 +304,11 @@ public class ChangeNodeGroup extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepDoNodeRegionChange() {
-      GenomeInstance parent = rcxT_.getGenomeAsInstance().getVfgParent();
+      GenomeInstance parent = dacx_.getCurrentGenomeAsInstance().getVfgParent();
       if (parent != null) {    
-        newReg_ = appState_.getGenomePresentation().selectGroupFromParent(x, y, rcxT_);
+        newReg_ = uics_.getGenomePresentation().selectGroupFromParent(x, y, dacx_);
       } else {
-        newReg_ = appState_.getGenomePresentation().selectGroupForRootInstance(x, y, rcxT_);
+        newReg_ = uics_.getGenomePresentation().selectGroupForRootInstance(x, y, dacx_);
       }
       if (newReg_ == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
@@ -318,9 +316,9 @@ public class ChangeNodeGroup extends AbstractControlFlow {
              
       String groupID = newReg_.getObjectID();
       String baseGrpID = Group.getBaseID(groupID);   
-      int genCount = rcxT_.getGenomeAsInstance().getGeneration();        
+      int genCount = dacx_.getCurrentGenomeAsInstance().getGeneration();        
       String inherit = Group.buildInheritedID(baseGrpID, genCount);
-      Group intersectGroup = rcxT_.getGenomeAsInstance().getGroup(inherit);
+      Group intersectGroup = dacx_.getCurrentGenomeAsInstance().getGroup(inherit);
       if (intersectGroup == null) {
         return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
       }
@@ -333,13 +331,13 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       //
       
       boolean changeViz = false;
-      if (rcxT_.getGenomeAsInstance().inModuleAttachedToGroup(appState_, inter_.getObjectID())) {
-        AddNodeSupport.BlackHoleResults bhr = AddNodeSupport.droppingIntoABlackHole(appState_, rcxT_, x, y, false); 
+      if (dacx_.getCurrentGenomeAsInstance().inModuleAttachedToGroup(inter_.getObjectID())) {
+        AddNodeSupport.BlackHoleResults bhr = AddNodeSupport.droppingIntoABlackHole(uics_, dacx_, x, y, false); 
         if (bhr.intoABlackHole) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           String message = UiUtil.convertMessageToHtml(rMan.getString("intoBlackHole.resetVizMoved")); 
           int changeVizVal = 
-            JOptionPane.showConfirmDialog(appState_.getTopFrame(), 
+            JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                           message,
                                           rMan.getString("intoBlackHole.resetVizTitle"),
                                           JOptionPane.YES_NO_CANCEL_OPTION);        
@@ -351,11 +349,11 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       } 
       
       if (changeViz) {
-        NetOverlayController noc = appState_.getNetOverlayController();
+        NetOverlayController noc = uics_.getNetOverlayController();
         noc.setSliderValue(NetModuleAlphaBuilder.MINIMAL_ALL_MEMBER_VIZ);
       }  
        
-      return (changeNodeRegion(rcxT_));    
+      return (changeNodeRegion(dacx_));    
     }
      
     /***************************************************************************
@@ -363,7 +361,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
     ** Change the region containing a node/gene
     */  
    
-    private DialogAndInProcessCmd changeNodeRegion(DataAccessContext rcx) {
+    private DialogAndInProcessCmd changeNodeRegion(StaticDataAccessContext rcx) {
           
       
       //
@@ -374,9 +372,9 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       // Work with the root instance:
       //
       
-      GenomeInstance rootInstance = rcx.getRootInstance();
+      GenomeInstance rootInstance = rcx.getRootInstanceFOrCurrentInstance();
       String rootID = rootInstance.getID();
-      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcx.fgho.getGlobalNetModuleLinkPadNeeds();
+      Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcx.getFGHO().getGlobalNetModuleLinkPadNeeds();
      
       //
       // Make sure the target group is free:
@@ -456,20 +454,20 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, "undo.changeNodeGroup");     
+      UndoSupport support = uFac_.provideUndoSupport("undo.changeNodeGroup", rcx);     
       
       //
       // Move the node location:
       //
       
-      Point2D oldLoc = rcx.getLayout().getNodeProperties(nodeID).getLocation();
+      Point2D oldLoc = rcx.getCurrentLayout().getNodeProperties(nodeID).getLocation();
       double dx = x - oldLoc.getX();
       double dy = y - oldLoc.getY();
       // Don't provide pad fixup yet.  Let that happen at the end when everything is done...
-      DataAccessContext rcxRI = new DataAccessContext(rcx, rootInstance);
-      Layout.PropChange lpc = rcxRI.getLayout().moveNode(nodeID, dx, dy, null, rcxRI);
+      StaticDataAccessContext rcxRI = new StaticDataAccessContext(rcx, rootInstance);
+      Layout.PropChange lpc = rcxRI.getCurrentLayout().moveNode(nodeID, dx, dy, null, rcxRI);
       if (lpc != null) {
-        PropChangeCmd pcc = new PropChangeCmd(appState_, rcxRI, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(rcxRI, lpc);
         support.addEdit(pcc);        
       }
      
@@ -478,7 +476,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       //
       
       HashSet<NetModule.FullModuleKey> attached = new HashSet<NetModule.FullModuleKey>();
-      (new FullGenomeHierarchyOracle(appState_)).getModulesAttachedToGroup(rootInstance, currGrp.getID(), attached);
+      rcxRI.getFGHO().getModulesAttachedToGroup(rootInstance, currGrp.getID(), attached);
       Iterator<NetModule.FullModuleKey> ait = attached.iterator();
       while (ait.hasNext()) {
         NetModule.FullModuleKey fmk = ait.next();
@@ -489,8 +487,8 @@ public class ChangeNodeGroup extends AbstractControlFlow {
           String genomeM = (fmk.ownerType == NetworkOverlay.DYNAMIC_PROXY) ? 
                                rcx.getGenomeSource().getDynamicProxy(fmk.ownerKey).getFirstProxiedKey() : 
                                fmk.ownerKey;
-          DataAccessContext rcxO = new DataAccessContext(rcx, genomeM);
-          RemoveNode.supportNodeDeletionFromOverlays(appState_, noo, rcxO, support, nodeID, false);    
+          StaticDataAccessContext rcxO = new StaticDataAccessContext(rcx, genomeM);
+          RemoveNode.supportNodeDeletionFromOverlays(uics_, noo, rcxO, support, nodeID, false);    
         }
       } 
    
@@ -504,7 +502,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
         if (gr.isInGroup(nodeID, rootInstance)) {
           GroupChange grc = gr.removeMember(nodeID, rootID);
           if (grc != null) {
-            GroupChangeCmd gcc = new GroupChangeCmd(appState_, rcxRI, grc);
+            GroupChangeCmd gcc = new GroupChangeCmd(rcxRI, grc);
             support.addEdit(gcc);        
           }
         }
@@ -516,7 +514,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       
       GroupChange grc = targetGroup.addMember(new GroupMember(nodeID), rootID);
       if (grc != null) {
-        GroupChangeCmd gcc = new GroupChangeCmd(appState_, rcxRI, grc);
+        GroupChangeCmd gcc = new GroupChangeCmd(rcxRI, grc);
         support.addEdit(gcc);        
       }     
      
@@ -532,8 +530,8 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       while (tksit.hasNext()) {
         String genomeKill = tksit.next();
         // Previously made provisions for checking if data table should be deleted, but that is DBGenome only! Go with the null map instead!
-        DataAccessContext rcxK = new DataAccessContext(rcx, genomeKill);
-        RemoveSupport.deleteNodesAndLinksFromModel(appState_, nodes, links, rcxK, support, null, false); 
+        StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, genomeKill);
+        RemoveSupport.deleteNodesAndLinksFromModel(uics_, nodes, links, rcxK, support, null, false, uFac_); 
       }   
    
       
@@ -542,13 +540,13 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       // tied expliclitly to the old group.  Dump it:
       //
       
-      Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+      Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
       while (layit.hasNext()) {
         Layout nl = layit.next();
-        if (nl.haveNodeMetadataDependency(rcx.getGenomeID(), nodeID)) {
-          lpc = nl.dropNodeMetadataDependency(rcx.getGenomeID(), nodeID);
+        if (nl.haveNodeMetadataDependency(rcx.getCurrentGenomeID(), nodeID)) {
+          lpc = nl.dropNodeMetadataDependency(rcx.getCurrentGenomeID(), nodeID);
           if (lpc != null) {
-            PropChangeCmd pcc = new PropChangeCmd(appState_, rcx, lpc);
+            PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
             support.addEdit(pcc);        
           }
         }
@@ -563,7 +561,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       Iterator<DynamicInstanceProxy> pxit = rcx.getGenomeSource().getDynamicProxyIterator();        
       while (pxit.hasNext()) {
         DynamicInstanceProxy dip = pxit.next();
-        if (dip.instanceIsAncestor(rcx.getGenomeAsInstance())) {
+        if (dip.instanceIsAncestor(rcx.getCurrentGenomeAsInstance())) {
           if (dip.hasAddedNode(nodeID)) {
             Iterator<Group> dgit = dip.getGroupIterator();
             while (dgit.hasNext()) {
@@ -571,7 +569,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
               if (Group.getBaseID(dgrp.getID()).equals(groupBase)) {
                 ProxyChange pc = dip.deleteExtraNode(nodeID);
                 if (pc != null) {
-                  ProxyChangeCmd pcc = new ProxyChangeCmd(appState_, rcx, pc);
+                  ProxyChangeCmd pcc = new ProxyChangeCmd(rcx, pc);
                   support.addEdit(pcc);
                  // Don't want to enumerate all those dynamic instances for eventing.
                  // This is a stand in that forces update of all dynamic models:
@@ -589,10 +587,10 @@ public class ChangeNodeGroup extends AbstractControlFlow {
       //
       
       if (globalPadNeeds != null) {
-        ModificationCommands.repairNetModuleLinkPadsGlobally(appState_, rcx, globalPadNeeds, false, support);
+        ModificationCommands.repairNetModuleLinkPadsGlobally(rcx, globalPadNeeds, false, support);
       }          
   
-      support.addEvent(new ModelChangeEvent(rootID, ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rootID, ModelChangeEvent.UNSPECIFIED_CHANGE));
       // clear out the dynamic proxies!!!!
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();     

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,8 @@ package org.systemsbiology.biotapestry.embedded;
 
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
@@ -102,13 +103,15 @@ public abstract class ExternalInventoryItem {
   */  
   
   public static class BuilderArgs {
+    public String tabKey;
     public String genomeKey;
     public String itemID;
     public boolean isALink;
-    public BTState appState;
+    public TabPinnedDynamicDataAccessContext tpdacx;
   
-    public BuilderArgs(BTState appState, String genomeKey, String itemID, boolean isALink) {
-      this.appState = appState;
+    public BuilderArgs(TabPinnedDynamicDataAccessContext tpdacx, String tabKey, String genomeKey, String itemID, boolean isALink) {
+      this.tabKey = tabKey;
+      this.tpdacx = tpdacx;
       this.genomeKey = genomeKey;
       this.itemID = itemID;
       this.isALink = isALink;
@@ -121,6 +124,7 @@ public abstract class ExternalInventoryItem {
   */ 
   
   public static class ArgsForExternalLink {
+    public String tabName;
     public String[] modelNameChain;
     public String srcNodeName; 
     public String trgNodeName;
@@ -134,10 +138,11 @@ public abstract class ExternalInventoryItem {
       //
       // External plug-ins need all sorts of names resolved:
       //
-
-      Genome genome = args.appState.getDB().getGenome(args.genomeKey);
+      GenomeSource gs = args.tpdacx.getGenomeSource();
+      tabName = gs.getTabNameData().getTitle();
+      Genome genome = gs.getGenome(args.genomeKey);
       List<String> names = genome.getNamesToRoot();
-      modelNameChain = (String[])names.toArray(new String[names.size()]);
+      modelNameChain = names.toArray(new String[names.size()]);
       Linkage link = genome.getLinkage(args.itemID);
       String srcID = link.getSource();
       String trgID = link.getTarget();
@@ -165,6 +170,7 @@ public abstract class ExternalInventoryItem {
   */ 
   
   public static class ArgsForExternalNode {
+    public String tabName;
     public String[] modelNameChain;
     public String nodeDisplay;
     public String simpleNodeDisplay;
@@ -172,9 +178,12 @@ public abstract class ExternalInventoryItem {
     public String nodeName;
     
     public ArgsForExternalNode(BuilderArgs args) {
-      Genome genome = args.appState.getDB().getGenome(args.genomeKey);
+      
+      GenomeSource gs = args.tpdacx.getGenomeSource();
+      tabName = gs.getTabNameData().getTitle();
+      Genome genome = gs.getGenome(args.genomeKey);
       List<String> names = genome.getNamesToRoot();
-      modelNameChain = (String[])names.toArray(new String[names.size()]);
+      modelNameChain = names.toArray(new String[names.size()]);
       regionName = null;
       if (genome instanceof GenomeInstance) {
         GenomeInstance gi = (GenomeInstance)genome;

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,7 @@ package org.systemsbiology.biotapestry.util;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.dialogs.ExceptionDialog;
 
 /****************************************************************************
@@ -44,7 +44,7 @@ public class ExceptionHandler {
   private boolean inProcess_;
   private String outOfMemoryMessage_;
   private String outOfMemoryTitle_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -57,8 +57,8 @@ public class ExceptionHandler {
   ** Desktop Constructor
   */
 
-  public ExceptionHandler(BTState appState, ResourceManager rMan, JFrame topWindow) {
-    appState_ = appState;
+  public ExceptionHandler(UIComponentSource uics, ResourceManager rMan, JFrame topWindow) {
+    uics_ = uics;
     paintException_ = false;
     outOfMemoryMessage_ = rMan.getString("errorMsg.outOfMemory");
     outOfMemoryTitle_ = rMan.getString("errorMsg.outOfMemoryTitle");
@@ -71,8 +71,8 @@ public class ExceptionHandler {
   ** Headless Constructor
   */
 
-  public ExceptionHandler(BTState appState, ResourceManager rMan, boolean inProcess) {
-    appState_ = appState;
+  public ExceptionHandler(UIComponentSource uics, ResourceManager rMan, boolean inProcess) {
+    uics_ = uics;
     paintException_ = false;
     outOfMemoryMessage_ = rMan.getString("errorMsg.outOfMemory");
     outOfMemoryTitle_ = rMan.getString("errorMsg.outOfMemoryTitle");
@@ -118,7 +118,7 @@ public class ExceptionHandler {
     }
     System.err.println(version);
     ex.printStackTrace();
-    ExceptionDialog ed = new ExceptionDialog(appState_, topWindow_, ex, version);
+    ExceptionDialog ed = new ExceptionDialog(uics_, topWindow_, ex, version);
     ed.setVisible(true);
     return;
   }

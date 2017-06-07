@@ -1,5 +1,5 @@
 /*
- **    Copyright (C) 2003-2016 Institute for Systems Biology
+ **    Copyright (C) 2003-2017 Institute for Systems Biology
  **                            Seattle, Washington, USA.
  **
  **    This library is free software; you can redistribute it and/or
@@ -146,10 +146,10 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   ** Render the node
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
     ModalTextShapeFactory textFactory = null;
     
-    if (rcx.forWeb) {
+    if (rcx.isForWeb()) {
       textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
     }
     else {
@@ -159,12 +159,12 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
     Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
    
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     float x = (float)origin.getX();
     float y = (float)origin.getY();
     int orient = np.getOrientation();
-    AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+    AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
 
     boolean isGhosted = rcx.isGhosted();
     boolean textGhosted = isGhosted;
@@ -175,14 +175,14 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     }
     Color col1Val = np.getColor();
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Color vac = getVariableActivityColor(item, col1Val, false, dop);
+    Color vac = getVariableActivityColor(item, col1Val, false, dop, mode);
     Color col = (isGhosted) ? dop.getInactiveGray() : vac;
     Color col2Val = np.getSecondColor();
     // Fix for BT-06-04-07:9
     col2Val = (col2Val == null) ? col1Val : col2Val;
-    Color vac2 = getVariableActivityColor(item, col2Val, false, dop);
+    Color vac2 = getVariableActivityColor(item, col2Val, false, dop, mode);
     Color col2 = (isGhosted) ? dop.getInactiveGray() : vac2;    
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);            
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop, mode);            
     
     //ModelObjectCache.PushRotationWithOrigin pushTrans = getRotationTransform(orient, origin);
     
@@ -193,15 +193,15 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     group.addShape(pushTransOld, majorLayer, minorLayer);
 
     // TODO find a better way to do this
-    if (rcx.forWeb) {
+    if (rcx.isForWeb()) {
       group.addShapeSelected(pushTransOld, majorLayer, minorLayer);
     }
 
-    roundSelectionSupport(group, selected, x, y, SELECT_, rcx.forWeb);    
-    Rectangle2D extraRect = extraPadRectangle(item, rcx.getLayout());
+    roundSelectionSupport(group, selected, x, y, SELECT_, rcx.isForWeb());    
+    Rectangle2D extraRect = extraPadRectangle(item, rcx.getCurrentLayout());
 
     // TODO cleanup logic
-    if ((selected != null || rcx.forWeb) && (extraRect != null)) {
+    if ((selected != null || rcx.isForWeb()) && (extraRect != null)) {
       paintExtra(group, Color.orange, extraRect, SELECT_EXTRA_BOX_HEIGHT_, true);
     }
        
@@ -221,18 +221,18 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     group.addShape(popTrans, majorLayer, minorLayer);
 
     // TODO find a better way to do this
-    if (rcx.forWeb) {
+    if (rcx.isForWeb()) {
       group.addShapeSelected(popTrans, majorLayer, minorLayer);
     }
     
-    if (rcx.showBubbles) {
+    if (rcx.getShowBubbles()) {
       renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, rcx);
     }
     
     double textPad = getTextPad();
     Color finalTextCol = (textGhosted) ? dop.getInactiveGray() : textCol;
     Point2D textEnd = renderText(group, (float)(x + textPad), (float)(y - textPad),
-                                item.getName(), finalTextCol, np.getHideName(), amFont, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr, textFactory);
+                                item.getName(), finalTextCol, np.getHideName(), amFont, np.getLineBreakDef(), rcx.getFrc(), rcx.getFontManager(), textFactory);
     
     Point2D pieCenter = new Point2D.Double(textEnd.getX() + 15.0, textEnd.getY());
     drawVariableActivityPie(group, item, col, pieCenter, dop);
@@ -330,7 +330,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   */
   
   protected void fillBoundsArray(ArrayList<ModelObjectCache.ModalShape> targetArray, GenomeItem item, DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double cX = origin.getX();
     double cY = origin.getY();
@@ -342,7 +342,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     String name = item.getName();
     if ((name != null) && (!name.trim().equals(""))) {
         fillBoundsArrayTextLabel(targetArray, rcx, (float)(cX + textPad), (float)(cY - textPad),
-                name, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.fmgr);
+                name, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.getFontManager());
     }    
   }
   
@@ -364,7 +364,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     // Simple distance check - > better to use rectangle.  FIX ME!!!
     //
     
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double x = origin.getX();
     double y = origin.getY();
@@ -376,9 +376,9 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     String name = item.getName();
     if ((name != null) && (!name.trim().equals(""))) {
       if (isTextCandidate(rcx.getFrc(), FontManager.MEDIUM, np.getFontOverride(), name, textPad, dx, 
-                          distsq, np.getLineBreakDef(), false, np.getHideName(), rcx.fmgr)) {
+                          distsq, np.getLineBreakDef(), false, np.getHideName(), rcx.getFontManager())) {
         if (intersectTextLabel(rcx.getFrc(), (float)(x + textPad), (float)(y - textPad),
-                name, pt, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.fmgr)) {
+                name, pt, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.getFontManager())) {
           return (new Intersection(item.getID(), null, 0.0));
         }
       }
@@ -406,7 +406,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
     // This handles all the rotation junk:
     //
     
-    Rectangle2D bounds = getBoundsWithExtraPads(item, rcx.getLayout());
+    Rectangle2D bounds = getBoundsWithExtraPads(item, rcx.getCurrentLayout());
     bounds = UiUtil.padTheRect(bounds, PAD_WIDTH_ / 2.0);
     if (Bounds.intersects(bounds.getX(), bounds.getY(),
                           bounds.getMaxX(), bounds.getMaxY(), pt.getX(), pt.getY())) {
@@ -427,7 +427,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
    */
   
   public Intersection intersects(GenomeItem item, Rectangle rect, boolean countPartial, DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double cX = origin.getX();
     double cY = origin.getY();
@@ -448,7 +448,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
    */
   
   public Vector2D getLaunchPadOffset(int padNum, GenomeItem item, DataAccessContext icx) {
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     int orient = np.getOrientation();
     return (getLaunchPadOffsetGuts(orient));
   }
@@ -500,10 +500,10 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   public Vector2D getLandingPadOffset(int padNum, GenomeItem item, int sign, 
                                       DataAccessContext icx) {
     Vector2D offVec;
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     int orient = np.getOrientation();
     AffineTransform rot = getRotationTransform(orient);
-    Rectangle2D extra = extraPadRectangle(item, icx.getLayout());
+    Rectangle2D extra = extraPadRectangle(item, icx.getCurrentLayout());
     if (padNum >= 0) {
       if (extra == null) {
         return (leftArrive().doTransform(rot));
@@ -631,7 +631,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   
   public Rectangle getBounds(GenomeItem item, DataAccessContext rcx, Object miscInfo) {
     
-    Rectangle2D r2d = getBoundsWithExtraPads(item, rcx.getLayout());
+    Rectangle2D r2d = getBoundsWithExtraPads(item, rcx.getCurrentLayout());
     return (new Rectangle((int)r2d.getX(), (int)r2d.getY(), (int)r2d.getWidth(), (int)r2d.getHeight()));
   }
 
@@ -645,7 +645,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   
   public Rectangle2D getBoundsForLayout(GenomeItem item, DataAccessContext rcx, 
                                         int orientation, boolean labelToo, Integer topPadCount) {
-     NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+     NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
      Node theBox = (Node)item;
      int type = theBox.getNodeType();
      int totalPads = (topPadCount == null) ? theBox.getPadCount() : (topPadCount.intValue() * 2) + 1;
@@ -655,10 +655,10 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
      Rectangle2D basic = getBoundsWithExtraPadsGuts(origin, totalPads, orientation, type);
      
      if (labelToo && !np.getHideName()) {
-       AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+       AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
        String breakDef = np.getLineBreakDef();
        Rectangle2D textRect = getTextBounds(rcx.getFrc(), (float)textPad, (float)textPad, 
-                                            item.getName(), false, amFont, breakDef, rcx.fmgr);
+                                            item.getName(), false, amFont, breakDef, rcx.getFontManager());
        Rectangle fullRect = UiUtil.rectFromRect2D(textRect);
        Rectangle basicAsRect = UiUtil.rectFromRect2D(basic);
        return (fullRect.union(basicAsRect));
@@ -694,9 +694,9 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
    */
   
   public double getHeight(GenomeItem item, DataAccessContext rcx) {
-    Rectangle2D extra = extraPadRectangle(item, rcx.getLayout());
+    Rectangle2D extra = extraPadRectangle(item, rcx.getCurrentLayout());
     if (extra != null) {
-      NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
       int orient = np.getOrientation();
       if ((orient == NodeProperties.RIGHT) || (orient == NodeProperties.LEFT)) {
         return (APPROX_DIAM_);
@@ -723,9 +723,9 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   */
   
   public double getWidth(GenomeItem item, DataAccessContext rcx) {
-    Rectangle2D extra = extraPadRectangle(item, rcx.getLayout());
+    Rectangle2D extra = extraPadRectangle(item, rcx.getCurrentLayout());
     if (extra != null) {
-      NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
       int orient = np.getOrientation();
       if ((orient == NodeProperties.UP) || (orient == NodeProperties.DOWN)) {
         return (APPROX_DIAM_);
@@ -893,7 +893,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   	Integer majorLayer = NodeRenderBase.NODE_MAJOR_LAYER;
   	Integer minorLayer = NodeRenderBase.NODE_MINOR_LAYER;
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     // g2.setPaint(col);
     // g2.setStroke(new BasicStroke(1));
@@ -959,7 +959,7 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
   public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, Point2D pt, DataAccessContext rcx) {
     
     ArrayList<Intersection.PadVal> retval = new ArrayList<Intersection.PadVal>();
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
  
     double px = pt.getX();
@@ -1023,76 +1023,6 @@ public abstract class AbstractInlineNodeFree extends NodeRenderBase {
         retpad.padNum = negPadNum;
         retpad.distance = Math.sqrt(distSq);
         retval.add(retpad);
-      }
-    }
-    
-    return ((retval.isEmpty()) ? null : retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Figure out which pad we intersect
- 
-  
-  private List calcPadIntersects(GenomeItem item,
-                                 Layout layout,
-                                 FontRenderContext frc, Point2D pt) {
-    
-    ArrayList retval = new ArrayList();
-    NodeProperties np = layout.getNodeProperties(item.getID());
-    Point2D origin = np.getLocation();
-    Vector2D lpo = getLaunchPadOffset(0, item, layout, frc);
-    double x = origin.getX() + lpo.getX();
-    double y = origin.getY() + lpo.getY();
-    double padRadius = (PAD_WIDTH_ / 2.0) + 1.0;
-    double prSq = padRadius * padRadius;
-    double px = pt.getX();
-    double py = pt.getY();
-    double distSq = ((px - x) * (px - x)) + ((py - y) * (py - y));
-    if (distSq <= prSq) {
-      Intersection.PadVal retpad = new Intersection.PadVal();
-      retpad.okEnd = false;
-      retpad.okStart = true;
-      retpad.padNum = 0;
-      retpad.distance = Math.sqrt(distSq);
-      retval.add(retpad);
-    }
-
-    lpo = getLandingPadOffset(0, item, Linkage.POSITIVE, layout, frc);
-    x = origin.getX() + lpo.getX();
-    y = origin.getY() + lpo.getY();
-    distSq = ((px - x) * (px - x)) + ((py - y) * (py - y));
-    if (distSq <= prSq) {
-      Intersection.PadVal retpad = new Intersection.PadVal();
-      retpad.okEnd = true;
-      retpad.okStart = false;
-      retpad.padNum = 0;
-      retpad.distance = Math.sqrt(distSq);
-      retval.add(retpad);
-    }
-      
-    //
-    // Extra pads:
-    //
-    Node theInter = (Node)item;
-    int numPads = theInter.getPadCount();
-    int defaultPads = DBNode.getDefaultPadCount(theInter.getNodeType());
-    if (numPads > defaultPads) {
-      int extraPads = numPads - defaultPads;
-      for (int i = 1; i <= extraPads; i++) {
-        int negPadNum = -i;
-        lpo = getLandingPadOffset(negPadNum, item, Linkage.POSITIVE, layout, frc);
-        x = origin.getX() + lpo.getX();
-        y = origin.getY() + lpo.getY();      
-        distSq = ((px - x) * (px - x)) + ((py - y) * (py - y));
-        if (distSq <= prSq) {
-          Intersection.PadVal retpad = new Intersection.PadVal();
-          retpad.okEnd = true;
-          retpad.okStart = false;
-          retpad.padNum = negPadNum;
-          retpad.distance = Math.sqrt(distSq);
-          retval.add(retpad);
-        }
       }
     }
     

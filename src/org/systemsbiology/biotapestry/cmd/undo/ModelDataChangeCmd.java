@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.ModelData;
 
@@ -53,8 +52,8 @@ public class ModelDataChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public ModelDataChangeCmd(BTState appState, DataAccessContext dacx, ModelData oldMdat, ModelData newMdat) {
-    super(appState, dacx);
+  public ModelDataChangeCmd(DataAccessContext dacx, ModelData oldMdat, ModelData newMdat) {
+    super(dacx);
     oldMdat_ = oldMdat;
     newMdat_ = newMdat;
   }
@@ -83,7 +82,7 @@ public class ModelDataChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    appState_.getDB().setModelData(oldMdat_);
+    dacx_.getModelDataSource().setModelData(oldMdat_);
     return;
   }  
   
@@ -95,7 +94,7 @@ public class ModelDataChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    appState_.getDB().setModelData(newMdat_);
+    dacx_.getModelDataSource().setModelData(newMdat_);
   }
   
 }

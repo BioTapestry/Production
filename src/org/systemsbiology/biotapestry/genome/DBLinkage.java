@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -97,9 +97,9 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** UI-based contructor
   */
 
-  public DBLinkage(BTState appState, String name, String id, String src, String targ, 
+  public DBLinkage(DataAccessContext dacx, String name, String id, String src, String targ, 
                    int sign, int pad, int lpad) {   
-    super(appState, name, id);
+    super(dacx, name, id);
     if ((src == null) || (targ == null)) {
       throw new IllegalArgumentException();
     }
@@ -127,10 +127,10 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** XML-based contructor
   */
 
-  public DBLinkage(BTState appState, String name, String id, String src, String targ, 
+  public DBLinkage(DataAccessContext dacx, String name, String id, String src, String targ, 
                    String sign, String pad, String lpad, String tnote, 
                    String starg) throws IOException {   
-    super(appState, name, id);
+    super(dacx, name, id);
     if ((src == null) || (targ == null)) {
       throw new IOException();
     }
@@ -418,7 +418,7 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   public String getDisplayString(Genome genome, boolean typePreface) {  
     Node srcNode = genome.getNode(src_);
     Node trgNode = genome.getNode(targ_);
-    String format = mapSignToDisplay(appState_, sign_);
+    String format = mapSignToDisplay(dacx_, sign_);
     String linkMsg = MessageFormat.format(format, new Object[] {srcNode.getDisplayString(genome, typePreface), 
                                                                 trgNode.getDisplayString(genome, typePreface)});
     return (linkMsg);
@@ -497,7 +497,7 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   **
   */
   
-  public static DBLinkage buildFromXML(BTState appState, Genome genome,
+  public static DBLinkage buildFromXML(DataAccessContext dacx,
                                        Attributes attrs) throws IOException {
     String name = null;
     String id = null;
@@ -538,7 +538,7 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
       }
     }
     
-    return (new DBLinkage(appState, name, id, src, targ, sign, pad, lpad, tnote, starg));
+    return (new DBLinkage(dacx, name, id, src, targ, sign, pad, lpad, tnote, starg));
   }  
 
   /***************************************************************************
@@ -578,11 +578,11 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** Return possible sign values
   */
   
-  public static Vector<ChoiceContent> getSignChoices(BTState appState) {
+  public static Vector<ChoiceContent> getSignChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
-    retval.add(signForCombo(appState, POSITIVE));
-    retval.add(signForCombo(appState, NEGATIVE)); 
-    retval.add(signForCombo(appState, NONE));     
+    retval.add(signForCombo(dacx, POSITIVE));
+    retval.add(signForCombo(dacx, NEGATIVE)); 
+    retval.add(signForCombo(dacx, NONE));     
     return (retval);
   }
   
@@ -591,8 +591,8 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** Get a combo box element
   */
   
-  public static ChoiceContent signForCombo(BTState appState, int sign) {
-    return (new ChoiceContent(appState.getRMan().getString("lcreate." + mapToSignTag(sign)), sign));
+  public static ChoiceContent signForCombo(DataAccessContext dacx, int sign) {
+    return (new ChoiceContent(dacx.getRMan().getString("lcreate." + mapToSignTag(sign)), sign));
   }  
 
   /***************************************************************************
@@ -614,9 +614,9 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** Map link signs
   */
 
-  public static String mapSignToDisplay(BTState appState, int val) {
+  public static String mapSignToDisplay(DataAccessContext dacx, int val) {
     String signTag = mapToSignTag(val);
-    return (appState.getRMan().getString("linkage." + signTag + "Format"));
+    return (dacx.getRMan().getString("linkage." + signTag + "Format"));
   }  
  
   /***************************************************************************
@@ -677,10 +677,10 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** Return possible evidence choices
   */
   
-  public static Vector<ChoiceContent> getEvidenceChoices(BTState appState) {
+  public static Vector<ChoiceContent> getEvidenceChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i <= MAX_LEVEL; i++) {
-      retval.add(evidenceTypeForCombo(appState, i));    
+      retval.add(evidenceTypeForCombo(dacx, i));    
     }
     return (retval);
   }
@@ -690,8 +690,8 @@ public class DBLinkage extends DBGenomeItem implements Linkage {
   ** Get a combo box element
   */
   
-  public static ChoiceContent evidenceTypeForCombo(BTState appState, int eviLev) {
-    return (new ChoiceContent(appState.getRMan().getString("lprop." + mapToEvidenceTag(eviLev)), eviLev));
+  public static ChoiceContent evidenceTypeForCombo(DataAccessContext dacx, int eviLev) {
+    return (new ChoiceContent(dacx.getRMan().getString("lprop." + mapToEvidenceTag(eviLev)), eviLev));
   }
 
   /***************************************************************************

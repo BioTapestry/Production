@@ -32,14 +32,17 @@ import javax.swing.JMenuBar;
 import javax.swing.JSeparator;
 import javax.swing.JToolBar;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.MenuSource;
 import org.systemsbiology.biotapestry.cmd.flow.ControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.util.BTToggleButton;
 import org.systemsbiology.biotapestry.util.MenuItemTarget;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -54,7 +57,12 @@ public class DesktopMenuFactory {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  private BTState appState_;
+  private CmdSource cSrc_;
+  private ResourceManager rMan_;
+  private UIComponentSource uics_;
+  private HarnessBuilder hBld_;
+  
+  
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -67,8 +75,11 @@ public class DesktopMenuFactory {
   ** Constructor 
   */ 
   
-  public DesktopMenuFactory(BTState appState) { 
-    appState_ = appState;
+  public DesktopMenuFactory(CmdSource cSrc, ResourceManager rMan, UIComponentSource uics, HarnessBuilder hBld) { 
+    cSrc_ = cSrc;
+    rMan_ = rMan;
+    uics_ = uics; 
+    hBld_ = hBld;
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -159,8 +170,8 @@ public class DesktopMenuFactory {
           mit.add(new JSeparator());
           break;
         case ACTION:
-          XPlatAction xpa = (XPlatAction)xpmi;
-          AbstractAction aa = aSrc.getAction(xpa.getKey(), xpa.getActionArg());
+          XPlatAction xpa = (XPlatAction)xpmi; 
+          AbstractAction aa = aSrc.getAction(xpa.getKey(), xpa.getActionArg(), rMan_, uics_, cSrc_, hBld_);
           JComponent jc = mit.add(aa);
           if (tag != null) {
             bifo.taggedActions.put(tag, aa);
@@ -172,7 +183,7 @@ public class DesktopMenuFactory {
           break;           
         case CHECKBOX_ACTION:
           XPlatToggleAction xpta = (XPlatToggleAction)xpmi;
-          AbstractAction pda = aSrc.getAction(xpta.getKey(), xpta.getActionArg());
+          AbstractAction pda = aSrc.getAction(xpta.getKey(), xpta.getActionArg(), rMan_, uics_, cSrc_, hBld_);
           JCheckBoxMenuItem jcb = new JCheckBoxMenuItem(pda);
           mit.add(jcb);
           if (tag != null) {
@@ -273,7 +284,7 @@ public class DesktopMenuFactory {
   
   public Map<FlowMeister.FlowKey, MainCommands.ChecksForEnabled> stockActionMap(XPlatToolBar toob, MenuSource.BuildInfo bifo) {
      
-    MainCommands mcmd = appState_.getMainCmds();
+    MainCommands mcmd = cSrc_.getMainCmds();
     HashMap<FlowMeister.FlowKey, MainCommands.ChecksForEnabled> retval = new HashMap<FlowMeister.FlowKey, MainCommands.ChecksForEnabled>();
     
     Iterator<XPlatToolBar.BarMember> iit = toob.getItems();
@@ -311,19 +322,20 @@ public class DesktopMenuFactory {
   
   public static class ActionSource {  
     
-    private BTState appState_;
+    private CmdSource cSrc_;
     private Map<FlowMeister.FlowKey, ControlFlow> flowMap_;
   
-    public ActionSource(BTState appState) {    
-      appState_ = appState;
+    public ActionSource(CmdSource cSrc) {    
+      cSrc_ = cSrc;
     }
     
-    public ActionSource(BTState appState, Map<FlowMeister.FlowKey, ControlFlow> flowMap) {
-      appState_ = appState;
+    public ActionSource(CmdSource cSrc, Map<FlowMeister.FlowKey, ControlFlow> flowMap) {
+      cSrc_ = cSrc;
       flowMap_ = flowMap;
     }
         
-    public AbstractAction getAction(FlowMeister.FlowKey key, ControlFlow.OptArgs actionArgs) {    
+    public AbstractAction getAction(FlowMeister.FlowKey key, ControlFlow.OptArgs actionArgs, ResourceManager rMan,
+                                    UIComponentSource uics, CmdSource cSrc, HarnessBuilder hBld) {    
       FlowMeister.FlowKey.FlowType type = key.getFlowType();
       switch (type) {
         case MAIN:
@@ -331,22 +343,22 @@ public class DesktopMenuFactory {
             throw new IllegalArgumentException();
           }
           if (actionArgs == null) {
-            return (appState_.getMainCmds().getCachedAction((FlowMeister.MainFlow)key, false));
+            return (cSrc_.getMainCmds().getCachedAction((FlowMeister.MainFlow)key, false));
           } else {
-            return (appState_.getMainCmds().getActionNoCache((FlowMeister.MainFlow)key, false, actionArgs)); 
+            return (cSrc_.getMainCmds().getActionNoCache((FlowMeister.MainFlow)key, false, actionArgs)); 
           }
         case MODEL_TREE:
           // These can be self-contained, and this gets called while VMT under construction
           if (flowMap_ == null) {
-            return (VirtualModelTree.getAction(appState_, (FlowMeister.TreeFlow)key));
+            return (VirtualModelTree.getAction(rMan, uics, cSrc, hBld, (FlowMeister.TreeFlow)key));
           } else {
-            return (VirtualModelTree.getAction(appState_, flowMap_.get(key)));
+            return (VirtualModelTree.getAction(rMan, uics, cSrc, hBld, flowMap_.get(key)));
           }
         case POP:
           if (flowMap_ != null) {
             throw new IllegalArgumentException();
           }
-          return (appState_.getPopCmds().getAction((FlowMeister.PopFlow)key, actionArgs));     
+          return (cSrc_.getPopCmds().getAction((FlowMeister.PopFlow)key, actionArgs));     
         default:
           throw new IllegalArgumentException();
       }

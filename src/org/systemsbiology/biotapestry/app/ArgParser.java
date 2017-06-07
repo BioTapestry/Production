@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -141,9 +141,9 @@ public class ArgParser {
   ** Parse the args.  Returns null on failure.
   */
 
-  public String getUsage(BTState appState, AppType type) {
+  public String getUsage(ResourceManager rMan, AppType type) {
     List<ArgInfo> targs = loadForType(type);         
-    return (generateUsage(appState, targs));    
+    return (generateUsage(rMan, targs));    
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -215,9 +215,8 @@ public class ArgParser {
   ** Generate a usage string
   */
 
-  private String generateUsage(BTState appState, List<ArgInfo> targs) {
+  private String generateUsage(ResourceManager rMan, List<ArgInfo> targs) {
     StringBuffer buf = new StringBuffer();
-    ResourceManager rMan = appState.getRMan();
     
     buf.append(rMan.getString("argParser.arguments"));
     buf.append("\n");    

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2011 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -78,6 +78,7 @@ public class LoneNodeBuildInstruction extends BuildInstruction {
   ** Clone
   */
 
+  @Override
   public LoneNodeBuildInstruction clone() {
     return ((LoneNodeBuildInstruction)super.clone());
   }
@@ -189,6 +190,7 @@ public class LoneNodeBuildInstruction extends BuildInstruction {
   **
   */
  
+  @Override
   public boolean sameDefinition(BuildInstruction other) {
     if (!(other instanceof LoneNodeBuildInstruction)) {
       return (false);
@@ -204,7 +206,8 @@ public class LoneNodeBuildInstruction extends BuildInstruction {
   ** Standard toString:
   **
   */
-  
+
+  @Override
   public String toString() { 
     return (super.toString());
   }
@@ -228,6 +231,7 @@ public class LoneNodeBuildInstruction extends BuildInstruction {
   **
   */
   
+  @Override
   public boolean equals(Object other) { 
     if (!super.equals(other)) {
       return (false);
@@ -250,6 +254,7 @@ public class LoneNodeBuildInstruction extends BuildInstruction {
   **
   */
   
+  @SuppressWarnings("unused")
   public static BuildInstruction buildFromXML(String elemName, 
                                               Attributes attrs,
                                               String id,

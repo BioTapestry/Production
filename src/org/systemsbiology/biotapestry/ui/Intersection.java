@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItem;
@@ -398,10 +398,10 @@ public class Intersection {
   ** Fill out a full intersection with a full set of link segment IDs.
   */
   
-  public static Intersection fullIntersection(GenomeItem item, DataAccessContext rcx, boolean includeRoot) {
+  public static Intersection fullIntersection(GenomeItem item, StaticDataAccessContext rcx, boolean includeRoot) {
                                          
     MultiSubID retSub = null;                             
-    BusProperties bp = rcx.getLayout().getLinkProperties(item.getID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(item.getID());
     List<LinkSegmentID> segs = bp.getAllBusLinkSegments(rcx, includeRoot);    
     Iterator<LinkSegmentID> sit = segs.iterator();
     while (sit.hasNext()) {
@@ -421,9 +421,9 @@ public class Intersection {
   ** Fill out an intersection with a full set of link segment IDs for a given path
   */
   
-  public static Intersection pathIntersection(GenomeItem item, DataAccessContext rcx) {
+  public static Intersection pathIntersection(GenomeItem item, StaticDataAccessContext rcx) {
     MultiSubID retSub = null;                             
-    BusProperties bp = rcx.getLayout().getLinkProperties(item.getID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(item.getID());
     // Previous saw a problem here on path display reselection. Is this still the case? 
     List<LinkSegmentID> segs = bp.getBusLinkSegmentsForOneLink(rcx, item.getID());    
     Iterator<LinkSegmentID> sit = segs.iterator();
@@ -480,10 +480,10 @@ public class Intersection {
   ** Converting set of linkIDs to a list of Intersections
   */
 
-  public static List<Intersection> linkIDsToInters(Set<String> linkIDs, String genomeID, DataAccessContext rcx) {    
+  public static List<Intersection> linkIDsToInters(Set<String> linkIDs, String genomeID, StaticDataAccessContext rcx) {    
     HashMap<String, Intersection> srcToInter = new HashMap<String, Intersection>();
     Genome genome = rcx.getGenomeSource().getGenome(genomeID);
-    Layout lo = rcx.getLayout();
+    Layout lo = rcx.getCurrentLayout();
     Iterator<String> olit = linkIDs.iterator();
     while (olit.hasNext()) {
       String linkID = olit.next();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2009 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,13 +21,12 @@ package org.systemsbiology.biotapestry.ui;
 
 import java.util.Set;
 import java.io.IOException;
-import java.awt.Color;
 
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.LayoutSource;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 
@@ -57,7 +56,9 @@ public class LayoutFactory extends AbstractFactoryClient {
   private String layoutDeriveKey_;
   private Set<String> layoutDataKeys_; 
   private String layoutDataNodeIDKey_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
+  private NodeProperties.NodePropertiesWorker npw_;
+  private NetOverlayProperties.NetOverlayPropertiesWorker nopw_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -70,9 +71,9 @@ public class LayoutFactory extends AbstractFactoryClient {
   ** Constructor
   */
 
-  public LayoutFactory(BTState appState) {
+  public LayoutFactory() {
     super(new FactoryWhiteboard());
-    appState_ = appState;
+    dacx_ = null;
     layoutKeys_ = Layout.keywordsOfInterest();
     gPropKey_ = GroupProperties.keywordOfInterest();
     ntPropKey_ = NoteProperties.keywordOfInterest();
@@ -83,16 +84,15 @@ public class LayoutFactory extends AbstractFactoryClient {
     layoutDataNodeIDKey_ = LayoutDataSource.nodeIDKeyword(); 
     
     FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
-    installWorker(new NetOverlayProperties.NetOverlayPropertiesWorker(appState_, whiteboard), new MyGlue());
+    nopw_ = new NetOverlayProperties.NetOverlayPropertiesWorker(whiteboard);
+    installWorker(nopw_, new MyGlue());
     // Note that BusProperties get glued in as terminal bus drops show up!
-    installWorker(new BusProperties.BusPropertiesWorker(whiteboard), null);  
-    installWorker(new NodeProperties.NodePropertiesWorker(appState_.getDB(), whiteboard), new MyNodePropsGlue());      
+    installWorker(new BusProperties.BusPropertiesWorker(whiteboard), null);
+    npw_ = new NodeProperties.NodePropertiesWorker(whiteboard);
+    installWorker(npw_, new MyNodePropsGlue());      
     installWorker(new SingleLinkProperties.SingleLinkPropertiesWorker(whiteboard), new MySinglePropsGlue());    
     
-
     myKeys_.addAll(layoutKeys_);
-    myKeys_.add("color");
- 
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -101,7 +101,18 @@ public class LayoutFactory extends AbstractFactoryClient {
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  **
+  ** Set the current context
+  */
   
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    npw_.installContext(dacx);
+    nopw_.installContext(dacx);
+    return;
+  }
+
   /***************************************************************************
   **
   ** Handle the attributes for the keyword
@@ -113,33 +124,28 @@ public class LayoutFactory extends AbstractFactoryClient {
     if ((attrs == null) || (elemName == null)) {
       return (null);
     }
-    
-    if (elemName.equals("color")) {  // FIX ME!  Refactor this out
-      createColor(attrs);
-      return (null);
-    }
-   
+ 
     if (layoutKeys_.contains(elemName)) {
-      Layout newLo = Layout.buildFromXML(appState_, elemName, attrs);
+      Layout newLo = Layout.buildFromXML(elemName, attrs);
       if (newLo != null) {
         layoutKey_ = newLo.getID();
-        Database db = appState_.getDB();
+        LayoutSource db = dacx_.getLayoutSource();
         db.addLayout(layoutKey_, newLo);
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
         board.layout = newLo;
-        board.genome = db.getGenome(newLo.getTarget()); 
+        board.genome = dacx_.getGenomeSource().getGenome(newLo.getTarget()); 
       }
       return (null);
     }
         
-    Layout layout = appState_.getDB().getLayout(layoutKey_);
+    Layout layout = dacx_.getLayoutSource().getLayout(layoutKey_);
       
     if (elemName.equals(gPropKey_)) {
-      GroupProperties gprop = GroupProperties.buildFromXML(appState_, layout, attrs);
+      GroupProperties gprop = GroupProperties.buildFromXML(attrs);
       layout.setGroupProperties(gprop.getReference(), gprop);
 
     } else if (elemName.equals(ntPropKey_)) {
-      NoteProperties ntprop = NoteProperties.buildFromXML(appState_, layout, attrs);
+      NoteProperties ntprop = NoteProperties.buildFromXML(dacx_, attrs);
       layout.setNoteProperties(ntprop.getReference(), ntprop); 
       
     } else if (elemName.equals(dataLocKey_)) {
@@ -175,71 +181,6 @@ public class LayoutFactory extends AbstractFactoryClient {
   // PRIVATE METHODS
   //
   ////////////////////////////////////////////////////////////////////////////  
-
-  /***************************************************************************
-  **
-  ** Handle color creation.  FIX ME!  Belongs in a DBFactory or something!
-  **
-  */
-  
-  private void createColor(Attributes attrs) throws IOException {
-    String color = null;
-    String name = null;
-    String r = null;
-    String g = null;
-    String b = null;    
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("color")) {
-          color = val;
-        } else if (key.equals("name")) {
-          name = val;          
-        } else if (key.equals("r")) {
-          r = val;
-        } else if (key.equals("g")) {
-          g = val;
-        } else if (key.equals("b")) {
-          b = val;
-        }        
-      }
-    }
-    
-    if ((color == null) || (r == null) || (g == null) || (b == null)) {
-      throw new IOException();
-    }
-    color = color.trim();
-    if (color.equals("")) {
-      throw new IOException();
-    }
-    
-    if (name == null) {
-      name = color;
-    }
-    
-    int red = -1;
-    int green = -1;
-    int blue = -1;
-    try {
-      red = Integer.parseInt(r);
-      green = Integer.parseInt(g);    
-      blue = Integer.parseInt(b); 
-    } catch (NumberFormatException nfe) {
-      throw new IOException();
-    }
-    if ((red < 0) || (green < 0) || (blue < 0) ||
-        (red > 255) || (green > 255) || (blue > 255)) {
-      throw new IOException();
-    }
-    
-    appState_.getDB().setColor(color, new NamedColor(color, new Color(red, green, blue), name));
-    return;
-  }
   
   ////////////////////////////////////////////////////////////////////////////
   //

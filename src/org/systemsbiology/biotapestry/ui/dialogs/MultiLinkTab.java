@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -36,10 +36,11 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.border.TitledBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -78,14 +79,14 @@ public class MultiLinkTab implements ColorDeletionListener {
   private SuggestedDrawStylePanel sdsPan_;
   private JComboBox extentCombo_;
   private NodeAndLinkPropertiesSupport nps_;
-  private DataAccessContext dacx_;
-  
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private HarnessBuilder hBld_;
   private JComboBox evidenceCombo_;
   private JComboBox signCombo_;
   private Set<String> links_;
   private List<ColorDeletionListener> colorListeners_;
   private SuggestedDrawStyle changedProps_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -99,12 +100,13 @@ public class MultiLinkTab implements ColorDeletionListener {
   ** 
   */
   
-  public MultiLinkTab(BTState appState, DataAccessContext dacx, Set<String> links, 
-                      List<ColorDeletionListener> cdls) {
+  public MultiLinkTab(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, 
+                      Set<String> links, List<ColorDeletionListener> cdls) {
     links_ = links;
-    appState_ = appState;
+    uics_ = uics;
     dacx_ = dacx;
-    nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx_);
+    hBld_ = hBld;
+    nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx_);
     colorListeners_ = cdls;
     colorListeners_.add(this);
     changedProps_ = new SuggestedDrawStyle("red");
@@ -138,7 +140,7 @@ public class MultiLinkTab implements ColorDeletionListener {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();      
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
 
     int row = 0;
     JPanel modelPanel = null;
@@ -166,7 +168,7 @@ public class MultiLinkTab implements ColorDeletionListener {
     if (!haveDynInstance) {
       if ((gcp.evidenceCoverage != ConsensusLinkProps.UNDEFINED_OPTION_COVERAGE) && 
           (gcp.evidenceCoverage != ConsensusLinkProps.NO_OPTION_COVERAGE)) {   
-        Vector<ChoiceContent> eviOpts = DBLinkage.getEvidenceChoices(appState_);
+        Vector<ChoiceContent> eviOpts = DBLinkage.getEvidenceChoices(dacx_);
         eviOpts.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), LinkageInstance.LEVEL_VARIOUS));
         evidenceCombo_ = new JComboBox(eviOpts);    
 
@@ -184,7 +186,7 @@ public class MultiLinkTab implements ColorDeletionListener {
 
       if ((gcp.signCoverage != ConsensusLinkProps.UNDEFINED_OPTION_COVERAGE) && 
           (gcp.signCoverage != ConsensusLinkProps.NO_OPTION_COVERAGE)) {   
-        Vector<ChoiceContent> signOpts = DBLinkage.getSignChoices(appState_);
+        Vector<ChoiceContent> signOpts = DBLinkage.getSignChoices(dacx_);
         signOpts.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), LinkageInstance.SIGN_VARIOUS));
         signCombo_ = new JComboBox(signOpts);    
 
@@ -213,13 +215,13 @@ public class MultiLinkTab implements ColorDeletionListener {
     // Draw Style:
     //
            
-    sdsPan_ = new SuggestedDrawStylePanel(appState_, dacx_, true, false, true, colorListeners_);          
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld_, true, false, true, colorListeners_);          
     UiUtil.gbcSet(gbc, 0, layoutRownum, 8, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     layoutPanel.add(sdsPan_, gbc);   
     layoutRownum += 8;
     
     JLabel comboLabel = new JLabel(rMan.getString("perLinkSpecial.extent"));
-    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(appState_);
+    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(dacx_);
     extentChoices.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), PerLinkDrawStyle.EXTENT_VARIOUS));
     extentCombo_ = new JComboBox(extentChoices);
     
@@ -261,7 +263,7 @@ public class MultiLinkTab implements ColorDeletionListener {
         if (clp.consensusEvidence == Linkage.LEVEL_VARIOUS) {
           evidenceCombo_.setSelectedIndex(0);
         } else {          
-          evidenceCombo_.setSelectedItem(DBLinkage.evidenceTypeForCombo(appState_, clp.consensusEvidence));
+          evidenceCombo_.setSelectedItem(DBLinkage.evidenceTypeForCombo(dacx_, clp.consensusEvidence));
         }
       }
 
@@ -269,7 +271,7 @@ public class MultiLinkTab implements ColorDeletionListener {
         if (clp.consensusSign == Linkage.SIGN_VARIOUS) {
           signCombo_.setSelectedIndex(0);
         } else {          
-          signCombo_.setSelectedItem(DBLinkage.signForCombo(appState_, clp.consensusSign));
+          signCombo_.setSelectedItem(DBLinkage.signForCombo(dacx_, clp.consensusSign));
         }
       }
 
@@ -297,15 +299,15 @@ public class MultiLinkTab implements ColorDeletionListener {
     // Have to error check all activity changes before making the changes:
     // 
    
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;
     
     if (haveStatInstance) {
-      GenomeInstance gi = dacx_.getGenomeAsInstance();
+      GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
       Iterator<String> nit = links_.iterator();
       while (nit.hasNext()) {
         String linkID = nit.next();     
-        LinkageInstance li = (LinkageInstance)dacx_.getGenome().getLinkage(linkID);
+        LinkageInstance li = (LinkageInstance)dacx_.getCurrentGenome().getLinkage(linkID);
         //
         // Same problem as Issue #167: VFNs can have null entries here:
         //
@@ -326,7 +328,7 @@ public class MultiLinkTab implements ColorDeletionListener {
             }
           }
           if ((oldActivity != newLiAs.activityState) || levelChanged) {
-            GenomeItemInstance.ActivityTracking tracking = li.calcActivityBounds(dacx_.getGenomeAsInstance());
+            GenomeItemInstance.ActivityTracking tracking = li.calcActivityBounds(dacx_.getCurrentGenomeAsInstance());
             // FIX FOR BT-12-15-11:3
             double newLevel = (newLiAs.activityState == LinkageInstance.VARIABLE) ? newLiAs.activityLevel.doubleValue() : Double.NEGATIVE_INFINITY;            
             if (!nps_.checkActivityBounds(tracking, newLiAs.activityState, newLevel)) {
@@ -345,11 +347,11 @@ public class MultiLinkTab implements ColorDeletionListener {
     // Issue 150: If there are links set to thick because of evidence, this test triggers, even if nothing changed in this regard.
     //
 
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dOpt = dacx_.getDisplayOptsSource().getDisplayOptions();
     Iterator<String> nit = links_.iterator();
     while (nit.hasNext()) {
       String linkID = nit.next();
-      Linkage link = dacx_.getGenome().getLinkage(linkID);
+      Linkage link = dacx_.getCurrentGenome().getLinkage(linkID);
         //
         // Same problem as Issue #167: VFNs can have null entries here:
         //
@@ -364,8 +366,8 @@ public class MultiLinkTab implements ColorDeletionListener {
       }
       PerLinkDrawStyle plfe = dOpt.getEvidenceDrawChange(evidence);
       if (plfe != null) {
-        ResourceManager rMan = appState_.getRMan();
-        int ok = JOptionPane.showConfirmDialog(appState_.getTopFrame(), rMan.getString("multiLinkTab.customOverride"),
+        ResourceManager rMan = dacx_.getRMan();
+        int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), rMan.getString("multiLinkTab.customOverride"),
                                                rMan.getString("multiLinkTab.customOverrideTitle"),
                                                JOptionPane.YES_NO_OPTION);
         if (ok != JOptionPane.YES_OPTION) {
@@ -391,15 +393,15 @@ public class MultiLinkTab implements ColorDeletionListener {
     }
         
     HashMap<String, DrawStyle> holdDS = new HashMap<String, DrawStyle>();
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;   
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;   
     boolean instanceChange = false;
     boolean modelChange = false;
     boolean layoutChange = false;
     Iterator<String> nit = links_.iterator();
     while (nit.hasNext()) {
       String linkID = nit.next();
-      Linkage link = dacx_.getGenome().getLinkage(linkID);
+      Linkage link = dacx_.getCurrentGenome().getLinkage(linkID);
       //
       // Same problem as Issue #167: VFNs can have null entries here:
       //
@@ -411,7 +413,7 @@ public class MultiLinkTab implements ColorDeletionListener {
       //
       
       if (haveStatInstance) {
-        GenomeInstance gi = dacx_.getGenomeAsInstance();
+        GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
         LinkageInstance li = (LinkageInstance)link;
         GenomeItemInstance.ActivityState newLiAs = nps_.getActivityLevel();
         if (newLiAs == null) {
@@ -430,7 +432,7 @@ public class MultiLinkTab implements ColorDeletionListener {
             double varLevel = (newLiAs.activityState == LinkageInstance.VARIABLE) ? newLiAs.activityLevel.doubleValue() : 0.0;   
             GenomeChange gc = gi.replaceLinkageInstanceActivity(linkID, newLiAs.activityState, varLevel);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
               support.addEdit(gcc);
               instanceChange = true;
             }          
@@ -453,9 +455,9 @@ public class MultiLinkTab implements ColorDeletionListener {
 
           if ((newEvidence != oldEvidence) || (newSign != oldSign)) {
             String oldName = link.getName();
-            GenomeChange gc = dacx_.getGenome().replaceLinkageProperties(linkID, oldName, newSign, newEvidence);
+            GenomeChange gc = dacx_.getCurrentGenome().replaceLinkageProperties(linkID, oldName, newSign, newEvidence);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
               support.addEdit(gcc);
               modelChange = true;
             }
@@ -466,37 +468,37 @@ public class MultiLinkTab implements ColorDeletionListener {
       //
       // Layout (suggested draw style):
       //
-      boolean didChange = collectLinkChanges(dacx_.getLayout(), linkID, qsds, holdDS);
+      boolean didChange = collectLinkChanges(dacx_.getCurrentLayout(), linkID, qsds, holdDS);
       layoutChange = layoutChange || didChange; 
     }
         
     if (layoutChange) {
       boolean doSig = false;
-      Map<String, ChangePlan> changePlan = generateLayoutChangePlan(dacx_.getLayout(), holdDS);
+      Map<String, ChangePlan> changePlan = generateLayoutChangePlan(dacx_.getCurrentLayout(), holdDS);
       Iterator<String> cpkit = changePlan.keySet().iterator();
       while (cpkit.hasNext()) {
         String linkID = cpkit.next();
         ChangePlan cp = changePlan.get(linkID);
         Layout.PropChange[] lpc = new Layout.PropChange[1];    
-        lpc[0] = dacx_.getLayout().replaceLinkProperties(cp.oldProps, cp.newProps);
+        lpc[0] = dacx_.getCurrentLayout().replaceLinkProperties(cp.oldProps, cp.newProps);
         if (lpc[0] != null) {
-          PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+          PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
           support.addEdit(mov);
           doSig = true;
         }       
       }
       if (doSig) {
-        LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+        LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(ev);
       }
     } 
     
     if (modelChange) {
-      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);
     }
     if (instanceChange) {
-      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);
     }
     

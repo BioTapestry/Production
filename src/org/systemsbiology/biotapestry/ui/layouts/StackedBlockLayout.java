@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,11 +37,11 @@ import org.systemsbiology.biotapestry.analysis.NodeGrouper;
 import org.systemsbiology.biotapestry.analysis.Link;
 import org.systemsbiology.biotapestry.analysis.CycleFinder;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
@@ -84,15 +84,14 @@ public class StackedBlockLayout implements SpecialtyLayout {
       this.tag_ = tag;  
     }
     
-    public EnumChoiceContent<TargTypes> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<TargTypes>(appState.getRMan().getString("worksheetLayout." + tag_), this));
+    public EnumChoiceContent<TargTypes> generateCombo(StaticDataAccessContext dacx) {
+      return (new EnumChoiceContent<TargTypes>(dacx.getRMan().getString("worksheetLayout." + tag_), this));
     }
   
-    public static Vector<EnumChoiceContent<TargTypes>> getChoices(BTState appState, boolean forSubset) {
+    public static Vector<EnumChoiceContent<TargTypes>> getChoices(StaticDataAccessContext dacx, boolean forSubset) {
       Vector<EnumChoiceContent<TargTypes>> retval = new Vector<EnumChoiceContent<TargTypes>>();
-      Database db = appState.getDB();
-      TimeCourseData tcd = db.getTimeCourseData();    
-      boolean allowByTime = tcd.haveData();
+      TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();    
+      boolean allowByTime = tcd.haveDataEntries();
       for (TargTypes tt: values()) {
         if ((tt == TARGS_BY_TIME) && !allowByTime) {
           continue;
@@ -100,7 +99,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
         if (((tt == TARGS_BY_SOURCE_ORDER) || (tt == TARGS_BY_SOURCE_ORDER_NO_DEGREE)) && forSubset) {
           continue;
         }
-        retval.add(tt.generateCombo(appState));    
+        retval.add(tt.generateCombo(dacx));    
       }
       return (retval);
     }
@@ -122,15 +121,14 @@ public class StackedBlockLayout implements SpecialtyLayout {
       this.tag_ = tag;  
     }
     
-    public EnumChoiceContent<SrcTypes> generateCombo(BTState appState) {
-      return (new EnumChoiceContent<SrcTypes>(appState.getRMan().getString("worksheetLayout." + tag_), this));
+    public EnumChoiceContent<SrcTypes> generateCombo(StaticDataAccessContext dacx) {
+      return (new EnumChoiceContent<SrcTypes>(dacx.getRMan().getString("worksheetLayout." + tag_), this));
     }
   
-    public static Vector<EnumChoiceContent<SrcTypes>> getChoices(BTState appState, boolean isForGlobal) {
+    public static Vector<EnumChoiceContent<SrcTypes>> getChoices(StaticDataAccessContext dacx, boolean isForGlobal) {
       Vector<EnumChoiceContent<SrcTypes>> retval = new Vector<EnumChoiceContent<SrcTypes>>();
-      Database db = appState.getDB();
-      TimeCourseData tcd = db.getTimeCourseData();    
-      boolean allowByTime = tcd.haveData();
+      TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();    
+      boolean allowByTime = tcd.haveDataEntries();
       for (SrcTypes st: values()) {
         if ((st == SRCS_BY_TIME) && !allowByTime) {
           continue;
@@ -146,7 +144,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
         if ((st == SRCS_BY_CURR_POSITION) && isForGlobal) {
           continue;
         }
-        retval.add(st.generateCombo(appState));    
+        retval.add(st.generateCombo(dacx));    
       }
       return (retval);
     }
@@ -178,17 +176,17 @@ public class StackedBlockLayout implements SpecialtyLayout {
        this.tag_ = tag;  
      }
      
-     public EnumChoiceContent<CompressTypes> generateCombo(BTState appState) {
-       return (new EnumChoiceContent<CompressTypes>(appState.getRMan().getString("stackedLayout." + tag_), this));
+     public EnumChoiceContent<CompressTypes> generateCombo(StaticDataAccessContext dacx) {
+       return (new EnumChoiceContent<CompressTypes>(dacx.getRMan().getString("stackedLayout." + tag_), this));
      }
    
-     public static Vector<EnumChoiceContent<CompressTypes>> getChoices(BTState appState, boolean isForGlobal) {
+     public static Vector<EnumChoiceContent<CompressTypes>> getChoices(StaticDataAccessContext dacx, boolean isForGlobal) {
        Vector<EnumChoiceContent<CompressTypes>> retval = new Vector<EnumChoiceContent<CompressTypes>>();
        for (CompressTypes ct: values()) {
          if ((ct == COMPRESS_FULL_SQUEEZE) && !isForGlobal) {
            continue;
          }
-         retval.add(ct.generateCombo(appState));    
+         retval.add(ct.generateCombo(dacx));    
        }
        return (retval);
      }
@@ -200,9 +198,9 @@ public class StackedBlockLayout implements SpecialtyLayout {
   //
   ////////////////////////////////////////////////////////////////////////////
     
+  private StaticDataAccessContext preForkRcx_;
   private SpecialtyLayoutData sld_;  
   private StackedClusterSeries stacked_;
-  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -215,8 +213,8 @@ public class StackedBlockLayout implements SpecialtyLayout {
   ** Constructor
   */
 
-  public StackedBlockLayout(BTState appState) {
-    appState_ = appState;
+  public StackedBlockLayout(StaticDataAccessContext rcx) {
+    preForkRcx_ = rcx;
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -231,7 +229,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
   */
   
   public SpecialtyLayout forkForSubset(SpecialtyLayoutData sld) {
-    StackedBlockLayout retval = new StackedBlockLayout(appState_);
+    StackedBlockLayout retval = new StackedBlockLayout(preForkRcx_);
     retval.sld_ = sld;
     return (retval);
   }
@@ -269,7 +267,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
   ** Answer if the network topology can be handled by this layout
   */
   
-  public int topologyIsHandled(DataAccessContext rcx) {  
+  public int topologyIsHandled(StaticDataAccessContext rcx) {  
     return (TOPOLOGY_HANDLED);  // Everybody is handled
   }
   
@@ -302,7 +300,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
     StackGenerator sg = new StackGenerator();
     SortedMap<Integer, List<String>> clust = sg.buildStackOrder(gascIDs, sld_.rcx);
     if (clust == null) {
-      return (appState_.getRMan().getString("stackedLayout.ambiguousRows"));
+      return (sld_.rcx.getRMan().getString("stackedLayout.ambiguousRows"));
     }
     return (null);
   }
@@ -382,11 +380,11 @@ public class StackedBlockLayout implements SpecialtyLayout {
     double traceOffset = UiUtil.GRID_SIZE * wlp.traceMult();
     
     List<String> ttGroups = ng.findTerminalTargetsByGroups(groups);
-    List<GeneAndSatelliteCluster> termXClusters = GeneAndSatelliteCluster.fillTargetClustersByGroups(sld_.appState, ttGroups, groups,                                                              
+    List<GeneAndSatelliteCluster> termXClusters = GeneAndSatelliteCluster.fillTargetClustersByGroups(ttGroups, groups,                                                              
                                                                                                      sld_.nps, sld_.rcx, traceOffset, 
                                                                                                      false, wlp.spaceForText(), true);
     ArrayList<GeneAndSatelliteCluster> sClustList = new ArrayList<GeneAndSatelliteCluster>();
-    findSources(baseGenome, termXClusters, groups, sClustList, wlp.spaceForText(), traceOffset);
+    findSources(termXClusters, groups, sClustList, wlp.spaceForText(), traceOffset);
     return (new GASCResults(sClustList, termXClusters, queue));
   }
      
@@ -429,7 +427,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
     }
     int numClust = allClusters.size();
     
-    RowBuilder builder = new RowBuilder(sld_.appState);
+    RowBuilder builder = new RowBuilder();
     SortedMap<Integer, List<GeneAndSatelliteCluster>> clustRows;
   
     if (grouping == SrcTypes.SRCS_BY_CURR_POSITION) {      
@@ -446,7 +444,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
       }
       clustRows = builder.buildRowsByAssignment(allClusters, clust);    
     } else if (grouping == SrcTypes.SRCS_BY_TIME) {
-      clustRows = builder.assignRowsByTime(allClusters, rowSize, null);
+      clustRows = builder.assignRowsByTime(sld_.rcx, allClusters, rowSize, null);
     } else if (grouping == SrcTypes.SRCS_BY_SORT) {
       clustRows = builder.buildClusterSeriesBySort(allClusters, clustResults.queue, rowSize, null);
     } else {
@@ -464,7 +462,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
       TargTypes targGroups = wlp.targGrouping;
       Integer nextKey = (clustRows.isEmpty()) ? null : new Integer(clustRows.lastKey().intValue() + 1);
       if (targGroups == TargTypes.TARGS_BY_TIME) {
-        clustRows.putAll(builder.assignRowsByTime(clustResults.trgClusters, rowSize, nextKey));
+        clustRows.putAll(builder.assignRowsByTime(sld_.rcx, clustResults.trgClusters, rowSize, nextKey));
       } else if ((targGroups == TargTypes.TARGS_BY_ALPHA)) {
         clustRows.putAll(builder.assignRowsByAlpha(clustResults.trgClusters, sld_.nps, rowSize, nextKey));
       } else if (targGroups == TargTypes.TARGS_BY_INPUTS) {
@@ -604,9 +602,9 @@ public class StackedBlockLayout implements SpecialtyLayout {
   ** Get the parameter dialog
   */
   
-  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(Genome genome, String selectedID, boolean forSubset) {
+  public SpecialtyLayoutEngineParamDialogFactory.BuildArgs getParameterDialogBuildArgs(UIComponentSource uics, Genome genome, String selectedID, boolean forSubset) {
     SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType lot = SpecialtyLayoutEngineParamDialogFactory.BuildArgs.LoType.STACKED; 
-    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(appState_, genome, lot, forSubset));
+    return (new SpecialtyLayoutEngineParamDialogFactory.BuildArgs(uics, preForkRcx_, genome, lot, forSubset));
   }
   
   /***************************************************************************
@@ -649,9 +647,9 @@ public class StackedBlockLayout implements SpecialtyLayout {
   ** default values:
   */
   
-  public static void forceParamsAsNeeded(BTState appState, StackedBlockLayoutParams params) {
-    TimeCourseData tcd = appState.getDB().getTimeCourseData();    
-    boolean allowByTime = tcd.haveData();
+  public static void forceParamsAsNeeded(DataAccessContext dacx, StackedBlockLayoutParams params) {
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();    
+    boolean allowByTime = tcd.haveDataEntries();
     if (!allowByTime) {
       if (params.targGrouping == TargTypes.TARGS_BY_TIME) {
         params.targGrouping = TargTypes.TARGS_BY_INPUTS;
@@ -753,7 +751,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
   ** Find the nodes that are sources.
   */
   
-  private SortedSet<String> findSources(Genome genome, List<GeneAndSatelliteCluster> termClusters, 
+  private SortedSet<String> findSources(List<GeneAndSatelliteCluster> termClusters, 
                                         Map<String, NodeGrouper.GroupElement> groups, List<GeneAndSatelliteCluster> sClustList, 
                                         boolean textToo, double traceOffset) {
 
@@ -784,7 +782,7 @@ public class StackedBlockLayout implements SpecialtyLayout {
     Iterator<String> psit = sources.iterator();
     while (psit.hasNext()) {
       String srcID = psit.next();
-      GeneAndSatelliteCluster sc = new GeneAndSatelliteCluster(sld_.appState, srcID, true, traceOffset, false, textToo);
+      GeneAndSatelliteCluster sc = new GeneAndSatelliteCluster(srcID, true, traceOffset, false, textToo);
       sc.prepFromGroupsPhaseOne(sld_.nps, groups, false);
       sClustList.add(sc);
     }    

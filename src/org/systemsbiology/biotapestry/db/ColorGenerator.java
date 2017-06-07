@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.db;
 
+import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -27,11 +28,22 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ArrayList;
 import java.awt.Color;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
 
+import org.xml.sax.Attributes;
+
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.parser.GlueStick;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
+import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Indenter;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NamedColor;
 
 /****************************************************************************
@@ -124,8 +136,88 @@ public class ColorGenerator {
     "EX-medium-magenta",
     "EX-dark-tan"
     };
+  */ 
+  
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PRIVATE CLASS MEMBERS
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  
+  private static final float[] inactiveHSVR_;
+  private static final float[] activeHSV_;
+  private static final float[] activeRegionHSV_;
+
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // CLASS INITIALIZATION
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  
+  static {
+    inactiveHSVR_ = new float[3];
+    Color.RGBtoHSB(0xFF, 0xFF, 0xFF, inactiveHSVR_); 
+    activeHSV_ = new float[3];
+    Color.RGBtoHSB(0x66, 0xEE, 0x66, activeHSV_);
+    activeRegionHSV_ = new float[3];
+    Color.RGBtoHSB(0x66, 0x66, 0xEE, activeRegionHSV_);   
+  } 
+ 
+  /***************************************************************************
+  **
+  ** Modulate color by activity
+  */
+
+  public Color modulateColor(double level, Color inCol, DisplayOptions dopt) {
+    float[] colHSB = new float[3];    
+    Color.RGBtoHSB(inCol.getRed(), inCol.getGreen(), inCol.getBlue(), colHSB);
+    // Hue stays the same:
+    
+    float[] inactiveHSV = dopt.getInactiveGrayHSV();
+    
+    colHSB[1] = inactiveHSV[1] + ((float)level * (colHSB[1] - inactiveHSV[1])); 
+    colHSB[2] = inactiveHSV[2] + ((float)level * (colHSB[2] - inactiveHSV[2]));         
+    return (Color.getHSBColor(colHSB[0], colHSB[1], colHSB[2]));
+  } 
+  
+  /***************************************************************************
+  **
+  ** Modulate color by activity
+  */
+
+  public Color modulateColorSaturation(double level, Color inCol) {
+    float[] asHSV = new float[3];
+    Color.RGBtoHSB(inCol.getRed(), inCol.getGreen(), inCol.getBlue(), asHSV);
+    asHSV[1] = (float)level * asHSV[1]; 
+    return (Color.getHSBColor(asHSV[0], asHSV[1], asHSV[2]));
+  }
+
+  /***************************************************************************
+  **
+  ** Build a table cell for expression data
+  **
   */
   
+  public String variableBlockColor(double level, boolean forRegion) {
+    float[] colHSB  = new float[3];
+    // Hue stays the same:
+    float[] whichActive = (forRegion) ? activeRegionHSV_ : activeHSV_;
+    colHSB[0] = whichActive[0];
+    colHSB[1] = inactiveHSVR_[1] + ((float)level * (whichActive[1] - inactiveHSVR_[1])); 
+    colHSB[2] = inactiveHSVR_[2] + ((float)level * (whichActive[2] - inactiveHSVR_[2]));         
+    int varCol = Color.HSBtoRGB(colHSB[0], colHSB[1], colHSB[2]);
+    return (Integer.toHexString(varCol));
+  }
+  
+  /***************************************************************************
+  **
+  ** Inactive Color
+  */
+
+  public Color inactiveColor(DisplayOptions dopt) {
+    return (dopt.getInactiveGray());
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -149,8 +241,111 @@ public class ColorGenerator {
   //
   // PUBLIC METHODS
   //
-  ////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////// 
   
+  /***************************************************************************
+  **
+  ** Need to be able to repair color keys after tab appending. Has to go someplace...
+  **
+  */    
+  
+  public static void repairMergedRefs(DataAccessContext dacx, Map<String, String> ackm) {
+    Iterator<Layout> lit = dacx.getLayoutSource().getLayoutIterator();
+    while (lit.hasNext()) {
+      Layout lo = lit.next();
+      lo.mapColorKeyForAppend(ackm);
+    }
+    return;
+  }
+
+  /***************************************************************************
+  **
+  ** Merge with another Color Generator
+  */
+  
+  public List<String> mergeData(DataAccessContext dacx, ColorGenerator otherCG, Map<String, String> keyMap) {
+
+    ArrayList<String> retval = new ArrayList<String>();
+    
+    //
+    // 1) For each new color, if it matches in name and color, just add the key mapping, unless the mapping 
+    // is the identity. Don't add the color in.
+    //
+    // 2) If it matches in name and not in color, make a new name (col-merge1), add it to the set with a new key, 
+    // and add the key mapping unless it is the identity.
+    //
+    // 3) If if matches in color and not in name, add the key mapping to have the merged models use the existing color,
+    // unless it is the identity. An alternative would be to add it in as is.
+    //
+    // 4) If it matches in neither, add it to the existing set with a new key, and add the mapping unless it is the identity.
+    //
+    
+    ResourceManager rMan = dacx.getRMan();
+    HashSet<String> existingNames = new HashSet<String>();
+    for (NamedColor thisColor : this.colors_.values()) {
+      // SHOULD be doing NormKey(), but existing implementation does not, so we are stuck for the moment with that crap...
+      // existingNames.add(DataUtil.normKey(thisColor.getDescription()));
+      existingNames.add(thisColor.getDescription());
+    }    
+    
+    for (String otherColorID : otherCG.colors_.keySet()) {
+      NamedColor onc = otherCG.colors_.get(otherColorID);
+      boolean gottaMatch = false;
+      for (String thisColorID : this.colors_.keySet()) {
+        NamedColor tnc = this.colors_.get(thisColorID);
+        boolean colorsMatch = onc.getColor().equals(tnc.getColor());
+       
+        boolean namesMatch = DataUtil.stringsEqual(tnc.getDescription(), onc.getDescription());
+        if (colorsMatch) {
+          if (namesMatch) {
+            if (!thisColorID.equals(otherColorID)) {
+              keyMap.put(otherColorID, thisColorID);
+            }
+            gottaMatch = true;
+            break;
+          } else { // Note at the moment we do the same thing as above...
+            String format = rMan.getString("tabMerge.ColorGenNameConflictUseExistingFmt"); 
+            String msg = MessageFormat.format(format, new Object[] {onc.getDescription(), tnc.getDescription()});
+            retval.add(msg);      
+            if (!thisColorID.equals(otherColorID)) {
+              keyMap.put(otherColorID, thisColorID);
+            }
+            gottaMatch = true;
+            break;
+          }
+        } else {
+          if (namesMatch) {
+            String nextLab = getNextColorLabel();
+            int i = 1;
+            String newName = onc.getDescription() + "-" + i;
+            while (existingNames.contains(newName)) {
+              newName = onc.getDescription() + "-" + ++i;
+            }   
+            String format = rMan.getString("tabMerge.ColorGenNameConflictFmt"); 
+            String msg = MessageFormat.format(format, new Object[] {onc.getDescription(), newName});
+            retval.add(msg);
+            NamedColor mergeColor = new NamedColor(nextLab, onc.getColor(), newName);       
+            setColor(nextLab, mergeColor);
+            if (!nextLab.equals(otherColorID)) {
+              keyMap.put(otherColorID, nextLab);
+            }
+            gottaMatch = true;
+            break;
+          }
+        }
+      }
+      if (!gottaMatch) {
+        String nextLab = getNextColorLabel();
+        NamedColor mergeColor = new NamedColor(nextLab, onc.getColor(), onc.getDescription());       
+        setColor(nextLab, mergeColor);
+        if (!nextLab.equals(otherColorID)) {
+          keyMap.put(otherColorID, nextLab);
+        }
+      }
+    }
+    return ((retval.isEmpty()) ? null : retval);
+  }
+
   /***************************************************************************
   ** 
   ** Start a new model
@@ -437,7 +632,167 @@ public class ColorGenerator {
     }
     return;
   }
+    
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // INNER CLASSES
+  //
+  ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** For XML I/O
+  */ 
+
+  public static class ColorGeneratorWorker extends AbstractFactoryClient {
+ 
+    private boolean isForAppend_;
+    private DataAccessContext dacx_;
+    private MyColorGlue mcg_;
+    
+    public ColorGeneratorWorker(FactoryWhiteboard whiteboard, boolean isForAppend) {
+      super(whiteboard);
+      myKeys_.add("colors");
+      isForAppend_ = isForAppend;
+      mcg_ = new MyColorGlue(isForAppend);
+      installWorker(new ColorWorker(whiteboard), mcg_);
+    }
+    
+    public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      mcg_.setContext(dacx_);
+      return;
+    }
+   
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("colors")) {
+        if (isForAppend_) {
+          FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+          board.appendCGen = new ColorGenerator();
+          retval = board.appendCGen;
+        } else {
+          retval = dacx_.getMetabase().getColorGenerator();
+        }
+      }
+      return (retval);     
+    }
+    
+   /***************************************************************************
+    **
+    ** Callback for completion of the element
+    **
+    */
+    
+    @Override
+    public void localFinishElement(String elemName) throws IOException {
+      if (isForAppend_) {
+        ColorGenerator existing = dacx_.getMetabase().getColorGenerator();
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        // Map needs to be applied AFTER ALL THE LAYOUTS ARE LOADED
+               
+        HashMap<String, String> keyMap = new HashMap<String, String>();
+        
+        List<String> mm = existing.mergeData(dacx_, board.appendCGen, keyMap);
+        if ((mm != null) && !mm.isEmpty()) {
+          if (board.mergeIssues == null) {
+            board.mergeIssues = new ArrayList<String>();
+          } 
+          board.mergeIssues.addAll(mm);
+        }
+        if (!keyMap.isEmpty()) {
+          if (board.appendColorKeyMap == null) {
+            board.appendColorKeyMap = keyMap;
+          } else { 
+            board.appendColorKeyMap.putAll(keyMap);
+          }
+        }        
+      }
+      return;
+    }
+  }
+
+  public static class ColorWorker extends AbstractFactoryClient {
+ 
+    public ColorWorker(FactoryWhiteboard whiteboard) {
+      super(whiteboard);
+      myKeys_.add("color");
+    }
+    
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("color")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.nextColor = buildFromXML(elemName, attrs);
+        retval = board.nextColor;
+      }
+      return (retval);     
+    }  
+    
+    private NamedColor buildFromXML(String elemName, Attributes attrs) throws IOException {
+      
+      String color = AttributeExtractor.extractAttribute(elemName, attrs, "color", "color", true); 
+      String name = AttributeExtractor.extractAttribute(elemName, attrs, "color", "name", false); 
+      String r = AttributeExtractor.extractAttribute(elemName, attrs, "color", "r", true); 
+      String g = AttributeExtractor.extractAttribute(elemName, attrs, "color", "g", true); 
+      String b = AttributeExtractor.extractAttribute(elemName, attrs, "color", "b", true); 
   
+      color = color.trim();
+      if (color.equals("")) {
+        throw new IOException();
+      }
+      
+      if (name == null) {
+        name = color;
+      }
+      
+      int red = -1;
+      int green = -1;
+      int blue = -1;
+      try {
+        red = Integer.parseInt(r);
+        green = Integer.parseInt(g);    
+        blue = Integer.parseInt(b); 
+      } catch (NumberFormatException nfe) {
+        throw new IOException();
+      }
+      if ((red < 0) || (green < 0) || (blue < 0) ||
+          (red > 255) || (green > 255) || (blue > 255)) {
+        throw new IOException();
+      }
+      
+      return (new NamedColor(color, new Color(red, green, blue), name));    
+    }
+  }
+  
+  public static class MyColorGlue implements GlueStick {
+     
+    private boolean isForAppend_;
+    private DataAccessContext dacx_;
+    
+    public MyColorGlue(boolean isForAppend) {
+      isForAppend_ = isForAppend;
+    }
+    
+    public void setContext(DataAccessContext dacx) {
+      dacx_ = dacx;
+      return;
+    }
+    
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      NamedColor nCol = board.nextColor;
+      try {
+        ColorGenerator mgr = (isForAppend_) ? board.appendCGen : dacx_.getMetabase().getColorGenerator();     
+        mgr.setColor(nCol.key, nCol);
+      } catch (IllegalArgumentException iaex) {
+        throw new IOException();
+      }
+      return (null);
+    }
+  } 
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE INSTANCE METHODS
@@ -456,8 +811,8 @@ public class ColorGenerator {
     ind.up();
     Iterator<String> colors = colors_.keySet().iterator();
     while (colors.hasNext()) {
-      String key = (String)colors.next();
-      NamedColor nc = (NamedColor)colors_.get(key);
+      String key = colors.next();
+      NamedColor nc = colors_.get(key);
       Color c = nc.color;
       ind.indent();
       out.print("<color ");
@@ -477,9 +832,7 @@ public class ColorGenerator {
     out.println("</colors>");
     return;
   }   
-  
 
-  
   /***************************************************************************
   ** 
   ** Build gene colors

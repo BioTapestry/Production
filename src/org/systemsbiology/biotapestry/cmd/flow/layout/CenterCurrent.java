@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,14 +21,13 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -51,8 +50,7 @@ public class CenterCurrent extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public CenterCurrent(BTState appState) {
-    super(appState);
+  public CenterCurrent() {
     name =  "command.CenterModelOnWorksheet";
     desc = "command.CenterModelOnWorksheet";
     mnem =  "command.CenterModelOnWorksheetMnem";
@@ -85,7 +83,7 @@ public class CenterCurrent extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();    
       } else {
         throw new IllegalStateException();
@@ -102,25 +100,16 @@ public class CenterCurrent extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  public static class StepState extends AbstractStepState {
+
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
  
     /***************************************************************************
@@ -130,19 +119,19 @@ public class CenterCurrent extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepDoIt() {
                    
-      Map<String, Layout.OverlayKeySet>  globalKeys = dacx_.fgho.fullModuleKeysPerLayout();    
-      UndoSupport support = new UndoSupport(appState_, "undo.centerCurrentLayout");  
-      Layout.OverlayKeySet loModKeys = globalKeys.get(dacx_.getLayoutID());   
+      Map<String, Layout.OverlayKeySet>  globalKeys = dacx_.getFGHO().fullModuleKeysPerLayout();    
+      UndoSupport support = uFac_.provideUndoSupport("undo.centerCurrentLayout", dacx_);  
+      Layout.OverlayKeySet loModKeys = globalKeys.get(dacx_.getCurrentLayoutID());   
   
-      DatabaseChange dc = dacx_.lSrc.startLayoutUndoTransaction(dacx_.getLayoutID());
-      dacx_.getLayout().recenterLayout(appState_.getZoomTarget().getRawCenterPoint(), dacx_,
+      DatabaseChange dc = dacx_.getLayoutSource().startLayoutUndoTransaction(dacx_.getCurrentLayoutID());
+      dacx_.getCurrentLayout().recenterLayout(dacx_.getZoomTarget().getRawCenterPoint(), dacx_,
                                        true, true, true, null, null, null, loModKeys, null);
-      dc = dacx_.lSrc.finishLayoutUndoTransaction(dc);
-      support.addEdit(new DatabaseChangeCmd(appState_, dacx_, dc));
-      LayoutChangeEvent lcev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      dc = dacx_.getLayoutSource().finishLayoutUndoTransaction(dc);
+      support.addEdit(new DatabaseChangeCmd(dacx_, dc));
+      LayoutChangeEvent lcev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);
       support.finish();  
-      appState_.getZoomCommandSupport().zoomToFullWorksheet();
+      uics_.getZoomCommandSupport().zoomToFullWorksheet();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }

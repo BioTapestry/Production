@@ -28,6 +28,8 @@ package org.systemsbiology.biotapestry.nav;
 public class ImageChange {
   public String genomeKey;
   public String proxyKey;
+  public String groupNodeKey;
+  public boolean groupNodeForMap;
   
   public String oldImage;
   public String oldKey;

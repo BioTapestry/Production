@@ -233,25 +233,24 @@ public class MeasureProps implements Cloneable {
   ** Answer if we meet the single filtering criteria
   */
   
-  @SuppressWarnings("unused")
-  public boolean matchesFilter(PertFilter pf, SourceSrc sources) {    
+  public boolean matchesFilter(PertFilter pf) {    
     switch (pf.getCategory()) {    
-      case PertFilter.MEASURE_SCALE:
+      case MEASURE_SCALE:
         return (scaleKey_.equals(pf.getStringValue()));
-      case PertFilter.MEASURE_TECH:
+      case MEASURE_TECH:
         return (id_.equals(pf.getStringValue()));
-      case PertFilter.SOURCE:
-      case PertFilter.SOURCE_NAME:
-      case PertFilter.SOURCE_OR_PROXY_NAME:
-      case PertFilter.PERT:
-      case PertFilter.TIME:
-      case PertFilter.INVEST:
-      case PertFilter.INVEST_LIST:
-      case PertFilter.EXPERIMENT:   
-      case PertFilter.TARGET:
-      case PertFilter.VALUE:
-      case PertFilter.EXP_CONTROL:
-      case PertFilter.ANNOTATION:       
+      case SOURCE:
+      case SOURCE_NAME:
+      case SOURCE_OR_PROXY_NAME:
+      case PERT:
+      case TIME:
+      case INVEST:
+      case INVEST_LIST:
+      case EXPERIMENT:   
+      case TARGET:
+      case VALUE:
+      case EXP_CONTROL:
+      case ANNOTATION:       
       default:
         throw new IllegalArgumentException();
     } 

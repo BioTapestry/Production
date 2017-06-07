@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,12 +24,13 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
 
 /****************************************************************************
 **
@@ -59,8 +60,7 @@ public class PathStep extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathStep(BTState appState, boolean doForward) {
-    super(appState);
+  public PathStep(boolean doForward) {
     name =  (doForward) ? "command.TreePathForward" : "command.TreePathBackward";
     desc = (doForward) ? "command.TreePathForward" : "command.TreePathBackward";
     icon = (doForward) ? "Forward24.gif" : "Back24.gif";
@@ -74,8 +74,7 @@ public class PathStep extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathStep(BTState appState, PathArg args) {
-    super(appState);
+  public PathStep(PathArg args) {
     pathKey_ = (args.getForNoPath()) ? null : args.getPathKey();
     isForNoPath_ = args.getForNoPath();
     name = args.getPathName();
@@ -112,7 +111,7 @@ public class PathStep extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, doForward_, pathKey_, cfh.getDataAccessContext(), isForNoPath_);
+        StepState ans = new StepState(doForward_, pathKey_, cfh, isForNoPath_);
         next = ans.stepInPath();    
       } else {
         throw new IllegalStateException();
@@ -129,56 +128,61 @@ public class PathStep extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
+  public static class StepState extends AbstractStepState {
     
     private boolean doForward;
     private String myPathKey_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
     private boolean isForNoPath_;
      
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean doForward, String pathKey, DataAccessContext dacx, boolean isForNoPath) {
-      appState_ = appState;
+    public StepState(boolean doForward, String pathKey, StaticDataAccessContext dacx, boolean isForNoPath) {
+      super(dacx); 
       this.doForward = doForward;
       myPathKey_ = pathKey;
       nextStep_ = "stepInPath";
       isForNoPath_ = isForNoPath;
-      dacx_ = dacx;
     }
       
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(boolean doForward, String pathKey, ServerControlFlowHarness cfh, boolean isForNoPath) {
+      super(cfh); 
+      this.doForward = doForward;
+      myPathKey_ = pathKey;
+      nextStep_ = "stepInPath";
+      isForNoPath_ = isForNoPath;
+    }
+
     /***************************************************************************
     **
     ** Do the step
     */ 
        
-    private DialogAndInProcessCmd stepInPath() {  
+    private DialogAndInProcessCmd stepInPath() {
       if (myPathKey_ != null || isForNoPath_) {
-        appState_.getPathController().setCurrentPath(myPathKey_, dacx_);
+        uics_.getPathController().setCurrentPath(myPathKey_, dacx_, uFac_);
       } else {
         if (doForward) {
-          appState_.getPathController().pathForward(dacx_);
+          uics_.getPathController().pathForward(dacx_, uFac_);
         } else {
-          appState_.getPathController().pathBackward(dacx_);
+          uics_.getPathController().pathBackward(dacx_, uFac_);
         }
       }
-      appState_.getPathControls().handlePathButtons();
+      uics_.getPathControls().handlePathButtons();
       Map<String,Object> result = new HashMap<String,Object>();
-      DataAccessContext dacx = new DataAccessContext(appState_, appState_.getGenome());
       
-      result.put("currModel",appState_.getGenome());
-      result.put("overlay",dacx.oso.getCurrentOverlay());
-      result.put("currModules",dacx.oso.getCurrentNetModules().set);
-      result.put("revModules",dacx.oso.getRevealedModules().set);
+      OverlayStateOracle oso = dacx_.getOSO();
+      result.put("currModel",dacx_.getCurrentGenomeID());
+      result.put("overlay", oso.getCurrentOverlay());
+      result.put("currModules", oso.getCurrentNetModules().set);
+      result.put("revModules", oso.getRevealedModules().set);
       
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this, result));
     } 

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,16 +26,17 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.ExpansionChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NavTreeChange;
@@ -56,7 +57,7 @@ public class MoveModelNode extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////    
 
   private boolean doLower_;
- 
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -68,8 +69,7 @@ public class MoveModelNode extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public MoveModelNode(BTState appState, boolean doLower) {
-    super(appState);
+  public MoveModelNode(boolean doLower) {
     name = (doLower) ? "treePopup.MoveNodeDown" : "treePopup.MoveNodeUp";
     desc = (doLower) ? "treePopup.MoveNodeDown" : "treePopup.MoveNodeUp"; 
     mnem = (doLower) ? "treePopup.MoveNodeDownMnem" : "treePopup.MoveNodeUpMnem";
@@ -89,14 +89,14 @@ public class MoveModelNode extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx) {  
-    if (!appState_.getIsEditor() || (key == null)) {
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext dacx, UIComponentSource uics) {
+    if (!uics.getIsEditor() || (key == null)) {
       return (false);
     } else if (key.modType == XPlatModelNode.ModelType.DB_GENOME) {
       return (false);
     } else {
       NavTree nt = dacx.getGenomeSource().getModelHierarchy();
-      TreeNode node = nt.resolveNode(key, dacx);
+      TreeNode node = nt.resolveNode(key);
       if (node == null) {
         return (false);
       }
@@ -111,8 +111,8 @@ public class MoveModelNode extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, doLower_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(doLower_, dacx);
      return (retval);
    }
  
@@ -130,6 +130,7 @@ public class MoveModelNode extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("moveNode")) {
           next = ans.moveNode();      
         } else {
@@ -148,18 +149,24 @@ public class MoveModelNode extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.ModelTreeCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.ModelTreeCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
-    private Genome popupTarget_;
+    private Genome popupModel_;
+    private Genome popupModelAncestor_;
     private TreeNode popupNode_;
     private TreeSupport treeSupp_;
     private boolean myDoLower_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+   
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(boolean doLower, StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "moveNode";
+      treeSupp_ = null; // new TreeSupport(uics_); // UICS not stocked yet
+      myDoLower_ = doLower;
     }
     
     /***************************************************************************
@@ -167,21 +174,36 @@ public class MoveModelNode extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean doLower, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean doLower, ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "moveNode";
-      treeSupp_ = new TreeSupport(appState_);
+      treeSupp_ = new TreeSupport(uics_);
       myDoLower_ = doLower;
-      dacx_ = dacx;
     }
-      
+    
+    /***************************************************************************
+    **
+    ** Add cfh in if StepState was pre-built
+    */
+     
+    @Override
+    public void stockCfhIfNeeded(ServerControlFlowHarness cfh) {
+      if (cfh_ != null) {
+        return;
+      }
+      super.stockCfhIfNeeded(cfh);
+      treeSupp_ = new TreeSupport(uics_);
+      return;
+    }
+
     /***************************************************************************
     **
     ** for preload
     */ 
-        
-    public void setPreload(Genome popupTarget, TreeNode popupNode) {
-      popupTarget_ = popupTarget;
+   
+    public void setPreload(Genome popupModel, Genome popupModelAncestor, TreeNode popupNode) {
+      popupModel_ = popupModel; // May be null if popup is a group node
+      popupModelAncestor_ = popupModelAncestor; // NEVER null
       popupNode_ = popupNode;
       return;
     }
@@ -192,14 +214,14 @@ public class MoveModelNode extends AbstractControlFlow {
     */  
        
     private DialogAndInProcessCmd moveNode() { 
-      VirtualModelTree vmTree = appState_.getTree();     
+      VirtualModelTree vmTree = uics_.getTree();     
 
       //
       // Undo/Redo support
       //
         
       String whichKey = (myDoLower_) ? "undo.moveModelDownInTree" : "undo.moveModelUpInTree";       
-      UndoSupport support = new UndoSupport(appState_, whichKey);       
+      UndoSupport support = uFac_.provideUndoSupport(whichKey, dacx_);       
 
       //
       // Record the pre-change tree expansion state, and hold onto a copy of the expansion
@@ -210,7 +232,7 @@ public class MoveModelNode extends AbstractControlFlow {
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
       ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
       
       //
       // Do actual move
@@ -220,7 +242,7 @@ public class MoveModelNode extends AbstractControlFlow {
       if (ntc == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this)); 
       }       
-      NavTreeChangeCmd ntcc = new NavTreeChangeCmd(appState_, dacx_, ntc);
+      NavTreeChangeCmd ntcc = new NavTreeChangeCmd(dacx_, ntc);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, true);
       ec.selected = nt.mapAPath(ec.selected, ntc, true);       
       support.addEdit(ntcc);
@@ -258,7 +280,7 @@ public class MoveModelNode extends AbstractControlFlow {
       ec = treeSupp_.buildExpansionChange(false, dacx_);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
       ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(appState_, dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
 
       support.finish();
    

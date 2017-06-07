@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,7 +32,7 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -118,8 +118,9 @@ public class StackedClusterSeries {
   ** Prep the stack
   */
 
+  @SuppressWarnings("unused")
   public void prep(int rows, Map<Integer, List<GeneAndSatelliteCluster>> allClusters, 
-                   GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx,
+                   GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx,
                    int traceMult, SortedMap<Integer, String> previousSrcToTrack) {
    
  //   int numClust = allClusters.size();
@@ -235,7 +236,7 @@ public class StackedClusterSeries {
   ** Locate the Stacked cluster series
   */
   
-  public void locate(Point2D center, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx, LayoutCompressionFramework lcf) {
+  public void locate(Point2D center, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx, LayoutCompressionFramework lcf) {
    
     Point2D gridCenter = (Point2D)center.clone();
     UiUtil.forceToGrid(gridCenter, UiUtil.GRID_SIZE);
@@ -313,7 +314,7 @@ public class StackedClusterSeries {
   ** Get the bounds of JUST the nodes:
   */
   
-  private Rectangle getPlacedNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {    
+  private Rectangle getPlacedNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {    
     Rectangle retval = null;
     int numSeries = allSeries_.size();
     for (int i = 0; i < numSeries; i++) {
@@ -350,10 +351,11 @@ public class StackedClusterSeries {
   ** 
   ** Handle link routing for stacked layouts 
   */
-  
+
+  @SuppressWarnings("unused")
   public void routeLinksForStack(GenomeSubset subset, SpecialtyInstructions sp,
                                  SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                 DataAccessContext rcx, 
+                                 StaticDataAccessContext rcx, 
                                  SpecialtyLayoutEngine.GlobalSLEState gsles, Rectangle nodeBounds) {    
 
     HashMap<String, SuperSrcRouterPointSource> traceDefs = new HashMap<String, SuperSrcRouterPointSource>();

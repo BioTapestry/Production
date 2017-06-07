@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -56,8 +58,7 @@ public class RemoveLinkPoint extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveLinkPoint(BTState appState) {
-    super(appState);
+  public RemoveLinkPoint() {
     name = "linkPointPopup.Delete";
     desc = "linkPointPopup.Delete";     
     mnem = "linkPointPopup.DeleteMnem";
@@ -76,8 +77,8 @@ public class RemoveLinkPoint extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
  
@@ -88,8 +89,9 @@ public class RemoveLinkPoint extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    BusProperties lp = rcx.getLayout().getLinkProperties(inter.getObjectID());
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    BusProperties lp = rcx.getCurrentLayout().getLinkProperties(inter.getObjectID());
     LinkSegmentID segID = inter.segmentIDFromIntersect();
     if (segID.isBusNodeConnection()) {
       return (false);
@@ -114,6 +116,7 @@ public class RemoveLinkPoint extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();       
         } else {
@@ -132,26 +135,18 @@ public class RemoveLinkPoint extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext rcxT_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
     
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -172,18 +167,18 @@ public class RemoveLinkPoint extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToRemove() {
        
       LinkSegmentID id = intersect_.segmentIDFromIntersect();
-      BusProperties lp = rcxT_.getLayout().getLinkProperties(intersect_.getObjectID());
+      BusProperties lp = dacx_.getCurrentLayout().getLinkProperties(intersect_.getObjectID());
       Layout.PropChange[] lpc = new Layout.PropChange[1];
 
-      lpc[0] = rcxT_.getLayout().deleteLinkageCornerForTree(lp, id, null, rcxT_);          
+      lpc[0] = dacx_.getCurrentLayout().deleteLinkageCornerForTree(lp, id, null, dacx_);          
       if (lpc[0] != null) {
-        UndoSupport support = new UndoSupport(appState_, "undo.deleteCorner");
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+        UndoSupport support = uFac_.provideUndoSupport("undo.deleteCorner", dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
         support.addEdit(mov);
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,9 +33,8 @@ import java.awt.font.LineMetrics;
 
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -65,8 +64,8 @@ public class DataLocator {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private GenomePresentation gepr_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -79,8 +78,8 @@ public class DataLocator {
   ** Constructor 
   */ 
   
-  public DataLocator(BTState appState, DataAccessContext dacx) { 
-    appState_ = appState;
+  public DataLocator(GenomePresentation gepr, DataAccessContext dacx) { 
+    gepr_ = gepr;
     dacx_ = dacx;
   }
   
@@ -97,7 +96,7 @@ public class DataLocator {
     // instance
     //
      
-    Font mFont = appState_.getFontMgr().getFont(FontManager.DATE);
+    Font mFont = dacx_.getFontManager().getFont(FontManager.DATE);
     Genome gen = dacx_.getDBGenome();
     setLocationsForGenome(support, date, attrib, key, gen, mFont);
     Iterator<GenomeInstance> giit = dacx_.getGenomeSource().getInstanceIterator();
@@ -122,7 +121,7 @@ public class DataLocator {
     // Need to set model data locations just for the layout we care about
     //
     
-    Font tFont = appState_.getFontMgr().getFont(FontManager.TITLE);
+    Font tFont = dacx_.getFontManager().getFont(FontManager.TITLE);
     Genome gen = dacx_.getDBGenome();
     if (!genomeID.equals(gen.getID())) {
       GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(genomeID);
@@ -132,8 +131,8 @@ public class DataLocator {
         gen = gi.getVfgParentRoot();
       }
     }
-    Layout lo = dacx_.lSrc.getLayoutForGenomeKey(gen.getID());
-    Rectangle dims = appState_.getSUPanel().getBasicBounds(dacx_, false, false, ZoomTarget.ALL_MODULES);
+    Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(gen.getID());
+    Rectangle dims = gepr_.getBasicBounds(dacx_, false, false, ZoomTarget.ALL_MODULES);
     ArrayList<String> vals = new ArrayList<String>();
     vals.add(title);
     if (setMultiLocation(support, vals, Layout.TITLE, TOP_CENTER_, lo, tFont, dims)) {
@@ -147,7 +146,7 @@ public class DataLocator {
   ** Helper to build key bounds
   ** 
   */
-  
+  @SuppressWarnings("unused")
   public Dimension calcKeyBounds(List<String> vals, Layout lo, Font mFont, FontRenderContext frc) {
     double yTot = 0.0;
     double xMax = 0.0;     
@@ -191,15 +190,15 @@ public class DataLocator {
   
   private void setLocationsForGenome(UndoSupport support, String date, 
                                      String attrib, List<String> key, Genome genome, Font mFont) {                                   
-    Layout lo = dacx_.lSrc.getLayoutForGenomeKey(genome.getID());
+    Layout lo = dacx_.getLayoutSource().getLayoutForGenomeKey(genome.getID());
     boolean needEvent = false;
 
     Rectangle dims = null;
     if (genome.isEmpty() && (genome.getNetworkModuleCount() == 0)) {
-      Point2D center = appState_.getZoomTarget().getRawCenterPoint();
+      Point2D center = dacx_.getZoomTarget().getRawCenterPoint();
       dims = new Rectangle((int)center.getX() - 100, (int)center.getY() - 100, 200, 200);
     } else {
-      dims = appState_.getSUPanel().getBasicBounds(dacx_, false, false, ZoomTarget.ALL_MODULES);
+      dims = gepr_.getBasicBounds(dacx_, false, false, ZoomTarget.ALL_MODULES);
     }
     ArrayList<String> vals = new ArrayList<String>();
     vals.add(date);
@@ -271,7 +270,7 @@ public class DataLocator {
         loc = new Point2D.Double(xloc, yloc);
         UiUtil.forceToGrid(xloc, yloc, loc, 10.0);
         Layout.PropChange pc = lo.setDataLocation(key, loc);
-        support.addEdit(new PropChangeCmd(appState_, dacx_, pc));
+        support.addEdit(new PropChangeCmd(dacx_, pc));
         return (true);
       }
     }

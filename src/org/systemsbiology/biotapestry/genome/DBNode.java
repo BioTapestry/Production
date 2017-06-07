@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
@@ -98,8 +98,8 @@ public class DBNode extends DBGenomeItem implements Node {
   ** Name and id for UI construction
   */
 
-  public DBNode(BTState appState, int nodeType, String name, String id) {
-    super(appState, name, id);
+  public DBNode(DataAccessContext dacx, int nodeType, String name, String id) {
+    super(dacx, name, id);
     nodeType_ = nodeType;
     logic_ = new DBInternalLogic();
     padCount_ = getDefaultPadCount(nodeType);
@@ -112,8 +112,8 @@ public class DBNode extends DBGenomeItem implements Node {
   ** Name and id: for XML based construction
   */
 
-  public DBNode(BTState appState, String elemName, String name, String id, String size) throws IOException {
-    super(appState, name, id);
+  public DBNode(DataAccessContext dacx, String elemName, String name, String id, String size) throws IOException {
+    super(dacx, name, id);
     if (elemName == null) {
       throw new IOException();
     }
@@ -310,7 +310,7 @@ public class DBNode extends DBGenomeItem implements Node {
   */
 
   public String getDisplayString(Genome genome, boolean typePreface) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String format = rMan.getString("ncreate.importFormat");
     String typeDisplay = mapTypeToDisplay(rMan, nodeType_);
     String nodeMsg = MessageFormat.format(format, new Object[] {typeDisplay, name_});    
@@ -389,7 +389,7 @@ public class DBNode extends DBGenomeItem implements Node {
   **
   */
   
-  public static DBNode buildFromXML(BTState appState, Genome genome, String elemName,
+  public static DBNode buildFromXML(DataAccessContext dacx, String elemName,
                                     Attributes attrs) throws IOException {
 
     String name = null;
@@ -412,7 +412,7 @@ public class DBNode extends DBGenomeItem implements Node {
         }
       }
     }
-    return (new DBNode(appState, elemName, name, id, size));
+    return (new DBNode(dacx, elemName, name, id, size));
   }  
 
   /***************************************************************************
@@ -651,7 +651,7 @@ public class DBNode extends DBGenomeItem implements Node {
   ** Used for node type conversions.  Map pad counts.  
   */  
   
-  public static int mapPadCount(int oldNodeType, int newNodeType, int oldPadCount) {
+  public static int mapPadCount(int newNodeType, int oldPadCount) {
 
     //
     // If we don't support extra pads, we are done:

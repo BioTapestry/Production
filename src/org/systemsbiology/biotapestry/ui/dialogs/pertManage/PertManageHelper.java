@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -49,7 +49,8 @@ import javax.swing.JPanel;
 import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -89,7 +90,8 @@ public class PertManageHelper  {
   private JFrame parent_;
   private GridBagConstraints gbc_;
   private ImageIcon jump_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -102,9 +104,10 @@ public class PertManageHelper  {
   ** Constructor 
   */ 
   
-  public PertManageHelper(BTState appState, JFrame parent, PerturbationData pd, ResourceManager rMan, 
+  public PertManageHelper(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, ResourceManager rMan, 
                           GridBagConstraints gbc, PendingEditTracker pet) {
-    appState_ = appState;
+    uics_ = uics;
+    dacx_ = dacx;
     parent_ = parent;
     pd_ = pd;
     rMan_ = rMan;
@@ -135,11 +138,11 @@ public class PertManageHelper  {
   ** 
   */
   
-  public String getNewUniqueCopyName(Set existingNames, String baseName) {
+  public String getNewUniqueCopyName(Set<String> existingNames, String baseName) {
     int lastCopyNum = 0;
     while (true) {
       String origName = baseName;
-      String testName = UiUtil.createCopyName(appState_.getRMan(), origName, lastCopyNum++);
+      String testName = UiUtil.createCopyName(dacx_.getRMan(), origName, lastCopyNum++);
       if (!DataUtil.containsKey(existingNames, testName)) {
         return (testName);
       }
@@ -152,14 +155,14 @@ public class PertManageHelper  {
   ** 
   */
   
-  public String getMostUsedKey(Map countMap, List usedKeys) {  
+  public String getMostUsedKey(Map<String, Integer> countMap, List<String> usedKeys) {  
     int numJoin = usedKeys.size();
     Integer noCount = new Integer(0);
     int maxRefs = Integer.MIN_VALUE;
     String useKey = null;
     for (int i = 0; i < numJoin; i++) {
-      String targKey = (String)usedKeys.get(i);
-      Integer refs = (Integer)countMap.get(targKey);
+      String targKey = usedKeys.get(i);
+      Integer refs = countMap.get(targKey);
       if (refs == null) {
         refs = noCount;
       }
@@ -216,14 +219,14 @@ public class PertManageHelper  {
   */
   
   public void updateAndReselect(boolean fireChange, ReadOnlyTable rtab, 
-                                SelectionOracle oracle, String tableID, List selKeys) {  
+                                SelectionOracle oracle, String tableID, List<String> selKeys) {  
  
     rtab.updateTable(fireChange, ReadOnlyTable.UPDATE_NO_SELECT);
     if ((selKeys != null) && !selKeys.isEmpty()) {
       ListSelectionModel lsm = rtab.getTable().getSelectionModel();
       int numSel = selKeys.size();
       for (int i = 0; i < numSel; i++) {
-        String key = (String)selKeys.get(i);
+        String key = selKeys.get(i);
         int selRow = findSelectedRow(rtab, key, oracle, tableID);
         if (selRow != -1) {
           lsm.addSelectionInterval(selRow, selRow);
@@ -256,15 +259,15 @@ public class PertManageHelper  {
   ** 
   */
   
-  public EditableTable.TableParams tableParamsForAnnot(List annotList) {  
+  public EditableTable.TableParams tableParamsForAnnot(List<EnumCell> annotList) {  
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.tableIsUnselectable = false;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
     etp.singleSelectOnly = true;
     etp.buttonsOnSide = true;
-    etp.perColumnEnums = new HashMap();
-    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList));  
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, annotList, EnumCell.class));  
     return (etp);
   }
 
@@ -274,13 +277,13 @@ public class PertManageHelper  {
   ** 
   */
   
-  public ArrayList buildAnnotEnum() {
-    Vector annotOps = pd_.getPertAnnotations().getAnnotationOptions();    
-    ArrayList retval = new ArrayList();
-    Iterator ait = annotOps.iterator();
+  public ArrayList<EnumCell> buildAnnotEnum() {
+    Vector<TrueObjChoiceContent> annotOps = pd_.getPertAnnotations().getAnnotationOptions();    
+    ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
+    Iterator<TrueObjChoiceContent> ait = annotOps.iterator();
     int count = 0;
     while (ait.hasNext()) {
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)ait.next();
+      TrueObjChoiceContent tocc = ait.next();
       retval.add(new EnumCell(tocc.name, (String)tocc.val, count, count));
       count++;
     }
@@ -292,8 +295,8 @@ public class PertManageHelper  {
   ** Get the annotation display list
   */
   
-  public List buildAnnotDisplayList(List annotKeys, EditableTable estAnnot, List annotList, boolean forHotUpdate) {
-    ArrayList retval = new ArrayList();
+  public List<EditableTable.OneEnumTableModel.TableRow> buildAnnotDisplayList(List annotKeys, EditableTable estAnnot, List<EnumCell> annotList, boolean forHotUpdate) {
+    ArrayList<EditableTable.OneEnumTableModel.TableRow> retval = new ArrayList<EditableTable.OneEnumTableModel.TableRow>();
     if (annotKeys == null) {
       return (retval);
     }
@@ -313,7 +316,7 @@ public class PertManageHelper  {
       EditableTable.OneEnumTableModel.TableRow tr = rpt.new TableRow();
       tr.origOrder = new Integer(count++);
       for (int i = 0; i < numA; i++) {
-        EnumCell ecp = (EnumCell)annotList.get(i);
+        EnumCell ecp = annotList.get(i);
         if (annotID.equals(ecp.internal)) {
           useIndex = i;
           break;
@@ -326,7 +329,7 @@ public class PertManageHelper  {
           throw new IllegalStateException();
         }
       }
-      tr.enumChoice = new EnumCell((EnumCell)annotList.get(useIndex));
+      tr.enumChoice = new EnumCell(annotList.get(useIndex));
       retval.add(tr);
     }
     return (retval);
@@ -338,22 +341,22 @@ public class PertManageHelper  {
   ** 
   */
   
-  public List fixupFrozenAnnot(List frozenAnnots) { 
-    ArrayList currAnnots;
+  public List<String> fixupFrozenAnnot(List<String> frozenAnnots) { 
+    ArrayList<String> currAnnots;
     if (frozenAnnots == null) {
       return (null);
     } else {
-      currAnnots = new ArrayList();
-      HashSet surviving = new HashSet();
-      Vector annotOps = pd_.getPertAnnotations().getAnnotationOptions();
-      Iterator ait = annotOps.iterator();
+      currAnnots = new ArrayList<String>();
+      HashSet<String> surviving = new HashSet<String>();
+      Vector<TrueObjChoiceContent> annotOps = pd_.getPertAnnotations().getAnnotationOptions();
+      Iterator<TrueObjChoiceContent> ait = annotOps.iterator();
       while (ait.hasNext()) {
-        TrueObjChoiceContent tocc = (TrueObjChoiceContent)ait.next();
-        surviving.add(tocc.val);
+        TrueObjChoiceContent tocc = ait.next();
+        surviving.add((String)tocc.val);
       }
       int numFroz = frozenAnnots.size();
       for (int i = 0; i < numFroz; i++) {
-        String testKey = (String)frozenAnnots.get(i);
+        String testKey = frozenAnnots.get(i);
         if (surviving.contains(testKey)) {
           currAnnots.add(testKey);
         }
@@ -374,11 +377,11 @@ public class PertManageHelper  {
       return (null);
     } else {
       ArrayList<String> regList = new ArrayList<String>();
-      TimeCourseData tcd = appState_.getDB().getTimeCourseData();
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
       Set<String> surviving = tcd.getRegions();
       Iterator<String> rit = frozenRegRes.getRegions();
       while (rit.hasNext()) {
-        String region = (String)rit.next();
+        String region = rit.next();
         if (DataUtil.containsKey(surviving, region)) {
           regList.add(region);
         }
@@ -433,15 +436,15 @@ public class PertManageHelper  {
   */ 
   
   public boolean warnAndAsk(DependencyAnalyzer.Dependencies refs) {    
-    if (refs.type == DependencyAnalyzer.Dependencies.DESTROY) {
+    if (refs.type == DependencyAnalyzer.Dependencies.DepType.DESTROY) {
       return (warnAndAskToDie(refs));
-    } else if ((refs.type == DependencyAnalyzer.Dependencies.MERGE_SOURCE_DEFS) ||
-               (refs.type == DependencyAnalyzer.Dependencies.MERGE_PERT_PROPS) ||
-               (refs.type == DependencyAnalyzer.Dependencies.MERGE_SOURCE_NAMES)) {
+    } else if ((refs.type == DependencyAnalyzer.Dependencies.DepType.MERGE_SOURCE_DEFS) ||
+               (refs.type == DependencyAnalyzer.Dependencies.DepType.MERGE_PERT_PROPS) ||
+               (refs.type == DependencyAnalyzer.Dependencies.DepType.MERGE_SOURCE_NAMES)) {
       return (warnAndAskToDieOnMerge(refs));      
-    } else if ((refs.type == DependencyAnalyzer.Dependencies.PRUNE_INVEST) ||
-               (refs.type == DependencyAnalyzer.Dependencies.PRUNE_ANNOT) ||
-               (refs.type == DependencyAnalyzer.Dependencies.PRUNE_CONTROL)) {
+    } else if ((refs.type == DependencyAnalyzer.Dependencies.DepType.PRUNE_INVEST) ||
+               (refs.type == DependencyAnalyzer.Dependencies.DepType.PRUNE_ANNOT) ||
+               (refs.type == DependencyAnalyzer.Dependencies.DepType.PRUNE_CONTROL)) {
       return (warnAndAskToPrune(refs));
     } else {
       throw new IllegalStateException();
@@ -582,11 +585,11 @@ public class PertManageHelper  {
   ** Get a unique from a vector of toccs
   */ 
   
-  public String getUnique(Vector sno, String baseName) {
-    HashSet existing = new HashSet();
-    Iterator snit = sno.iterator();  
+  public String getUnique(Vector<TrueObjChoiceContent> sno, String baseName) {
+    HashSet<String> existing = new HashSet<String>();
+    Iterator<TrueObjChoiceContent> snit = sno.iterator();  
     while (snit.hasNext()) {
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)snit.next();
+      TrueObjChoiceContent tocc = snit.next();
       existing.add(tocc.name);
     }
     String copyName = getNewUniqueCopyName(existing, baseName); 
@@ -684,8 +687,8 @@ public class PertManageHelper  {
     
     private static final long serialVersionUID = 1L;
  
-    public NameWithHiddenIDAndRefCountModel(BTState appState, String mainColName) {
-      super(appState, NUM_COL_);
+    public NameWithHiddenIDAndRefCountModel(UIComponentSource uics, DataAccessContext dacx, String mainColName) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {mainColName,
                                "pertHelper.refCount"};
       colClasses_ = new Class[] {String.class,
@@ -712,8 +715,8 @@ public class PertManageHelper  {
       return ((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[0])));
     } 
     
-    public List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    public List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[i])));
       }
@@ -737,7 +740,7 @@ public class PertManageHelper  {
   **
   */
   
-  public static class DoubleStrComparator implements Comparator {
+  public static class DoubleStrComparator implements Comparator<String> {
     private Pattern pattern_;
     private Matcher matcher_;
         
@@ -746,9 +749,9 @@ public class PertManageHelper  {
       matcher_ = pattern_.matcher("");
     } 
     
-    public int compare(Object o1, Object o2) {
-      String str1 = ((String)o1).trim();
-      String str2 = ((String)o2).trim();
+    public int compare(String o1, String o2) {
+      String str1 = o1.trim();
+      String str2 = o2.trim();
       boolean str1IsNS = str1.equalsIgnoreCase("NS");
       boolean str2IsNS = str2.equalsIgnoreCase("NS");
       matcher_.reset(str1);
@@ -793,8 +796,8 @@ public class PertManageHelper  {
     private TimeAxisDefinition tad_;
     private boolean namedStages_;
         
-    public TimeComparator(BTState appState) {
-      tad_ = appState.getDB().getTimeAxisDefinition();
+    public TimeComparator(DataAccessContext dacx) {
+      tad_ = dacx.getExpDataSrc().getTimeAxisDefinition();
       namedStages_ = tad_.haveNamedStages();
     }
       
@@ -878,10 +881,10 @@ public class PertManageHelper  {
     
     private Set activeValues_;
     private ListCellRenderer defaultRenderer_;
-    private BTState appState_;
+    private UIComponentSource uics_;
            
-    public FilterListRenderer(BTState appState, ListCellRenderer defaultRenderer) {
-      appState_ = appState;
+    public FilterListRenderer(UIComponentSource uics, ListCellRenderer defaultRenderer) {
+      uics_ = uics;
       defaultRenderer_ = defaultRenderer;
       activeValues_ = new HashSet();
     }
@@ -912,7 +915,7 @@ public class PertManageHelper  {
         setText(value.toString());
         setEnabled(activeValues_.contains(value));        
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }      
       return (this);             
     }

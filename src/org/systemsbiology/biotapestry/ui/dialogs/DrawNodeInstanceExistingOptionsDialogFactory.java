@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,7 +43,8 @@ import javax.swing.JPanel;
 import javax.swing.JRadioButton;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -111,13 +112,8 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       occIns = buildCombo(dniba.tgi, dniba.existingInstanceOptions);
     }
     
-    String rootGenomeID = dniba.rootGenome.getID();
-    String genomeInstanceID = dniba.tgi.getID();
-    String rootLayoutID = appState.getLayoutMgr().getLayout(rootGenomeID);
-    String instanceLayoutID = appState.getLayoutMgr().getLayout(genomeInstanceID);
-    
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
-      return (new DesktopDialog(cfh, occRoo, occIns, rootGenomeID, genomeInstanceID, rootLayoutID, instanceLayoutID));
+      return (new DesktopDialog(cfh, occRoo, occIns, dniba.rootGenomeID, dniba.genomeInstanceID, dniba.rootLayoutID, dniba.instanceLayoutID));
     }
     throw new IllegalArgumentException();
   }
@@ -162,14 +158,24 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
     GenomeInstance tgi;
     Set<String> existingOptions;
     Set<String> existingInstanceOptions;
+    
+    String rootGenomeID; 
+    String genomeInstanceID;
+    String rootLayoutID;
+    String instanceLayoutID;
           
-    public BuildArgs(DBGenome rootGenome, GenomeInstance tgi, Set<String> existingOptions, Set<String> existingInstanceOptions) {
-      super(tgi);
-      this.rootGenome = rootGenome;
-      this.tgi = tgi;
+    public BuildArgs(DataAccessContext dacx, Set<String> existingOptions, Set<String> existingInstanceOptions) {
+      super(dacx.getCurrentGenomeAsInstance());
+      this.rootGenome = dacx.getDBGenome();
+      this.tgi = dacx.getCurrentGenomeAsInstance();
       this.existingOptions = existingOptions;
-      this.existingInstanceOptions = existingInstanceOptions;  
-    } 
+      this.existingInstanceOptions = existingInstanceOptions;
+      
+      this.rootGenomeID = rootGenome.getID();
+      this.genomeInstanceID = tgi.getID();
+      this.rootLayoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(rootGenomeID);
+      this.instanceLayoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeInstanceID);
+    }
   }
    
   ////////////////////////////////////////////////////////////////////////////
@@ -206,8 +212,10 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
     private DialogModelDisplay msp_;
     private ExistingDrawRequest request_;
     private ClientControlFlowHarness cfh_;
-    private BTState appState_;
-    private DataAccessContext rcx_;
+    private StaticDataAccessContext rcx_;
+    private DataAccessContext dacx_;
+    private UIComponentSource uics_;
+    
   
     private static final long serialVersionUID = 1L;
     
@@ -224,11 +232,14 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
     
     DesktopDialog(ServerControlFlowHarness cfh, List<ObjChoiceContent> occRoo, List<ObjChoiceContent> occIns, 
                   String rootGenomeID, String genomeInstanceID, 
-                  String rootLayoutID, String instanceLayoutID) {      
-      super(cfh.getBTState().getTopFrame(), cfh.getBTState().getRMan().getString("nicreateExisting.title"), true);
-      appState_ = cfh.getBTState();
-      parent_ = appState_.getTopFrame();
-      ResourceManager rMan = appState_.getRMan();
+                  String rootLayoutID, String instanceLayoutID) {
+
+      super(cfh.getUI().getTopFrame(), cfh.getDataAccessContext().getRMan().getString("nicreateExisting.title"), true);
+      uics_ = cfh.getUI();
+      dacx_ = cfh.getDataAccessContext();
+      parent_ = uics_.getTopFrame();
+      ResourceManager rMan = dacx_.getRMan();
+
       setSize(600, 700);
       JPanel cp = (JPanel)getContentPane();
       cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -286,7 +297,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
             try { 
               updateNodeDisplay(false, existingCombo_);
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
             return;
           }
@@ -320,7 +331,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
             try { 
               updateNodeDisplay(false, existingInstanceCombo_);
             } catch (Exception ex) {
-              appState_.getExceptionHandler().displayException(ex);
+              uics_.getExceptionHandler().displayException(ex);
             }
             return;
           }
@@ -334,13 +345,13 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       }
   
       // Note this is NOT legit, hitting the database from a dialog!
-      rcx_ = new DataAccessContext(appState_, (String)null, (Layout)null);
+      rcx_ = new StaticDataAccessContext(dacx_, (String)null, (Layout)null);
             
       //
       // Build the position panel:
       //
   
-      ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(appState_, null, rcx_);
+      ModelViewPanelWithZoom mvpwz = new ModelViewPanelWithZoom(uics_, null, rcx_);
       msp_ = mvpwz.getModelView();
       UiUtil.gbcSet(gbc, 0, currRow, 4, 5, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
       cp.add(mvpwz, gbc);
@@ -360,7 +371,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
               DesktopDialog.this.dispose();
             }
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });     
@@ -373,7 +384,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
             DesktopDialog.this.setVisible(false);
             DesktopDialog.this.dispose();
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
         }
       });
@@ -392,6 +403,10 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       addWindowListener(new OpenListener());
     }
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // INNER CLASSES
@@ -405,7 +420,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
           boolean isDrawOldInstance = (drawOldInstance_ == null) ? false : drawOldInstance_.isSelected();
           setActiveFields(isDrawOld, isDrawOldInstance);   
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     }
@@ -488,7 +503,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       String genomeID = (isRoot) ? rootGenomeID_ : genomeInstanceID_;    
       String loKey = (isRoot) ? rootLayoutID_ : instanceLayoutID_;    
       rcx_.setGenome(rcx_.getGenomeSource().getGenome(genomeID));
-      rcx_.setLayout(rcx_.lSrc.getLayout(loKey));
+      rcx_.setLayout(rcx_.getLayoutSource().getLayout(loKey));
   
       HashSet<String> nodes = new HashSet<String>();
       nodes.add(nodeID);
@@ -547,7 +562,11 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
      }   
      public boolean haveResults() {
        return (haveResult);
-     }      
+     } 
+ 	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
      public boolean isForApply() {
        return (false);
      } 

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,9 +24,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -146,7 +147,7 @@ public class RegionSetupDialogFactory extends DialogFactory {
   
     public DesktopDialog(ServerControlFlowHarness cfh, List<InstanceInstructionSet.RegionInfo> workingRegions, boolean forStash) { 
       super(cfh, "rsedit.title", new Dimension(650, 300), 1, new RegionSetupRequest(), false, forStash);         
-      est_ = new EditableTable(appState_, new RegionSetupTableModel(appState_), parent_);
+      est_ = new EditableTable(uics_, dacx_, new RegionSetupTableModel(uics_, dacx_), parent_);
       EditableTable.TableParams etp = new EditableTable.TableParams();
       etp.addAlwaysAtEnd = false;
       etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
@@ -167,6 +168,10 @@ public class RegionSetupDialogFactory extends DialogFactory {
       return (crq.regionResult);
     }  
   
+    public boolean dialogIsModal() {
+      return (true);
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PRIVATE METHODS
@@ -221,8 +226,8 @@ public class RegionSetupDialogFactory extends DialogFactory {
       
       private static final long serialVersionUID = 1L;
       
-      RegionSetupTableModel(BTState appState) {
-        super(appState, NUM_COL_);
+      RegionSetupTableModel(UIComponentSource uics, DataAccessContext dacx) {
+        super(uics, dacx, NUM_COL_);
         colNames_ = new String[] {"rsdedit.region",
                                   "rsdedit.abbrev"};
         colClasses_ = new Class[] {String.class,
@@ -262,7 +267,7 @@ public class RegionSetupDialogFactory extends DialogFactory {
         // abbreviations, which must be short (<= 3 chars)
         //
         
-        ResourceManager rMan = appState_.getRMan();
+        ResourceManager rMan = dacx_.getRMan();
         ArrayList<InstanceInstructionSet.RegionInfo> seenRegions = new ArrayList<InstanceInstructionSet.RegionInfo>();
         ArrayList<String> seenNames = new ArrayList<String>();
         ArrayList<String> seenAbbrevs = new ArrayList<String>();      
@@ -347,7 +352,10 @@ public class RegionSetupDialogFactory extends DialogFactory {
       haveResult = false;
       return;
     }
-    
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean haveResults() {
       return (haveResult);
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,12 +24,13 @@ import java.text.MessageFormat;
 import java.util.List;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBNode;
@@ -60,13 +61,13 @@ public class AddNodeSupport {
   ////////////////////////////////////////////////////////////////////////////  
  
   private String currentOverlay;
-  private DataAccessContext rcx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
   private boolean doGene;
   private Node newNode;
   private NodeCandidate cand;
   private NodeCreationInfo nci;
 
-  private BTState appState_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -79,11 +80,11 @@ public class AddNodeSupport {
   ** Constructor 
   */ 
   
-  public AddNodeSupport(BTState appState, boolean doGene, DataAccessContext dacx) {
-    appState_ = appState;
+  public AddNodeSupport(boolean doGene, UIComponentSource uics, StaticDataAccessContext dacx) {
     this.doGene = doGene;
-    rcx_ = dacx;
-    currentOverlay = appState_.getCurrentOverlay();
+    dacx_ = dacx;
+    uics_ = uics;
+    currentOverlay = dacx_.getOSO().getCurrentOverlay();
   }
      
   ////////////////////////////////////////////////////////////////////////////
@@ -150,18 +151,18 @@ public class AddNodeSupport {
     String nameResult = qbom.getStringArg("nameResult");
 
     if (doGene) {
-      if (rcx_.fgho.matchesExistingGeneOrNodeName(nameResult)) {
-        String message = rcx_.rMan.getString("geneProp.dupName");
-        String title = rcx_.rMan.getString("geneProp.dupNameTitle");
+      if (dacx_.getFGHO().matchesExistingGeneOrNodeName(nameResult)) {
+        String message = dacx_.getRMan().getString("geneProp.dupName");
+        String title = dacx_.getRMan().getString("geneProp.dupNameTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
         result.setSimpleUserFeedback(suf);
         result.setDirection(RemoteRequest.Progress.STOP);
         return (result); 
       }
     } else {
-      if (rcx_.fgho.matchesExistingGeneName(nameResult)) {
-        String message = rcx_.rMan.getString("nodeProp.dupName");
-        String title = rcx_.rMan.getString("nodeProp.dupNameTitle");
+      if (dacx_.getFGHO().matchesExistingGeneName(nameResult)) {
+        String message = dacx_.getRMan().getString("nodeProp.dupName");
+        String title = dacx_.getRMan().getString("nodeProp.dupNameTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
         result.setSimpleUserFeedback(suf);
         result.setDirection(RemoteRequest.Progress.STOP);
@@ -180,10 +181,10 @@ public class AddNodeSupport {
      
      RemoteRequest.Result result = new RemoteRequest.Result(qbom);
      String nameResult = qbom.getStringArg("nameResult");
-     ResourceManager rMan = appState_.getRMan();
+     ResourceManager rMan = dacx_.getRMan();
 
      if (doGene) {
-       if (rcx_.fgho.matchesExistingGeneOrNodeName(nameResult)) {
+       if (dacx_.getFGHO().matchesExistingGeneOrNodeName(nameResult)) {
          String desc = MessageFormat.format(UiUtil.convertMessageToHtml(rMan.getString("addGene.NameInUse")), 
                                             new Object[] {nameResult});
          String title = rMan.getString("addGene.CreationErrorTitle");
@@ -203,8 +204,10 @@ public class AddNodeSupport {
   ** Get user info to create new root node
   */ 
   
-  public DialogAndInProcessCmd getRootCreationDialog(ServerControlFlowHarness cfh, DBGenome genome, Set<String> modKeys, DialogAndInProcessCmd.CmdState cms) {    
+  public DialogAndInProcessCmd getRootCreationDialog(ServerControlFlowHarness cfh, StaticDataAccessContext dacx, Set<String> modKeys, DialogAndInProcessCmd.CmdState cms) {    
     DialogAndInProcessCmd retval;
+    
+    DBGenome genome = dacx.getCurrentGenomeAsDBGenome();
     if (doGene) {
       nci = new NodeCreationInfo(null, null, Node.GENE, false, null, false);
       GeneCreationDialogFactory.BuildArgs ba = 
@@ -252,11 +255,11 @@ public class AddNodeSupport {
   */  
   
   public void createNewNodeForRoot(boolean doGene) {  
-    String nodeID = rcx_.getNextKey();
+    String nodeID = dacx_.getNextKey();
     if (nci.newType == Node.GENE) {
-      newNode = new DBGene(appState_, nci.newName, nodeID);
+      newNode = new DBGene(dacx_, nci.newName, nodeID);
     } else {
-      newNode = new DBNode(appState_, nci.newType, nci.newName, nodeID);
+      newNode = new DBNode(dacx_, nci.newType, nci.newName, nodeID);
     }
     cand = new NodeCandidate();
     cand.node = newNode;
@@ -269,19 +272,20 @@ public class AddNodeSupport {
   ** Get the instance created, ready for the mouse handler mode change
   */  
  
-  public void createNewNodeForInstance(GenomeInstance gi, String nodeID, Node rootNode, int rootType, GenomeSource altSrc) {
+  public void createNewNodeForInstance(DataAccessContext dacx, String nodeID, Node rootNode, int rootType, GenomeSource altSrc) {
     //
     // Bug BT-12-03-08:2  Note if you get the next instance number in a subset model, you can
     // alias into another already existing instance in a parent model!  So we need to get this
     // for the root instance...
+    GenomeInstance  gi = dacx.getCurrentGenomeAsInstance();
     GenomeInstance rootInstance = gi.getVfgParentRoot();
     rootInstance = (rootInstance == null) ? gi : rootInstance; 
     int instanceCount = rootInstance.getNextNodeInstanceNumber(nodeID);
     NodeInstance newInstance;
     if (doGene) {
-      newInstance = new GeneInstance(appState_, (DBGene)rootNode, instanceCount, null, NodeInstance.ACTIVE);
+      newInstance = new GeneInstance(dacx, (DBGene)rootNode, instanceCount, null, NodeInstance.ACTIVE);
     } else {
-      newInstance = new NodeInstance(appState_, (DBNode)rootNode, rootType, instanceCount, null, NodeInstance.ACTIVE);
+      newInstance = new NodeInstance(dacx, (DBNode)rootNode, rootType, instanceCount, null, NodeInstance.ACTIVE);
     }
     newNode = newInstance;
     if (altSrc != null) {
@@ -298,8 +302,12 @@ public class AddNodeSupport {
   ** Get user info to create new instance node
   */   
   
-  public DialogAndInProcessCmd getInstanceCreationDialog(ServerControlFlowHarness cfh, GenomeInstance gi, DBGenome genome, 
-                                                          Set<String> modKeys, DialogAndInProcessCmd.CmdState cms) {     
+  public DialogAndInProcessCmd getInstanceCreationDialog(ServerControlFlowHarness cfh, StaticDataAccessContext dacx, 
+                                                         Set<String> modKeys, DialogAndInProcessCmd.CmdState cms) { 
+    
+    GenomeInstance gi = dacx.getCurrentGenomeAsInstance();
+    DBGenome genome = dacx.getDBGenome();
+    
     DialogAndInProcessCmd retval;
     if (doGene) {
       nci = new NodeCreationInfo(null, null, Node.GENE, false, null, false);
@@ -310,9 +318,12 @@ public class AddNodeSupport {
       retval = new DialogAndInProcessCmd(cfhd, cms);
     } else {   
       nci = new NodeCreationInfo(null, null, Node.NO_NODE_TYPE, false, null, false);
+     
+ 
+      
       
       DrawNodeInstanceCreationDialogFactory.BuildArgs ba = 
-        new DrawNodeInstanceCreationDialogFactory.BuildArgs(genome, gi, genome.getUniqueNodeName(), currentOverlay, modKeys);
+        new DrawNodeInstanceCreationDialogFactory.BuildArgs(dacx, currentOverlay, modKeys);
       DrawNodeInstanceCreationDialogFactory ncd = new DrawNodeInstanceCreationDialogFactory(cfh);
       ServerControlFlowHarness.Dialog cfhd = ncd.getDialog(ba);
       retval = new DialogAndInProcessCmd(cfhd, cms);
@@ -362,7 +373,7 @@ public class AddNodeSupport {
   */  
     
   public BlackHoleResults droppingIntoABlackHole(int x, int y) {    
-    return (AddNodeSupport.droppingIntoABlackHole(appState_, rcx_, x, y, (cand != null) && cand.addToModule));
+    return (AddNodeSupport.droppingIntoABlackHole(uics_, dacx_, x, y, (cand != null) && cand.addToModule));
   } 
   
   /***************************************************************************
@@ -372,14 +383,14 @@ public class AddNodeSupport {
   ** back the intersected list used for pending module adds!
   */  
     
-  public static BlackHoleResults droppingIntoABlackHole(BTState appState, DataAccessContext rcx, int x, int y, boolean addToModule) {
+  public static BlackHoleResults droppingIntoABlackHole(UIComponentSource uics, StaticDataAccessContext rcx, int x, int y, boolean addToModule) {
     
     BlackHoleResults retval = new BlackHoleResults();
-    Set<String> nbh = appState.getGenomePresentation().nonBlackHoles(rcx);
+    Set<String> nbh = uics.getGenomePresentation().nonBlackHoles(rcx);
     
     List<String> intersected = null;
     if (addToModule || (nbh != null)) {
-      intersected = (new NetModuleIntersector(appState, rcx)).netModuleIntersections(x, y, 0.0);
+      intersected = (new NetModuleIntersector(uics, rcx)).netModuleIntersections(x, y, 0.0);
     }
     retval.modCandidates = (addToModule) ? intersected : null;
     //
@@ -414,23 +425,22 @@ public class AddNodeSupport {
        
   public static class NetModuleIntersector {
      
-    private DataAccessContext rcx_;
-    private BTState appState_;
+    private StaticDataAccessContext dacx_;
+    private UIComponentSource uics_;
    
-    public NetModuleIntersector(BTState appState, DataAccessContext rcx) {
-      appState_ = appState;
-      rcx_ = rcx;
+    public NetModuleIntersector(UIComponentSource uics, StaticDataAccessContext dacx) {
+      uics_ = uics;
+      dacx_ = dacx;
     }
      
-    public List<String> netModuleIntersections(int x, int y, double pixDiam) {
-      
-      String currentOverlay = appState_.getCurrentOverlay();
-      TaggedSet currentNetMods = appState_.getCurrentNetModules();
+    public List<String> netModuleIntersections(int x, int y, double pixDiam) {   
+      String currentOverlay = dacx_.getOSO().getCurrentOverlay();
+      TaggedSet currentNetMods = dacx_.getOSO().getCurrentNetModules();
       List<String> intersected = null;
       if (currentOverlay == null) {
         throw new IllegalStateException();
       }
-      intersected = appState_.getGenomePresentation().intersectNetModules(x, y, rcx_, currentOverlay, currentNetMods.set);
+      intersected = uics_.getGenomePresentation().intersectNetModules(x, y, dacx_, currentOverlay, currentNetMods.set);
       return (intersected);
     }
   }

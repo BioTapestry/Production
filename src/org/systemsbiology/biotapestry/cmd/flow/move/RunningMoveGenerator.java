@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-201 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -88,13 +88,13 @@ public class RunningMoveGenerator {
   ** Get a running move for the start point
   */
   
-  public List<RunningMove> getRunningMove(Point2D start, DataAccessContext rcxM) {
+  public List<RunningMove> getRunningMove(Point2D start, StaticDataAccessContext rcxM) {
 
-    String ovrKey = rcxM.oso.getCurrentOverlay();
-    TaggedSet modKeys = rcxM.oso.getCurrentNetModules();
-    int intersectionMask = rcxM.oso.getCurrentOverlaySettings().intersectionMask;
+    String ovrKey = rcxM.getOSO().getCurrentOverlay();
+    TaggedSet modKeys = rcxM.getOSO().getCurrentNetModules();
+    int intersectionMask = rcxM.getOSO().getCurrentOverlaySettings().intersectionMask;
     Set<String> netMods = (modKeys == null) ? null : modKeys.set;
-    TaggedSet revKeys = rcxM.oso.getRevealedModules();
+    TaggedSet revKeys = rcxM.getOSO().getRevealedModules();
     Set<String> revMods = (revKeys == null) ? null : revKeys.set;
     
     ArrayList<RunningMove> retval = new ArrayList<RunningMove>();
@@ -113,7 +113,7 @@ public class RunningMoveGenerator {
     if (!gPre_.linksAreHidden(rcxM)) {
       // Intersect and move linkage labels:
       HashSet<String> seenSrcs = new HashSet<String>();
-      Iterator<Linkage> lit = rcxM.getGenome().getLinkageIterator();
+      Iterator<Linkage> lit = rcxM.getCurrentGenome().getLinkageIterator();
       while (lit.hasNext()) {
         Linkage link = lit.next();
         String lSrc = link.getSource();
@@ -121,7 +121,7 @@ public class RunningMoveGenerator {
           continue;
         }
         seenSrcs.add(lSrc);
-        LinkProperties lp = rcxM.getLayout().getLinkProperties(link.getID());
+        LinkProperties lp = rcxM.getCurrentLayout().getLinkProperties(link.getID());
         LinkageFree render = (LinkageFree)lp.getRenderer();
         if (render.intersectsLabel(link, lp, rcxM, start)) {
           Intersection dummy = new Intersection(null, null, 0.0);
@@ -136,7 +136,7 @@ public class RunningMoveGenerator {
     }
     
     // Intersect and move model data:
-    String modelKey = gPre_.intersectModelData(rcxM, start, ovrKey, netMods, intersectionMask);
+    String modelKey = gPre_.intersectModelData(rcxM, start);
     if (modelKey != null) {
       RunningMove rm = new RunningMove(RunningMove.MoveType.MODEL_DATA, start);
       rm.modelKey = modelKey;
@@ -179,7 +179,7 @@ public class RunningMoveGenerator {
         retval.add(rm);
       }
       
-      if (rcxM.oso.showingModuleComponents()) {       
+      if (rcxM.getOSO().showingModuleComponents()) {       
         Intersection defBound = gPre_.intersectANetModuleElement(x, y, rcxM, NetModuleIntersect.NET_MODULE_DEFINITION_RECT);
         if (defBound != null) {
           RunningMove rm = new RunningMove(RunningMove.MoveType.NET_MODULE_EDGE, start);
@@ -220,7 +220,7 @@ public class RunningMoveGenerator {
   ** Move the selected net module
   */
   
-  public RunningMove[] getRunningMovesForNetModule(Intersection bound, Point2D start, DataAccessContext rcxA,
+  public RunningMove[] getRunningMovesForNetModule(Intersection bound, Point2D start, StaticDataAccessContext rcxA,
                                                    String ovrKey, boolean moveGuts, int moveMode) {
     if (ovrKey == null) {
       throw new IllegalArgumentException();
@@ -248,9 +248,9 @@ public class RunningMoveGenerator {
         throw new IllegalArgumentException();
     }
       
-    NetworkOverlay nov = rcxA.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxA.getGenomeID()).getNetworkOverlay(ovrKey);     
+    NetworkOverlay nov = rcxA.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxA.getCurrentGenomeID()).getNetworkOverlay(ovrKey);     
     NetModule nmod = nov.getModule(moduleID);
-    NetOverlayProperties nop = rcxA.getLayout().getNetOverlayProperties(ovrKey);
+    NetOverlayProperties nop = rcxA.getCurrentLayout().getNetOverlayProperties(ovrKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);
     
     RunningMove interRM = null;
@@ -267,7 +267,7 @@ public class RunningMoveGenerator {
           memIDs = new HashSet<String>();
           memIDs.addAll(ei.contigInfo.memberShapes.keySet());          
         } else {     
-          memIDs = nmf.membersInRegion(bound, nmod, rcxA.getLayout(), ovrKey, moveMode);
+          memIDs = nmf.membersInRegion(bound, nmod, rcxA.getCurrentLayout(), ovrKey, moveMode);
           if (memIDs.isEmpty() && (ei.directShape != null)) {
             if ((ei.directShape.memberID != null) && (ei.directShape.shapeClass == NetModuleFree.TaggedShape.AUTO_MEMBER_SHAPE)) {
               memIDs.add(ei.directShape.memberID);
@@ -293,7 +293,7 @@ public class RunningMoveGenerator {
           nameRM.ovrId = ovrKey;
           nameRM.modIntersect = new Intersection(moduleID, null, 0.0);
         } else {         
-          memIDs = nmf.membersInRegion(bound, nmod, rcxA.getLayout(), ovrKey, moveMode);
+          memIDs = nmf.membersInRegion(bound, nmod, rcxA.getCurrentLayout(), ovrKey, moveMode);
           NetModuleFree.IntersectionExtraInfo ei = (NetModuleFree.IntersectionExtraInfo)bound.getSubID();
           if (memIDs.isEmpty() && (ei.directShape != null)) {
             if ((ei.directShape.memberID != null) && (ei.directShape.shapeClass == NetModuleFree.TaggedShape.AUTO_MEMBER_SHAPE)) {
@@ -363,14 +363,14 @@ public class RunningMoveGenerator {
   ** Move the given group
   */
   
-  public RunningMove[] getRunningMovesForGroup(Point2D start, DataAccessContext rcxI, String groupID) {
+  public RunningMove[] getRunningMovesForGroup(Point2D start, StaticDataAccessContext rcxI, String groupID) {
 
     RunningMove retval = new RunningMove(RunningMove.MoveType.INTERSECTIONS, start);
  
-    GenomeInstance gi = rcxI.getGenomeAsInstance();
+    GenomeInstance gi = rcxI.getCurrentGenomeAsInstance();
     Group group = gi.getGroup(groupID);
        
-    GroupFree gf = rcxI.getLayout().getGroupProperties(groupID).getRenderer();
+    GroupFree gf = rcxI.getCurrentLayout().getGroupProperties(groupID).getRenderer();
     Rectangle bounds = gf.getBounds(group, rcxI, null, false);  
     Intersection[] labels = Intersection.getLabelIntersections(gi, group);
 
@@ -501,7 +501,7 @@ public class RunningMoveGenerator {
   */
   
   private void buildIntersectionToMove(Intersection.AugmentedIntersection aug, Point2D start,
-                                       DataAccessContext rcx, List<RunningMove> moveList) {
+                                       StaticDataAccessContext rcx, List<RunningMove> moveList) {
  
     Intersection selection = (aug == null) ? null : aug.intersect;
     if (selection == null) {
@@ -517,7 +517,7 @@ public class RunningMoveGenerator {
       if (Intersection.getLabelID(selection) == null) {
         return;
       }
-      GroupSettings.Setting groupViz = rcx.gsm.getGroupVisibility(rcx.getGenomeID(), selection.getObjectID(), rcx);
+      GroupSettings.Setting groupViz = rcx.getGSM().getGroupVisibility(rcx.getCurrentGenomeID(), selection.getObjectID(), rcx);
       if (groupViz != GroupSettings.Setting.ACTIVE) {
         return;
       }
@@ -540,13 +540,13 @@ public class RunningMoveGenerator {
   ** Handle link prep for group moves
   */
   
-  private void getLinkRunningMovesForGroup(DataAccessContext rcxL, Rectangle bounds, Point2D start, String groupID, 
+  private void getLinkRunningMovesForGroup(StaticDataAccessContext rcxL, Rectangle bounds, Point2D start, String groupID, 
                                            Map<String, Intersection> mergeMapToInter, Map<String, RunningMove> srcMapToLabel) {
        
-    Iterator<Linkage> lit = rcxL.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcxL.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
-      GenomeInstance.GroupTuple gtup = rcxL.getGenomeAsInstance().getRegionTuple(link.getID());
+      GenomeInstance.GroupTuple gtup = rcxL.getCurrentGenomeAsInstance().getRegionTuple(link.getID());
       String srcGrp = gtup.getSourceGroup();
       String trgGrp = gtup.getTargetGroup();
       if (!srcGrp.equals(groupID) && !trgGrp.equals(groupID)) {
@@ -555,7 +555,7 @@ public class RunningMoveGenerator {
       }
       String srcID = link.getSource();
       Intersection mergeInter = mergeMapToInter.get(srcID);
-      LinkageFree render = (LinkageFree)rcxL.getLayout().getLinkProperties(link.getID()).getRenderer();
+      LinkageFree render = (LinkageFree)rcxL.getCurrentLayout().getLinkProperties(link.getID()).getRenderer();
       Intersection inter = Intersection.pathIntersection(link, rcxL);
       if (!(srcGrp.equals(groupID) && trgGrp.equals(groupID))) {
         // only partially inside: get part inside!
@@ -581,7 +581,7 @@ public class RunningMoveGenerator {
       mergeMapToInter.put(srcID, inter);
       RunningMove labelMove = srcMapToLabel.get(srcID);
       if (labelMove == null) {
-        BusProperties bp = rcxL.getLayout().getLinkProperties(link.getID());    
+        BusProperties bp = rcxL.getCurrentLayout().getLinkProperties(link.getID());    
         if (render.intersectsLabel(link, bp, rcxL, bounds)) {
           labelMove = new RunningMove(RunningMove.MoveType.LINK_LABEL, start);
           labelMove.linkID = link.getID();
@@ -597,7 +597,7 @@ public class RunningMoveGenerator {
   ** Handle link prep for module moves
   */
   
-  private Map<String, Intersection> getLinkRunningMovesForModule(DataAccessContext rcxF, String ovrKey,
+  private Map<String, Intersection> getLinkRunningMovesForModule(StaticDataAccessContext rcxF, String ovrKey,
                                                                  String modID, Set<String> memIDs, Intersection intersect, int mode) {
     
     HashMap<String, Intersection> mergeMapToInter = new HashMap<String, Intersection>();
@@ -615,7 +615,7 @@ public class RunningMoveGenerator {
       gPre_.buildShapeMapForNetModules(rcxF, ovrKey, modSet, outerRectMap, shapeMap);
     } else {
       Rectangle outerBounds = new Rectangle();
-      List<Shape> interRects = (new NetModuleFree()).shapesFromIntersection(intersect, modID, rcxF.getLayout(), ovrKey, mode, outerBounds);
+      List<Shape> interRects = (new NetModuleFree()).shapesFromIntersection(intersect, modID, rcxF.getCurrentLayout(), ovrKey, mode, outerBounds);
       outerRectMap.put(modID, outerBounds);
       shapeMap.put(modID, interRects);
     }
@@ -623,7 +623,7 @@ public class RunningMoveGenerator {
     ArrayList<Intersection> partialMatches = new ArrayList<Intersection>();
     ArrayList<Intersection> fullMatches = new ArrayList<Intersection>();
     
-    Iterator<Linkage> lit = rcxF.getGenome().getLinkageIterator();
+    Iterator<Linkage> lit = rcxF.getCurrentGenome().getLinkageIterator();
     while (lit.hasNext()) {
       Linkage link = lit.next();
       String srcID = link.getSource();
@@ -658,7 +658,7 @@ public class RunningMoveGenerator {
     for (int i = 0; i < numCull; i++) {
       Intersection fullInter = culled.get(i);
       String linkID = fullInter.getObjectID();
-      Linkage link = rcxF.getGenome().getLinkage(linkID);
+      Linkage link = rcxF.getCurrentGenome().getLinkage(linkID);
       String srcID = link.getSource();
       Intersection mergeInter = mergeMapToInter.get(srcID);
       if (mergeInter != null) {
@@ -679,9 +679,9 @@ public class RunningMoveGenerator {
   ** Get moves for modules attached to a region
   */
   
-  private RunningMove[] moveAttachedModules(DataAccessContext rcxA, String groupID, Point2D start) {
+  private RunningMove[] moveAttachedModules(StaticDataAccessContext rcxA, String groupID, Point2D start) {
     ArrayList<RunningMove[]> retlist = new ArrayList<RunningMove[]>();
-    Map<String, Set<String>> moduleMap = rcxA.getGenomeAsInstance().findModulesOwnedByGroup(groupID);
+    Map<String, Set<String>> moduleMap = rcxA.getCurrentGenomeAsInstance().findModulesOwnedByGroup(groupID);
     int numMoves = 0;
     if (!moduleMap.isEmpty()) {
       Iterator<String> mmkit = moduleMap.keySet().iterator();

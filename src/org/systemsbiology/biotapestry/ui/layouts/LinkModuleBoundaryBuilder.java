@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -132,6 +132,7 @@ public class LinkModuleBoundaryBuilder {
   ** Prep for bundle splicing for the non-overlay case
   */
   
+  @SuppressWarnings("unused")
   public Map<Integer, LinkBundleSplicer.SpliceSolution> nonOverlaySplicePrep(SpecialtyInstructions spSrc, 
                                                                              List<Map<String, SpecialtyLayoutLinkData>> shiftedCopies, 
                                                                              Map<String, SpecialtyLayoutLinkData> alienSources, 
@@ -311,7 +312,7 @@ public class LinkModuleBoundaryBuilder {
           targs.add(interModPath);
         }      
         Map<String, SpecialtyLayoutLinkData> placeCopyMap = shiftedCopies.get(sa.getMappedTargetModuleIndex(pao, other));
-        SpecialtyLayoutLinkData siPlace = (SpecialtyLayoutLinkData)placeCopyMap.get(srcID);
+        SpecialtyLayoutLinkData siPlace = placeCopyMap.get(srcID);
         // Penultimate nodes in simple fan-ins do not show up in the placeCopyMap, so give null:
         if (siPlace != null) {
           extractBordersPerSource(siPlace, srcID, modName, modToBorderPoints);
@@ -327,8 +328,7 @@ public class LinkModuleBoundaryBuilder {
       // Handle source-related bundles:
       //
       
-      NetModuleLinkExtractor.ExtractResultForSource interModForSrc = 
-        (NetModuleLinkExtractor.ExtractResultForSource)resultsAsSource.get(modName);
+      NetModuleLinkExtractor.ExtractResultForSource interModForSrc = resultsAsSource.get(modName);
       if (interModForSrc != null) {
         HashMap<String, Map<String, Point2D>> pointData = new HashMap<String, Map<String, Point2D>>();
         HashMap<String, Vector2D> vectorData = new HashMap<String, Vector2D>();
@@ -387,11 +387,11 @@ public class LinkModuleBoundaryBuilder {
       rpbit = spPerBorder.keySet().iterator();
       boolean multiBorderSoln = (spPerBorder.size() > 1);  // conservative, since we ignore skipIt
       while (rpbit.hasNext()) {
-        Integer borderObj = (Integer)rpbit.next();
+        Integer borderObj = rpbit.next();
         if (skipIt.contains(borderObj)) {
           continue;
         }
-        LinkBundleSplicer.SpliceProblem sp = (LinkBundleSplicer.SpliceProblem)spPerBorder.get(borderObj);  
+        LinkBundleSplicer.SpliceProblem sp = spPerBorder.get(borderObj);  
         LinkBundleSplicer.SpliceSolution sSol = lbs.spliceBundles(sp, multiBorderSoln);
         tweakPendingSpliceProblems(spPerBorder, borderObj, sSol);        
         Map<Integer, LinkBundleSplicer.SpliceSolution> solPerBorder = retval.get(modID);
@@ -684,7 +684,7 @@ public class LinkModuleBoundaryBuilder {
     //
     
     while (rpbit.hasNext()) {
-      Integer futureBorderObj = (Integer)rpbit.next();
+      Integer futureBorderObj = rpbit.next();
       if (growth != null) {  // no-link modules are null...
         LinkBundleSplicer.SpliceProblem futureSp = spPerBorder.get(futureBorderObj);
         futureSp.updateInterfaceCoord(growth);
@@ -717,8 +717,8 @@ public class LinkModuleBoundaryBuilder {
     } 
     
     public int compare(Integer border1, Integer border2) { 
-      Integer rank1 = (Integer)myOrder_.get(border1);
-      Integer rank2 = (Integer)myOrder_.get(border2);     
+      Integer rank1 = myOrder_.get(border1);
+      Integer rank2 = myOrder_.get(border2);     
       return (rank1.compareTo(rank2));
     }
   }

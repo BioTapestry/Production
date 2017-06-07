@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -43,7 +43,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -54,6 +54,7 @@ import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -74,8 +75,8 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
   private PerturbationData pd_;
   private JTabbedPane tabPane_;
   private HashSet<Integer> currPending_;
@@ -105,13 +106,13 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
   ** Constructor 
   */ 
   
-  public PerturbationsManagementWindow(BTState appState, DataAccessContext dacx, PerturbationData pd, PertFilterExpression pfe) {              
+  public PerturbationsManagementWindow(UIComponentSource uics, DataAccessContext dacx, PerturbationData pd, PertFilterExpression pfe, UndoFactory uFac) {              
     super();
-    appState_ = appState;
+    uics_ = uics;
     dacx_ = dacx;
     URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/BioTapFab16White.gif");  
     setIconImage(new ImageIcon(ugif).getImage());
-    setTitle(appState_.getRMan().getString("pertManage.title"));
+    setTitle(dacx_.getRMan().getString("pertManage.title"));
     pd_ = pd;
     
     currPending_ = new HashSet<Integer>();
@@ -121,28 +122,28 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     editSubmissionActive_ = false;  
     int legacyModes = pd_.getExistingLegacyModes();
          
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     UiUtil.centerBigFrame(this, 1600, 1200, 0.8, 900);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
     int cpRowNum = 0;
   
-    PertDataPointManagePanel pdpm = new PertDataPointManagePanel(appState_, dacx_, this, pd_, this, legacyModes);
+    PertDataPointManagePanel pdpm = new PertDataPointManagePanel(uics_, dacx_, this, pd_, this, legacyModes, uFac);
     filterTarget_ = pdpm;
     filterTag_ = pdpm.getTag();
     
     ArrayList<AnimatedSplitManagePanel> panelList = new ArrayList<AnimatedSplitManagePanel>();
     panelList.add(pdpm);
-    panelList.add(new PertExperimentManagePanel(appState_, dacx_, this, pd_, this, this, legacyModes));
-    panelList.add(new PertSrcDefsManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertSrcsAndTargsManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertInvestManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertPropertiesManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertMeasurementManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertAnnotManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertExpSetupManagePanel(appState_, dacx_, this, pd_, this, this));
-    panelList.add(new PertMiscSetupManagePanel(appState_, dacx_, this, pd_, this, this));
+    panelList.add(new PertExperimentManagePanel(uics_, dacx_, uFac, this, pd_, this, this, legacyModes));
+    panelList.add(new PertSrcDefsManagePanel(uics_, dacx_, this, pd_, this, this, uFac));
+    panelList.add(new PertSrcsAndTargsManagePanel(uics_, dacx_, this, pd_, this, this, uFac));
+    panelList.add(new PertInvestManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertPropertiesManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertMeasurementManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertAnnotManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertExpSetupManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertMiscSetupManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
     int numPan = panelList.size();
     tabPane_ = new JTabbedPane();
     managePanels_ = new HashMap<String, AnimatedSplitManagePanel>();
@@ -181,7 +182,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
           backBut_.setEnabled(currTabIndex_ > 0);
           forwardBut_.setEnabled(currTabIndex_ < (tabHistory_.size() - 1));
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -203,7 +204,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
           backBut_.setEnabled(currTabIndex_ > 0);
           forwardBut_.setEnabled(currTabIndex_ < (tabHistory_.size() - 1));
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -247,7 +248,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
           backBut_.setEnabled(currTabIndex_ > 0);
           forwardBut_.setEnabled(currTabIndex_ < (tabHistory_.size() - 1)); 
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -283,7 +284,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     buttonPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
     UiUtil.gbcSet(gbc, 0, cpRowNum, 1, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     cp.add(buttonPanel, gbc);    
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     
     if (pfe != null) {
       filterTarget_.jumpWithNewFilter(pfe);
@@ -341,7 +342,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
   
   public void jumpWithNewFilter(PertFilterExpression pfe) {
     if (((PertDataPointManagePanel)filterTarget_).havePendingEdit()) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       JOptionPane.showMessageDialog(this, rMan.getString("pertManage.editingCannotJump"),
                                     rMan.getString("pertManage.editingCannotJumpTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
@@ -482,7 +483,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
   public void jumpToRemoteEdit(String key, String tableTarg, String rowTarg) {
     AnimatedSplitManagePanel asmp = managePanels_.get(key);
     if (asmp.havePendingEdit()) {
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       JOptionPane.showMessageDialog(this, rMan.getString("pertManage.editingCannotJump"),
                                     rMan.getString("pertManage.editingCannotJumpTitle"), 
                                     JOptionPane.ERROR_MESSAGE);
@@ -499,11 +500,12 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
   */
   
   private class PMWindowListener extends WindowAdapter {
-    
+
+    @Override
     public void windowClosing(WindowEvent e) {
       try {
         if (!currPending_.isEmpty()) {
-          ResourceManager rMan = appState_.getRMan();
+          ResourceManager rMan = dacx_.getRMan();
           int ok = JOptionPane.showConfirmDialog(PerturbationsManagementWindow.this, 
                                                  rMan.getString("pertManage.pendingEdits"), 
                                                  rMan.getString("pertManage.pendingEditsTitle"),
@@ -513,15 +515,16 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
           }
         } 
         
-        appState_.getCommonView().clearPerturbationsManagementWindow();       
+        uics_.getCommonView().clearPerturbationsManagementWindow();       
         PerturbationsManagementWindow.this.setVisible(false);
         PerturbationsManagementWindow.this.dispose();  
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }
     
+    @Override
     public void windowOpened(WindowEvent e) {
       try {
         AnimatedSplitPane asp = asp_[0];
@@ -530,7 +533,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
         }
         asp_[0] = null;
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,9 +22,13 @@ package org.systemsbiology.biotapestry.genome;
 import java.awt.geom.Rectangle2D;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
+import org.systemsbiology.biotapestry.db.ColorGenerator;
 import org.systemsbiology.biotapestry.db.StartupView;
+import org.systemsbiology.biotapestry.db.TabNameData;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+import org.systemsbiology.biotapestry.nav.ImageManager;
+import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.UserTreePath;
 import org.systemsbiology.biotapestry.nav.UserTreePathStop;
 import org.systemsbiology.biotapestry.perturb.ConditionDictionary;
@@ -42,12 +46,15 @@ import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.ExperimentControl;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.BusDrop;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.CustomEvidenceDrawStyle;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkSegment;
+import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.NetModuleBusDrop;
 import org.systemsbiology.biotapestry.ui.NetModuleLinkageProperties;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
@@ -59,9 +66,15 @@ import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.NameValuePairList;
 import org.systemsbiology.biotapestry.util.FactoryUtilWhiteboard;
+import org.systemsbiology.biotapestry.util.StringFromXML;
+import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
+import org.systemsbiology.biotapestry.timeCourse.InputTimeRange;
+import org.systemsbiology.biotapestry.timeCourse.RegionAndRange;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
+import org.systemsbiology.biotapestry.timeCourse.TemporalRange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 
-  
 /***************************************************************************
 **
 ** Info needed during XML construction by abstract factory 
@@ -78,6 +91,13 @@ public class FactoryWhiteboard extends FactoryUtilWhiteboard {
   public DynamicInstanceProxy prox;
   public NameValuePairList nvPairList;  
   public NameValuePair nvPair;
+  
+  public FontManager.IndexedFont ifont;
+  public FontManager appendMgr;
+  
+  public NamedColor nextColor;
+  public ColorGenerator appendCGen;
+  public Map<String, String> appendColorKeyMap;
   
   public UserTreePath userTreePath;
   public UserTreePathStop userTreePathStop;
@@ -137,5 +157,38 @@ public class FactoryWhiteboard extends FactoryUtilWhiteboard {
   
   public TimeCourseData.TimeBoundedRegion currTimeBoundRegion;
   public PerturbationData.SerialNumberSet sns;
+  public ImageManager imgMgr;
+  public ImageManager.LoadedImageInfo loadImg;
+  public Map<String, String> appendImgKeyMap;
+  public List<String> mergeIssues;
   
+  public InputTimeRange inputTimeRange;
+  public RegionAndRange regionAndRange;
+  public TemporalRange temporalRange;
+  public TemporalInputRangeData tird;
+  public String tmrKey; 
+  public List<TemporalInputRangeData.TirMapResult> tmrList;
+  public TemporalInputRangeData.TirMapResult tmres; 
+  public String tirdguKey;
+  public List<GroupUsage> tirdguList;
+  public GroupUsage tirdgu;
+  
+  public TimeCourseDataMaps tcdm;
+  public String tcdmKey; 
+  public PerturbationDataMaps pdms;
+  public List<TimeCourseDataMaps.TCMapping> tcdmList;
+  public TimeCourseDataMaps.TCMapping tcdmap; 
+  public String tcdguKey;
+  public List<GroupUsage> tcdguList;
+  public GroupUsage tcdgu; 
+  
+  public NavTree navTree;
+  public NavTree.NavNodeContents nnc;
+  public NavTree.GroupNodeEntry cge;
+  public NavTree.GroupNodeMapEntry cgme;
+  
+  public TabNameData tnd;
+  public StringFromXML sfxml;
+ 
+  public ModelBuilder.Whiteboard modBuild;
 }

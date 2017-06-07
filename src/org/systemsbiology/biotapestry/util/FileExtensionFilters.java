@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,7 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import javax.swing.filechooser.FileFilter;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 public class FileExtensionFilters {
  
@@ -39,9 +39,9 @@ public class FileExtensionFilters {
     private String suffix_;
     private String desc_;
     
-    public SimpleFilter(BTState appState, String suffix, String desc) {
+    public SimpleFilter(ResourceManager rMan, String suffix, String desc) {
       suffix_ = suffix;
-      desc_ = appState.getRMan().getString(desc);
+      desc_ = rMan.getString(desc);
     }    
 
     public boolean accept(File f) {
@@ -65,10 +65,10 @@ public class FileExtensionFilters {
     private String suffix2_;    
     private String desc_;
     
-    public DoubleExtensionFilter(BTState appState, String suffix, String suffix2, String desc) {
+    public DoubleExtensionFilter(ResourceManager rMan, String suffix, String suffix2, String desc) {
       suffix_ = suffix;
       suffix2_ = suffix2;
-      desc_ = appState.getRMan().getString(desc);
+      desc_ = rMan.getString(desc);
     }    
 
     public boolean accept(File f) {
@@ -91,9 +91,9 @@ public class FileExtensionFilters {
     private List<String> suffixes_;    
     private String desc_;
     
-    public MultiExtensionFilter(BTState appState, List<String> suffixes, String desc) {
+    public MultiExtensionFilter(DataAccessContext dacx,  List<String> suffixes, String desc) {
       suffixes_ = new ArrayList<String>(suffixes);
-      String format = appState.getRMan().getString(desc);
+      String format = dacx.getRMan().getString(desc);
       int numSuf = suffixes_.size();
       StringBuffer buf = new StringBuffer();
       for (int i = 0; i < numSuf; i++) {

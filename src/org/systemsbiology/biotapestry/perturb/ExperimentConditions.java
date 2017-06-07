@@ -176,6 +176,7 @@ public class ExperimentConditions implements Cloneable {
   ** 
   */
   
+  @Override
   public String toString() {
     return ("ExperimentConditions: " + id_ + " " + conditionDescription_ );
   }

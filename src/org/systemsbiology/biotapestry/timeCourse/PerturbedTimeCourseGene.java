@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,7 @@ import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Splitter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -45,7 +45,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   
   ////////////////////////////////////////////////////////////////////////////
   //
-  // PUBLIC CONSTANTS  @SuppressWarnings("unused")
+  // PUBLIC CONSTANTS
   //
   //////////////////////////////////////////////////////////////////////////// 
 
@@ -67,7 +67,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   private String timeCourseNote_;  
   private int confidence_;
   private boolean internalOnly_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -90,7 +90,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
 
   public PerturbedTimeCourseGene(PerturbedTimeCourseGene other, boolean doData) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.sources_ = other.sources_.clone();
     this.timeCourseNote_ = other.timeCourseNote_;  
     this.confidence_ = other.confidence_;
@@ -119,8 +119,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(BTState appState, PertSources sources, int confidence, boolean internalOnly) {
-    appState_ = appState;
+  public PerturbedTimeCourseGene(DataAccessContext dacx, PertSources sources, int confidence, boolean internalOnly) {
+    dacx_ = dacx;
     sources_ = sources.clone();
     confidence_ = confidence;
     internalOnly_ = internalOnly;
@@ -133,8 +133,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(BTState appState, PertSources sources, Iterator<GeneTemplateEntry> tempit) {
-    appState_ = appState;
+  public PerturbedTimeCourseGene(DataAccessContext dacx, PertSources sources, Iterator<GeneTemplateEntry> tempit) {
+    dacx_ = dacx;
     sources_ = sources.clone();
     confidence_ = TimeCourseGene.NORMAL_CONFIDENCE;
     internalOnly_ = false;
@@ -154,14 +154,14 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(BTState appState, String srcs, String confidence, String note, String internalOnly) 
+  public PerturbedTimeCourseGene(DataAccessContext dacx, String srcs, String confidence, String note, String internalOnly) 
     throws IOException {
    
     if (srcs == null) {
       throw new IOException();
     }
-    appState_ = appState;
-    sources_ = new PertSources(appState_);
+    dacx_ = dacx;
+    sources_ = new PertSources(dacx_);
     List<String> srcList = Splitter.stringBreak(srcs, ",", 0, false);
     int numSrc = srcList.size();
     for (int i = 0; i < numSrc; i++){
@@ -205,9 +205,53 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
 
   /***************************************************************************
   **
+  ** Needed for merge checks
+  */
+
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return (true);
+    }
+    if (other == null) {
+      return (false);
+    }
+    if (!(other instanceof PerturbedTimeCourseGene)) {
+      return (false);
+    }
+    PerturbedTimeCourseGene otherPTCG = (PerturbedTimeCourseGene)other;
+  
+    if (!DataUtil.stringsEqual(this.timeCourseNote_, otherPTCG.timeCourseNote_)) {
+      return (false);
+    }
+    if (this.confidence_ != otherPTCG.confidence_) {
+      return (false);
+    }
+    if (this.internalOnly_ = !otherPTCG.internalOnly_) {
+      return (false);
+    }
+
+    if (!this.pertData_.equals(otherPTCG.pertData_)) {
+      return (false);
+    }
+    
+    if (!this.controlData_.equals(otherPTCG.controlData_)) {
+      return (false);
+    }
+    
+    if (!this.sources_.equals(otherPTCG.sources_)) {
+      return (false);
+    }
+    
+    return (true);
+  }
+ 
+  /***************************************************************************
+  **
   ** Clone
   */
 
+  @Override
   public PerturbedTimeCourseGene clone() {
     try {
       PerturbedTimeCourseGene retval = (PerturbedTimeCourseGene)super.clone();
@@ -236,7 +280,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
   
   public String getName() {
-    return (sources_.getDisplayString(appState_.getDB().getPertData(), PertSources.NO_FOOTS));
+    return (sources_.getDisplayString(dacx_.getExpDataSrc().getPertData(), PertSources.NO_FOOTS));
   }  
   
   /***************************************************************************
@@ -517,7 +561,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the expression level for a given region and hour.
   */
   
-  public int getExpressionLevelForSource(String region, int hour, int exprSource, TimeCourseGene.VariableLevel varLev) {
+  public int getExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev) {
     Iterator<ExpressionEntry> eit = getExpressions();
     return (getExpressionLevelGuts(eit, region, hour, exprSource, varLev));
   } 
@@ -527,7 +571,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the control expression level for a given region and hour.
   */
   
-  public int getControlExpressionLevelForSource(String region, int hour, int exprSource, TimeCourseGene.VariableLevel varLev) {
+  public int getControlExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev) {
     Iterator<ExpressionEntry> eit = getControlExpressions();
     return (getExpressionLevelGuts(eit, region, hour, exprSource, varLev));
   } 
@@ -537,7 +581,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the expression level for a given region and hour.
   */
   
-  private int getExpressionLevelGuts(Iterator<ExpressionEntry> eit, String region, int hour, int exprSource, TimeCourseGene.VariableLevel varLev) {
+  private int getExpressionLevelGuts(Iterator<ExpressionEntry> eit, String region, int hour, 
+                                     ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev) {
     while (eit.hasNext()) {
       ExpressionEntry ee = eit.next();
       int time = ee.getTime(); 
@@ -587,7 +632,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the expression source for a given region and time.
   */
   
-  public int getExprSource(String region, int time) {
+  public ExpressionEntry.Source getExprSource(String region, int time) {
     //
     // Crank through all the expressions to find ones that
     // match the region. 
@@ -703,8 +748,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Get an HTML expression table suitable for display.
   */
   
-  public int getExpressionTable(PrintWriter out, TimeCourseGene wtGene, TimeCourseData tcd) {
-    return ((new TimeCourseTableDrawer(appState_, wtGene, this)).getPertExpressionTable(out, tcd));
+  public int getExpressionTable(PrintWriter out, TimeCourseGene wtGene, TimeCourseData tcd, DataAccessContext dacx) {
+    return ((new TimeCourseTableDrawer(dacx, wtGene, this)).getPertExpressionTable(out, tcd));
   }
      
   /***************************************************************************
@@ -751,7 +796,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   **
   */
   
-  public static PerturbedTimeCourseGene buildFromXML(BTState appState, String elemName, 
+  public static PerturbedTimeCourseGene buildFromXML(DataAccessContext dacx, String elemName, 
                                                      Attributes attrs) throws IOException {
     if (!elemName.equals("perturbExpr")) {
       return (null);
@@ -786,6 +831,6 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
       throw new IOException();
     }
     
-    return (new PerturbedTimeCourseGene(appState, pertSrcs, confidence, note, internalOnly));
+    return (new PerturbedTimeCourseGene(dacx, pertSrcs, confidence, note, internalOnly));
   }
 }

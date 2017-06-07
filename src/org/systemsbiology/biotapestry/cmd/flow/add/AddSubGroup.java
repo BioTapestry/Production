@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,12 +26,14 @@ import java.awt.geom.Point2D;
 import java.io.IOException;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractOptArgs;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
@@ -126,8 +128,7 @@ public class AddSubGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddSubGroup(BTState appState, Action action) {
-    super(appState);
+  public AddSubGroup(Action action) {
     if (action != Action.CREATE) {
       throw new IllegalArgumentException();
     }
@@ -144,8 +145,7 @@ public class AddSubGroup extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddSubGroup(BTState appState, Action action, GroupPairArgs gpa) {
-    super(appState);
+  public AddSubGroup(Action action, GroupPairArgs gpa) {
     if (action == Action.CREATE) {
       throw new IllegalArgumentException();
     }
@@ -188,10 +188,11 @@ public class AddSubGroup extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSpli, DataAccessContext rcx) { 
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     switch (action_) {
       case CREATE: 
-        GenomeInstance gi = rcx.getGenomeAsInstance();
+        GenomeInstance gi = rcx.getCurrentGenomeAsInstance();
         return (gi.getVfgParent() == null);
       case INCLUDE:
       case ACTIVATE:
@@ -208,8 +209,8 @@ public class AddSubGroup extends AbstractControlFlow {
   */ 
   
   @Override  
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    AddState retval = (action_ == Action.CREATE) ? new AddState(appState_, dacx) : new AddState(appState_, action_, parentGroup_, baseSubKey_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    AddState retval = (action_ == Action.CREATE) ? new AddState(dacx) : new AddState(action_, parentGroup_, baseSubKey_, dacx);
     return (retval);
   }
   
@@ -227,9 +228,7 @@ public class AddSubGroup extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         AddState ans = (AddState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
           next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -266,7 +265,7 @@ public class AddSubGroup extends AbstractControlFlow {
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = "stepFinishPlacement"; 
+    ans.setNextStep("stepFinishPlacement"); 
     return (retval);
   }
   
@@ -275,29 +274,17 @@ public class AddSubGroup extends AbstractControlFlow {
   ** Running State.
   */
         
-  public static class AddState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class AddState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
      
-   // private Genome targetGenome;
-  //  private String genomeKey;
-  //  private GenomeInstance targetGi;
-  //  private Layout targetLayout;
-    private DataAccessContext rcx;
     private Intersection intersect;  
     private Group newSubGroup;
     private int newSubGroupLayer;
-    private ServerControlFlowHarness cfh;
     private int x;
-    private int y;  
-    private String nextStep_;     
-    private BTState appState_;
+    private int y;     
     
     private String myParentGroup_;
     private String myBaseSubKey_;
-         
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+
     /***************************************************************************
     **
     ** Init intersection
@@ -313,9 +300,8 @@ public class AddSubGroup extends AbstractControlFlow {
     ** Construct
     */
     
-    public AddState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcx = dacx;
+    public AddState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepBiWarning";
     }
     
@@ -381,12 +367,11 @@ public class AddSubGroup extends AbstractControlFlow {
     ** Construct
     */
     
-    public AddState(BTState appState, Action action, String parentGroup, String baseSubKey, DataAccessContext dacx) {
+    public AddState(Action action, String parentGroup, String baseSubKey, StaticDataAccessContext dacx) {
+      super(dacx);
       if (action == Action.CREATE) {
         throw new IllegalArgumentException();
       }
-      appState_ = appState;
-      rcx = dacx;
       myBaseSubKey_ = baseSubKey;
       myParentGroup_ = parentGroup;
       nextStep_ = (action == Action.ACTIVATE) ? "stepActivate" : "stepInclude";
@@ -399,12 +384,12 @@ public class AddSubGroup extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd doneval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
-      if (rcx.getDBGenome().getID().equals(rcx.getGenomeID())) {  // Only works if not root genome
+      if (dacx_.currentGenomeIsRootDBGenome()) {  // Only works if not root genome
         return (doneval);
       }
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.message");
         String title = rMan.getString("instructWarning.title");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);     
@@ -422,13 +407,13 @@ public class AddSubGroup extends AbstractControlFlow {
     */
        
     private DialogAndInProcessCmd stepOne() {
-      if (rcx.getGenomeAsInstance().getVfgParentRoot() != null) {
+      if (dacx_.getCurrentGenomeAsInstance().getVfgParentRoot() != null) {
         throw new IllegalStateException();
       }
-      String defaultName = appState_.getRMan().getString("sgcreate.defaultName");   // FIX ME generate unique suffix
+      String defaultName = dacx_.getRMan().getString("sgcreate.defaultName");   // FIX ME generate unique suffix
       SubGroupCreationDialogFactory.SubGroupBuildArgs ba = 
-        new SubGroupCreationDialogFactory.SubGroupBuildArgs(defaultName, rcx.getGenomeAsInstance().usedGroupNames());
-      SubGroupCreationDialogFactory dgcdf = new SubGroupCreationDialogFactory(cfh);
+        new SubGroupCreationDialogFactory.SubGroupBuildArgs(defaultName, dacx_.getCurrentGenomeAsInstance().usedGroupNames());
+      SubGroupCreationDialogFactory dgcdf = new SubGroupCreationDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepDataExtract";
@@ -446,9 +431,9 @@ public class AddSubGroup extends AbstractControlFlow {
          DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this);
          return (retval);
        } 
-       String id = rcx.getNextKey(); // Unique in root address space  
+       String id = dacx_.getNextKey(); // Unique in root address space  
        String parentID = intersect.getObjectID();
-       newSubGroup = new Group(rcx.rMan, id, crq.nameResult, parentID);
+       newSubGroup = new Group(dacx_.getRMan(), id, crq.nameResult, parentID);
        newSubGroupLayer = crq.layerResult;
        nextStep_ = "stepSetToMode";
        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
@@ -477,24 +462,24 @@ public class AddSubGroup extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, "undo.addNewSubGroup");       
+      UndoSupport support = uFac_.provideUndoSupport("undo.addNewSubGroup", dacx_);       
       
-      GenomeChange gc = rcx.getGenomeAsInstance().addGroupWithExistingLabel(newSubGroup);
+      GenomeChange gc = dacx_.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newSubGroup);
       if (gc != null) {
-        support.addEdit(new GenomeChangeCmd(appState_, rcx, gc));
-        support.addEvent(new ModelChangeEvent(rcx.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEdit(new GenomeChangeCmd(dacx_, gc));
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       } 
       
       String parent = newSubGroup.getParentID();  // Only works at VfA level!
-      GroupProperties parProp = rcx.getLayout().getGroupProperties(parent);
+      GroupProperties parProp = dacx_.getCurrentLayout().getGroupProperties(parent);
       
-      GroupProperties prop = new GroupProperties(newSubGroup.getID(), rcx.getLayout(), newSubGroupLayer, 
-                                                 new Point2D.Double(x, y), parProp.getOrder(), rcx.cRes);
+      GroupProperties prop = new GroupProperties(newSubGroup.getID(), newSubGroupLayer, 
+                                                 new Point2D.Double(x, y), parProp.getOrder(), dacx_.getColorResolver());
       Layout.PropChange[] lpc = new Layout.PropChange[1];    
-      lpc[0] = rcx.getLayout().setGroupProperties(newSubGroup.getID(), prop);   
+      lpc[0] = dacx_.getCurrentLayout().setGroupProperties(newSubGroup.getID(), prop);   
       if (lpc != null) {
-        support.addEdit(new PropChangeCmd(appState_, rcx, lpc));
-        support.addEvent(new LayoutChangeEvent(rcx.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
+        support.addEdit(new PropChangeCmd(dacx_, lpc));
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));    
       }
       support.finish();      
       return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this));
@@ -506,8 +491,8 @@ public class AddSubGroup extends AbstractControlFlow {
     */  
     
     private DialogAndInProcessCmd stepActivate() {   
-      GroupCreationSupport handler = new GroupCreationSupport(appState_);
-      handler.makeSubGroupActive(rcx, myParentGroup_, myBaseSubKey_, null);
+      GroupCreationSupport handler = new GroupCreationSupport(uics_, uFac_);
+      handler.makeSubGroupActive(dacx_, myParentGroup_, myBaseSubKey_, null);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
     
@@ -517,8 +502,8 @@ public class AddSubGroup extends AbstractControlFlow {
     */  
     
     private DialogAndInProcessCmd stepInclude() {      
-      GroupCreationSupport handler = new GroupCreationSupport(appState_);
-      handler.includeSubGroup(rcx, myParentGroup_, myBaseSubKey_);
+      GroupCreationSupport handler = new GroupCreationSupport(uics_, uFac_);
+      handler.includeSubGroup(dacx_, myBaseSubKey_);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }   
   }

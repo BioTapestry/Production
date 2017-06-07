@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@ import java.util.Iterator;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Splitter;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -58,7 +58,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ////////////////////////////////////////////////////////////////////////////
 
   private ArrayList<String> sources_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,8 +71,8 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ** Constructor
   */
 
-  public PertSources(BTState appState) {
-    appState_ = appState;
+  public PertSources(DataAccessContext dacx) {
+    dacx_ = dacx;
     sources_ = new ArrayList<String>();
   }
   
@@ -106,6 +106,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ** Clone
   */
 
+  @Override
   public PertSources clone() {
     try {
       PertSources retval = (PertSources)super.clone();
@@ -122,7 +123,8 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ** Standard hashCode
   **
   */
-  
+
+  @Override
   public int hashCode() {
     int code = 0;
     int numSrc = sources_.size();
@@ -139,6 +141,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   **
   */
   
+  @Override
   public boolean equals(Object other) {
     if (this == other) {
       return (true);
@@ -159,7 +162,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   */  
   
   public int compareTo(PertSources other) {
-    PerturbationData pd = appState_.getDB().getPertData();
+    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     String me = this.getDisplayString(pd, NO_FOOTS);
     String him = other.getDisplayString(pd, NO_FOOTS);
     return (me.compareTo(him));
@@ -171,9 +174,9 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   */
   
   public boolean matchesFilter(PertFilter pf, SourceSrc ss) {
-    int category = pf.getCategory();
+    PertFilter.Cat category = pf.getCategory();
     switch (category) {
-      case PertFilter.SOURCE:
+      case SOURCE:
         String filterSrc = pf.getStringValue();
         int numSrc = sources_.size();
         for (int i = 0; i < numSrc; i++) {
@@ -183,15 +186,15 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
           }
         }
         return (false);
-      case PertFilter.SOURCE_NAME:
-      case PertFilter.SOURCE_OR_PROXY_NAME:
-      case PertFilter.ANNOTATION:    
+      case SOURCE_NAME:
+      case SOURCE_OR_PROXY_NAME:
+      case ANNOTATION:    
         String filterStr = pf.getStringValue();
         int numSrcN = sources_.size();
         for (int i = 0; i < numSrcN; i++) {
           String pskey = sources_.get(i);
           PertSource ps = ss.getSourceDef(pskey);
-          if (category == PertFilter.ANNOTATION) {
+          if (category == PertFilter.Cat.ANNOTATION) {
             List<String> annotIDs = ps.getAnnotationIDs();
             if ((annotIDs != null) && annotIDs.contains(filterStr)) {
               return (true);
@@ -200,7 +203,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
             if (filterStr.equals(ps.getSourceNameKey())) {
               return (true);
             }
-            if (pf.getCategory() == PertFilter.SOURCE_OR_PROXY_NAME) {
+            if (pf.getCategory() == PertFilter.Cat.SOURCE_OR_PROXY_NAME) {
               if (ps.isAProxy() && filterStr.equals(ps.getProxiedSpeciesKey())) {
                 return (true);
               }
@@ -208,7 +211,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
           }
         }
         return (false);
-      case PertFilter.PERT:
+      case PERT:
         String filterPert= pf.getStringValue();
         numSrc = sources_.size();
         for (int i = 0; i < numSrc; i++) {
@@ -219,19 +222,19 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
           }
         }
         return (false);
-      case PertFilter.TARGET:
-      case PertFilter.TIME:
-      case PertFilter.INVEST:
-      case PertFilter.INVEST_LIST:
-      case PertFilter.VALUE:
-      case PertFilter.EXP_CONTROL:
-      case PertFilter.EXP_CONDITION:
-      case PertFilter.MEASURE_SCALE:
+      case TARGET:
+      case TIME:
+      case INVEST:
+      case INVEST_LIST:
+      case VALUE:
+      case EXP_CONTROL:
+      case EXP_CONDITION:
+      case MEASURE_SCALE:
         
-      case PertFilter.MEASURE_TECH:
+      case MEASURE_TECH:
         // We do not care about this question:
         return (true);
-      case PertFilter.EXPERIMENT:
+      case EXPERIMENT:
         // Should not be asked this question
       default:
         throw new IllegalArgumentException();

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,9 +29,11 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -101,8 +103,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   ** Constructor 
   */ 
   
-  public SpecialtyLayoutFlow(BTState appState, SpecialtyLayout specL, int mode) {
-    super(appState);
+  public SpecialtyLayoutFlow(SpecialtyLayout specL, int mode) {
     mode_ = mode;
     acfSpecL_ = specL;
     switch (mode) {
@@ -146,7 +147,8 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   ** Answer if we are enabled
   ** 
   */
-    
+   
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     if (!cache.genomeNotEmpty()) {
       return (false);
@@ -171,8 +173,9 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    GenomeInstance gi = rcx.getGenomeAsInstance();
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    GenomeInstance gi = rcx.getCurrentGenomeAsInstance();
     Group group = gi.getGroup(inter.getObjectID());
     if (gi.getVfgParent() == null) {
       int memCount = group.getMemberCount();
@@ -182,8 +185,6 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     }       
   }
   
-
-
   /***************************************************************************
   **
   ** For programmatic preload
@@ -191,8 +192,8 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new SpecLayoutStepState(appState_, acfSpecL_, mode_, undoStr_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new SpecLayoutStepState(acfSpecL_, mode_, undoStr_, dacx));  
   }
   
   /***************************************************************************
@@ -206,14 +207,11 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        SpecLayoutStepState ans = new SpecLayoutStepState(appState_, acfSpecL_, mode_, undoStr_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        SpecLayoutStepState ans = new SpecLayoutStepState(acfSpecL_, mode_, undoStr_, cfh);       
         next = ans.stepSetupLayout();
       } else {
         SpecLayoutStepState ans = (SpecLayoutStepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepSetupLayout")) {
           next = ans.stepSetupLayout();
         } else if (ans.getNextStep().equals("stepDoLayout")) {
@@ -242,12 +240,9 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   ** Running State
   */
         
-  public static class SpecLayoutStepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
+  public static class SpecLayoutStepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
      
-    private ServerControlFlowHarness cfh;
-    private String nextStep_; 
     private String nextNextStep_;   
-    private BTState appState_;
     private String groupID;
     private SpecialtyLayout specL_;
     private int mode_;
@@ -259,16 +254,14 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     private int numSub_;
     private boolean isForSubset_;
     private Set<String> needExpansion_;
-    private DataAccessContext rcxT_;
  
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public SpecLayoutStepState(BTState appState, SpecialtyLayout specL, int mode, String undos, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;  
+    public SpecLayoutStepState(SpecialtyLayout specL, int mode, String undos, StaticDataAccessContext dacx) {
+      super(dacx);
       mode_ = mode;
       specL_ = specL;
       nextStep_ = "stepSetupLayout";
@@ -277,12 +270,19 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public SpecLayoutStepState(SpecialtyLayout specL, int mode, String undos, ServerControlFlowHarness cfh) {
+      super(cfh);
+      mode_ = mode;
+      specL_ = specL;
+      nextStep_ = "stepSetupLayout";
+      undoStr_ = undos;
     }
+    
+    
+    
       
     /***************************************************************************
     **
@@ -305,28 +305,28 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
       interModPaths_ = null;
       useCenter_ = null;
       isForSubset_ = (mode_ != LAYOUT_ALL);
-      ResourceManager rMan = appState_.getRMan();  
+      ResourceManager rMan = dacx_.getRMan();  
         
       switch (mode_) {
         case LAYOUT_ALL:
-          GenomeSubset subset = new GenomeSubset(appState_, rcxT_.getGenomeID(), appState_.getCanvasCenter());
+          GenomeSubset subset = new GenomeSubset(dacx_, dacx_.getWorkspaceSource().getWorkspace().getCanvasCenter());
           subsetList_.add(subset);
           useCenter_ = subset.getPreferredCenter();
           break;
         case LAYOUT_SELECTION:        
-          subset = new GenomeSubset(appState_, rcxT_.getGenomeID(), appState_.getSUPanel().getSelectedNodes(), null);
-          subset.setOrigBounds(rcxT_);            
+          subset = new GenomeSubset(dacx_, dacx_.getCurrentGenomeID(), uics_.getSUPanel().getSelectedNodes(dacx_), null);
+          subset.setOrigBounds(dacx_);            
           subsetList_.add(subset);
           break;
         case LAYOUT_PER_OVERLAY:
-          String overlayKey = rcxT_.oso.getCurrentOverlay();
+          String overlayKey = dacx_.getOSO().getCurrentOverlay();
           if (overlayKey != null) {
             // Make sure Overlay/modules semantics are OK
             OverlayLayoutAnalyzer ola = new OverlayLayoutAnalyzer();
-            OverlayLayoutAnalyzer.OverlayReport olaor = ola.canSupport(rcxT_, overlayKey);
+            OverlayLayoutAnalyzer.OverlayReport olaor = ola.canSupport(dacx_, overlayKey);
             if (olaor.getResult() == OverlayLayoutAnalyzer.OverlayReport.MISSING_LINKS) {
                MessageTableReportingDialog mtrd = 
-                 new MessageTableReportingDialog(appState_, olaor.getMissingLinkMessages(), 
+                 new MessageTableReportingDialog(uics_, dacx_, olaor.getMissingLinkMessages(), 
                                                  "specLayout.overlayMissingLinksTitle", 
                                                  "specLayout.overlayMissingLinks", 
                                                  "specLayout.overlayMissingLink",
@@ -334,7 +334,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
                mtrd.setVisible(true);
                return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this)); // We are done no matter what...             
             } else if (olaor.getResult() != OverlayLayoutAnalyzer.OverlayReport.NO_PROBLEMS) {
-              String errText = olaor.getResultMessage(appState_);
+              String errText = olaor.getResultMessage(dacx_);
               String desc = MessageFormat.format(rMan.getString("specLayout.overlayNotAdequate"), new Object[] {errText});
               desc = UiUtil.convertMessageToHtml(desc);
               SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, desc, rMan.getString("specLayout.overlayNotAdequateTitle"));
@@ -342,10 +342,10 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
               return (new DialogAndInProcessCmd(suf, this));
             }
        
-            needExpansion_ = ola.mustExpandGeometry(rcxT_, overlayKey);     
-            NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+            needExpansion_ = ola.mustExpandGeometry(dacx_, overlayKey);     
+            NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
             NetworkOverlay nov = owner.getNetworkOverlay(overlayKey);
-            Map<String, Rectangle> boundsPerMod = rcxT_.getLayout().getLayoutBoundsForEachNetModule(owner, overlayKey, rcxT_);                           
+            Map<String, Rectangle> boundsPerMod = dacx_.getCurrentLayout().getLayoutBoundsForEachNetModule(owner, overlayKey, dacx_);                           
             Iterator<NetModule> mit = nov.getModuleIterator();         
             while (mit.hasNext()) {       
               NetModule nmod = mit.next();                          
@@ -357,26 +357,26 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
               }
               String id = nmod.getID();
               Rectangle bounds = boundsPerMod.get(id);
-              subset = new GenomeSubset(appState_, rcxT_.getGenomeID(), memIds, null);
+              subset = new GenomeSubset(dacx_, dacx_.getCurrentGenomeID(), memIds, null);
               subset.setOrigBounds(bounds);
               subset.setModuleID(id);
               subset.setOverlayID(overlayKey);
               subsetList_.add(subset);
             }
-            interModPaths_ = (new NetModuleLinkExtractor()).extract(rcxT_, overlayKey, subsetList_);
+            interModPaths_ = (new NetModuleLinkExtractor()).extract(dacx_, overlayKey, subsetList_);
           }
           break;
         case LAYOUT_REGION:
           HashSet<String> regNodes = new HashSet<String>();
-          Group group = rcxT_.getGenomeAsInstance().getGroup(groupID);
+          Group group = dacx_.getCurrentGenomeAsInstance().getGroup(groupID);
           Iterator<GroupMember> mit = group.getMemberIterator();
           while (mit.hasNext()) {
             GroupMember gm = mit.next();
             regNodes.add(gm.getID());
           }     
           // Here we set the original bounds using the current node locations.
-          subset = new GenomeSubset(appState_, rcxT_.getGenomeID(), regNodes, null);
-          subset.setOrigBounds(rcxT_);         
+          subset = new GenomeSubset(dacx_, dacx_.getCurrentGenomeID(), regNodes, null);
+          subset.setOrigBounds(dacx_);         
           subset.setGroupID(groupID);            
           subsetList_.add(subset);
           break;  
@@ -391,12 +391,12 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
       int topoProblems = SpecialtyLayout.TOPOLOGY_HANDLED;
       numSub_ = subsetList_.size();
       if (!isForSubset_) {
-        topoProblems = specL_.topologyIsHandled(rcxT_);
+        topoProblems = specL_.topologyIsHandled(dacx_);
       } else {
         for (int i = 0; i < numSub_; i++) {
           GenomeSubset subset = subsetList_.get(i);
           Genome fake = subset.getPseudoGenome();
-          DataAccessContext rcxF = new DataAccessContext(rcxT_, fake);
+          StaticDataAccessContext rcxF = new StaticDataAccessContext(dacx_, fake);
           int myTopoProblems = specL_.topologyIsHandled(rcxF);
           if (myTopoProblems != SpecialtyLayout.TOPOLOGY_HANDLED) {              
             topoProblems = myTopoProblems;
@@ -446,9 +446,9 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
              
     private DialogAndInProcessCmd stepGetParamDialog() {
       
-      String selectedID = appState_.getGenomePresentation().getSingleNodeSelection(rcxT_);
-      SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specL_.getParameterDialogBuildArgs(rcxT_.getGenome(), selectedID, isForSubset_);
-      SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh);
+      String selectedID = uics_.getGenomePresentation().getSingleNodeSelection(dacx_);
+      SpecialtyLayoutEngineParamDialogFactory.BuildArgs ba = specL_.getParameterDialogBuildArgs(uics_, dacx_.getCurrentGenome(), selectedID, isForSubset_);
+      SpecialtyLayoutEngineParamDialogFactory cedf = new SpecialtyLayoutEngineParamDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);
       nextStep_ = "stepExtractParams";
@@ -479,10 +479,10 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
       //
       
       String problem = null;
-      InvertedSrcTrg ist = new InvertedSrcTrg(rcxT_.getGenome());
+      InvertedSrcTrg ist = new InvertedSrcTrg(dacx_.getCurrentGenome());
       for (int i = 0; i < numSub_; i++) {
         GenomeSubset subset = subsetList_.get(i);
-        SpecialtyLayoutData sld = new SpecialtyLayoutData(appState_, subset, rcxT_, params_, ist);
+        SpecialtyLayoutData sld = new SpecialtyLayoutData(subset, dacx_, params_, ist);
         SpecialtyLayout forked = specL_.forkForSubset(sld);
         String setupProblem = forked.setUpIsOK();
         if (setupProblem != null) {
@@ -492,7 +492,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
       }
       
       if (problem != null) {
-        SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, problem, rcxT_.rMan.getString("specLayout.setupProblemsTitle"));
+        SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, problem, dacx_.getRMan().getString("specLayout.setupProblemsTitle"));
         nextStep_ = "stepWillExit";
         return (new DialogAndInProcessCmd(suf, this));
       }
@@ -523,25 +523,25 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
       // invalid after the layout changes stuff around!
       //
         
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       if (sup.hasASelection()) {
-        sup.selectNone(appState_.getUndoManager(), rcxT_);
+        sup.selectNone(uics_, uFac_, dacx_);
         sup.drawModel(false);
       }
       NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(subsetList_, interModPaths_, needExpansion_);
  
-      UndoSupport support = new UndoSupport(appState_, undoStr_);
+      UndoSupport support = uFac_.provideUndoSupport(undoStr_, dacx_);
       SpecialtyLayoutEngine sle = 
-        new SpecialtyLayoutEngine(appState_, subsetList_, rcxT_, specL_, sa, useCenter_, // null if not centering after we are done
+        new SpecialtyLayoutEngine(subsetList_, dacx_, specL_, sa, useCenter_, // null if not centering after we are done
                                   params_, false, false);
       
-      SpecialtyLayoutRunner runner = new SpecialtyLayoutRunner(appState_, sle, rcxT_, support);        
+      SpecialtyLayoutRunner runner = new SpecialtyLayoutRunner(sle, dacx_, support);        
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       runner.setClient(bwc);
       bwc.launchWorker();
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
                                                                                        : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done    
       return (daipc);
     }
@@ -557,7 +557,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     }
     
     public void cleanUpPreEnable(Object result) {
-       appState_.getZoomCommandSupport().zoomToWorksheetCenter();
+       uics_.getZoomCommandSupport().zoomToWorksheetCenter();
        return;
     }
     
@@ -566,8 +566,8 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
     }     
     
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
-      LayoutLinkSupport.offerColorFixup(appState_, rcxT_, (LinkRouter.RoutingResult)result);
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      LayoutLinkSupport.offerColorFixup(uics_, dacx_, (LinkRouter.RoutingResult)result, uFac_);
       return;
     }  
   } 
@@ -580,22 +580,20 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
   private static class SpecialtyLayoutRunner extends BackgroundWorker {
      
      private SpecialtyLayoutEngine mySle_; 
-     private BTState myAppState_;
      private UndoSupport support_;
      private String loKey_;
-     private DataAccessContext rcx_;
+     private StaticDataAccessContext rcx_;
    
-     public SpecialtyLayoutRunner(BTState appState, SpecialtyLayoutEngine sle, DataAccessContext rcx, UndoSupport support) {
+     public SpecialtyLayoutRunner(SpecialtyLayoutEngine sle, StaticDataAccessContext rcx, UndoSupport support) {
        super(new LinkRouter.RoutingResult());
        mySle_ = sle;
        support_ = support;
-       myAppState_ = appState;
        rcx_ = rcx;
      }
      
      public Object runCore() throws AsynchExitRequestException {    
-       loKey_ = rcx_.getLayoutID();
-       Layout.PadNeedsForLayout padNeedsForLayout = rcx_.fgho.getLocalNetModuleLinkPadNeeds(rcx_.getGenomeID());
+       loKey_ = rcx_.getCurrentLayoutID();
+       Layout.PadNeedsForLayout padNeedsForLayout = rcx_.getFGHO().getLocalNetModuleLinkPadNeeds(rcx_.getCurrentGenomeID());
        // Null means it is happening inside the specialty layout call:
        mySle_.setModuleRecoveryData(padNeedsForLayout, null);
        
@@ -606,14 +604,14 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
        //   mc.repairNetModuleLinkPadsLocally(padNeeds, frc, genome_.getID(), false, support_);
        // at this point, but this operation is now happening inside the specialty layout call.
        //    
-       myAppState_.getZoomTarget().fixCenterPoint(true, support_, false);
+       rcx_.getZoomTarget().fixCenterPoint(true, support_, false);
        return (res);
      }
 
      public Object postRunCore() {
-       if (myAppState_.modelIsOutsideWorkspaceBounds()) {
-         Rectangle allBounds = myAppState_.getZoomTarget().getAllModelBounds();
-        (new WorkspaceSupport(myAppState_, rcx_)).setWorkspaceToModelBounds(support_, allBounds);
+       if (rcx_.modelIsOutsideWorkspaceBounds()) {
+         Rectangle allBounds = rcx_.getZoomTarget().getAllModelBounds();
+        (new WorkspaceSupport(rcx_)).setWorkspaceToModelBounds(support_, allBounds);
        }
        support_.addEvent(new LayoutChangeEvent(loKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE));
        return (null);

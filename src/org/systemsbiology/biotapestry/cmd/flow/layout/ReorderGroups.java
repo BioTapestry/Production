@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,8 +20,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.layout;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -104,8 +106,7 @@ public class ReorderGroups extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ReorderGroups(BTState appState, Direction action) {
-    super(appState);
+  public ReorderGroups(Direction action) {
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -121,16 +122,17 @@ public class ReorderGroups extends AbstractControlFlow {
   */
     
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    GroupProperties gProp = rcx.getLayout().getGroupProperties(Group.getBaseID(inter.getObjectID()));
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    GroupProperties gProp = rcx.getCurrentLayout().getGroupProperties(Group.getBaseID(inter.getObjectID()));
     int gOrd = gProp.getOrder(); 
     
     switch (action_) {
       case RAISE:
-        int topOrder = rcx.getLayout().getTopGroupOrder();           
+        int topOrder = rcx.getCurrentLayout().getTopGroupOrder();           
         return (topOrder > gOrd);    
       case LOWER:   
-        int bottomOrder = rcx.getLayout().getBottomGroupOrder();
+        int bottomOrder = rcx.getCurrentLayout().getBottomGroupOrder();
         return (bottomOrder < gOrd); 
       default:
         throw new IllegalStateException();
@@ -144,8 +146,8 @@ public class ReorderGroups extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, action_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(action_, dacx));
   }     
   
   /***************************************************************************
@@ -172,9 +174,10 @@ public class ReorderGroups extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());
+        ans = new StepState(action_, cfh);
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
@@ -193,30 +196,33 @@ public class ReorderGroups extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
 
-    private String nextStep_;
     private Direction myAction_;
-    private BTState appState_;
     private Intersection inter_;
-    private DataAccessContext rcxT_;
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, Direction action, DataAccessContext dacx) {
+    public StepState(Direction action, StaticDataAccessContext dacx) {
+      super(dacx);
       myAction_ = action;
-      appState_ = appState;
-      rcxT_ = dacx;
       nextStep_ = "stepToProcess";
     }
      
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(Direction action, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
+    }
+
     /***************************************************************************
     **
     ** for preload
@@ -239,24 +245,24 @@ public class ReorderGroups extends AbstractControlFlow {
      
       switch (myAction_) {
         case RAISE:      
-          lpc = rcxT_.getLayout().raiseGroup(baseID); 
+          lpc = dacx_.getCurrentLayout().raiseGroup(baseID); 
           usKey = "undo.groupRaise";
           break;
         case LOWER:  
-          lpc = rcxT_.getLayout().lowerGroup(baseID);
+          lpc = dacx_.getCurrentLayout().lowerGroup(baseID);
           usKey = "undo.groupLower";
           break;
         default:
           throw new IllegalStateException();
       }
       if (lpc != null) {
-        UndoSupport support = new UndoSupport(appState_, usKey);
-        PropChangeCmd mov = new PropChangeCmd(appState_, rcxT_, lpc);
+        UndoSupport support = uFac_.provideUndoSupport(usKey, dacx_);
+        PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
         support.addEdit(mov);
-        support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
         support.finish();
       }
-      appState_.getSUPanel().drawModel(false);
+      uics_.getSUPanel().drawModel(false);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }

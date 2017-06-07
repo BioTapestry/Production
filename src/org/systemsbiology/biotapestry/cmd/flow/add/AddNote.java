@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,16 +22,16 @@ package org.systemsbiology.biotapestry.cmd.flow.add;
 import java.awt.Color;
 import java.awt.Point;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.Note;
@@ -60,8 +60,7 @@ public class AddNote extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNote(BTState appState) {
-    super(appState);
+  public AddNote() {
     name =  "command.AddNote";
     desc = "command.AddNote";
     icon = "DrawNewNote24.gif";
@@ -80,6 +79,7 @@ public class AddNote extends AbstractControlFlow {
   ** 
   */
     
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.genomeNotNull());
   }
@@ -95,11 +95,11 @@ public class AddNote extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        AddNoteState ans = new AddNoteState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        AddNoteState ans = new AddNoteState(cfh);    
         next = ans.stepGetNoteCreationDialog();
       } else {
         AddNoteState ans = (AddNoteState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepExtractNewNoteInfo")) {
           next = ans.stepExtractNewNoteInfo(last);
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -128,7 +128,7 @@ public class AddNote extends AbstractControlFlow {
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
-    ans.nextStep_ = "stepPlaceNewNote"; 
+    ans.setNextStep("stepPlaceNewNote"); 
     return (retval);
   }
 
@@ -137,33 +137,33 @@ public class AddNote extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class AddNoteState implements DialogAndInProcessCmd.CmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class AddNoteState extends AbstractStepState implements DialogAndInProcessCmd.MouseClickCmdState {
      
     private Note newNote;
     private String newNoteColor;   
     private FontManager.FontOverride newNoteFont;
     private int justification;
-    private ServerControlFlowHarness cfh;
     private int x;
     private int y; 
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-    
-    public String getNextStep() {
-      return (nextStep_);
-    }  
-    
+
     /***************************************************************************
     **
     ** Constructor
     */ 
     
-    public AddNoteState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      dacx_ = dacx;
+    public AddNoteState(StaticDataAccessContext dacx) {
+      super(dacx);
     }
       
+    /***************************************************************************
+    **
+    ** Constructor
+    */ 
+    
+    public AddNoteState(ServerControlFlowHarness cfh) {
+      super(cfh);
+    }
+
     /***************************************************************************
     **
     ** mouse masking
@@ -211,7 +211,7 @@ public class AddNote extends AbstractControlFlow {
     
     public void setFloaterPropsInLayout(Layout flay) {
       String noteID = newNote.getID();
-      NoteProperties nprop = new NoteProperties(appState_, flay, noteID, newNoteColor, 0.0, 0.0);
+      NoteProperties nprop = new NoteProperties(dacx_, noteID, newNoteColor, 0.0, 0.0);
       if (newNoteFont != null) {
         nprop.setFontOverride(newNoteFont);
       }
@@ -235,7 +235,7 @@ public class AddNote extends AbstractControlFlow {
       
     private DialogAndInProcessCmd stepGetNoteCreationDialog() {    
       NotePropertiesDialogFactory.NotePropBuildArgs ba = new NotePropertiesDialogFactory.NotePropBuildArgs(null, null);
-      NotePropertiesDialogFactory npdd = new NotePropertiesDialogFactory(cfh);
+      NotePropertiesDialogFactory npdd = new NotePropertiesDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = npdd.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepExtractNewNoteInfo";
@@ -255,7 +255,7 @@ public class AddNote extends AbstractControlFlow {
         return (retval);
       }      
  
-      String noteID = dacx_.getGenome().getNextNoteKey();
+      String noteID = dacx_.getCurrentGenome().getNextNoteKey();
       newNote = new Note(noteID, crq.nameResult, crq.interactiveResult);
       newNote.setText(crq.textResult);
 
@@ -289,10 +289,10 @@ public class AddNote extends AbstractControlFlow {
       // Undo/Redo support
       //
       
-      UndoSupport support = new UndoSupport(appState_, "undo.addNote");
-      GenomeChange gc = dacx_.getGenome().addNoteWithExistingLabel(newNote);
+      UndoSupport support = uFac_.provideUndoSupport("undo.addNote", dacx_);
+      GenomeChange gc = dacx_.getCurrentGenome().addNoteWithExistingLabel(newNote);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
       }
       
@@ -300,19 +300,19 @@ public class AddNote extends AbstractControlFlow {
       // Propagate note properties to all interested layouts
       //
          
-      NoteProperties np = new NoteProperties(appState_, dacx_.getLayout(), newNote.getID(), newNoteColor, x, y);
+      NoteProperties np = new NoteProperties(dacx_, newNote.getID(), newNoteColor, x, y);
       if (newNoteFont != null) {
         np.setFontOverride(newNoteFont);
       }
       np.setJustification(justification);
    
       Layout.PropChange[] lpc = new Layout.PropChange[1];
-      lpc[0] = dacx_.getLayout().setNoteProperties(newNote.getID(), np.clone());
+      lpc[0] = dacx_.getCurrentLayout().setNoteProperties(newNote.getID(), np.clone());
       if (lpc[0] != null) {
-        PropChangeCmd pcc = new PropChangeCmd(appState_, dacx_, lpc);
+        PropChangeCmd pcc = new PropChangeCmd(dacx_, lpc);
         support.addEdit(pcc);
       }
-      support.addEvent(new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       support.finish();
       
       //

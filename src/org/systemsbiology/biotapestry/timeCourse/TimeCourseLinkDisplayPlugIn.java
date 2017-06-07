@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,8 +25,10 @@ import java.util.List;
 import java.util.Iterator;
 
 import org.systemsbiology.biotapestry.plugin.InternalLinkDataDisplayPlugIn;
-import org.systemsbiology.biotapestry.app.BTState;
-import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -41,7 +43,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 
 public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugIn {
   
-  private BTState appState_;
+  private DynamicDataAccessContext ddacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -68,8 +70,8 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
   ** Internal plugins need to have access to internal state
   */
   
-  public void setAppState(BTState appState) {
-    appState_ = appState;
+   public void setDataAccessContext(DynamicDataAccessContext ddacx, UIComponentSource uics) {
+    ddacx_ = ddacx;
     return;
   }
   
@@ -88,7 +90,7 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
   ** e.g. a single data window for a gene that is shared by all instances)
   */
   
-  public boolean requiresPerInstanceDisplay(String genomeID, String itemID) {
+  public boolean requiresPerInstanceDisplay(String dbID, String genomeID, String itemID) {
     return (true);
   }
    
@@ -107,7 +109,7 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
   ** Get the worker that will gather up background data and call us back
   */
   
-  public PluginCallbackWorker getCallbackWorker(String genomeID, String linkID) {
+  public PluginCallbackWorker getCallbackWorker(String dbID, String genomeID, String linkID) {
     return (null);
   } 
   
@@ -116,45 +118,49 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
   ** Show the Time course data
   */
   
-  public String getDataAsHTML(String genomeID, String linkID) {
+  public String getDataAsHTML(String dbID, String genomeID, String linkID) {
+    
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();
     StringBuffer buf = new StringBuffer();
-    Database db = appState_.getDB();
-    Genome genome = db.getGenome(genomeID);
+    Genome genome = dacx.getGenomeSource().getGenome(genomeID);
     Linkage link = genome.getLinkage(linkID);
     String targID = link.getTarget();
     String sourceID = link.getSource();
     String baseTargID = GenomeItemInstance.getBaseID(targID);
     String baseSourceID = GenomeItemInstance.getBaseID(sourceID);
     
-    TimeCourseData tcd = db.getTimeCourseData();
-    if ((tcd == null) || !tcd.haveData()) {
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
+    if ((tcd == null) || !tcd.haveDataEntries()) {
       return ("");
     }
+    TimeCourseDataMaps tcdm = dacx.getDataMapSrc().getTimeCourseDataMaps();
     
     boolean haveHierarchy = tcd.hierarchyIsSet();
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dOpt = dacx.getDisplayOptsSource().getDisplayOptions();
     boolean showTree = (haveHierarchy) ? dOpt.showExpressionTableTree() : false;
         
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx.getRMan();
     buf.append("<p></p>");   
     buf.append("<center><h1>");
     buf.append(rMan.getString("dataWindow.timeCourseDataForLink"));
     buf.append("</h1>\n");
     
+    
     int needKey = TimeCourseTableDrawer.NO_TABLE_KEY;
-    List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(baseSourceID);
+    List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseSourceID, dacx.getGenomeSource());
     boolean gotData = false;
     if (dataKeys != null) {
-      Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();   
+      Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();   
       while (dkit.hasNext()) {
-        TimeCourseData.TCMapping tcm = dkit.next();
+        TimeCourseDataMaps.TCMapping tcm = dkit.next();
         TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
         if (tcg == null) {  // If no table at all, still get back default name...
           continue;
         }
         StringWriter sw = new StringWriter();
         PrintWriter out = new PrintWriter(sw);
-        int nextKey = tcg.getExpressionTable(out, tcd, showTree);
+        int nextKey = tcg.getExpressionTable(out, dacx, tcd, showTree);
         needKey |= nextKey;
         String tab = sw.getBuffer().toString();
         if ((tab != null) && (!tab.trim().equals(""))) {
@@ -166,18 +172,18 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
       }
     }
     
-    dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(baseTargID);
+    dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseTargID, dacx.getGenomeSource());
     if (dataKeys != null) {
-      Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
+      Iterator<TimeCourseDataMaps.TCMapping> dkit = dataKeys.iterator();
       while (dkit.hasNext()) {
-        TimeCourseData.TCMapping tcm = dkit.next();
+        TimeCourseDataMaps.TCMapping tcm = dkit.next();
         TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
         if (tcg == null) {  // If no table at all, still get back default name...
           continue;
         }
         StringWriter sw = new StringWriter();
         PrintWriter out = new PrintWriter(sw);
-        int nextKey = tcg.getExpressionTable(out, tcd, showTree);
+        int nextKey = tcg.getExpressionTable(out, dacx, tcd, showTree);
         needKey |= nextKey;
         String tab = sw.getBuffer().toString();
         if ((tab != null) && (!tab.trim().equals(""))) {
@@ -189,7 +195,7 @@ public class TimeCourseLinkDisplayPlugIn implements InternalLinkDataDisplayPlugI
       }
     }
     
-    buf.append(TimeCourseTableDrawer.buildKey(appState_, needKey, showTree, false));
+    buf.append(TimeCourseTableDrawer.buildKey(dacx, needKey, showTree, false));
 
     if (!gotData) {
       buf.append(rMan.getString("dataWindow.noExpressionProfile"));

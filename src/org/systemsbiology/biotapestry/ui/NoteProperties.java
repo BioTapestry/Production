@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,12 +22,13 @@ package org.systemsbiology.biotapestry.ui;
 import java.awt.Color;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Map;
 import java.awt.geom.Point2D;
 
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.freerender.NoteFree;
 import org.systemsbiology.biotapestry.util.MultiLineRenderSupport;
 
@@ -58,7 +59,7 @@ public class NoteProperties implements Cloneable {
   private IRenderer renderer_;
   private FontManager.FontOverride localFont_;
   private int just_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,8 +72,8 @@ public class NoteProperties implements Cloneable {
   ** Constructor
   */
 
-  public NoteProperties(BTState appState, Layout layout, String ref, String color, double x, double y) {
-    appState_ = appState;
+  public NoteProperties(DataAccessContext dacx, String ref, String color, double x, double y) {
+    dacx_ = dacx;
     colorTag_ = color;
     location_ = new Point2D.Double(x, y);      
     noteID_ = ref;
@@ -87,7 +88,7 @@ public class NoteProperties implements Cloneable {
   */
 
   public NoteProperties(NoteProperties other, String newID) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.location_ = (Point2D)other.location_.clone();
     this.colorTag_ = other.colorTag_;
     this.noteID_ = other.noteID_;
@@ -102,10 +103,10 @@ public class NoteProperties implements Cloneable {
   ** Constructor
   */
 
-  public NoteProperties(BTState appState, Layout layout, String ref, String color, 
+  public NoteProperties(DataAccessContext dacx, String ref, String color, 
                         String noteX, String noteY, int just) throws IOException {
 
-    appState_ = appState;
+    dacx_ = dacx;
     if ((noteX != null) && (noteY != null)) {
       try {
         double x = Double.parseDouble(noteX);
@@ -133,10 +134,24 @@ public class NoteProperties implements Cloneable {
   
   /***************************************************************************
   **
+  ** Remap the color tags
+  */
+  
+  public void mapColorTags(Map<String, String> ctm) {
+    String nk = ctm.get(colorTag_);
+    if (nk != null) {
+      colorTag_ = nk;
+    }
+    return;
+  }  
+
+  /***************************************************************************
+  **
   ** Clone support
   ** 
   */  
   
+  @Override  
   public NoteProperties clone() { 
     try {
       NoteProperties retval = (NoteProperties)super.clone();
@@ -163,7 +178,7 @@ public class NoteProperties implements Cloneable {
   */
   
   public Color getColor() {
-    return (appState_.getDB().getColor(colorTag_));
+    return (dacx_.getColorResolver().getColor(colorTag_));
   }
   
   /***************************************************************************
@@ -325,8 +340,7 @@ public class NoteProperties implements Cloneable {
   **
   */
   
-  public static NoteProperties buildFromXML(BTState appState, Layout layout, 
-                                            Attributes attrs) throws IOException {
+  public static NoteProperties buildFromXML(DataAccessContext dacx, Attributes attrs) throws IOException {
                                              
     String ref = null;
     String color = null;
@@ -382,7 +396,7 @@ public class NoteProperties implements Cloneable {
       throw new IOException();
     }  
     
-    NoteProperties retval = new NoteProperties(appState, layout, ref, color, noteX, noteY, just);
+    NoteProperties retval = new NoteProperties(dacx, ref, color, noteX, noteY, just);
     if (fsize != null) {      
       boolean makeBold = Boolean.valueOf(fbold).booleanValue();
       boolean makeItalic = Boolean.valueOf(fital).booleanValue();

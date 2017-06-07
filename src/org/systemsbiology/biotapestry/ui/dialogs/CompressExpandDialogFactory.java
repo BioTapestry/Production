@@ -28,6 +28,7 @@ import javax.swing.JLabel;
 import javax.swing.JSlider;
 
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -73,7 +74,7 @@ public class CompressExpandDialogFactory extends DialogFactory {
    
     BuildArgs dniba = (BuildArgs)ba;
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
-      return (new DesktopDialog(cfh, dniba.doCompress, dniba.showOverlayOptions));
+      return (new DesktopDialog(cfh, dniba.doCompress, dniba.showOverlayOptions, dniba.cpexlayoutChoices, dniba.selectedStart));
     }
     throw new IllegalArgumentException();
   }
@@ -94,11 +95,18 @@ public class CompressExpandDialogFactory extends DialogFactory {
     
     boolean doCompress;
     boolean showOverlayOptions;
+    Vector<ChoiceContent> cpexlayoutChoices;
+    ChoiceContent selectedStart;
  
-    public BuildArgs(boolean doCompress, boolean showOverlayOptions) {
+    public BuildArgs(boolean doCompress, boolean showOverlayOptions, DataAccessContext dacx) {
       super(null);
       this.doCompress = doCompress;
       this.showOverlayOptions = showOverlayOptions;
+      
+      if (showOverlayOptions) {
+        cpexlayoutChoices = NetOverlayProperties.getCompressExpandLayoutOptions(dacx);
+        selectedStart = NetOverlayProperties.cpexLayoutForCombo(dacx, NetOverlayProperties.CPEX_LAYOUT_APPLY_ALGORITHM);
+      }
     } 
   }
    
@@ -133,7 +141,8 @@ public class CompressExpandDialogFactory extends DialogFactory {
     ** Constructor 
     */ 
     
-    public DesktopDialog(ServerControlFlowHarness cfh, boolean doCompress, boolean showOverlayOptions) { 
+    public DesktopDialog(ServerControlFlowHarness cfh, boolean doCompress, boolean showOverlayOptions,  
+                         Vector<ChoiceContent> cpexlayoutChoices, ChoiceContent selectedStart) { 
       super(cfh, (doCompress) ? "compressPercent.title" : "expandPercent.title", new Dimension(700, 500), 2, new PercentsRequest(), false);
       
       //
@@ -166,9 +175,8 @@ public class CompressExpandDialogFactory extends DialogFactory {
          
       if (showOverlayOptions) {
         JLabel overlayLabel = new JLabel(rMan_.getString("layoutParam.cpexOverlayOptions"));
-        Vector<ChoiceContent> cpexlayoutChoices = NetOverlayProperties.getCompressExpandLayoutOptions(appState_);
         overlayOptionCombo_ = new JComboBox(cpexlayoutChoices);
-        overlayOptionCombo_.setSelectedItem(NetOverlayProperties.cpexLayoutForCombo(appState_, NetOverlayProperties.CPEX_LAYOUT_APPLY_ALGORITHM));    
+        overlayOptionCombo_.setSelectedItem(selectedStart);    
   
         UiUtil.gbcSet(gbc_, 0, rowNum_, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 25, 25, UiUtil.CEN, 1.0, 0.0);    
         cp_.add(overlayLabel, gbc_);
@@ -178,7 +186,11 @@ public class CompressExpandDialogFactory extends DialogFactory {
       
       finishConstruction();
     }
- 
+  
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     ////////////////////////////////////////////////////////////////////////////
     //
     // PROTECTED METHODS
@@ -193,8 +205,8 @@ public class CompressExpandDialogFactory extends DialogFactory {
     @Override
     protected boolean bundleForExit(boolean forApply) {
       PercentsRequest pcq = (PercentsRequest)request_;
-      pcq.retvalV  = (double)percentVertical_.getValue() / 100.0;
-      pcq.retvalH  = (double)percentHorizontal_.getValue() / 100.0;
+      pcq.retvalV  = percentVertical_.getValue() / 100.0;
+      pcq.retvalH  = percentHorizontal_.getValue() / 100.0;
       pcq.overlayOption = (overlayOptionCombo_ != null) ? ((ChoiceContent)overlayOptionCombo_.getSelectedItem()).val 
                                                         : NetOverlayProperties.NO_CPEX_LAYOUT_OPTION;
       pcq.haveResult = true;
@@ -221,6 +233,10 @@ public class CompressExpandDialogFactory extends DialogFactory {
     public boolean haveResults() {
       return (haveResult);
     }  
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
     public boolean isForApply() {
       return (false);
     }

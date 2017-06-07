@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,11 +26,15 @@ import java.util.Iterator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
+import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.LegacyPert;
@@ -43,6 +47,7 @@ import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.MinMax;
@@ -61,8 +66,8 @@ class QpcrDisplayGenerator {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private HashMap tempFoots_;
-  private BTState appState_;
+  private HashMap<String, String> tempFoots_;
+  private TabPinnedDynamicDataAccessContext tpdacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -75,9 +80,9 @@ class QpcrDisplayGenerator {
   ** Constructor
   */
 
-  QpcrDisplayGenerator(BTState appState) {
-    appState_ = appState;
-    tempFoots_ = new HashMap();
+  QpcrDisplayGenerator(TabPinnedDynamicDataAccessContext tpdacx) {
+    tpdacx_ = tpdacx;
+    tempFoots_ = new HashMap<String, String>();
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -91,14 +96,16 @@ class QpcrDisplayGenerator {
   ** Build it
   */
 
-  QPCRData createQPCRFromPerts(PerturbationData pd) {
- 
-    QPCRData qpcr = new QPCRData(appState_);
+  QPCRData createQPCRFromPerts() {
+    PerturbationData pd = tpdacx_.getExpDataSrc().getPertData();
+    PerturbationDataMaps pdms = tpdacx_.getDataMapSrc().getPerturbationDataMaps();
+    
+    QPCRData qpcr = new QPCRData(tpdacx_);
     PertDictionary pDict = pd.getPertDictionary();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = tpdacx_.getRMan();
     String etAl = rMan.getString("qpcrData.andOthers");
       
-    DisplayOptions dOpt = appState_.getDisplayOptMgr().getDisplayOptions();
+    DisplayOptions dOpt = tpdacx_.getDisplayOptsSource().getDisplayOptions();
     if (dOpt.hasColumns()) {
       Iterator<MinMax> cit = dOpt.getColumnIterator();
       while (cit.hasNext()) {
@@ -109,21 +116,19 @@ class QpcrDisplayGenerator {
       qpcr.addColumn(new MinMax(Integer.MIN_VALUE, Integer.MAX_VALUE));
     }
     String scaleKey = dOpt.getPerturbDataDisplayScaleKey();
-    Map techColors = dOpt.getMeasurementDisplayColors();
+    Map<String, String> techColors = dOpt.getMeasurementDisplayColors();
  
-    PertFilterExpression pfe = new PertFilterExpression(PertFilterExpression.ALWAYS_OP);
-    List pertData = pd.getPerturbations(pfe); 
+    PertFilterExpression pfe = new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP);
+    List<PertDataPoint> pertData = pd.getPerturbations(pfe); 
     
-    HashMap results = new HashMap();
-    HashMap timeBounds = new HashMap();  
-    HashMap regRes = new HashMap();
-    HashMap footHoistForNull = new HashMap();
-    HashMap investForNull = new HashMap();
-    HashMap retainFootsForNull = new HashMap();
-    
-    Iterator pdpit = pertData.iterator();
+    HashMap<PertSourcesAndTargKey, Boolean> results = new HashMap<PertSourcesAndTargKey, Boolean>();
+    HashMap<PertSourcesAndTargKey, SortedSet<Integer>> timeBounds = new HashMap<PertSourcesAndTargKey, SortedSet<Integer>>();  
+    HashMap<PertSourcesAndTargKey, RegRestrictAggregation> regRes = new HashMap<PertSourcesAndTargKey, RegRestrictAggregation>();
+    HashMap<PertSourcesAndTargKey, Set<String>> investForNull = new HashMap<PertSourcesAndTargKey, Set<String>>();
+
+    Iterator<PertDataPoint> pdpit = pertData.iterator();
     while (pdpit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)pdpit.next();
+      PertDataPoint pdp = pdpit.next();
       PertSources sources = pdp.getSources(pd);
       String targKey = pdp.getTargetKey();
       PertSourcesAndTargKey sst = new PertSourcesAndTargKey(sources, targKey);
@@ -139,7 +144,7 @@ class QpcrDisplayGenerator {
       //
       
       PerturbationData.RegionRestrict rr = pdp.getRegionRestriction(pd);
-      RegRestrictAggregation rra = (RegRestrictAggregation)regRes.get(sst);
+      RegRestrictAggregation rra = regRes.get(sst);
       if (rra == null) {
         rra = new RegRestrictAggregation();
         regRes.put(sst, rra);
@@ -163,14 +168,14 @@ class QpcrDisplayGenerator {
       // info:
       
       
-      TreeSet bounds = (TreeSet)timeBounds.get(sst);
+      SortedSet<Integer> bounds = timeBounds.get(sst);
       if (bounds == null) {
-        bounds = new TreeSet();
+        bounds = new TreeSet<Integer>();
         timeBounds.put(sst, bounds);
       }
-      bounds.add(new Integer(pertTime));
+      bounds.add(Integer.valueOf(pertTime));
       if ((legacyMax != Experiment.NO_TIME) && (pertTime != legacyMax)) {
-        bounds.add(new Integer(legacyMax));
+        bounds.add(Integer.valueOf(legacyMax));
       }
       
       //
@@ -186,7 +191,7 @@ class QpcrDisplayGenerator {
         goForNull = !pdp.aboveThresholds(pd);
       }
       
-      Boolean allBelow = (Boolean)results.get(sst);
+      Boolean allBelow = results.get(sst);
       if (allBelow == null) {  
         allBelow = new Boolean(goForNull);
         results.put(sst, allBelow);
@@ -200,16 +205,16 @@ class QpcrDisplayGenerator {
       // Build up investigator lists for Null targets:
       //
       
-      HashSet i4n = (HashSet)investForNull.get(sst);
+      Set<String> i4n = investForNull.get(sst);
       if (i4n == null) {
-        i4n = new HashSet();
+        i4n = new HashSet<String>();
         investForNull.put(sst, i4n);
       }
-      List invests = psi.getInvestigators();
+      List<String> invests = psi.getInvestigators();
       if ((invests != null) && !invests.isEmpty()) {
         int numI = invests.size();
         for (int i = 0; i < numI; i++) {
-          String investKey = (String)invests.get(i);
+          String investKey = invests.get(i);
           String invest = pd.getInvestigator(investKey);
           i4n.add(invest);
         }
@@ -218,42 +223,44 @@ class QpcrDisplayGenerator {
       }
     }
     
+    HashMap<PertSources, Set<String>> footHoistForNull = new HashMap<PertSources, Set<String>>();
+    HashMap<PertSources, Map<String, List<String>>> retainFootsForNull = new HashMap<PertSources, Map<String, List<String>>>();
     resolveFootnotesForNulls(pd, pertData, results, footHoistForNull, retainFootsForNull);
     
-    HashMap allTargsForSources = new HashMap();
-    HashMap hoistedFootsPerSource = new HashMap();
-    Iterator rit = results.keySet().iterator();
+    HashMap<PertSources, Set<String>> allTargsForSources = new HashMap<PertSources, Set<String>>();
+    HashMap<PertSources, Set<String>> hoistedFootsPerSource = new HashMap<PertSources, Set<String>>();
+    Iterator<PertSourcesAndTargKey> rit = results.keySet().iterator();
     while (rit.hasNext()) {
-      PertSourcesAndTargKey sst = (PertSourcesAndTargKey)rit.next();      
-      Boolean currentlyAllBelow = (Boolean)results.get(sst);
+      PertSourcesAndTargKey sst = rit.next();      
+      Boolean currentlyAllBelow = results.get(sst);
       // results go into a null perturbation    
       if (currentlyAllBelow.booleanValue()) { 
-        List sources = getQPCRSourceList(sst.srcs, pd, pDict);
+        List<Source> sources = getQPCRSourceList(sst.srcs, pd, pDict);
         NullPerturb npert = nullPerturbationMatchesSource(qpcr, sources);
-        HashSet myHoistedFoots = (HashSet)hoistedFootsPerSource.get(sst.srcs);
+        Set<String> myHoistedFoots = hoistedFootsPerSource.get(sst.srcs);
         if (myHoistedFoots == null) {
-          myHoistedFoots = new HashSet();
+          myHoistedFoots = new HashSet<String>();
           hoistedFootsPerSource.put(sst.srcs, myHoistedFoots);
         }
         if (npert == null) {
-          npert = new NullPerturb(appState_); 
+          npert = new NullPerturb(); 
           int numSrc = sources.size();
           for (int i = 0; i < numSrc; i++) {
-            Source src = (Source)sources.get(i);
-            ArrayList flist = new ArrayList();
+            Source src = sources.get(i);
+            ArrayList<String> flist = new ArrayList<String>();
             // last time thru only:
             if (i == (numSrc - 1)) {
-              HashSet footsPerSource = (HashSet)footHoistForNull.get(sst.srcs);
+              Set<String> footsPerSource = footHoistForNull.get(sst.srcs);
               if ((footsPerSource != null) && !footsPerSource.isEmpty()) {                
-                flist.addAll(pd.getFootnoteList(new ArrayList(footsPerSource)));
+                flist.addAll(pd.getFootnoteList(new ArrayList<String>(footsPerSource)));
                 myHoistedFoots.addAll(footsPerSource);
               }
             }        
             flist.addAll(src.getFootnoteNumbers());
-            TreeSet sortedFoots = new TreeSet(new ReadOnlyTable.NumStrComparator());
+            TreeSet<String> sortedFoots = new TreeSet<String>(new ReadOnlyTable.NumStrComparator());
             sortedFoots.addAll(flist);
-            String newNotes = PertAnnotations.convertFootnoteListToString(new ArrayList(sortedFoots));
-            src = (Source)src.clone();
+            String newNotes = PertAnnotations.convertFootnoteListToString(new ArrayList<String>(sortedFoots));
+            src = src.clone();
             src.setNotes(newNotes);
             npert.addSource(src);
           }
@@ -262,55 +269,55 @@ class QpcrDisplayGenerator {
         //
         // Build and add null target:
         //
-        NullTarget targ = buildNullTarget(pd, sst, retainFootsForNull, myHoistedFoots, regRes, timeBounds);
+        NullTarget targ = buildNullTarget(pd, sst, retainFootsForNull, myHoistedFoots, regRes, timeBounds, tpdacx_);
         npert.addTarget(targ);
         //
         // Investigators:
         //
-        HashSet i4n = (HashSet)investForNull.get(sst);
+        Set<String> i4n = investForNull.get(sst);
         npert.addInvestigators(i4n);
         
       } else {
-        HashSet atfs = (HashSet)allTargsForSources.get(sst.srcs);
+        Set<String> atfs = allTargsForSources.get(sst.srcs);
         if (atfs == null) {
-          atfs = new HashSet();
+          atfs = new HashSet<String>();
           allTargsForSources.put(sst.srcs, atfs);
         }
         atfs.add(sst.targKey);
       }  
     }
     
-    fillInPerturbations(qpcr, allTargsForSources, pertData, pd, pDict, scaleKey, techColors);
+    fillInPerturbations(qpcr, allTargsForSources, pertData, pd, pDict, scaleKey, techColors, tpdacx_);
     
     
     //
     // Get the maps filled in:
     //
     
-    Genome genome = appState_.getDB().getGenome();
-    Iterator anit = genome.getAllNodeIterator();
+    Genome genome = tpdacx_.getDBGenome();
+    Iterator<Node> anit = genome.getAllNodeIterator();
     while (anit.hasNext()) {
-      Node node = (Node)anit.next();
+      Node node = anit.next();
       String nodeID = node.getID();
-      List entries = pd.getCustomDataEntryKeys(nodeID);
-      ArrayList mapped = null;
+      List<String> entries = pdms.getCustomDataEntryKeys(nodeID);
+      ArrayList<String> mapped = null;
       if ((entries != null) && !entries.isEmpty()) {
-        mapped = new ArrayList();
+        mapped = new ArrayList<String>();
         int numE = entries.size();
         for (int i = 0; i < numE; i++) {
-          String targKey = (String)entries.get(i);
+          String targKey = entries.get(i);
           String targName = pd.getTarget(targKey);
           mapped.add(targName);
         }
       }
           
-      List sources = pd.getCustomDataSourceKeys(nodeID);
-      ArrayList mappedS = null;
+      List<String> sources = pdms.getCustomDataSourceKeys(nodeID);
+      ArrayList<String> mappedS = null;
       if ((sources != null) && !sources.isEmpty()) {
-        mappedS = new ArrayList();
+        mappedS = new ArrayList<String>();
         int numE = sources.size();
         for (int i = 0; i < numE; i++) {
-          String srcKey = (String)sources.get(i);
+          String srcKey = sources.get(i);
           String srcName = pd.getSourceName(srcKey);
           mappedS.add(srcName);
         }
@@ -323,26 +330,26 @@ class QpcrDisplayGenerator {
     // Fill out the footnotes:
     //
     
-    SortedMap annots = pd.getPertAnnotationsMap();
-    Iterator akit = annots.keySet().iterator();
+    SortedMap<String, String> annots = pd.getPertAnnotationsMap();
+    Iterator<String> akit = annots.keySet().iterator();
     while (akit.hasNext()) {
-      String tag = (String)akit.next();
-      String message = (String)annots.get(tag);
+      String tag = akit.next();
+      String message = annots.get(tag);
       Footnote nextNote = new Footnote(tag);
       nextNote.setNote(message);
       qpcr.addFootnote(nextNote);
     }
-    Iterator lit = tempFoots_.keySet().iterator();
-    TreeMap sorted = new TreeMap(new ReadOnlyTable.NumStrComparator());
+    Iterator<String> lit = tempFoots_.keySet().iterator();
+    TreeMap<String, String> sorted = new TreeMap<String, String>(new ReadOnlyTable.NumStrComparator());
     while (lit.hasNext()) {
-      String message = (String)lit.next();
-      String tag = (String)tempFoots_.get(message);
+      String message = lit.next();
+      String tag = tempFoots_.get(message);
       sorted.put(tag, message);
     }
-    Iterator sit = sorted.keySet().iterator();
+    Iterator<String> sit = sorted.keySet().iterator();
     while (sit.hasNext()) {
-      String tag = (String)sit.next();
-      String message = (String)sorted.get(tag);
+      String tag = sit.next();
+      String message = sorted.get(tag);
       Footnote nextNote = new Footnote(tag);
       nextNote.setNote(message);
       qpcr.addFootnote(nextNote);
@@ -357,22 +364,23 @@ class QpcrDisplayGenerator {
   
   
   private NullTarget buildNullTarget(PerturbationData pd, PertSourcesAndTargKey sst, 
-                                     HashMap retainFootsForNull, HashSet myHoistedFoots,
-                                     HashMap regRes, HashMap timeBounds) {
+                                     Map<PertSources, Map<String, List<String>>> retainFootsForNull, Set<String> myHoistedFoots,
+                                     Map<PertSourcesAndTargKey, RegRestrictAggregation> regRes, 
+                                     Map<PertSourcesAndTargKey, SortedSet<Integer>> timeBounds, DataAccessContext dacx) {
   
   
-    HashMap retainFootsPerSource = (HashMap)retainFootsForNull.get(sst.srcs);
-    List retainFootsPerTarget = (List)retainFootsPerSource.get(sst.targKey);
+    Map<String, List<String>> retainFootsPerSource = retainFootsForNull.get(sst.srcs);
+    List<String> retainFootsPerTarget = retainFootsPerSource.get(sst.targKey);
     NullTarget targ = new NullTarget(pd.getTarget(sst.targKey));  
-    List foots = new ArrayList();
+    List<String> foots = new ArrayList<String>();
     // Get per-target footnotes added:
-    HashSet retain = new HashSet(retainFootsPerTarget);
+    HashSet<String> retain = new HashSet<String>(retainFootsPerTarget);
     // Drop hoisted footnotes:
-    retain.removeAll(pd.getFootnoteList(new ArrayList(myHoistedFoots)));
+    retain.removeAll(pd.getFootnoteList(new ArrayList<String>(myHoistedFoots)));
     foots.addAll(retain);
 
     // Add region-restricted based notes:
-    RegRestrictAggregation rra = (RegRestrictAggregation)regRes.get(sst);
+    RegRestrictAggregation rra = regRes.get(sst);
     if (!rra.legacyVals.isEmpty() || !rra.actualFoots.isEmpty()) {
       foots.addAll(buildRegionFootsForNullTarg(pd, rra));
     }
@@ -381,12 +389,12 @@ class QpcrDisplayGenerator {
     //
     // Time span info
     //
-    TreeSet mm = (TreeSet)timeBounds.get(sst);
+    SortedSet<Integer> mm = timeBounds.get(sst);
     if (mm.size() == 1) {
-      NullTimeSpan nts = new NullTimeSpan(appState_, ((Integer)mm.first()).intValue());
+      NullTimeSpan nts = new NullTimeSpan(dacx, mm.first().intValue());
       targ.addTimeSpan(nts); 
     } else {
-      NullTimeSpan nts = new NullTimeSpan(appState_, ((Integer)mm.first()).intValue(), ((Integer)mm.last()).intValue());
+      NullTimeSpan nts = new NullTimeSpan(dacx, mm.first().intValue(), mm.last().intValue());
       targ.addTimeSpan(nts);
     }
     return (targ);
@@ -398,23 +406,26 @@ class QpcrDisplayGenerator {
   ** Resolve footnotes for nulls, including hoists:
   */
 
-  private void resolveFootnotesForNulls(PerturbationData pd, List pertList, Map results, 
-                                        HashMap hoistFoots, HashMap retainFoots) {
+  private void resolveFootnotesForNulls(PerturbationData pd, List<PertDataPoint> pertList, 
+                                        Map<PertSourcesAndTargKey, Boolean> results, 
+                                        Map<PertSources, Set<String>> hoistFoots, 
+                                        Map<PertSources, Map<String, List<String>>> retainFoots) {
+      
+    HashMap<PertSources, Map<String, Map<String, Integer>>> retainFootCountsForNull = new HashMap<PertSources, Map<String, Map<String, Integer>>>();
+    HashMap<PertSources, Map<String, Integer>> pointCountsPerTargPerSource = new HashMap<PertSources, Map<String, Integer>>();
     
-    HashMap pointCountsPerTargPerSource = new HashMap();
-    
-    Iterator plit = pertList.iterator();
+    Iterator<PertDataPoint> plit = pertList.iterator();
     while (plit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)plit.next(); 
+      PertDataPoint pdp = plit.next(); 
       PertSources sources = pdp.getSources(pd);
       String targKey = pdp.getTargetKey();
       PertSourcesAndTargKey sst = new PertSourcesAndTargKey(sources, targKey);
-      Boolean currentlyAllBelow = (Boolean)results.get(sst);
+      Boolean currentlyAllBelow = results.get(sst);
       // if not bound for null, we skip:    
       if (!currentlyAllBelow.booleanValue()) { 
         continue;
       }
-      List notes = pd.getDataPointNotes(pdp.getID());
+      List<String> notes = pd.getDataPointNotes(pdp.getID());
       
       //
       // Keep track of the number of data points per target of a source.  We use this
@@ -422,16 +433,16 @@ class QpcrDisplayGenerator {
       // source:
       //
       
-      HashMap pointCountsPerTarg = (HashMap)pointCountsPerTargPerSource.get(sources);
+      Map<String, Integer> pointCountsPerTarg = pointCountsPerTargPerSource.get(sources);
       if (pointCountsPerTarg == null) {
-        pointCountsPerTarg = new HashMap();
+        pointCountsPerTarg = new HashMap<String, Integer>();
         pointCountsPerTargPerSource.put(sources, pointCountsPerTarg);
       }
-      Integer pointCount = (Integer)pointCountsPerTarg.get(targKey);
+      Integer pointCount = pointCountsPerTarg.get(targKey);
       if (pointCount == null) {
-        pointCount = new Integer(1);
+        pointCount = Integer.valueOf(1);
       } else {
-        pointCount = new Integer(pointCount.intValue() + 1);
+        pointCount = Integer.valueOf(pointCount.intValue() + 1);
       }
       pointCountsPerTarg.put(targKey, pointCount);        
   
@@ -440,27 +451,38 @@ class QpcrDisplayGenerator {
       // see if every data point for the target shares the note!
       //
      
-      HashMap retainFootsPerSource = (HashMap)retainFoots.get(sources);
+      Map<String, Map<String, Integer>> retainFootCountsPerSource = retainFootCountsForNull.get(sources);
+      if (retainFootCountsPerSource == null) {
+        retainFootCountsPerSource = new HashMap<String, Map<String, Integer>>();
+        retainFootCountsForNull.put(sources, retainFootCountsPerSource);
+      }
+      Map<String, Integer> retainFootCountsPerTarget = retainFootCountsPerSource.get(targKey);
+      if (retainFootCountsPerTarget == null) {
+        retainFootCountsPerTarget = new HashMap<String, Integer>();
+        retainFootCountsPerSource.put(targKey, retainFootCountsPerTarget);
+      }
+      
+      //
+      // 12-10-14: Used to change the type signature of the map during this process below. No more!
+      //
+      
+      Map<String, List<String>> retainFootsPerSource = retainFoots.get(sources);
       if (retainFootsPerSource == null) {
-        retainFootsPerSource = new HashMap();
+        retainFootsPerSource = new HashMap<String, List<String>>();
         retainFoots.put(sources, retainFootsPerSource);
       }
-      HashMap retainFootsPerTarget = (HashMap)retainFootsPerSource.get(targKey);
-      if (retainFootsPerTarget == null) {
-        retainFootsPerTarget = new HashMap();
-        retainFootsPerSource.put(targKey, retainFootsPerTarget);
-      }
+      
       if (notes != null) {       
         int numNotes = notes.size();
         for (int i = 0; i < numNotes; i++) {
-          String noteKey = (String)notes.get(i);
-          Integer count = (Integer)retainFootsPerTarget.get(noteKey);
+          String noteKey = notes.get(i);
+          Integer count = retainFootCountsPerTarget.get(noteKey);
           if (count == null) {
-            count = new Integer(1);
+            count = Integer.valueOf(1);
           } else {
-            count = new Integer(count.intValue() + 1);
+            count = Integer.valueOf(count.intValue() + 1);
           }
-          retainFootsPerTarget.put(noteKey, count);          
+          retainFootCountsPerTarget.put(noteKey, count);          
         }
       }
       
@@ -469,16 +491,16 @@ class QpcrDisplayGenerator {
       // source, since everybody shares them:
       //
  
-      HashSet footsPerSource = (HashSet)hoistFoots.get(sources);
+      Set<String> footsPerSource = hoistFoots.get(sources);
       if (footsPerSource == null) {
-        footsPerSource = new HashSet();
+        footsPerSource = new HashSet<String>();
         if (notes != null) {
           footsPerSource.addAll(notes);
         }
         hoistFoots.put(sources, footsPerSource);
       } else {
         // Gotta keep what is common and toss what is missing!
-        HashSet intersect = (HashSet)footsPerSource.clone();
+        HashSet<String> intersect = new HashSet<String>(footsPerSource);
         if (notes == null) {
           intersect.clear();
         } else {
@@ -493,29 +515,30 @@ class QpcrDisplayGenerator {
     // map of keys to counts for a target into just a list of footnote TAGS
     //
    
-    Iterator rfit = retainFoots.keySet().iterator();
+    Iterator<PertSources> rfit = retainFootCountsForNull.keySet().iterator();
     while (rfit.hasNext()) {
-      PertSources sources = (PertSources)rfit.next();
-      HashMap retainFootsPerSource = (HashMap)retainFoots.get(sources);
-      HashMap pointCountsPerTarg = (HashMap)pointCountsPerTargPerSource.get(sources);
+      PertSources sources = rfit.next();
+      Map<String, Map<String, Integer>> retainFootCountsPerSource = retainFootCountsForNull.get(sources);
+      Map<String, List<String>> retainFootsPerSource = retainFoots.get(sources);
+      Map<String, Integer> pointCountsPerTarg = pointCountsPerTargPerSource.get(sources);
       // Revising the map as we go:
-      Iterator rffsit = new HashSet(retainFootsPerSource.keySet()).iterator(); 
+      Iterator<String> rffsit = new HashSet<String>(retainFootCountsPerSource.keySet()).iterator(); 
       while (rffsit.hasNext()) {
-        String trgKey = (String)rffsit.next();
-        HashMap retainFootsPerTarget = (HashMap)retainFootsPerSource.get(trgKey);
-        Integer pointCount = (Integer)pointCountsPerTarg.get(trgKey);
-        Iterator rfftit = retainFootsPerTarget.keySet().iterator();
-        HashSet revised = new HashSet();
+        String trgKey = rffsit.next();
+        Map<String, Integer> retainFootCountsPerTarget = retainFootCountsPerSource.get(trgKey);
+        Integer pointCount = pointCountsPerTarg.get(trgKey);
+        Iterator<String> rfftit = retainFootCountsPerTarget.keySet().iterator();
+        HashSet<String> revised = new HashSet<String>();
         String pnt = null;
         while (rfftit.hasNext()) {
-          String footKey = (String)rfftit.next();
-          Integer perFootCount = (Integer)retainFootsPerTarget.get(footKey);
+          String footKey = rfftit.next();
+          Integer perFootCount = retainFootCountsPerTarget.get(footKey);
           revised.add(footKey);
           if (!perFootCount.equals(pointCount)) {
             pnt = getPartialNullTag(pd);
           }
         }
-        List footsPerSource = pd.getFootnoteList(new ArrayList(revised));
+        List<String> footsPerSource = pd.getFootnoteList(new ArrayList<String>(revised));
         if (pnt != null) {
           footsPerSource.add(pnt);
         }
@@ -532,11 +555,11 @@ class QpcrDisplayGenerator {
   */
   
   private String getPartialNullTag(PerturbationData pd) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = tpdacx_.getRMan();
     String foot = rMan.getString("qpcrDisplay.incompleteNullFootnoteCoverage");    
-    String tag = (String)tempFoots_.get(foot);
+    String tag = tempFoots_.get(foot);
     if (tag == null) {
-      tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+      tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
       tempFoots_.put(foot, tag);
     }
     return (tag);
@@ -547,15 +570,15 @@ class QpcrDisplayGenerator {
   ** Get sources as list
   */
    
-  private List getQPCRSourceList(PertSources pss, PerturbationData pd, PertDictionary pDict) {
-    ArrayList retval = new ArrayList();
-    Iterator sit = pss.getSources();
+  private List<Source> getQPCRSourceList(PertSources pss, PerturbationData pd, PertDictionary pDict) {
+    ArrayList<Source> retval = new ArrayList<Source>();
+    Iterator<String> sit = pss.getSources();
     while (sit.hasNext()) {
-      String srcID = (String)sit.next();    
+      String srcID = sit.next();    
       PertSource ps = pd.getSourceDef(srcID);
       PertProperties pProps = ps.getExpType(pDict);
       Source newSrc = new Source(ps.getSourceName(pd), pProps.getLegacyType());
-      List srcAnnot = ps.getAnnotationIDs();
+      List<String> srcAnnot = ps.getAnnotationIDs();
       String noteStr = (srcAnnot.isEmpty()) ? null : pd.getFootnoteListAsString(srcAnnot);
       newSrc.setNotes(noteStr); 
       retval.add(newSrc);
@@ -569,10 +592,10 @@ class QpcrDisplayGenerator {
   ** Answers if we match null perturbations
   */
 
-  private NullPerturb nullPerturbationMatchesSource(QPCRData qpcr, List sources) {  
-    Iterator npit = qpcr.getNullPerturbations();
+  private NullPerturb nullPerturbationMatchesSource(QPCRData qpcr, List<Source> sources) {  
+    Iterator<NullPerturb> npit = qpcr.getNullPerturbations();
     while (npit.hasNext()) {
-      NullPerturb chknp = (NullPerturb)npit.next();
+      NullPerturb chknp = npit.next();
       if (chknp.sourcesMatch(sources)) {
         return (chknp);
       }
@@ -585,18 +608,19 @@ class QpcrDisplayGenerator {
   ** Fill measurements into the perturbation
   */
 
-  private boolean fillInPerturbations(QPCRData qpcr, HashMap atfs, List pertList, 
+  private boolean fillInPerturbations(QPCRData qpcr, HashMap<PertSources, Set<String>> atfs, 
+                                      List<PertDataPoint> pertList, 
                                       PerturbationData pd, PertDictionary pDict, 
-                                      String scaleKey, Map techColors) {
+                                      String scaleKey, Map<String, String> techColors, DataAccessContext dacx) {
  
-    HashMap droppedMultiNull = new HashMap();
-    HashMap hoistFoots = new HashMap();
-    Iterator plit = pertList.iterator();
+    HashMap<PertSources, Map<String, FormerNullFootData>> droppedMultiNull = new HashMap<PertSources, Map<String, FormerNullFootData>>();
+    HashMap<PertSources, Map<String, Set<String>>> hoistFoots = new HashMap<PertSources, Map<String, Set<String>>>();
+    Iterator<PertDataPoint> plit = pertList.iterator();
     while (plit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)plit.next();
+      PertDataPoint pdp = plit.next();
       Experiment psi = pdp.getExperiment(pd);
       PertSources ps = psi.getSources();
-      HashSet targs = (HashSet)atfs.get(ps);
+      Set<String> targs = atfs.get(ps);
       String targKey = pdp.getTargetKey();
       if ((targs == null) || !targs.contains(targKey)) {
         continue;
@@ -621,17 +645,17 @@ class QpcrDisplayGenerator {
                 regList = buildRegResRegions(rr);
               }
             }
-            HashMap droppedPerSource = (HashMap)droppedMultiNull.get(ps);
+            Map<String, FormerNullFootData> droppedPerSource = droppedMultiNull.get(ps);
             if (droppedPerSource == null) {
-              droppedPerSource = new HashMap();
+              droppedPerSource = new HashMap<String, FormerNullFootData>();
               droppedMultiNull.put(ps, droppedPerSource);
             }
-            FormerNullFootData timesPerDrop = (FormerNullFootData)droppedPerSource.get(targKey);
+            FormerNullFootData timesPerDrop = droppedPerSource.get(targKey);
             if (timesPerDrop == null) {
               timesPerDrop = new FormerNullFootData();
               droppedPerSource.put(targKey, timesPerDrop);
             }
-            timesPerDrop.times.add(TimeSpan.spanToString(appState_, new MinMax(timeVal, timeMax)));
+            timesPerDrop.times.add(TimeSpan.spanToString(dacx, new MinMax(timeVal, timeMax)));
             if (regList != null) {
               timesPerDrop.regions.add(regList);
             }
@@ -649,17 +673,17 @@ class QpcrDisplayGenerator {
     }
     plit = pertList.iterator();
     while (plit.hasNext()) {
-      PertDataPoint pdp = (PertDataPoint)plit.next();
+      PertDataPoint pdp = plit.next();
       Experiment psi = pdp.getExperiment(pd);
       PertSources ps = psi.getSources();
-      HashSet targs = (HashSet)atfs.get(ps);
+      Set<String> targs = atfs.get(ps);
       String targKey = pdp.getTargetKey();
       if ((targs == null) || !targs.contains(targKey)) {
         continue;
       }
-      HashMap footsPerSource = (HashMap)hoistFoots.get(ps);
-      HashSet footsPerTarg = (HashSet)footsPerSource.get(targKey);
-      HashMap droppedPerSource = (HashMap)droppedMultiNull.get(ps);
+      Map<String, Set<String>> footsPerSource = hoistFoots.get(ps);
+      Set<String> footsPerTarg = footsPerSource.get(targKey);
+      Map<String, FormerNullFootData> droppedPerSource = droppedMultiNull.get(ps);
       fillForTarg(qpcr, ps, targKey, pdp, pd, pDict, footsPerTarg, droppedPerSource, scaleKey, techColors);
     }
     return (true);
@@ -670,24 +694,24 @@ class QpcrDisplayGenerator {
   ** Resolve footnote hoisting
   */
 
-  private void resolveFootHoists(PerturbationData pd, PertSources ps, PertDataPoint pdp, HashMap hoistFoots) {
+  private void resolveFootHoists(PerturbationData pd, PertSources ps, PertDataPoint pdp, Map<PertSources, Map<String, Set<String>>> hoistFoots) {
     String targKey = pdp.getTargetKey();
-    List notes = pd.getDataPointNotes(pdp.getID());
-    HashMap footsPerSource = (HashMap)hoistFoots.get(ps);
+    List<String> notes = pd.getDataPointNotes(pdp.getID());
+    Map<String, Set<String>> footsPerSource = hoistFoots.get(ps);
     if (footsPerSource == null) {
-      footsPerSource = new HashMap();
+      footsPerSource = new HashMap<String, Set<String>>();
       hoistFoots.put(ps, footsPerSource);
     }
-    HashSet footsPerTarg = (HashSet)footsPerSource.get(targKey);
+    Set<String> footsPerTarg = footsPerSource.get(targKey);
     if (footsPerTarg == null) {
-      footsPerTarg = new HashSet();
+      footsPerTarg = new HashSet<String>();
       if (notes != null) {
         footsPerTarg.addAll(notes);
       }
       footsPerSource.put(targKey, footsPerTarg);
     } else {
       // Gotta keep what is common and toss what is missing!
-      HashSet intersect = (HashSet)footsPerTarg.clone();
+      HashSet<String> intersect = new HashSet<String>(footsPerTarg);
       if (notes == null) {
         intersect.clear();
       } else {
@@ -706,24 +730,24 @@ class QpcrDisplayGenerator {
   private void fillForTarg(QPCRData qpcr, PertSources ps, String targKey, 
                            PertDataPoint pdp, PerturbationData pd, 
                            PertDictionary pDict,
-                           HashSet hoistFoots, Map droppedPerSource, 
-                           String scaleKey, Map techColors) {
+                           Set<String> hoistFoots, Map<String, FormerNullFootData> droppedPerSource, 
+                           String scaleKey, Map<String, String> techColors) {
     
    
-    List sources = getQPCRSourceList(ps, pd, pDict);
+    List<Source> sources = getQPCRSourceList(ps, pd, pDict);
 
     TargetGene gene = qpcr.getQPCRDataRelaxedMatch(pd.getTarget(targKey));
     if (gene == null) {
-      List notes = pd.getFootnotesForTarget(targKey);
+      List<String> notes = pd.getFootnotesForTarget(targKey);
       String noteStr = (notes == null) ? null : pd.getFootnoteListAsString(notes);
       gene = new TargetGene(pd.getTarget(targKey), noteStr);
       qpcr.addGene(gene, false);
     }
     
     Perturbation pert = null;
-    Iterator pit = gene.getPerturbations();
+    Iterator<Perturbation> pit = gene.getPerturbations();
     while (pit.hasNext()) {
-      Perturbation chkPert = (Perturbation)pit.next();
+      Perturbation chkPert = pit.next();
       if (chkPert.sourcesMatch(sources)) {
         pert = chkPert;
         break;
@@ -734,17 +758,17 @@ class QpcrDisplayGenerator {
       pert = new Perturbation();
       int numSrc = sources.size();
       for (int i = 0; i < numSrc; i++) {
-        Source src = (Source)sources.get(i);
-        ArrayList flist = new ArrayList();
+        Source src = sources.get(i);
+        ArrayList<String> flist = new ArrayList<String>();
         // last time thru only:
         if (i == (numSrc - 1)) {
           if (!hoistFoots.isEmpty()) {
-            flist.addAll(pd.getFootnoteList(new ArrayList(hoistFoots)));
+            flist.addAll(pd.getFootnoteList(new ArrayList<String>(hoistFoots)));
           }
           if (droppedPerSource != null) { 
-            FormerNullFootData timesPerDrop = (FormerNullFootData)droppedPerSource.get(targKey);
+            FormerNullFootData timesPerDrop = droppedPerSource.get(targKey);
             if (timesPerDrop != null) {      
-              ResourceManager rMan = appState_.getRMan();
+              ResourceManager rMan = tpdacx_.getRMan();
               String fmt;
               Object[] list;
               if (timesPerDrop.regions.isEmpty()) {
@@ -758,9 +782,9 @@ class QpcrDisplayGenerator {
                 list[1] = timesPerDrop.getRegionsList();
               }
               String msg = MessageFormat.format(fmt, list);                    
-              String tag = (String)tempFoots_.get(msg);
+              String tag = tempFoots_.get(msg);
               if (tag == null) {
-                tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+                tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
                 tempFoots_.put(msg, tag);
               }
               flist.add(tag);
@@ -769,10 +793,10 @@ class QpcrDisplayGenerator {
         }
         
         flist.addAll(src.getFootnoteNumbers());
-        TreeSet sortedFoots = new TreeSet(new ReadOnlyTable.NumStrComparator());
+        TreeSet<String> sortedFoots = new TreeSet<String>(new ReadOnlyTable.NumStrComparator());
         sortedFoots.addAll(flist);
-        String newNotes = PertAnnotations.convertFootnoteListToString(new ArrayList(sortedFoots));
-        src = (Source)src.clone();
+        String newNotes = PertAnnotations.convertFootnoteListToString(new ArrayList<String>(sortedFoots));
+        src = src.clone();
         src.setNotes(newNotes);
         pert.addSource(src);
       }
@@ -808,11 +832,11 @@ class QpcrDisplayGenerator {
           throw new IllegalStateException();
         }   
       }
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = tpdacx_.getRMan();
       String msg = rMan.getString("qpcrDisplay.exactMultiDrop");
-      String tag = (String)tempFoots_.get(msg);
+      String tag = tempFoots_.get(msg);
       if (tag == null) {
-        tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+        tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
         tempFoots_.put(msg, tag);
       }
       exactMultiDropTag = tag;
@@ -854,8 +878,8 @@ class QpcrDisplayGenerator {
     // Get data point notes:
     //
     
-    List notes = pd.getDataPointNotes(pdp.getID());
-    List localTags = new ArrayList();
+    List<String> notes = pd.getDataPointNotes(pdp.getID());
+    List<String> localTags = new ArrayList<String>();
   
     if (exactMultiDropTag != null) {
       localTags.add(exactMultiDropTag);
@@ -878,39 +902,39 @@ class QpcrDisplayGenerator {
     //
     
     if (notes != null) {
-      notes = new ArrayList(notes);
+      notes = new ArrayList<String>(notes);
       notes.removeAll(hoistFoots);
     }
    
     String noteStr = null;     
     if ((notes != null) || !localTags.isEmpty()) {
       PertAnnotations pa = pd.getPertAnnotations();
-      List flist = (notes == null) ? new ArrayList() : pa.getFootnoteList(notes);
-      TreeSet sorted = new TreeSet(flist);
+      List<String> flist = (notes == null) ? new ArrayList<String>() : pa.getFootnoteList(notes);
+      TreeSet<String> sorted = new TreeSet<String>(flist);
       sorted.addAll(localTags);
-      noteStr = PertAnnotations.convertFootnoteListToString(new ArrayList(sorted)); 
+      noteStr = PertAnnotations.convertFootnoteListToString(new ArrayList<String>(sorted)); 
     }
       
     String csvBatch = pdp.getBatchKey();
     String invest = psi.getInvestigatorDisplayString(pd);
     Batch batch = span.getBatchWithIDAndInvest(csvBatch, invest);
     if (batch == null) {
-      batch = new Batch(appState_, timeVal, pdp.getDate(), invest, csvBatch);
+      batch = new Batch(tpdacx_, timeVal, pdp.getDate(), invest, csvBatch);
       span.addBatch(batch);
     }
-    Measurement meas = new Measurement(appState_, pdp.getScaledDisplayValueOldStyle(scaleKey, pd, false), nonStdTime, noteStr, 
+    Measurement meas = new Measurement(tpdacx_, pdp.getScaledDisplayValueOldStyle(scaleKey, pd, false), nonStdTime, noteStr, 
                                        pdp.getControl(), pdp.getForcedSignificance(), pdp.getComment());
     if (nonStdMaxTime != null) {
       meas.setNonStdMaxTime(nonStdMaxTime);
     }
     
-    String colStr = (String)techColors.get(pdp.getMeasurementTypeKey());
+    String colStr = techColors.get(pdp.getMeasurementTypeKey());
     meas.setColorDisplay(colStr);
     batch.addMeasurement(meas);
 
-    List investigators = psi.getInvestigators();
+    List<String> investigators = psi.getInvestigators();
     for (int i = 0; i < investigators.size(); i++) {
-      String investKey = (String)investigators.get(i);
+      String investKey = investigators.get(i);
       pert.addInvestigatorIfNew(pd.getInvestigator(investKey));
     }
     return;
@@ -922,21 +946,21 @@ class QpcrDisplayGenerator {
   ** Build footnotes for null targets:
   */
   
-  private List buildRegionFootsForNullTarg(PerturbationData pd, RegRestrictAggregation rra) {
-    ArrayList retval = new ArrayList();
-    ResourceManager rMan = appState_.getRMan();
+  private List<String> buildRegionFootsForNullTarg(PerturbationData pd, RegRestrictAggregation rra) {
+    ArrayList<String> retval = new ArrayList<String>();
+    ResourceManager rMan = tpdacx_.getRMan();
     if (rra.noRestrict == 0) {
       if (rra.actualFoots.isEmpty()) {
-        Iterator lvit = rra.legacyVals.iterator();
+        Iterator<String> lvit = rra.legacyVals.iterator();
         int size = rra.legacyVals.size(); 
         Object[] lvobj = new Object[1];
         if (size == 1) {      
           lvobj[0] = lvit.next();
           String format = rMan.getString("qpcrDisplay.simpleLegacyRegionRestrictionFormat");
           String foot = MessageFormat.format(format, lvobj);
-          String tag = (String)tempFoots_.get(foot);
+          String tag = tempFoots_.get(foot);
           if (tag == null) {
-            tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+            tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
             tempFoots_.put(foot, tag);
           }
           retval.add(tag);
@@ -944,7 +968,7 @@ class QpcrDisplayGenerator {
         } else {
           StringBuffer buf = new StringBuffer();
           while (lvit.hasNext()) {
-            buf.append((String)lvit.next());
+            buf.append(lvit.next());
             if (lvit.hasNext()) {
               buf.append(", ");
             }
@@ -952,25 +976,25 @@ class QpcrDisplayGenerator {
           lvobj[0] = buf.toString();
           String format = rMan.getString("qpcrDisplay.mixedLegacyRegionRestrictionFormat");
           String foot = MessageFormat.format(format, lvobj);
-          String tag = (String)tempFoots_.get(foot);
+          String tag = tempFoots_.get(foot);
           if (tag == null) {
-            tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+            tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
             tempFoots_.put(foot, tag);
           }
           retval.add(tag);
           return (retval);
         }
       } else if (rra.legacyVals.isEmpty()) {
-        Iterator afit = rra.actualFoots.iterator();
+        Iterator<String> afit = rra.actualFoots.iterator();
         int size = rra.actualFoots.size(); 
         Object[] lvobj = new Object[1];
         if (size == 1) {      
           lvobj[0] = afit.next();
           String format = rMan.getString("qpcrDisplay.simpleRegionRestrictionFormat");
           String foot = MessageFormat.format(format, lvobj);
-          String tag = (String)tempFoots_.get(foot);
+          String tag = tempFoots_.get(foot);
           if (tag == null) {
-            tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+            tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
             tempFoots_.put(foot, tag);
           }
           retval.add(tag);
@@ -978,7 +1002,7 @@ class QpcrDisplayGenerator {
         } else {
           StringBuffer buf = new StringBuffer();
           while (afit.hasNext()) {
-            buf.append((String)afit.next());
+            buf.append(afit.next());
             if (afit.hasNext()) {
               buf.append(", ");
             }
@@ -986,9 +1010,9 @@ class QpcrDisplayGenerator {
           lvobj[0] = buf.toString();
           String format = rMan.getString("qpcrDisplay.mixedRegionRestrictionFormat");
           String foot = MessageFormat.format(format, lvobj);
-          String tag = (String)tempFoots_.get(foot);
+          String tag = tempFoots_.get(foot);
           if (tag == null) {
-            tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+            tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
             tempFoots_.put(foot, tag);
           }
           retval.add(tag);
@@ -1000,11 +1024,11 @@ class QpcrDisplayGenerator {
     // Huge mess!!
     //
     StringBuffer buf = new StringBuffer();
-    Iterator lvit = rra.legacyVals.iterator();
-    Iterator afit = rra.actualFoots.iterator();
+    Iterator<String> lvit = rra.legacyVals.iterator();
+    Iterator<String> afit = rra.actualFoots.iterator();
     while (lvit.hasNext()) {
       buf.append("\"");
-      buf.append((String)lvit.next());
+      buf.append(lvit.next());
       buf.append("\"");
       if (lvit.hasNext() || afit.hasNext()) {
         buf.append(", ");
@@ -1012,7 +1036,7 @@ class QpcrDisplayGenerator {
     }
     while (afit.hasNext()) {
       buf.append("\"");
-      buf.append((String)afit.next());
+      buf.append(afit.next());
       buf.append("\"");
       if (afit.hasNext()) {
         buf.append(", ");
@@ -1030,9 +1054,9 @@ class QpcrDisplayGenerator {
       foot = MessageFormat.format(format, lvobj);     
     }
    
-    String tag = (String)tempFoots_.get(foot);
+    String tag = tempFoots_.get(foot);
     if (tag == null) {
-      tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+      tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
       tempFoots_.put(foot, tag);
     }
     retval.add(tag);
@@ -1049,15 +1073,15 @@ class QpcrDisplayGenerator {
     if (rr.isLegacyNullStyle()) {
       throw new IllegalArgumentException();
     } else {
-      TreeSet sorted = new TreeSet();
-      Iterator nrrit = rr.getRegions();
+      TreeSet<String> sorted = new TreeSet<String>();
+      Iterator<String> nrrit = rr.getRegions();
       while (nrrit.hasNext()) {
-        String region = (String)nrrit.next();
+        String region = nrrit.next();
         sorted.add(region);
       }     
       nrrit = sorted.iterator();
       while (nrrit.hasNext()) {
-        String region = (String)nrrit.next();
+        String region = nrrit.next();
         regBuf.append(region);
         if (nrrit.hasNext()) {
           regBuf.append(", ");
@@ -1073,7 +1097,7 @@ class QpcrDisplayGenerator {
   */
 
   private String buildRegResFootnote(PerturbationData pd, PerturbationData.RegionRestrict rr) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = tpdacx_.getRMan();
     String regList;
     if (rr.isLegacyNullStyle()) {
       regList = rr.getLegacyValue();
@@ -1083,9 +1107,9 @@ class QpcrDisplayGenerator {
     
     String format = rMan.getString("qpcrDisplay.regionRestrictionFormat");
     String foot = MessageFormat.format(format, new Object[] {regList});             
-    String tag = (String)tempFoots_.get(foot);
+    String tag = tempFoots_.get(foot);
     if (tag == null) {
-      tag = pd.getPertAnnotations().getNextTempTag(new HashSet(tempFoots_.values()));
+      tag = pd.getPertAnnotations().getNextTempTag(new HashSet<String>(tempFoots_.values()));
       tempFoots_.put(foot, tag);
     }
     return (tag);
@@ -1105,15 +1129,18 @@ class QpcrDisplayGenerator {
       this.targKey = targ;
     }
 
-     public int hashCode() {
+    @Override
+    public int hashCode() {
       return (srcs.hashCode() + targKey.hashCode());
     }
-
-     public String toString() {
+    
+    @Override
+    public String toString() {
       return ("PertSourcesAndTarg: " + srcs + " " + targKey);
     }
-
-     public boolean equals(Object other) {
+    
+    @Override
+    public boolean equals(Object other) {
       if (other == null) {
         return (false);
       }
@@ -1136,13 +1163,13 @@ class QpcrDisplayGenerator {
   */  
   
   private static class RegRestrictAggregation {    
-    TreeSet legacyVals;
-    TreeSet actualFoots;
+    TreeSet<String> legacyVals;
+    TreeSet<String> actualFoots;
     int noRestrict;
 
     RegRestrictAggregation() {
-      legacyVals = new TreeSet();
-      actualFoots = new TreeSet();
+      legacyVals = new TreeSet<String>();
+      actualFoots = new TreeSet<String>();
       noRestrict = 0;
     }
   }
@@ -1153,19 +1180,19 @@ class QpcrDisplayGenerator {
   */  
   
   private static class FormerNullFootData {    
-    TreeSet times;
-    TreeSet regions;
+    TreeSet<String> times;
+    TreeSet<String> regions;
 
     FormerNullFootData() {
-      times = new TreeSet();
-      regions = new TreeSet();
+      times = new TreeSet<String>();
+      regions = new TreeSet<String>();
     }
     
-    private String getStringList(TreeSet set) {
+    private String getStringList(TreeSet<String> set) {
       StringBuffer buf = new StringBuffer();
-      Iterator sit = set.iterator();
+      Iterator<String> sit = set.iterator();
       while (sit.hasNext()) {
-        String str = (String)sit.next();
+        String str = sit.next();
         buf.append("(");
         buf.append(str);
         buf.append(")");

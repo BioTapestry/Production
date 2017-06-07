@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,8 +19,10 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
@@ -50,8 +52,7 @@ public class ResizeModuleCore extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public ResizeModuleCore(BTState appState) {
-    super(appState);  
+  public ResizeModuleCore() {
     name = "modulePopup.SizeCoreToRegionBounds";
     desc = "modulePopup.SizeCoreToRegionBounds";     
     mnem = "modulePopup.SizeCoreToRegionBoundsMnem";  
@@ -71,8 +72,8 @@ public class ResizeModuleCore extends AbstractControlFlow {
    */ 
     
    @Override
-   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-     StepState retval = new StepState(appState_, dacx);
+   public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+     StepState retval = new StepState(dacx);
      return (retval);
    }
    
@@ -83,14 +84,15 @@ public class ResizeModuleCore extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     String moduleID = inter.getObjectID();
-    String overlayKey = rcx.oso.getCurrentOverlay(); 
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(overlayKey);
+    String overlayKey = rcx.getOSO().getCurrentOverlay(); 
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);
     int displayType = nmp.getType();
     if (displayType == NetModuleProperties.CONTIG_RECT) {
-      return (rcx.getLayout().coreDefDoesNotMatchVisible(overlayKey, moduleID, rcx));
+      return (rcx.getCurrentLayout().coreDefDoesNotMatchVisible(overlayKey, moduleID, rcx));
     } else {
       return (false);
     }
@@ -110,6 +112,7 @@ public class ResizeModuleCore extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToResize")) {
           next = ans.stepToResize();      
         } else {
@@ -128,15 +131,18 @@ public class ResizeModuleCore extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection modInter_;
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+  
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepToResize";
     }
     
     /***************************************************************************
@@ -144,12 +150,11 @@ public class ResizeModuleCore extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepToResize";
-      dacx_ = dacx;
     }
-    
+
     /***************************************************************************
     **
     ** Do the step
@@ -168,13 +173,13 @@ public class ResizeModuleCore extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToResize() {
     
       String netModKey = modInter_.getObjectID();   
-      UndoSupport support = new UndoSupport(appState_, "undo.sizeCoreToRegionBounds");
-      Layout.PropChange pc = dacx_.getLayout().sizeCoreToRegionBounds(dacx_.oso.getCurrentOverlay(), netModKey, dacx_);            
+      UndoSupport support = uFac_.provideUndoSupport("undo.sizeCoreToRegionBounds", dacx_);
+      Layout.PropChange pc = dacx_.getCurrentLayout().sizeCoreToRegionBounds(dacx_.getOSO().getCurrentOverlay(), netModKey, dacx_);            
       if (pc == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
-      support.addEdit(new PropChangeCmd(appState_, dacx_, pc));
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));      
+      support.addEdit(new PropChangeCmd(dacx_, pc));
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));      
       support.finish();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 

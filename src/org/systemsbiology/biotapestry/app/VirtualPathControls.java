@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,12 +37,12 @@ import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.userPath.PathStep;
 import org.systemsbiology.biotapestry.ui.menu.XPlatComboBox;
 import org.systemsbiology.biotapestry.ui.menu.XPlatComboOption;
-import org.systemsbiology.biotapestry.ui.menu.XPlatMaskingStatus;
 import org.systemsbiology.biotapestry.ui.menu.XPlatMenu;
 import org.systemsbiology.biotapestry.ui.menu.XPlatToggleAction;
 import org.systemsbiology.biotapestry.util.FixedJComboBox;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -63,8 +63,10 @@ public class VirtualPathControls {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private BTState appState_;
   private DynamicDataAccessContext ddacx_;
+  private UndoFactory uFac_;
+  private UIComponentSource uics_;
+  private CmdSource cmdSrc_;
  
   private XPlatComboBox pathXPlat_;
   private XPlatMenu pathXPlatMenu_;
@@ -88,14 +90,15 @@ public class VirtualPathControls {
   ** Constructor 
   */ 
   
-  public VirtualPathControls(BTState appState, DynamicDataAccessContext ddacx) {
-    appState_ = appState;
-    appState_.setPathControls(this);
-    ResourceManager rMan = appState_.getRMan();
+  public VirtualPathControls(UIComponentSource uics, DynamicDataAccessContext ddacx, UndoFactory uFac, CmdSource cmdSrc) {
+    ResourceManager rMan = ddacx.getRMan();
     pathControlsVisible_ = false;
     ddacx_ = ddacx;
+    uFac_ = uFac;
+    uics_ = uics;
+    cmdSrc_ = cmdSrc;
     
-    if (!appState_.isHeadless()) {
+    if (!uics_.isHeadless()) {
       userPathsMenu_ = new JMenu(rMan.getString("command.userPaths"));
       userPathsMenu_.setMnemonic(rMan.getChar("command.userPathsMnem"));
       userPathsCombo_ = new FixedJComboBox(250);
@@ -107,9 +110,9 @@ public class VirtualPathControls {
               return;
             }
             ObjChoiceContent occ = (ObjChoiceContent)userPathsCombo_.getSelectedItem();
-            appState_.getPathController().setCurrentPath((occ == null) ? null : occ.val, ddacx_);
+            uics_.getPathController().setCurrentPath((occ == null) ? null : occ.val, ddacx_, uFac_);
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
@@ -256,13 +259,13 @@ public class VirtualPathControls {
     
   public void updateUserPathActions() {
     managingPathControls_ = true;
-    Vector<ObjChoiceContent> pathChoices = appState_.getPathMgr().getPathChoices();
+    Vector<ObjChoiceContent> pathChoices = uics_.getPathMgr().getPathChoices();
     int numPC = pathChoices.size();
-    ResourceManager rMan = appState_.getRMan(); 
+    ResourceManager rMan = ddacx_.getRMan(); 
     String noPath = rMan.getString("pathController.noPath");
-    MainCommands mcmd = appState_.getMainCmds();
+    MainCommands mcmd = cmdSrc_.getMainCmds();
     
-    boolean headless = appState_.isHeadless();
+    boolean headless = uics_.isHeadless();
      
     //
     // Do the installation in the desktop mode:
@@ -274,12 +277,15 @@ public class VirtualPathControls {
         PathStep.PathArg args = new PathStep.PathArg(noPath, null, true);
         MainCommands.ChecksForEnabled scupa = mcmd.getActionNoCache(FlowMeister.MainFlow.TREE_PATH_SET_CURRENT_USER_PATH, false, args);
         JCheckBoxMenuItem jcb = new JCheckBoxMenuItem(scupa);
-        userPathsMenu_.add(jcb);    
+        if (numPC == 0) {
+          jcb.setSelected(true);
+        }
+        userPathsMenu_.add(jcb); 
       }
   
       if (userPathsCombo_ != null) {
         userPathsCombo_.removeAllItems();
-        userPathsCombo_.addItem(new ObjChoiceContent(noPath, null));    
+        userPathsCombo_.addItem(new ObjChoiceContent(noPath, null));
       }  
       
       for (int i = 0; i < numPC; i++) {
@@ -297,16 +303,17 @@ public class VirtualPathControls {
          
       if (userPathsCombo_ != null) {
         userPathsCombo_.invalidate();
-        userPathsCombo_.validate(); 
+        userPathsCombo_.validate();
       } 
-      appState_.getCommonView().makePathControlsVisible(numPC > 0);
+      
+      uics_.getCommonView().makePathControlsVisible(numPC > 0);
       
       //
       // Do the condition for web servers and batch:
       //
       
     } else {
-      FlowMeister flom = appState_.getFloM();
+      FlowMeister flom = cmdSrc_.getFloM();
       pathXPlat_ = new XPlatComboBox("");
       pathXPlatMenu_ = new XPlatMenu(rMan.getString("command.userPaths"), rMan.getChar("command.userPathsMnem"));
       PathStep.PathArg args = new PathStep.PathArg(noPath, null, true);
@@ -339,8 +346,8 @@ public class VirtualPathControls {
 
   public void handlePathButtons() {  
     
-    boolean headless = appState_.isHeadless();
-    MainCommands mcmd = appState_.getMainCmds();
+    boolean headless = uics_.isHeadless();
+    MainCommands mcmd = cmdSrc_.getMainCmds();
     
     //
     // Enable/disable path actions based on path limits:
@@ -362,23 +369,23 @@ public class VirtualPathControls {
       MainCommands.ChecksForEnabled dsaWI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.TREE_PATH_DELETE_STOP, true);
       MainCommands.ChecksForEnabled dsaNI = mcmd.getCachedActionIfPresent(FlowMeister.MainFlow.TREE_PATH_DELETE_STOP, false);    
     
-      boolean goBack = appState_.getPathController().canGoBackward();
+      boolean goBack = uics_.getPathController().canGoBackward();
       if (baWI != null) baWI.setConditionalEnabled(goBack);
       if (baNI != null) baNI.setConditionalEnabled(goBack);
       
-      boolean goForward = appState_.getPathController().canGoForward();
+      boolean goForward = uics_.getPathController().canGoForward();
       if (faWI != null) faWI.setConditionalEnabled(goForward);
       if (faNI != null) faNI.setConditionalEnabled(goForward);
       
-      boolean pathSelected = appState_.getPathController().pathIsSelected();
+      boolean pathSelected = uics_.getPathController().pathIsSelected();
       if (daWI != null) daWI.setConditionalEnabled(pathSelected);
       if (daNI != null) daNI.setConditionalEnabled(pathSelected);
           
-      boolean hasAPath = appState_.getPathController().hasAPath();    
+      boolean hasAPath = uics_.getPathController().hasAPath();    
       if (asaWI != null) asaWI.setConditionalEnabled(hasAPath);
       if (asaNI != null) asaNI.setConditionalEnabled(hasAPath);
       
-      boolean hasAStop = appState_.getPathController().pathHasAStop();
+      boolean hasAStop = uics_.getPathController().pathHasAStop();
       if (dsaWI != null) dsaWI.setConditionalEnabled(hasAStop);
       if (dsaNI != null) dsaNI.setConditionalEnabled(hasAStop);
     } else {     
@@ -388,35 +395,35 @@ public class VirtualPathControls {
       if (!baFlow.externallyEnabled()) {
         throw new IllegalStateException();
       }
-      boolean goBack = appState_.getPathController().canGoBackward();
+      boolean goBack = uics_.getPathController().canGoBackward();
       buttonStat_.put(FlowMeister.MainFlow.TREE_PATH_BACK, new Boolean(goBack));
        
       ControlFlow faFlow = mcmd.getCachedFlow(FlowMeister.MainFlow.TREE_PATH_FORWARD);
       if (!faFlow.externallyEnabled()) {
         throw new IllegalStateException();
       }
-      boolean goForward = appState_.getPathController().canGoForward();
+      boolean goForward = uics_.getPathController().canGoForward();
       buttonStat_.put(FlowMeister.MainFlow.TREE_PATH_FORWARD, new Boolean(goForward));       
        
       ControlFlow daFlow = mcmd.getCachedFlow(FlowMeister.MainFlow.TREE_PATH_DELETE);
       if (!daFlow.externallyEnabled()) {
         throw new IllegalStateException();
       }
-      boolean pathSelected = appState_.getPathController().pathIsSelected();
+      boolean pathSelected = uics_.getPathController().pathIsSelected();
       buttonStat_.put(FlowMeister.MainFlow.TREE_PATH_DELETE, new Boolean(pathSelected));
        
       ControlFlow asaFlow = mcmd.getCachedFlow(FlowMeister.MainFlow.TREE_PATH_ADD_STOP);
       if (!asaFlow.externallyEnabled()) {
         throw new IllegalStateException();
       }
-      boolean hasAPath = appState_.getPathController().hasAPath(); 
+      boolean hasAPath = uics_.getPathController().hasAPath(); 
       buttonStat_.put(FlowMeister.MainFlow.TREE_PATH_ADD_STOP, new Boolean(hasAPath));
        
       ControlFlow dsaFlow = mcmd.getCachedFlow(FlowMeister.MainFlow.TREE_PATH_DELETE_STOP);
       if (!dsaFlow.externallyEnabled()) {
         throw new IllegalStateException();
       }
-      boolean hasAStop = appState_.getPathController().pathHasAStop();
+      boolean hasAStop = uics_.getPathController().pathHasAStop();
       buttonStat_.put(FlowMeister.MainFlow.TREE_PATH_DELETE_STOP, new Boolean(hasAStop));   
     }
     return;
@@ -437,7 +444,10 @@ public class VirtualPathControls {
         JCheckBoxMenuItem jcbmi = (JCheckBoxMenuItem)userPathsMenu_.getItem(i);
         jcbmi.setSelected(i == index);
       }
+      userPathsMenu_.invalidate();
+      userPathsMenu_.validate();
     }
+    
     if (userPathsCombo_ != null) {
       userPathsCombo_.setSelectedIndex(index); 
       userPathsCombo_.invalidate();

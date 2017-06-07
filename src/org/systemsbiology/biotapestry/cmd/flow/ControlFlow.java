@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,6 +22,9 @@ package org.systemsbiology.biotapestry.cmd.flow;
 import java.awt.Point;
 
 
+import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
@@ -33,14 +36,14 @@ import org.systemsbiology.biotapestry.ui.Intersection;
 */
 
 public interface ControlFlow { 
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx);
   public DialogAndInProcessCmd processNextStep(ServerControlFlowHarness cfh, DialogAndInProcessCmd last);
   public RemoteRequest.Result processRemoteRequest(RemoteRequest qbom, DialogAndInProcessCmd.CmdState cmds);
   public DialogAndInProcessCmd processClick(Point theClick, boolean isShifted, double pixDiam, DialogAndInProcessCmd.CmdState cmds);
   public VisualChangeResult visualizeResults(DialogAndInProcessCmd last);
   public boolean isEnabled(CheckGutsCache cache);   
-  public boolean isValid(Intersection inter, boolean singleSegment, boolean canSplit, DataAccessContext rcx);
-  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx);
+  public boolean isValid(Intersection inter, boolean singleSegment, boolean canSplit, DataAccessContext rcx, UIComponentSource uics);
+  public boolean isTreeEnabled(XPlatModelNode.NodeKey key, DataAccessContext rcx, UIComponentSource uics);
   
   /***************************************************************************
   **
@@ -78,7 +81,7 @@ public interface ControlFlow {
   */
     
   public interface FlowForPopToggle {
-    public boolean shouldCheck();
+    public boolean shouldCheck(CmdSource cSrc);
   }
   
   /***************************************************************************
@@ -87,7 +90,7 @@ public interface ControlFlow {
   */
     
   public interface FlowForMainToggle {
-    public void directCheck(boolean isActive);
+    public void directCheck(boolean isActive, CmdSource cSrc);
   }
   
   

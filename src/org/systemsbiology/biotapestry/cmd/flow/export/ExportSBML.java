@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,7 +23,10 @@ package org.systemsbiology.biotapestry.cmd.flow.export;
 import java.util.Date;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -89,8 +92,9 @@ public class ExportSBML extends AbstractSimpleExport {
    
   @Override
   protected void prepFileDialog(ExportState es) {
-    es.filts.add(new FileExtensionFilters.SimpleFilter(appState_, ".xml", "filterName.xml"));
-    es.filts.add(new FileExtensionFilters.DoubleExtensionFilter(appState_, ".sbm", ".sbml", "filterName.sbm"));  
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    es.filts.add(new FileExtensionFilters.SimpleFilter(dacx.getRMan(), ".xml", "filterName.xml"));
+    es.filts.add(new FileExtensionFilters.DoubleExtensionFilter(dacx.getRMan(), ".sbm", ".sbml", "filterName.sbm"));  
     es.suffs.add("xml");
     es.suffs.add("sbm");
     es.suffs.add("sbml");
@@ -106,11 +110,12 @@ public class ExportSBML extends AbstractSimpleExport {
   */
  
   @Override
-  protected boolean runTheExport(ExportState es) {
+  protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "none";
     es.fileErrTitle = "none";          
     Indenter ind = new Indenter(es.out, Indenter.DEFAULT_INDENT);
-    Genome genome = appState_.getDB().getGenome(appState_.getGenome());
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    Genome genome = dacx.getCurrentGenome();
     es.out.println("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
     es.out.println("<!-- Created by BioTapestry " + new Date() + " -->");
     ind.indent();

@@ -28,6 +28,7 @@ import java.util.Map;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.nav.ImageChange;
+import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeProperties;  // FIX ME
 
@@ -364,7 +365,7 @@ public interface Genome extends NetOverlayOwner {
   **
   */
   
-  public ImageChange[] setGenomeImage(String imgKey);  
+  public ImageChange[] setGenomeImage(ImageManager mgr, String imgKey);  
   
   /***************************************************************************
   **
@@ -372,7 +373,7 @@ public interface Genome extends NetOverlayOwner {
   **
   */
   
-  public ImageChange dropGenomeImage();    
+  public ImageChange dropGenomeImage(ImageManager mgr);    
 
   /***************************************************************************
   **
@@ -380,7 +381,16 @@ public interface Genome extends NetOverlayOwner {
   **
   */
   
-  public String getGenomeImage();      
+  public String getGenomeImage();
+  
+  
+  /***************************************************************************
+  **
+  ** Modify the image key for IO Tab Appending
+  **
+  */
+  
+  public void mapImageKeyForAppend(Map<String, String> daMap);
   
   /***************************************************************************
   **
@@ -540,14 +550,14 @@ public interface Genome extends NetOverlayOwner {
   ** Undo an image change
   */
   
-  public void imageChangeUndo(ImageChange undo);
+  public void imageChangeUndo(ImageManager mgr, ImageChange undo);
   
   /***************************************************************************
   **
   ** Redo an image change
   */
   
-  public void imageChangeRedo(ImageChange undo);  
+  public void imageChangeRedo(ImageManager mgr, ImageChange undo);  
 
   
   /***************************************************************************

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,12 +27,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
-import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
@@ -40,10 +41,8 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGeneRegion;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Gene;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.IntersectionChooser;
@@ -79,8 +78,7 @@ public class AddCisRegModule extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddCisRegModule(BTState appState) {
-    super(appState);  
+  public AddCisRegModule() { 
     name = "genePopup.DrawCisRegModule";
     desc = "genePopup.DrawCisRegModule";
     icon = "FIXME24.gif";
@@ -99,13 +97,13 @@ public class AddCisRegModule extends AbstractControlFlow {
   ** 
   */
     
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    Genome genome = rcx.getGenome();
-    if (!(genome instanceof DBGenome)) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
+    if (!rcx.currentGenomeIsRootDBGenome()) {
       return (false);
     } 
     String geneID = inter.getObjectID();
-    Gene gene = rcx.getGenome().getGene(geneID);
+    Gene gene = rcx.getCurrentGenome().getGene(geneID);
     if (gene == null) {
       return (false); // Should not happen
     }
@@ -127,8 +125,8 @@ public class AddCisRegModule extends AbstractControlFlow {
   ** 
   */ 
   @Override    
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx, "stepBiWarning");
     return (retval);
   }
   
@@ -142,16 +140,13 @@ public class AddCisRegModule extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
-        next = ans.stepBiWarning(cfh);
+        StepState ans = new StepState(cfh, "stepBiWarning");
+        next = ans.stepBiWarning();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepBiWarning")) {
-          next = ans.stepBiWarning(cfh);
+          next = ans.stepBiWarning();
         } else if (ans.getNextStep().equals("stepStart")) {
           next = ans.stepStart();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -184,9 +179,9 @@ public class AddCisRegModule extends AbstractControlFlow {
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE); 
     if ((ans.firstPad_ == null) && (ans.buildType_ == CisModuleCreationDialogFactory.CisModRequest.BuildExtent.BOTH_PADS)) {
-      ans.nextStep_ = "beginDrawCisRegModule";
+      ans.setNextStep("beginDrawCisRegModule");
     } else {
-      ans.nextStep_ = "finishDrawCisRegModule";
+      ans.setNextStep("finishDrawCisRegModule");
     }
     return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans));
   }
@@ -196,18 +191,11 @@ public class AddCisRegModule extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
 
-    private DataAccessContext rcxT_;
-    private ServerControlFlowHarness cfh;
     private String inter_;
-    
-    //--------------------
-     
-    private String nextStep_;
     private int x;
     private int y; 
-    private BTState appState_;
     private Integer firstPad_;
     private int secondPad_;
     private CisModuleCreationDialogFactory.CisModRequest.BuildExtent buildType_;
@@ -215,15 +203,6 @@ public class AddCisRegModule extends AbstractControlFlow {
     private List<DBGeneRegion> regList_;
     private DBGene gene_;
    
-    /***************************************************************************
-    **
-    ** step thru
-    */
-    
-    public String getNextStep() {
-      return (nextStep_);
-    } 
-  
     /***************************************************************************
     **
     ** mouse masking
@@ -286,17 +265,31 @@ public class AddCisRegModule extends AbstractControlFlow {
     ** Constructor
     */
        
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
-      rcxT_ = dacx;
-      nextStep_ = "stepBiWarning"; 
+    StepState(ServerControlFlowHarness cfh, String firstStep) {
+      super(cfh);
+      nextStep_ = firstStep; 
       firstPad_ = null;
       buildType_ = null;
       cisRegName_ = null;
       regList_ = new ArrayList<DBGeneRegion>();
-      gene_ = null;
+      gene_ = null;     
     }
-     
+
+    /***************************************************************************
+    **
+    ** Constructor
+    */
+       
+    public StepState(StaticDataAccessContext dacx, String firstStep) {
+      super(dacx);
+      nextStep_ = firstStep; 
+      firstPad_ = null;
+      buildType_ = null;
+      cisRegName_ = null;
+      regList_ = new ArrayList<DBGeneRegion>();
+      gene_ = null;     
+    }
+    
     /***************************************************************************
     **
     ** For ongoing adds
@@ -312,10 +305,10 @@ public class AddCisRegModule extends AbstractControlFlow {
     ** Warn of build instructions
     */
       
-    private DialogAndInProcessCmd stepBiWarning(ServerControlFlowHarness cfh) {
+    private DialogAndInProcessCmd stepBiWarning() {
       DialogAndInProcessCmd daipc;
-      if (appState_.getDB().haveBuildInstructions()) {
-        ResourceManager rMan = appState_.getRMan();
+      if (dacx_.getInstructSrc().haveBuildInstructions()) {
+        ResourceManager rMan = dacx_.getRMan();
         String message = rMan.getString("instructWarning.modMessage");
         message = UiUtil.convertMessageToHtml(message);
         String title = rMan.getString("instructWarning.title");
@@ -334,7 +327,7 @@ public class AddCisRegModule extends AbstractControlFlow {
     */
       
     private DialogAndInProcessCmd stepStart() { 
-      gene_ = (DBGene)rcxT_.getGenome().getGene(inter_);
+      gene_ = (DBGene)dacx_.getCurrentGenome().getGene(inter_);
     
       List<DBGeneRegion> glist = DBGeneRegion.initTheList(gene_);
       regList_ = DBGeneRegion.initTheList(gene_);
@@ -344,7 +337,7 @@ public class AddCisRegModule extends AbstractControlFlow {
 
       CisModuleCreationDialogFactory.CisModBuildArgs ba = 
         new CisModuleCreationDialogFactory.CisModBuildArgs(glist, canLeft, canRight);
-      CisModuleCreationDialogFactory dgcdf = new CisModuleCreationDialogFactory(cfh);
+      CisModuleCreationDialogFactory dgcdf = new CisModuleCreationDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);       
       nextStep_ = "stepDataExtract";
@@ -364,11 +357,6 @@ public class AddCisRegModule extends AbstractControlFlow {
       } 
       cisRegName_ = crq.nameResult;
       buildType_ = crq.buildType;
-  //    if (buildType_ == CisModuleCreationDialogFactory.CisModRequest.BuildExtent.PAD_LEFT) {
-   //     newPadRight_ = regList_.get(0).getStartPad() - 1;    
-  //    } else if (buildType_ == CisModuleCreationDialogFactory.CisModRequest.BuildExtent.PAD_RIGHT) {
-  //      newPadLeft_ = regList_.get(regList_.size() - 1).getEndPad() + 1;
-  //    }
       nextStep_ = "stepSetToMode";
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
       return (retval);
@@ -393,8 +381,8 @@ public class AddCisRegModule extends AbstractControlFlow {
     private DialogAndInProcessCmd beginDrawCisRegModule() {
           
       List<Intersection.AugmentedIntersection> augs = 
-        appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+        cfh_.getUI().getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       
       if (inter == null) {
@@ -428,8 +416,8 @@ public class AddCisRegModule extends AbstractControlFlow {
     private DialogAndInProcessCmd finishDrawCisRegModule() {
          
       List<Intersection.AugmentedIntersection> augs = 
-        appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+        cfh_.getUI().getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+      Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
       Intersection inter = ((ai == null) || (ai.intersect == null)) ? null : ai.intersect;
       
       if (inter == null) {
@@ -509,7 +497,7 @@ public class AddCisRegModule extends AbstractControlFlow {
         newPadRight = Math.max(firstPad_.intValue(), secondPad_);      
       }  
       
-      UndoSupport support = new UndoSupport(appState_, "undo.addCisReg");         
+      UndoSupport support = uFac_.provideUndoSupport("undo.addCisReg", dacx_);         
       
       DBGeneRegion newReg = new DBGeneRegion(cisRegName_, newPadLeft, newPadRight, Gene.LEVEL_NONE, false);
       
@@ -523,22 +511,21 @@ public class AddCisRegModule extends AbstractControlFlow {
         throw new IllegalStateException();
       }
       
-      GenomeChange gc = rcxT_.getDBGenome().changeGeneRegions(gene_.getID(), regList_);
+      GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(gene_.getID(), regList_);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, rcxT_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
-        ModelChangeEvent mcev = new ModelChangeEvent(rcxT_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+        ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }      
       //
       // The top-level canonical regions have changed. When we draw a new module, the links that go into 
       // that module need to be globally targeted to that module:
       //     
-      Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = 
-        (new FullGenomeHierarchyOracle(appState_)).analyzeLinksIntoModules(gene_.getID());
+      Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = dacx_.getFGHO().analyzeLinksIntoModules(gene_.getID());
     
       if (FullGenomeHierarchyOracle.hasModuleProblems(gla)) {
-        LinkSupport.fixCisModLinks(support, gla, appState_, rcxT_, gene_.getID(), false);
+        LinkSupport.fixCisModLinks(support, gla, dacx_, gene_.getID(), false);
       }
       support.finish();
       return;

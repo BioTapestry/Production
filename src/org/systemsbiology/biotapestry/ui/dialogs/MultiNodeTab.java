@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,9 +38,10 @@ import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
@@ -77,8 +78,9 @@ public class MultiNodeTab {
   private boolean isForGene_;
   private TriStateJComboBox labelHidden_;
   private JComboBox evidenceCombo_;
-  private BTState appState_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private HarnessBuilder hBld_;
   private List<ColorDeletionListener> colorListeners_;
 
   ////////////////////////////////////////////////////////////////////////////
@@ -93,14 +95,15 @@ public class MultiNodeTab {
   ** 
   */
   
-  public MultiNodeTab(BTState appState, DataAccessContext dacx, Set<String> nodes, 
-                      boolean isForGene, List<ColorDeletionListener> cdls) {
-    appState_ = appState;
+  public MultiNodeTab(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, 
+                      Set<String> nodes, boolean isForGene, List<ColorDeletionListener> cdls) {
+    uics_ = uics;
     dacx_ = dacx;
+    hBld_ = hBld;
     nodes_ = nodes;
     isForGene_ = isForGene;
     colorListeners_ = cdls;
-    nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx);
+    nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -121,7 +124,7 @@ public class MultiNodeTab {
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();      
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
 
     int row = 0;
     JPanel modelPanel = null;
@@ -149,7 +152,7 @@ public class MultiNodeTab {
     if (!haveDynInstance) {
       if ((gcp.evidenceCoverage != ConsensusProps.UNDEFINED_OPTION_COVERAGE) && 
           (gcp.evidenceCoverage != ConsensusProps.NO_OPTION_COVERAGE)) {   
-        Vector<ChoiceContent> eviOpts = DBGene.getEvidenceChoices(appState_);
+        Vector<ChoiceContent> eviOpts = DBGene.getEvidenceChoices(dacx_);
         eviOpts.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), Gene.LEVEL_VARIOUS));
         evidenceCombo_ = new JComboBox(eviOpts);    
 
@@ -193,7 +196,7 @@ public class MultiNodeTab {
     // Color setting:
     //
 
-    colorWidget1_ = new ColorSelectionWidget(appState_, dacx_, colorListeners_, true, "nprop.color", true, true);
+    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorListeners_, true, "nprop.color", true, true);
     UiUtil.gbcSet(gbc, 0, layoutRownum++, 11, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 0.0);
     layoutPanel.add(colorWidget1_, gbc);     
 
@@ -229,7 +232,7 @@ public class MultiNodeTab {
       } 
       UiUtil.gbcSet(gbc, 0, layoutRownum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);
       layoutPanel.add(hideLabelLabel, gbc);
-      labelHidden_ = new TriStateJComboBox(appState_);
+      labelHidden_ = new TriStateJComboBox(dacx_);
       UiUtil.gbcSet(gbc, 1, layoutRownum++, 10, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
       layoutPanel.add(labelHidden_, gbc);
     }
@@ -301,11 +304,11 @@ public class MultiNodeTab {
         if (cgp.consensusEvidence == Gene.LEVEL_VARIOUS) {
           evidenceCombo_.setSelectedIndex(0);
         } else {          
-          evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(appState_, cgp.consensusEvidence));
+          evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(dacx_, cgp.consensusEvidence));
         }
       }
 
-      String tag = (cgp.consensusExtraPadCount == ConsensusNodeProps.NO_PAD_CHANGE) ? appState_.getRMan().getString("multiSelProps.various")
+      String tag = (cgp.consensusExtraPadCount == ConsensusNodeProps.NO_PAD_CHANGE) ? dacx_.getRMan().getString("multiSelProps.various")
                                                                                     : Integer.toString(cgp.consensusExtraPadCount);
       nps_.setExtraPadsForMulti(new ChoiceContent(tag, cgp.consensusExtraPadCount), cgp.consensusDoExtraPads, cgp.consensusGrowth);
 
@@ -323,15 +326,15 @@ public class MultiNodeTab {
   */
 
   public boolean errorCheckForTab() { 
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance) && !haveDynInstance;   
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance) && !haveDynInstance;   
     //
     // Have to error check all activity changes before making the changes:
     //     
     Iterator<String> nit = nodes_.iterator();
     while (nit.hasNext()) {
       String nodeID = nit.next();
-      Node node = dacx_.getGenome().getNode(nodeID);
+      Node node = dacx_.getCurrentGenome().getNode(nodeID);
 
       if (haveStatInstance) {
         NodeInstance gi = (NodeInstance)node;
@@ -353,7 +356,7 @@ public class MultiNodeTab {
         }
 
         if ((oldActivity != newNiAs.activityState) || levelChanged) {
-          GenomeItemInstance.ActivityTracking tracking = gi.calcActivityBounds(dacx_.getGenomeAsInstance());
+          GenomeItemInstance.ActivityTracking tracking = gi.calcActivityBounds(dacx_.getCurrentGenomeAsInstance());
           if (!nps_.checkActivityBounds(tracking, newNiAs)) {
             return (false);
           }
@@ -375,8 +378,8 @@ public class MultiNodeTab {
   */
 
   public boolean applyProperties(UndoSupport support) { 
-    boolean haveStatInstance = (dacx_.getGenome() instanceof GenomeInstance);
-    boolean haveDynInstance = (dacx_.getGenome() instanceof DynamicGenomeInstance);
+    boolean haveStatInstance = (dacx_.getCurrentGenome() instanceof GenomeInstance);
+    boolean haveDynInstance = (dacx_.getCurrentGenome() instanceof DynamicGenomeInstance);
 
     String primeColorName = colorWidget1_.getCurrentColor();
 
@@ -387,9 +390,9 @@ public class MultiNodeTab {
     Iterator<String> nit = nodes_.iterator();
     while (nit.hasNext()) {
       String nodeID = nit.next();
-      Node node = dacx_.getGenome().getNode(nodeID);
+      Node node = dacx_.getCurrentGenome().getNode(nodeID);
       int nodeType = node.getNodeType();
-      NodeProperties np = dacx_.getLayout().getNodeProperties(nodeID);
+      NodeProperties np = dacx_.getCurrentLayout().getNodeProperties(nodeID);
       NodeProperties changedProps = np.clone();
       boolean layoutChange = false;
 
@@ -414,9 +417,9 @@ public class MultiNodeTab {
             if (newNiAs.activityState == NodeInstance.VARIABLE) {
               copyNode.setActivityLevel(newNiAs.activityLevel.doubleValue());
             }  
-            GenomeChange gc = (isForGene_) ? dacx_.getGenome().replaceGene((GeneInstance)copyNode) : dacx_.getGenome().replaceNode(copyNode);
+            GenomeChange gc = (isForGene_) ? dacx_.getCurrentGenome().replaceGene((GeneInstance)copyNode) : dacx_.getCurrentGenome().replaceNode(copyNode);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
               support.addEdit(gcc);
               instanceChange = true;
             }
@@ -456,9 +459,9 @@ public class MultiNodeTab {
         if (evidenceCombo_ != null) {
           int newEvidence = ((ChoiceContent)evidenceCombo_.getSelectedItem()).val;
           if (newEvidence != Gene.LEVEL_VARIOUS) {
-            GenomeChange gc = dacx_.getGenome().changeGeneEvidence(nodeID, newEvidence);
+            GenomeChange gc = dacx_.getCurrentGenome().changeGeneEvidence(nodeID, newEvidence);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
               support.addEdit(gcc);
               modelChange = true;
             }
@@ -478,10 +481,10 @@ public class MultiNodeTab {
             newPads = Integer.valueOf(DBNode.getDefaultPadCount(nodeType));
           }
           if (newPads != null) {
-            GenomeChange gc = (nodeType == Node.GENE) ? dacx_.getGenome().changeGeneSize(nodeID, newPads.intValue()) 
-                                                      : dacx_.getGenome().changeNodeSize(nodeID, newPads.intValue());
+            GenomeChange gc = (nodeType == Node.GENE) ? dacx_.getCurrentGenome().changeGeneSize(nodeID, newPads.intValue()) 
+                                                      : dacx_.getCurrentGenome().changeNodeSize(nodeID, newPads.intValue());
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
               support.addEdit(gcc);
               modelChange = true;
             }
@@ -504,9 +507,9 @@ public class MultiNodeTab {
 
       if (layoutChange) {
         Layout.PropChange[] lpc = new Layout.PropChange[1];    
-        lpc[0] = dacx_.getLayout().replaceNodeProperties(np, changedProps); 
+        lpc[0] = dacx_.getCurrentLayout().replaceNodeProperties(np, changedProps); 
         if (lpc[0] != null) {
-          PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+          PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
           support.addEdit(mov);
           doSig = true;
         }
@@ -515,17 +518,17 @@ public class MultiNodeTab {
 
     
     if (modelChange) {
-      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);
     }   
     
     if (instanceChange) {
-      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
+      ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);
     }
 
     if (doSig) {
-      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(ev); 
     }
     return (true);

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,8 +23,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.plugin.InternalLinkDataDisplayPlugIn;
-import org.systemsbiology.biotapestry.db.Database;
 
 /****************************************************************************
 **
@@ -64,12 +65,15 @@ public class URLLinkDisplayPlugIn extends URLDisplayPlugIn implements InternalLi
   ** Answer if we are per-instance:
   */
   
-  protected boolean isUrlListPerInstance(String genomeID, String itemId) {
+  protected boolean isUrlListPerInstance(String dbID, String genomeID, String itemId) {
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();  
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
  
@@ -91,16 +95,18 @@ public class URLLinkDisplayPlugIn extends URLDisplayPlugIn implements InternalLi
   ** Get URL list
   */
   
-  protected List<String> getUrlListFromArgs(String genomeID, String linkID) {
+  protected List<String> getUrlListFromArgs(String dbID, String genomeID, String linkID) {
   
     //
     // Have to work with the root instance:
     //
     
-    TopOfTheHeap tooth = new TopOfTheHeap(appState_, genomeID);
+    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
+    StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();  
+    
+    TopOfTheHeap tooth = new TopOfTheHeap(dacx, genomeID);
     Genome genome = tooth.getGenome();   
     boolean haveInstance = tooth.isInstance();
-    Database db = appState_.getDB();
     
     //
     // If we have our own URLS, we display them.  If not, we display the root
@@ -110,7 +116,7 @@ public class URLLinkDisplayPlugIn extends URLDisplayPlugIn implements InternalLi
     ArrayList<String> retval = new ArrayList<String>(); 
     Linkage link = genome.getLinkage(linkID);
     if ((link.getURLCount() == 0) && haveInstance) {
-      Genome useGenome = db.getGenome();
+      Genome useGenome = dacx.getDBGenome();
       String useID = GenomeItemInstance.getBaseID(linkID);
       link = useGenome.getLinkage(useID);
     }    

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,12 +19,11 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.layout;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.LinkRouter;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.LayoutStatusReporter;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -47,8 +46,7 @@ public class Recolor extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public Recolor(BTState appState) {
-    super(appState);
+  public Recolor() {
     name =  "command.RecolorLayout";
     desc = "command.RecolorLayout";
     mnem =  "command.RecolorLayoutMnem";
@@ -66,6 +64,7 @@ public class Recolor extends AbstractControlFlow {
   ** 
   */
    
+  @Override
   public boolean isEnabled(CheckGutsCache cache) {
     return (cache.genomeNotNull());
   }
@@ -81,7 +80,7 @@ public class Recolor extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();    
       } else {
         throw new IllegalStateException();
@@ -98,38 +97,29 @@ public class Recolor extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+  public static class StepState extends AbstractStepState {
+ 
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
- 
+    
     /***************************************************************************
     **
     ** Do the step
     */ 
        
     private DialogAndInProcessCmd stepDoIt() {
-      UndoSupport support = new UndoSupport(appState_, "undo.reassignColors");
-      LinkRouter.RoutingResult result = LayoutLinkSupport.reassignColors(appState_, dacx_, support);
-      appState_.getSUPanel().drawModel(false);
-      (new LayoutStatusReporter(appState_, result)).doStatusAnnouncements();
-      LayoutLinkSupport.offerColorFixup(appState_, dacx_, result);
+      UndoSupport support = uFac_.provideUndoSupport("undo.reassignColors", dacx_);
+      LinkRouter.RoutingResult result = LayoutLinkSupport.reassignColors(dacx_, support);
+      uics_.getSUPanel().drawModel(false);
+      (new LayoutStatusReporter(uics_, dacx_, result)).doStatusAnnouncements();
+      LayoutLinkSupport.offerColorFixup(uics_, dacx_, result, uFac_);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   }  

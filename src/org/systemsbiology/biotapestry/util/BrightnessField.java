@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,7 +34,6 @@ import javax.swing.JTextField;
 import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
 
 /****************************************************************************
 **
@@ -52,11 +51,11 @@ public class BrightnessField extends JPanel {
  
   private JTextField brightness_;
   private JPanel canvas_;
-  private BTState appState_;
   private double brightVal_;
   private boolean haveResult_;
   private double min_;
   private double max_;
+  private HandlerAndManagerSource hms_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,10 +68,10 @@ public class BrightnessField extends JPanel {
   ** Constructor 
   */ 
   
-  public BrightnessField(BTState appState, String title, double initVal, double min, double max) { 
+  public BrightnessField(HandlerAndManagerSource hms, String title, double initVal, double min, double max) { 
     
-    appState_ = appState;
-    ResourceManager rMan = appState_.getRMan();
+    hms_ = hms;
+    ResourceManager rMan = hms_.getRMan();
     brightVal_ = initVal;
     haveResult_ = false;
     min_ = min;
@@ -192,18 +191,18 @@ public class BrightnessField extends JPanel {
       try {
         processVal();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        hms_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        hms_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }
     public void caretUpdate(CaretEvent evt) {
       try {
         processVal();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        hms_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        hms_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }
     public void focusGained(FocusEvent evt) {
@@ -212,9 +211,9 @@ public class BrightnessField extends JPanel {
       try {
         processVal();
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        hms_.getExceptionHandler().displayException(ex);
       } catch (OutOfMemoryError oom) {
-        appState_.getExceptionHandler().displayOutOfMemory(oom);
+        hms_.getExceptionHandler().displayOutOfMemory(oom);
       }
     }        
   } 

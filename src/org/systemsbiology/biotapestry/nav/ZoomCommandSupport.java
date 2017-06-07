@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -34,6 +34,7 @@ import javax.swing.JViewport;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 
 /****************************************************************************
@@ -43,30 +44,40 @@ import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 
 public class ZoomCommandSupport {
   
-
   ////////////////////////////////////////////////////////////////////////////
   //
-  // MEMBERS
+  // CONSTANTS
   //
   ////////////////////////////////////////////////////////////////////////////  
 
+  private static final double SMALL_MODEL_CUSTOM_ZOOM_ = 0.03;
+  private static final int NEW_MODEL_INDEX_ = 8;  // 0.62
+  
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // INSTANCE VARIABLES
+  //
+  ////////////////////////////////////////////////////////////////////////////  
+  
+  
   private ZoomTarget sup_;
   private JScrollPane jsp_;
-  private double[] zoomVals_ = new double[] {0.06, 0.12, 0.20, 0.25, 0.33, 0.38, 
-                                             0.44, 0.50, 0.62, 0.67, 0.75, 0.85, 1.0, 
-                                             1.25, 1.5, 2.0};
-  private int currZoomIndex_ = 5; //0.38
-  private static final double SMALL_MODEL_CUSTOM_ZOOM_ = 0.03;
-  private double customZoom_ = SMALL_MODEL_CUSTOM_ZOOM_;
-  
-  private static final int NEW_MODEL_INDEX_ = 8;  // 0.62
-  private int newModelIndex_ = NEW_MODEL_INDEX_;
+  private double[] zoomVals_;
+  private int currZoomIndex_; 
+  private double customZoom_;
+  private int newModelIndex_;
+  private Dimension currViewExtent_;
   private Dimension currViewSize_;
   private double currViewXFrac_;
   private double currViewYFrac_;
   private ZoomChangeTracker tracker_;
   private Rectangle2D currClipRect_;
   private HandlerAndManagerSource hams_;
+  private Point hiddenView_;
+  private int myTab_;
+  
+  private TabSource tSrc_;
+  private boolean ignoreScroll_;
   
 
   ////////////////////////////////////////////////////////////////////////////
@@ -80,9 +91,19 @@ public class ZoomCommandSupport {
   ** Constructor 
   */ 
   
-  public ZoomCommandSupport(ZoomChangeTracker tracker, HandlerAndManagerSource hams) {
+  public ZoomCommandSupport(ZoomChangeTracker tracker, HandlerAndManagerSource hams, TabSource tSrc, int myTab) {
     tracker_ = tracker;
     hams_ = hams;
+    zoomVals_ = new double[] {0.06, 0.12, 0.20, 0.25, 0.33, 0.38, 
+                              0.44, 0.50, 0.62, 0.67, 0.75, 0.85, 1.0, 
+                              1.25, 1.5, 2.0};
+    currZoomIndex_ = 5; //0.38 
+    customZoom_ = SMALL_MODEL_CUSTOM_ZOOM_;
+    newModelIndex_ = NEW_MODEL_INDEX_;
+    currClipRect_ = new Rectangle2D.Double(0.0, 0.0, 10000.0, 10000.0);
+    tSrc_ = tSrc;
+    myTab_ = myTab;
+    ignoreScroll_ = false;
   }  
  
   ////////////////////////////////////////////////////////////////////////////
@@ -90,6 +111,27 @@ public class ZoomCommandSupport {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////    
+
+  /***************************************************************************
+  **
+  ** We need to know what tab we are.
+  */
+
+  public void setTabNum(int tabNum) {
+    myTab_ = tabNum;
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Have to shut up paying attention to scrollbar changes during initial
+  ** setup.
+  */
+
+  public void setIgnoreScroll(boolean ignore) {
+    ignoreScroll_ = ignore;
+    return;
+  }
 
   /***************************************************************************
   **
@@ -120,6 +162,7 @@ public class ZoomCommandSupport {
   public void registerScrollPaneAndZoomTarget(JScrollPane jsp, ZoomTarget sup) {
     jsp_ = jsp;
     sup_ = sup;
+    currViewSize_ = sup_.getPreferredSize();
     if (jsp_ == null) { //headless
       return;
     }
@@ -276,7 +319,10 @@ public class ZoomCommandSupport {
   private Point boundedViewPos(Point center, Dimension vDim, JViewport view) {
     int newV = center.y - (vDim.height / 2);
     int newH = center.x - (vDim.width / 2);
-    return (doBounding(newH, newV, view));    
+   
+    Dimension allDim = (view != null) ? view.getViewSize() : null;
+    Dimension viewDim  = (view != null) ? view.getExtentSize() : null;
+    return (doBounding(newH, newV, allDim, viewDim));    
   }
   
   /***************************************************************************
@@ -284,21 +330,19 @@ public class ZoomCommandSupport {
   ** Bound viewport position
   */ 
     
-  private Point doBounding(int newH, int newV, JViewport view) {
+  private Point doBounding(int newH, int newV, Dimension allDim, Dimension viewDim) {
     //
     // Don't let the value go outide actual dimensions.  Note that with wide views, the
     // preferred size is smaller than the actual view:
     //    
-    Dimension allDim;
-    Dimension viewDim;
-    if (view != null) {
-      allDim = view.getViewSize();
-      viewDim = view.getExtentSize();      
-    } else {
+
+      
+    if (allDim == null) {
       allDim = new Dimension(10000, 10000);
+    }
+    if (viewDim == null) {
       viewDim = new Dimension(10000, 10000);
     }
-    
     
     int delH = (allDim.width - viewDim.width);
     int delV = (allDim.height - viewDim.height);
@@ -319,17 +363,36 @@ public class ZoomCommandSupport {
   **
   ** Common viewport update ops
   */ 
-    
+   
+  public void clearHiddenView() {
+    hiddenView_ = null;
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Common viewport update ops
+  */ 
+   
   private void viewportUpdate(Point center, Dimension vDim) {
     if (jsp_ != null) {
-      JViewport view = jsp_.getViewport(); 
-      view.setViewSize(sup_.getPreferredSize());
-      view.setViewPosition(boundedViewPos(center, vDim, view));
-      view.invalidate();
-      jsp_.validate();
+      JViewport view = jsp_.getViewport();
+      currViewSize_ = sup_.getPreferredSize();
+      view.setViewSize(currViewSize_);
+      
+      Point bp = boundedViewPos(center, vDim, view);
+   
+      if ((tSrc_ == null) || (tSrc_.getCurrentTabIndex() == myTab_)) {
+        view.setViewPosition(bp);
+      }
+      hiddenView_ = bp;
+      updateXYFracs(bp, currViewSize_, view.getExtentSize());    
+      
+      view.revalidate();
     } else {
       currClipRect_ = new Rectangle2D.Double(0.0, 0.0, 10000.0, 10000.0);
-    }
+    }  
+    
     return;
   }  
 
@@ -816,6 +879,24 @@ public class ZoomCommandSupport {
 
   /***************************************************************************
   **
+  ** Resizing of the window with scroll panes on non-current tabs is a problem.
+  ** We need to track the correct sizing and install it when the tab is made visible.
+  */ 
+    
+  public void tabNowVisible() { 
+    if ((tSrc_ == null) || (tSrc_.getCurrentTabIndex() == myTab_)) {
+      jsp_.getViewport().setViewSize(currViewSize_);
+      jsp_.getViewport().setViewPosition(hiddenView_);
+      jsp_.getHorizontalScrollBar().invalidate();
+      jsp_.getVerticalScrollBar().invalidate();
+      jsp_.getViewport().revalidate();
+      if (tracker_ != null) tracker_.zoomStateChanged(false);
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
   ** Changes to panel size result in changes to world->view mappings, so we
   ** do this here:
   */ 
@@ -827,24 +908,36 @@ public class ZoomCommandSupport {
     
     if (jsp_ != null) {  
       view = jsp_.getViewport();
-      viewSize = view.getViewSize();
+  //    Dimension aSize = view.getViewSize(); // This appears to be stale if viewport is hidden on another tab
+      viewSize = currViewSize_;
       viewExtent = view.getExtentSize();
     } else {
       viewSize = new Dimension(10000, 10000);
       viewExtent = new Dimension(10000, 10000);
     }
-
-    int currX = (int)Math.round((currViewXFrac_ * (double)viewSize.width) - ((double)viewExtent.width / 2.0));
-    int currY = (int)Math.round((currViewYFrac_ * (double)viewSize.height) - ((double)viewExtent.height / 2.0));
-    if (view != null) {
-      view.setViewPosition(doBounding(currX, currY, view));            
+    if ((viewSize == null) || (viewExtent == null)) {
+      return;
     }
+    
+    int currX = (int)Math.round((currViewXFrac_ * viewSize.width) - (viewExtent.width / 2.0));
+    int currY = (int)Math.round((currViewYFrac_ * viewSize.height) - (viewExtent.height / 2.0));
+    if (view != null) {
+      Dimension allDim = currViewSize_; // Again, view is stale if hidden
+      Dimension viewDim = view.getExtentSize();
+      
+      Point bp = doBounding(currX, currY, allDim, viewDim);
+      if ((tSrc_ == null) || (tSrc_.getCurrentTabIndex() == myTab_)) {
+        view.setViewPosition(bp);
+      }
+      hiddenView_ = bp;
+    }
+
     //
     // When the viewport size exceeds the worksheet area, we need to change the 
     // world->viewport transform when viewport size changes:
     // 
     sup_.adjustWideZoomForSize(scrollDims());
-    currViewSize_ = viewExtent;
+    currViewExtent_ = viewExtent;
     currClipRect_ = (view == null) ? new Rectangle2D.Double(0.0, 0.0, 10000.0, 10000.0) : view.getViewRect();
     if (tracker_ != null) tracker_.zoomStateChanged(true);
     return;
@@ -858,6 +951,9 @@ public class ZoomCommandSupport {
   */ 
     
   public void trackScrollBars() { 
+    if (ignoreScroll_) {
+      return;
+    }
     Dimension viewExtent;
     JViewport view = null;
     if (jsp_ != null) {  
@@ -865,24 +961,33 @@ public class ZoomCommandSupport {
       viewExtent = view.getExtentSize();
     } else {
       viewExtent = new Dimension(10000, 10000);
+    }  
+    if (currViewExtent_ == null) {
+      currViewExtent_ = viewExtent;
     }
-    
-    if (currViewSize_ == null) {
-      currViewSize_ = viewExtent;
-    }
-    if (viewExtent.equals(currViewSize_)) {
+    if (viewExtent.equals(currViewExtent_)) {
       Point viewPos = view.getViewPosition();
-      int currX = viewPos.x + (viewExtent.width / 2);
-      int currY = viewPos.y + (viewExtent.height / 2);
-      Dimension viewSize = (view != null) ? view.getViewSize() : new Dimension(10000, 10000);
-      currViewXFrac_ = (double)currX / (double)viewSize.width; 
-      currViewYFrac_ = (double)currY / (double)viewSize.height;
+      updateXYFracs(viewPos, currViewSize_, viewExtent);
       currClipRect_ = (view != null) ? view.getViewRect() : new Rectangle2D.Double(0.0, 0.0, 10000.0, 10000.0);
     }
     if (tracker_ != null) tracker_.zoomStateChanged(true);
     return;
   }
 
+ 
+  /***************************************************************************
+  **
+  ** Update our internal idea of view fractions, which is needed when we get resize calls 
+  */ 
+    
+  private void updateXYFracs(Point viewPos, Dimension viewSize, Dimension viewExtent) {   
+    int currX = viewPos.x + (viewExtent.width / 2);
+    int currY = viewPos.y + (viewExtent.height / 2);
+    currViewXFrac_ = (double)currX / (double)viewSize.width; 
+    currViewYFrac_ = (double)currY / (double)viewSize.height;
+    return;
+  } 
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // INNER CLASSES

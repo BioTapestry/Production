@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,17 +26,16 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.ui.SourceAndTargetSelector;
 import org.systemsbiology.biotapestry.ui.dialogs.NetworkSearchDialogFactory;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -70,8 +69,7 @@ public class NetworkSearch extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public NetworkSearch(BTState appState) {
-    super(appState);
+  public NetworkSearch() {
     name = "command.NodeSearch";
     desc = "command.NodeSearch";
     icon = "Find24.gif"; 
@@ -136,8 +134,8 @@ public class NetworkSearch extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new NetworkSearchState(appState_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new NetworkSearchState(dacx));  
   }  
   
   /***************************************************************************
@@ -150,18 +148,18 @@ public class NetworkSearch extends AbstractControlFlow {
     DialogAndInProcessCmd next = null;
     while (true) {
       if (last == null) {
-        NetworkSearchState nss = new NetworkSearchState(appState_, cfh.getDataAccessContext());
+        NetworkSearchState nss = new NetworkSearchState(cfh);
         nss.sr = null;
-        SUPanel sup = appState_.getSUPanel();
-        nss.currOvr = nss.rcxT_.oso.getCurrentOverlay();
-        nss.linksHidden = sup.linksAreHidden(nss.rcxT_);   
-        nss.selectedID = appState_.getGenomePresentation().getSingleNodeSelection(nss.rcxT_);
+        nss.currOvr = nss.getDACX().getOSO().getCurrentOverlay();
+        nss.linksHidden = cfh.getUI().getGenomePresentation().linksAreHidden(nss.getDACX());   
+        nss.selectedID = cfh.getUI().getGenomePresentation().getSingleNodeSelection(nss.getDACX());
         nss.sres = null;
         nss.matchMods = null;
         nss.clearCurrent = false; 
-        next = nss.getDialog(cfh);    
+        next = nss.getDialog();    
       } else {
         NetworkSearchState ans = (NetworkSearchState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("injectUserInputs")) {
           next = ans.injectUserInputs(last);
         } else if (ans.getNextStep().equals("processCommand")) {
@@ -182,25 +180,37 @@ public class NetworkSearch extends AbstractControlFlow {
   ** Running State:
   */
         
-  public static class NetworkSearchState implements DialogAndInProcessCmd.CmdState {
+  public static class NetworkSearchState extends AbstractStepState {
      
     private NetworkSearchDialogFactory.SearchRequest sr;
     private String currOvr;
     private boolean linksHidden;
-    private DataAccessContext rcxT_;
     private String selectedID;
-    private String nextStep_;
+    
     //----------------- Result
     private SourceAndTargetSelector.SearchResult sres;
     private Set<String> matchMods;
     private boolean clearCurrent;
-  
-    public String getNextStep() {
-      return (nextStep_);
-    }
-     
-    NetworkSearchState(BTState appState, DataAccessContext dacx) {
-      rcxT_ = dacx;     
+
+    
+    /***************************************************************************
+    **
+    ** Construct
+    ** 
+    */
+
+    NetworkSearchState(StaticDataAccessContext dacx) {
+      super(dacx);    
+    }   
+    
+    /***************************************************************************
+    **
+    ** Construct
+    ** 
+    */
+
+    NetworkSearchState(ServerControlFlowHarness cfh) {
+      super(cfh);    
     }   
     
     /***************************************************************************
@@ -209,11 +219,11 @@ public class NetworkSearch extends AbstractControlFlow {
     ** 
     */
     
-    DialogAndInProcessCmd getDialog(ServerControlFlowHarness cfh) {
-      String selectedName = (selectedID == null) ? null : rcxT_.getGenome().getNode(selectedID).getName().trim();   
+    DialogAndInProcessCmd getDialog() {
+      String selectedName = (selectedID == null) ? null : dacx_.getCurrentGenome().getNode(selectedID).getName().trim();   
       NetworkSearchDialogFactory.SearchDialogBuildArgs sdba = 
-        new NetworkSearchDialogFactory.SearchDialogBuildArgs(rcxT_.getGenome(), selectedName, currOvr, linksHidden);
-      NetworkSearchDialogFactory nsdf = new NetworkSearchDialogFactory(cfh);
+        new NetworkSearchDialogFactory.SearchDialogBuildArgs(selectedName, currOvr, linksHidden, dacx_);
+      NetworkSearchDialogFactory nsdf = new NetworkSearchDialogFactory(cfh_);
       this.nextStep_ = "injectUserInputs";
       return (new DialogAndInProcessCmd(nsdf.getDialog(sdba), this));
     }
@@ -239,10 +249,10 @@ public class NetworkSearch extends AbstractControlFlow {
     DialogAndInProcessCmd processCommand(DialogAndInProcessCmd curr) {
       clearCurrent = sr.clearCurrent;
       if (sr.whichTab == 0) {
-        SourceAndTargetSelector sats = new SourceAndTargetSelector(rcxT_);
+        SourceAndTargetSelector sats = new SourceAndTargetSelector(dacx_);
         sres = sats.doSelection(sr.found, sr.selectionType, sr.includeItem, sr.includeLinks);
       } else {    
-        NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+        NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
         Map<String, Set<String>> allMatchMods = owner.findMatchingNetworkModules(sr.searchMode, sr.tagVal, sr.nvp);
         matchMods = allMatchMods.get(currOvr);
       }
@@ -255,8 +265,8 @@ public class NetworkSearch extends AbstractControlFlow {
       	  result.state = DialogAndInProcessCmd.Progress.SIMPLE_USER_FEEDBACK;
       	  Map<String,String> clickActions = new HashMap<String,String>();
       	  clickActions.put("ok","MAIN_NETWORK_SEARCH");    	  
-      	  result.suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, rcxT_.rMan.getString("nsearch.nothingFound"), 
-  			  rcxT_.rMan.getString("nsearch.nothingFoundTitle"),clickActions);
+      	  result.suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, dacx_.getRMan().getString("nsearch.nothingFound"), 
+  			  dacx_.getRMan().getString("nsearch.nothingFoundTitle"),clickActions);
       	  
       	  this.nextStep_ = "injectUserInputs";
       } else {
@@ -290,7 +300,7 @@ public class NetworkSearch extends AbstractControlFlow {
       NetworkSearch.MatchTypes matchType = (NetworkSearch.MatchTypes)qbom.getObjectArg("matchType");
    
       HashSet<String> found = new HashSet<String>();
-      Iterator<Node> nit = rcxT_.getGenome().getAllNodeIterator();
+      Iterator<Node> nit = dacx_.getCurrentGenome().getAllNodeIterator();
       while (nit.hasNext()) {
         Node node = nit.next();
         if (matches(search, node.getName(), matchType)) {
@@ -313,7 +323,7 @@ public class NetworkSearch extends AbstractControlFlow {
       NameValuePair nvp = (NameValuePair)qbom.getObjectArg("nvp");
       int mode = (tagVal != null) ? NetOverlayOwner.MODULE_BY_KEY : NetOverlayOwner.MODULE_BY_NAME_VALUE;
         
-      NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+      NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
       Map<String, Set<String>> allMatchMods = owner.findMatchingNetworkModules(mode, tagVal, nvp);
       matchMods = allMatchMods.get(currOvr);
       

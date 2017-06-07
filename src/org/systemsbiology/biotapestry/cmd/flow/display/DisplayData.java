@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,11 @@ import java.util.Set;
 
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -114,6 +118,7 @@ public class DisplayData extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////    
   
   private InfoType action_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -127,7 +132,7 @@ public class DisplayData extends AbstractControlFlow {
   */ 
   
   public DisplayData(BTState appState, InfoType action) {
-    super(appState);
+    appState_ = appState;
     name =  action.getName();
     desc =  action.getDesc();
     icon =  action.getIcon();
@@ -143,7 +148,8 @@ public class DisplayData extends AbstractControlFlow {
   */
   
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     switch (action_) {    
       case NODE_USAGES:  
       case NODE:
@@ -169,8 +175,8 @@ public class DisplayData extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, action_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(action_, dacx, new DynamicDataAccessContext(appState_)));
   }     
   
   /***************************************************************************
@@ -197,11 +203,11 @@ public class DisplayData extends AbstractControlFlow {
     while (true) {
       StepState ans;
       if (last == null) {
-        ans = new StepState(appState_, action_, cfh.getDataAccessContext());        
+        ans = new StepState(action_, cfh, new DynamicDataAccessContext(appState_));        
       } else {
         ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
-      ans.cfh = cfh;
       if (ans.getNextStep().equals("stepToProcess")) {
         next = ans.stepToProcess();
       } else if(ans.getNextStep().equals("injectUserInputs")) {
@@ -223,22 +229,26 @@ public class DisplayData extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
 
-    private String nextStep_;
     private InfoType myAction_;
-    private BTState appState_;
     private Intersection inter_;
-    private ServerControlFlowHarness cfh;
-    private DataAccessContext dacx_;
     private String lazyGenomeID_;
     private String lazyObjectID_;
-
     // Result for link
     private ChooseLinkToViewDialogFactory.LinkRequest lr_;
+    private DynamicDataAccessContext ddacx_;
+   
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
     
-    public String getNextStep() {
-      return (nextStep_);
+    public StepState(InfoType action, StaticDataAccessContext dacx, DynamicDataAccessContext ddacx) {
+      super(dacx);
+      ddacx_ = ddacx;
+      myAction_ = action;
+      nextStep_ = "stepToProcess";
     }
     
     /***************************************************************************
@@ -246,12 +256,13 @@ public class DisplayData extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, InfoType action, DataAccessContext dacx) {
+    public StepState(InfoType action, ServerControlFlowHarness cfh, DynamicDataAccessContext ddacx) {
+      super(cfh);
+      ddacx_ = ddacx;
       myAction_ = action;
-      appState_ = appState;
       nextStep_ = "stepToProcess";
-      dacx_ = dacx;
     }
+    
      
     /***************************************************************************
     **
@@ -284,23 +295,23 @@ public class DisplayData extends AbstractControlFlow {
       LinkSegmentID segID;       
       Set<String> resolved;
       HashMap<String, Object> serverOutputMap = new HashMap<String, Object>();
+      String currTab = tSrc_.getCurrentTab();
            
       switch (myAction_) {
         case LINK:   
-          lp = dacx_.getLayout().getLinkProperties(inter_.getObjectID());
+          lp = dacx_.getCurrentLayout().getLinkProperties(inter_.getObjectID());
           segID = inter_.segmentIDFromIntersect();       
           resolved = lp.resolveLinkagesThroughSegment(segID);
           String linkID = null;
           if (resolved.size() > 1) {
-            boolean isRoot = (dacx_.getGenome() instanceof DBGenome);
-            
+            boolean isRoot = dacx_.currentGenomeIsRootDBGenome();       
             ChooseLinkToViewDialogFactory.BuildArgs ba = new ChooseLinkToViewDialogFactory.BuildArgs(
-        		  dacx_.getGenome(),dacx_.getGenomeID(),resolved,isRoot,inter_.getObjectID());
-            return (this.getDialog(cfh,ba));
+        		  dacx_.getCurrentGenome(),dacx_.getCurrentGenomeID(),resolved,isRoot,inter_.getObjectID());
+            return (this.getDialog(cfh_, ba));
           } else {
             linkID = resolved.iterator().next();
           }
-          Map<String,Object> results = appState_.getDataPopupMgr().popupLinkData(dacx_.getGenomeID(), linkID);
+          Map<String,Object> results = uics_.getDataPopupMgr().popupLinkData(currTab, dacx_.getCurrentGenomeID(), linkID);
           DataPopupManager.DataReturn data = (DataPopupManager.DataReturn)results.get("contents");
        
           if (data != null) {
@@ -311,10 +322,10 @@ public class DisplayData extends AbstractControlFlow {
           nextStep_ = null;
           break;
         case NODE_USAGES:  
-          Node node = dacx_.getGenome().getNode(inter_.getObjectID());
+          Node node = dacx_.getCurrentGenome().getNode(inter_.getObjectID());
           if (node != null) {
-            UsageFrameFactory.BuildArgs ba = new UsageFrameFactory.BuildArgs(null, node.getID());
-            UsageFrameFactory nocdf = new UsageFrameFactory(cfh);
+            UsageFrameFactory.BuildArgs ba = new UsageFrameFactory.BuildArgs(ddacx_, null, node.getID());
+            UsageFrameFactory nocdf = new UsageFrameFactory(cfh_);
             ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
             // This dialog is NOT modal, so we are done:
             DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
@@ -323,7 +334,7 @@ public class DisplayData extends AbstractControlFlow {
           }
           break;
         case LINK_USAGES:  
-          lp = dacx_.getLayout().getLinkProperties(inter_.getObjectID());
+          lp = dacx_.getCurrentLayout().getLinkProperties(inter_.getObjectID());
           segID = inter_.segmentIDFromIntersect();
           resolved = lp.resolveLinkagesThroughSegment(segID);          
           HashSet<String> baseLinks = new HashSet<String>();
@@ -338,8 +349,8 @@ public class DisplayData extends AbstractControlFlow {
             }
             baseLinks.add(baseLinkID);
           }
-          UsageFrameFactory.BuildArgs ba = new UsageFrameFactory.BuildArgs(baseLinks, baseSrcID);
-          UsageFrameFactory nocdf = new UsageFrameFactory(cfh);
+          UsageFrameFactory.BuildArgs ba = new UsageFrameFactory.BuildArgs(ddacx_, baseLinks, baseSrcID);
+          UsageFrameFactory nocdf = new UsageFrameFactory(cfh_);
           ServerControlFlowHarness.Dialog cfhd = nocdf.getDialog(ba);
           // This dialog is NOT modal, so we are done:
           DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
@@ -347,19 +358,19 @@ public class DisplayData extends AbstractControlFlow {
           return (retval);
         case NODE:  
           String id = inter_.getObjectID();
-          DataPopupManager.DataReturn result = appState_.getDataPopupMgr().popupData(dacx_.getGenomeID(), id);
+          DataPopupManager.DataReturn result = uics_.getDataPopupMgr().popupData(currTab, dacx_.getCurrentGenomeID(), id);
           if (result != null) {
             serverOutputMap.put("ExperimentalData", result);
           }
           break;
         case PENDING_NODE:
-          DataPopupManager.DataReturn pendResult = appState_.getDataPopupMgr().popupData(lazyGenomeID_, lazyObjectID_);
+          DataPopupManager.DataReturn pendResult = uics_.getDataPopupMgr().popupData(currTab, lazyGenomeID_, lazyObjectID_);
           if (pendResult != null) {
             serverOutputMap.put("ExperimentalData", pendResult);
           }
           break;
         case PENDING_LINK:
-          Map<String,Object> pendResults = appState_.getDataPopupMgr().popupLinkData(lazyGenomeID_, lazyObjectID_);
+          Map<String,Object> pendResults = uics_.getDataPopupMgr().popupLinkData(currTab, lazyGenomeID_, lazyObjectID_);
           DataPopupManager.DataReturn pendData = (DataPopupManager.DataReturn)pendResults.get("contents");    
           if (pendData != null) {
             serverOutputMap.put("ExperimentalData", pendData);
@@ -409,7 +420,7 @@ public class DisplayData extends AbstractControlFlow {
       */
      DialogAndInProcessCmd processCommand() {
     	 HashMap<String, Object> serverOutputMap = new HashMap<String, Object>();
-    	 Map<String,Object> results = appState_.getDataPopupMgr().popupLinkData(dacx_.getGenomeID(), lr_.linkID);
+    	 Map<String,Object> results = uics_.getDataPopupMgr().popupLinkData(tSrc_.getCurrentTab(), dacx_.getCurrentGenomeID(), lr_.linkID);
     	 DataPopupManager.DataReturn data = (DataPopupManager.DataReturn)results.get("contents");
     	 
        if (data != null) {

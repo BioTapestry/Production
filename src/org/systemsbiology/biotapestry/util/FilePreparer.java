@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,8 @@ import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileFilter;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -43,7 +44,8 @@ public class FilePreparer {
   private boolean isHeadless_;
   private JFrame topWindow_;
   private Class<?> prefClass_;
-  private BTState appState_;
+  private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,9 +82,10 @@ public class FilePreparer {
   //
   //////////////////////////////////////////////////////////////////////////// 
     
-  public FilePreparer(BTState appState, boolean isHeadless, JFrame topWindow, Class<?> prefClass) {
-    appState_ = appState;
-    isHeadless_ = isHeadless;
+  public FilePreparer(UIComponentSource uics, DataAccessContext dacx, JFrame topWindow, Class<?> prefClass) {
+    uics_ = uics;
+    dacx_ = dacx;
+    isHeadless_ = uics_.isHeadless();
     topWindow_ = topWindow;
     prefClass_ = prefClass;  
   }
@@ -99,7 +102,7 @@ public class FilePreparer {
    */ 
         
    public FileInputResultClosure getFileInputError(IOException ioex) { 
-     return (new FileInputResultClosure(appState_, isHeadless_, ioex, topWindow_));
+     return (new FileInputResultClosure(dacx_, isHeadless_, ioex, topWindow_));
    }
 
   /***************************************************************************
@@ -108,7 +111,7 @@ public class FilePreparer {
    */ 
         
    public void displayFileOutputError() { 
-     ResourceManager rMan = appState_.getRMan();
+     ResourceManager rMan = dacx_.getRMan();
      JOptionPane.showMessageDialog(topWindow_, 
                                    rMan.getString("fileWrite.errorMessage"), 
                                    rMan.getString("fileWrite.errorTitle"),
@@ -349,7 +352,7 @@ public class FilePreparer {
   */ 
      
   public void setPreference(String key, String val) {
-    if (appState_.isHeadless()) {
+    if (isHeadless_) {
       return;
     }
     Preferences prefs = Preferences.userNodeForPackage(prefClass_);
@@ -363,7 +366,7 @@ public class FilePreparer {
   */
   
   public SimpleUserFeedback generateSUFForReadError(IOException ioex) { 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     String title = rMan.getString("fileRead.errorTitle");
     SimpleUserFeedback.JOP jtype = SimpleUserFeedback.JOP.ERROR;
     String message;
@@ -383,8 +386,9 @@ public class FilePreparer {
   ** Error message generation 
   */
   
+  @SuppressWarnings("unused")
   public SimpleUserFeedback generateSUFForWriteError(IOException ioex) { 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     return (new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, 
                                    rMan.getString("fileWrite.errorMessage"), 
                                    rMan.getString("fileWrite.errorTitle")));
@@ -402,7 +406,7 @@ public class FilePreparer {
   */ 
     
   private String getPreference(String key) {
-    if (appState_.isHeadless()) {
+    if (isHeadless_) {
       return (null);
     }
     Preferences prefs = Preferences.userNodeForPackage(prefClass_);    
@@ -418,7 +422,7 @@ public class FilePreparer {
   private boolean standardFileChecks(File target, boolean mustExist, boolean canCreate,
                                      boolean checkOverwrite, boolean mustBeDirectory, 
                                      boolean canWrite, boolean canRead) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     boolean doesExist = target.exists();
   
     if (mustExist) {
@@ -542,7 +546,7 @@ public class FilePreparer {
   ////////////////////////////////////////////////////////////////////////////     
  
   public static class FileInputResultClosure  {   
-    private BTState appState_; 
+    private DataAccessContext dacx_; 
     private boolean isHeadless_;
     private IOException ioex_;
     private JFrame topWindow_;
@@ -554,8 +558,8 @@ public class FilePreparer {
       passSuccess_ = true;
     }
     
-    public FileInputResultClosure(BTState appState, boolean isHeadless, IOException ioex, JFrame topWindow) {
-      appState_ = appState;
+    public FileInputResultClosure(DataAccessContext dacx, boolean isHeadless, IOException ioex, JFrame topWindow) {
+      dacx_ = dacx;
       isHeadless_ = isHeadless;
       ioex_ = ioex;
       topWindow_ = topWindow;
@@ -597,7 +601,7 @@ public class FilePreparer {
     */ 
          
     public void displayFileInputError() { 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       
       if ((ioex_ == null) || (ioex_.getMessage() == null) || (ioex_.getMessage().trim().equals(""))) {
         if (!isHeadless_) {
@@ -629,10 +633,10 @@ public class FilePreparer {
     */ 
          
     public SimpleUserFeedback getSUF() { 
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       
       if ((ioex_ == null) || (ioex_.getMessage() == null) || (ioex_.getMessage().trim().equals(""))) {
-        if (isHeadless_ && !appState_.isWebApplication()) {
+        if (isHeadless_ && !dacx_.isForWeb()) {
           System.err.println(rMan.getString("fileRead.errorMessage"));
         }
         return (new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR,
@@ -642,7 +646,7 @@ public class FilePreparer {
       String errMsg = ioex_.getMessage().trim();
       String format = rMan.getString("fileRead.inputErrorMessageForIOEx");
       String outMsg = MessageFormat.format(format, new Object[] {errMsg});
-      if (isHeadless_ && !appState_.isWebApplication()) {
+      if (isHeadless_ && !dacx_.isForWeb()) {
         System.err.println(rMan.getString(outMsg));
       }
       return (new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR,

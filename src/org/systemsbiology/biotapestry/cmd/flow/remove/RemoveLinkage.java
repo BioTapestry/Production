@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,8 +24,10 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -43,6 +45,7 @@ import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.InvertedLinkProps;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -70,8 +73,7 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RemoveLinkage(BTState appState) {
-    super(appState);
+  public RemoveLinkage() {
     name = "linkPopup.LinkDelete";
     desc = "linkPopup.LinkDelete";     
     mnem = "linkPopup.LinkDeleteMnem";
@@ -90,8 +92,8 @@ public class RemoveLinkage extends AbstractControlFlow {
   */ 
     
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(dacx);
     return (retval);
   }
   
@@ -102,14 +104,14 @@ public class RemoveLinkage extends AbstractControlFlow {
   */
     
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!isSingleSeg) {
       return (false);
     }
     return (true);
   }
-  
- 
+
   /***************************************************************************
   **
   ** Handle the flow
@@ -124,6 +126,7 @@ public class RemoveLinkage extends AbstractControlFlow {
         throw new IllegalStateException();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepToRemove")) {
           next = ans.stepToRemove();       
         } else {
@@ -142,26 +145,18 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
     private Intersection intersect_;
-    private DataAccessContext rcxT_;
-    private String nextStep_;    
-    private BTState appState_;
-     
-    public String getNextStep() {
-      return (nextStep_);
-    }
-    
+ 
     /***************************************************************************
     **
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = "stepToRemove";
-      rcxT_ = dacx;
     }
     
     /***************************************************************************
@@ -182,12 +177,12 @@ public class RemoveLinkage extends AbstractControlFlow {
     private DialogAndInProcessCmd stepToRemove() {
        
       
-      UndoSupport support = new UndoSupport(appState_, "undo.linkDelete");
-      RemoveSupport.deleteWarningHelper(appState_, rcxT_);
-      if (deleteLinkFromModel(appState_, intersect_, rcxT_, support)) {
-        appState_.getGenomePresentation().clearSelections(rcxT_, support);
-        appState_.getSUPanel().drawModel(false);
-        support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      UndoSupport support = uFac_.provideUndoSupport("undo.linkDelete", dacx_);
+      RemoveSupport.deleteWarningHelper(uics_, dacx_);
+      if (deleteLinkFromModel(intersect_, dacx_, support, uFac_)) {
+        uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
+        uics_.getSUPanel().drawModel(false);
+        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
         support.finish();
       }
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -199,13 +194,13 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Delete a link from the model
   */  
   
-  public static boolean deleteLinkFromModel(BTState appState, Intersection intersect, DataAccessContext rcx, UndoSupport support) {
+  public static boolean deleteLinkFromModel(Intersection intersect, DataAccessContext rcx, UndoSupport support, UndoFactory uFac) {
  
     //
     // Figure out what linkage property we are dealing with.
     //
      
-    BusProperties bp = rcx.getLayout().getLinkProperties(intersect.getObjectID());
+    BusProperties bp = rcx.getCurrentLayout().getLinkProperties(intersect.getObjectID());
     if (bp == null) {
       return (false);
     }
@@ -213,7 +208,7 @@ public class RemoveLinkage extends AbstractControlFlow {
     boolean localUndo = false;
     if (support == null) {
       localUndo = true;
-      support = new UndoSupport(appState, "undo.linkDelete");
+      support = uFac.provideUndoSupport("undo.linkDelete", rcx);
     }
     
     //
@@ -233,7 +228,7 @@ public class RemoveLinkage extends AbstractControlFlow {
      Iterator<String> resit = resolved.iterator();
      while (resit.hasNext()) {
        String nextDeadID = resit.next();          
-       doLinkDelete(appState, nextDeadID, rcx, support);
+       doLinkDelete(nextDeadID, rcx, support);
      }       
     
      if (localUndo) {support.finish();} 
@@ -245,7 +240,7 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Delete a link from the given model and all submodels
   */  
   
-  public static void doLinkDelete(BTState appState, String deadID, DataAccessContext rcx, UndoSupport support) {
+  public static void doLinkDelete(String deadID, DataAccessContext rcx, UndoSupport support) {
     
     //
     // Go up to the root to get the root ID:
@@ -254,8 +249,8 @@ public class RemoveLinkage extends AbstractControlFlow {
     boolean isRoot;
     boolean removeProperties;
     GenomeInstance inst;
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      inst = rcx.getGenomeAsInstance();
+    if (rcx.currentGenomeIsAnInstance()) {
+      inst = rcx.getCurrentGenomeAsInstance();
       isRoot = false;
       removeProperties = (inst.getVfgParent() == null);
     } else {
@@ -290,18 +285,18 @@ public class RemoveLinkage extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = gi.removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
           support.addEdit(gcc);        
         }
         if (removeProperties) {
-          Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+          Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
           while (layit.hasNext()) {
             Layout layout = layit.next();
             if (layout.getTarget().equals(gi.getID())) {
               Layout.PropChange[] lpc = new Layout.PropChange[1];             
               lpc[0] = layout.removeLinkProperties(key);
               if (lpc[0] != null) {
-                PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+                PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
                 support.addEdit(pcc);
               }
             }
@@ -315,19 +310,19 @@ public class RemoveLinkage extends AbstractControlFlow {
     //
     
     if (isRoot) {  
-      GenomeChange gc = rcx.getGenome().removeLinkage(deadID);
+      GenomeChange gc = rcx.getCurrentGenome().removeLinkage(deadID);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
         support.addEdit(gcc);        
       }
-      Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+      Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
       while (layit.hasNext()) {
         Layout layout = layit.next();
-        if (layout.getTarget().equals(rcx.getGenomeID())) {
+        if (layout.getTarget().equals(rcx.getCurrentGenomeID())) {
           Layout.PropChange[] lpc = new Layout.PropChange[1];
           lpc[0] = layout.removeLinkProperties(deadID);
           if (lpc[0] != null) {
-            PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+            PropChangeCmd pcc = new PropChangeCmd(rcx, lpc);
             support.addEdit(pcc);
           }
         }
@@ -341,7 +336,7 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Delete a pile of links from the given model and all submodels
   */  
   
-  public static void doMultiLinkDelete(BTState appState, Set<String> deadIDSet, DataAccessContext rcx,
+  public static void doMultiLinkDelete(Set<String> deadIDSet, DataAccessContext rcx,
                                        UndoSupport support) {
     
     //
@@ -351,8 +346,8 @@ public class RemoveLinkage extends AbstractControlFlow {
     boolean isRoot;
     boolean removeProperties;
     GenomeInstance inst;
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      inst = rcx.getGenomeAsInstance();
+    if (rcx.currentGenomeIsAnInstance()) {
+      inst = rcx.getCurrentGenomeAsInstance();
       isRoot = false;
       removeProperties = (inst.getVfgParent() == null);
     } else {
@@ -387,19 +382,19 @@ public class RemoveLinkage extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = gi.removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
           support.addEdit(gcc);        
         }
       }
       if (removeProperties) {
-        Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+        Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
         while (layit.hasNext()) {
           Layout layout = layit.next();
           if (layout.getTarget().equals(gi.getID())) {
-            DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(layout.getID());       
+            DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(layout.getID());       
             layout.removeMultiLinkProperties(allDeadSet);          
-            dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-            support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+            dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+            support.addEdit(new DatabaseChangeCmd(rcx, dc));
           }
         }
       }
@@ -412,21 +407,21 @@ public class RemoveLinkage extends AbstractControlFlow {
       Iterator<String> dsit = deadIDSet.iterator();
       while (dsit.hasNext()) {
         String key = dsit.next();
-        GenomeChange gc = rcx.getGenome().removeLinkage(key);
+        GenomeChange gc = rcx.getCurrentGenome().removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState, rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
           support.addEdit(gcc);        
         }
       }
 
-      Iterator<Layout> layit = rcx.lSrc.getLayoutIterator();
+      Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
       while (layit.hasNext()) {
         Layout layout = layit.next();
-        if (layout.getTarget().equals(rcx.getGenomeID())) {
-          DatabaseChange dc = rcx.lSrc.startLayoutUndoTransaction(layout.getID());       
+        if (layout.getTarget().equals(rcx.getCurrentGenomeID())) {
+          DatabaseChange dc = rcx.getLayoutSource().startLayoutUndoTransaction(layout.getID());       
           layout.removeMultiLinkProperties(deadIDSet);          
-          dc = rcx.lSrc.finishLayoutUndoTransaction(dc);
-          support.addEdit(new DatabaseChangeCmd(appState, rcx, dc));
+          dc = rcx.getLayoutSource().finishLayoutUndoTransaction(dc);
+          support.addEdit(new DatabaseChangeCmd(rcx, dc));
         }
       }
     }
@@ -438,8 +433,8 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Delete a pile of links from the model
   */  
   
-  public static void deleteLinkSetFromModel(BTState appState, Set<String> linkSet, DataAccessContext rcx, UndoSupport support) {
-    doMultiLinkDelete(appState, linkSet, rcx, support);
+  public static void deleteLinkSetFromModel(Set<String> linkSet, DataAccessContext rcx, UndoSupport support) {
+    doMultiLinkDelete(linkSet, rcx, support);
     return;
   } 
   
@@ -463,7 +458,7 @@ public class RemoveLinkage extends AbstractControlFlow {
       //
       // Figure out what linkage property we are dealing with.
       //
-      BusProperties lp = rcx.getLayout().getLinkProperties(key);
+      BusProperties lp = rcx.getCurrentLayout().getLinkProperties(key);
       if (lp == null) {  // will this ever happen?
         continue;
       } 
@@ -483,12 +478,12 @@ public class RemoveLinkage extends AbstractControlFlow {
   ** Delete a pile of links from the model
   */  
   
-  public static boolean deleteLinksFromModel(BTState appState, Map<String, Intersection> intersections, DataAccessContext rcx, 
-                                             UndoSupport support) {
+  public static boolean deleteLinksFromModel(Map<String, Intersection> intersections, DataAccessContext rcx, 
+                                             UndoSupport support, UndoFactory uFac) {
     boolean localUndo = false;
     if (support == null) {
       localUndo = true;
-      support = new UndoSupport(appState, "undo.linksDelete");
+      support = uFac.provideUndoSupport("undo.linksDelete", rcx);
     }    
     
     //
@@ -497,7 +492,7 @@ public class RemoveLinkage extends AbstractControlFlow {
     //
       
     Set<String> resolved = resolveLinksThruIntersections(intersections, rcx);
-    doMultiLinkDelete(appState, resolved, rcx, support);
+    doMultiLinkDelete(resolved, rcx, support);
     if ((resolved.size() > 0) && localUndo) {support.finish();} 
     return (resolved.size() > 0);
   }   

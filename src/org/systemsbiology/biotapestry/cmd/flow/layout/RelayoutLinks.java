@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,15 +22,15 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
-import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
-import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.BusProperties;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
@@ -71,8 +71,7 @@ public class RelayoutLinks extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public RelayoutLinks(BTState appState, boolean doFull, boolean forPopup) {
-    super(appState);
+  public RelayoutLinks(boolean doFull, boolean forPopup) {
     if (forPopup) {
       name =  "linkPopup.SegLayout"; 
       desc =  "linkPopup.SegLayout"; 
@@ -112,15 +111,16 @@ public class RelayoutLinks extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!forPopup_) {
       throw new IllegalStateException();
     }
     if (!isSingleSeg) {
       return (false);
     }
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      if (rcx.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcx.currentGenomeIsAnInstance()) {
+      if (rcx.getCurrentGenomeAsInstance().getVfgParent() != null) {
         return (false);
       }
     }
@@ -134,8 +134,8 @@ public class RelayoutLinks extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new RelayoutState(appState_, doFull_, forPopup_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new RelayoutState(doFull_, forPopup_, dacx));  
   }
   
   /***************************************************************************
@@ -149,10 +149,11 @@ public class RelayoutLinks extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        RelayoutState ans = new RelayoutState(appState_, doFull_, forPopup_, cfh.getDataAccessContext());
+        RelayoutState ans = new RelayoutState(doFull_, forPopup_, cfh);
         next = ans.stepDoIt();
       } else {
         RelayoutState ans = (RelayoutState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -171,12 +172,9 @@ public class RelayoutLinks extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class RelayoutState implements DialogAndInProcessCmd.PopupCmdState, 
-                                               BackgroundWorkerOwner {
+  public static class RelayoutState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, 
+                                                                         BackgroundWorkerOwner {
 
-    private String nextStep_; 
-    private DataAccessContext rcxT_;
-    private BTState appState_;
     private boolean myDoFull_;
     private boolean myForPopup_;
     private Set<String> linkIDs_;
@@ -186,30 +184,32 @@ public class RelayoutLinks extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public RelayoutState(BTState appState, boolean doFull, boolean forPopup, DataAccessContext dacx) {
-      appState_ = appState;
+    public RelayoutState(boolean doFull, boolean forPopup, StaticDataAccessContext dacx) {
+      super(dacx);
       myDoFull_ = doFull;
       myForPopup_ = forPopup;
-      rcxT_ = dacx;
       nextStep_ = "stepDoIt";
     }
-    
+     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public RelayoutState(boolean doFull, boolean forPopup, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myDoFull_ = doFull;
+      myForPopup_ = forPopup;
+      nextStep_ = "stepDoIt";
     }
-     
+ 
     /***************************************************************************
     **
     ** for preload
     */ 
       
     public void setIntersection(Intersection inter) {
-      BusProperties bp = rcxT_.getLayout().getLinkProperties(inter.getObjectID());
+      BusProperties bp = dacx_.getCurrentLayout().getLinkProperties(inter.getObjectID());
       LinkSegmentID[] ids = inter.segmentIDsFromIntersect();
       if (ids.length != 1) {
         throw new IllegalStateException();
@@ -232,20 +232,20 @@ public class RelayoutLinks extends AbstractControlFlow {
         // currently also ditches all ortho segments upstream of the crooked ones that contain
         // the same links
         //
-        linkIDs_ = rcxT_.getLayout().getLimitedNonOrthoLinks(rcxT_);
+        linkIDs_ = dacx_.getCurrentLayout().getLimitedNonOrthoLinks(dacx_);
       }
       //
       // Before starting, we need to clear selections.  This automatically
       // installs a selection undo!
       //
         
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       if (sup.hasASelection()) {
-        sup.selectNone(appState_.getUndoManager(), rcxT_);
+        sup.selectNone(uics_, uFac_, dacx_);
         sup.drawModel(false);
       }
       
-      appState_.getCommonView().disableControls();
+      uics_.getCommonView().disableControls();
       String undoString;
       if (myDoFull_ && !myForPopup_) {
         undoString = "undo.relayoutLinks";
@@ -255,15 +255,15 @@ public class RelayoutLinks extends AbstractControlFlow {
         undoString = "undo.relayoutLinksThruSegment"; 
       }
       
-      UndoSupport support = new UndoSupport(appState_, undoString);         
-      LayoutRunner runner = new LayoutRunner(appState_, myDoFull_, linkIDs_, support, rcxT_);
+      UndoSupport support = uFac_.provideUndoSupport(undoString, dacx_);         
+      LayoutRunner runner = new LayoutRunner(myDoFull_, linkIDs_, support, dacx_);
       BackgroundWorkerClient bwc = 
-        new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
+        new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
       runner.setClient(bwc);
       bwc.launchWorker();
       // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
-                                                                                       : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+                                                                                   : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
       return (daipc);
     }
     
@@ -286,8 +286,8 @@ public class RelayoutLinks extends AbstractControlFlow {
     }  
   
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
-      LayoutLinkSupport.offerColorFixup(appState_, rcxT_, (LinkRouter.RoutingResult)result);
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      LayoutLinkSupport.offerColorFixup(uics_, dacx_, (LinkRouter.RoutingResult)result, uFac_);
       return;
     }  
   }
@@ -299,16 +299,14 @@ public class RelayoutLinks extends AbstractControlFlow {
     
   private static class LayoutRunner extends BackgroundWorker {
     
-    private BTState myAppState_;
     private boolean doFull_;
     private UndoSupport support_;
     private Set<String> links_;
     private String loKey_;
-    private DataAccessContext rcx_;
+    private StaticDataAccessContext rcx_;
     
-    public LayoutRunner(BTState appState, boolean doFull, Set<String> links, UndoSupport support, DataAccessContext rcx) {
+    public LayoutRunner(boolean doFull, Set<String> links, UndoSupport support, StaticDataAccessContext rcx) {
       super(new LinkRouter.RoutingResult());      
-      myAppState_ = appState;
       doFull_ = doFull;
       rcx_ = rcx;
       links_ = links;
@@ -316,8 +314,8 @@ public class RelayoutLinks extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      LayoutOptions lopt = new LayoutOptions(myAppState_.getLayoutOptMgr().getLayoutOptions());
-      LinkRouter.RoutingResult res = LayoutLinkSupport.relayoutLinks(myAppState_, rcx_, support_, lopt, doFull_, links_, this, 0.0, 1.0, false);
+      LayoutOptions lopt = new LayoutOptions(rcx_.getLayoutOptMgr().getLayoutOptions());
+      LinkRouter.RoutingResult res = LayoutLinkSupport.relayoutLinks(rcx_, support_, lopt, doFull_, links_, this, 0.0, 1.0, false);
       return (res);
     }
     

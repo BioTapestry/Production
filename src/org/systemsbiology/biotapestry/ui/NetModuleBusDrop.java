@@ -26,7 +26,6 @@ import java.util.Map;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
@@ -301,13 +300,13 @@ public class NetModuleBusDrop extends LinkBusDrop {
       
   public static class NetModuleBusDropWorker extends AbstractFactoryClient {
  
-    public NetModuleBusDropWorker(BTState appState, FactoryWhiteboard whiteboard) {
+    public NetModuleBusDropWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add(XML_TAG);
       installWorker(new PerLinkDrawStyle.PerLinkDrawStyleWorker(whiteboard), new MyPerLinkGlue());
       installWorker(new SuggestedDrawStyle.SuggestedDrawStyleWorker(whiteboard), new MyStyleGlue());      
     }
-  
+    
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals(XML_TAG)) {

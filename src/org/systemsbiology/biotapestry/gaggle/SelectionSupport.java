@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.Set;
 import javax.swing.SwingUtilities;
 
 import org.systemsbiology.biotapestry.analysis.SignedLink;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 
 /****************************************************************************
@@ -51,7 +51,7 @@ public class SelectionSupport {
   private ArrayList<InboundGaggleOp> commands_;
   private ArrayList<String> gooseList_;
   private boolean initGooseList_;
-  private BTState appState_;
+  private UIComponentSource uics_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -76,8 +76,8 @@ public class SelectionSupport {
   ** Constructor
   */
 
-  public SelectionSupport(BTState appState, String species) {
-    appState_ = appState;
+  public SelectionSupport(UIComponentSource uics, String species) {
+    uics_ = uics;
     species_ = species;
     commands_ = new ArrayList<InboundGaggleOp>();
     gooseList_ = new ArrayList<String>();    
@@ -135,7 +135,7 @@ public class SelectionSupport {
     } else {
       SwingUtilities.invokeLater(new Runnable() {
         public void run() {    
-          appState_.getGaggleControls().haveGaggleGooseChange();
+          uics_.getGaggleControls().haveGaggleGooseChange();
         }
       });
     }
@@ -158,11 +158,11 @@ public class SelectionSupport {
   */
   
   public synchronized void createNewNetwork(String species, List<BuildInstruction> instruct) {
-    InboundNetworkOp op = new InboundNetworkOp(appState_, species, instruct);
+    InboundNetworkOp op = new InboundNetworkOp(species, instruct);
     commands_.add(op);
     SwingUtilities.invokeLater(new Runnable() {
       public void run() {    
-        appState_.getGaggleControls().haveInboundGaggleCommands();
+        uics_.getGaggleControls().haveInboundGaggleCommands();
       }
     });
     
@@ -175,11 +175,11 @@ public class SelectionSupport {
   */
   
   public synchronized void addUnsupportedCommand() {
-    InboundGaggleOp op = new InboundGaggleOp(appState_);
+    InboundGaggleOp op = new InboundGaggleOp();
     commands_.add(op);
     SwingUtilities.invokeLater(new Runnable() {
       public void run() {    
-        appState_.getGaggleControls().haveInboundGaggleCommands();
+        uics_.getGaggleControls().haveInboundGaggleCommands();
       }
     });    
     return;
@@ -193,11 +193,11 @@ public class SelectionSupport {
   public synchronized void addSelectionCommand(String species, String[] selections) {
     HashSet<String> newSelections = new HashSet<String>(Arrays.asList(selections));
     SelectionSupport.SelectionsForSpecies sfs = new SelectionsForSpecies(species, newSelections);
-    InboundSelectionOp op = new InboundSelectionOp(appState_, sfs);
+    InboundSelectionOp op = new InboundSelectionOp(sfs);
     commands_.add(op);
     SwingUtilities.invokeLater(new Runnable() {
       public void run() {    
-        appState_.getGaggleControls().haveInboundGaggleCommands();
+        uics_.getGaggleControls().haveInboundGaggleCommands();
       }
     });    
     return;
@@ -211,11 +211,11 @@ public class SelectionSupport {
   
   public synchronized void clearSelections() { 
     SelectionSupport.SelectionsForSpecies sfs = new SelectionsForSpecies(species_, new HashSet<String>());
-    InboundSelectionOp op = new InboundSelectionOp(appState_, sfs);
+    InboundSelectionOp op = new InboundSelectionOp(sfs);
     commands_.add(op);
     SwingUtilities.invokeLater(new Runnable() {
       public void run() {    
-        appState_.getGaggleControls().haveInboundGaggleCommands();
+        uics_.getGaggleControls().haveInboundGaggleCommands();
       }
     });
     return;

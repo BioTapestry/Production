@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.io.PrintWriter;
 
 import org.xml.sax.Attributes;  
  
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
@@ -104,7 +104,7 @@ public class TimeAxisDefinition implements Cloneable {
   private String userUnitAbbrev_;
   private boolean userUnitIsSuffix_;
   private ArrayList<NamedStage> namedStages_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -117,22 +117,64 @@ public class TimeAxisDefinition implements Cloneable {
   ** Constructor
   */
 
-  public TimeAxisDefinition(BTState appState) {
-    appState_ = appState;
+  public TimeAxisDefinition(DataAccessContext dacx) {
+    dacx_ = dacx;
     initialized_ = false;
-  }  
+  }
 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  /***************************************************************************
+  **
+  ** Equals
+  */  
+  
+  
+  @Override
+  public boolean equals(Object other) {
+    if (this == other) {
+      return (true);
+    }
+    if (other == null) {
+      return (false);
+    }
+    if (!(other instanceof TimeAxisDefinition)) {
+      return (false);
+    }
+ 
+    TimeAxisDefinition otherTAD = (TimeAxisDefinition)other;
+  
+    if (this.initialized_ != otherTAD.initialized_) {
+      return (false);
+    }
+    if (this.units_ != otherTAD.units_) {
+      return (false);
+    }  
+    if (!DataUtil.stringsEqual(this.userUnits_, otherTAD.userUnits_)) {
+      return (false);
+    }
+    if (!DataUtil.stringsEqual(this.userUnitAbbrev_, otherTAD.userUnitAbbrev_)) {
+      return (false);
+    }
+    if (this.userUnitIsSuffix_ != otherTAD.userUnitIsSuffix_) {
+      return (false);
+    }
+    if (!DataUtil.objsEqual(this.namedStages_, otherTAD.namedStages_)) {
+      return (false);
+    }
+    return (true);
+  } 
   
   /***************************************************************************
   **
   ** Clone
   */
 
+  @Override
   public TimeAxisDefinition clone() {
     try {
       TimeAxisDefinition retval = (TimeAxisDefinition)super.clone();
@@ -242,7 +284,7 @@ public class TimeAxisDefinition implements Cloneable {
   
   public void addAStage(NamedStage stage) throws IOException {
     if (namedStages_.size() > 0) {
-      NamedStage lastStage = (NamedStage)namedStages_.get(namedStages_.size() - 1);
+      NamedStage lastStage = namedStages_.get(namedStages_.size() - 1);
       if (stage.order != (lastStage.order + 1)) {
         throw new IOException();
       }
@@ -317,7 +359,7 @@ public class TimeAxisDefinition implements Cloneable {
     if (haveCustomUnits()) {
       return (userUnits_);
     } else {
-      return (displayStringForUnit(appState_, units_));
+      return (displayStringForUnit(dacx_, units_));
     }
   }
   
@@ -330,7 +372,7 @@ public class TimeAxisDefinition implements Cloneable {
     if (haveCustomUnits()) {
       return (userUnitAbbrev_);
     } else {
-      return (abbrevStringForUnit(appState_, units_));
+      return (abbrevStringForUnit(dacx_, units_));
     }
   } 
   
@@ -401,7 +443,7 @@ public class TimeAxisDefinition implements Cloneable {
     if ((!initialized_) || (units_ != NAMED_STAGES_)) {
       throw new IllegalStateException();
     }
-    return ((NamedStage)namedStages_.get(index));
+    return (namedStages_.get(index));
   }
   
   /***************************************************************************
@@ -416,7 +458,7 @@ public class TimeAxisDefinition implements Cloneable {
     stageName = stageName.trim();
     int numStages = namedStages_.size();
     for (int i = 0; i < numStages; i++) {
-      NamedStage currStage = (NamedStage)namedStages_.get(i);
+      NamedStage currStage = namedStages_.get(i);
       if (DataUtil.keysEqual(currStage.name, stageName) ||
           DataUtil.keysEqual(currStage.abbrev, stageName)) {
         return (i);
@@ -542,7 +584,7 @@ public class TimeAxisDefinition implements Cloneable {
     ind.up();
     int numStages = namedStages_.size();
     for (int i = 0; i < numStages; i++) {
-      NamedStage stage = (NamedStage)namedStages_.get(i);
+      NamedStage stage = namedStages_.get(i);
       stage.writeXML(out, ind);
     }
     ind.down().indent();
@@ -638,10 +680,10 @@ public class TimeAxisDefinition implements Cloneable {
   ** Return possible unit values
   */
   
-  public static Vector<ChoiceContent> getUnitTypeChoices(BTState appState) {
+  public static Vector<ChoiceContent> getUnitTypeChoices(DataAccessContext dacx) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_UNIT_TYPES_; i++) {
-      retval.add(unitTypeForCombo(appState, i));    
+      retval.add(unitTypeForCombo(dacx, i));    
     }
     return (retval);
   }
@@ -651,8 +693,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent unitTypeForCombo(BTState appState, int unitType) {
-    return (new ChoiceContent(displayStringForUnit(appState, unitType), unitType));
+  public static ChoiceContent unitTypeForCombo(DataAccessContext dacx, int unitType) {
+    return (new ChoiceContent(displayStringForUnit(dacx, unitType), unitType));
   }
   
   /***************************************************************************
@@ -660,8 +702,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a localized display string
   */
   
-  public static String displayStringForUnit(BTState appState, int unitType) {
-    return (appState.getRMan().getString("timeAxis." + mapUnitTypes(unitType)));
+  public static String displayStringForUnit(DataAccessContext dacx, int unitType) {
+    return (dacx.getRMan().getString("timeAxis." + mapUnitTypes(unitType)));
   }
   
   /***************************************************************************
@@ -669,8 +711,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a localized display string
   */
   
-  public static String abbrevStringForUnit(BTState appState, int unitType) {
-    return (appState.getRMan().getString("timeAxis.abbrev_" + mapUnitTypes(unitType)));
+  public static String abbrevStringForUnit(DataAccessContext dacx, int unitType) {
+    return (dacx.getRMan().getString("timeAxis.abbrev_" + mapUnitTypes(unitType)));
   }  
   
   /***************************************************************************
@@ -710,12 +752,12 @@ public class TimeAxisDefinition implements Cloneable {
   **
   */
   
-  public static String getTimeDisplay(BTState appState, Integer timeObj, boolean showUnits, boolean abbreviate) {
+  public static String getTimeDisplay(DataAccessContext dacx, Integer timeObj, boolean showUnits, boolean abbreviate) {
     if (timeObj == null) {
       return (null);
     }
 
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String timeStr;
     if (tad.haveNamedStages()) {
       int timeNum = timeObj.intValue();
@@ -749,8 +791,9 @@ public class TimeAxisDefinition implements Cloneable {
   ** Handle creation from XML
   **
   */
-  
-  public static TimeAxisDefinition buildFromXML(BTState appState, String elemName, Attributes attrs) throws IOException {
+
+  @SuppressWarnings("unused")
+  public static TimeAxisDefinition buildFromXML(DataAccessContext dacx, String elemName, Attributes attrs) throws IOException {
     String unitTag = null;
     String custom = null;
     String customAbbrev = null;
@@ -800,7 +843,7 @@ public class TimeAxisDefinition implements Cloneable {
       customAbbrev = CharacterEntityMapper.unmapEntities(customAbbrev, false);
     }        
  
-    TimeAxisDefinition tfd = new TimeAxisDefinition(appState);
+    TimeAxisDefinition tfd = new TimeAxisDefinition(new StaticDataAccessContext(dacx).getContextForRoot());
     tfd.startDefinition(unit, custom, customAbbrev, isSuffixVal);
     return (tfd);
   }
@@ -822,6 +865,7 @@ public class TimeAxisDefinition implements Cloneable {
       this.order = order;
     }
     
+    @Override
     public NamedStage clone() {
       try {
         return ((NamedStage)super.clone());
@@ -829,6 +873,33 @@ public class TimeAxisDefinition implements Cloneable {
         throw new IllegalStateException();
       }
     }
+    
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return (true);
+      }
+      if (other == null) {
+        return (false);
+      }
+      if (!(other instanceof NamedStage)) {
+        return (false);
+      }
+      NamedStage otherNS = (NamedStage)other;
+    
+      if (!DataUtil.stringsEqual(this.name, otherNS.name)) {
+        return (false);
+      }
+      if (!DataUtil.stringsEqual(this.abbrev, otherNS.abbrev)) {
+        return (false);
+      }
+         
+      if (this.order != otherNS.order) {
+        return (false);
+      }
+      return (true);
+    } 
+
     
     public void writeXML(PrintWriter out, Indenter ind) {
       ind.indent();
@@ -842,6 +913,7 @@ public class TimeAxisDefinition implements Cloneable {
       return;
     }
     
+    @SuppressWarnings("unused")
     public static NamedStage buildFromXML(String elemName, Attributes attrs) throws IOException {
       String name = null;
       String abbrev = null;

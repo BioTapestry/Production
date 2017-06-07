@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -113,24 +113,24 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   ** Render the bare node using the provided layout
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
   		textFactory = new ModalTextShapeFactoryForDesktop();
   	}
   	
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
-    AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
+    AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
     Point2D origin = np.getLocation();
     String name = item.getName();
     double x = origin.getX();
     double y = origin.getY();
     
-    Rectangle2D extraPad = extraPadRectangle(item, rcx.getLayout());
+    Rectangle2D extraPad = extraPadRectangle(item, rcx.getCurrentLayout());
 
     //
     // Modify the ghosted state to include inactive nodes:
@@ -143,21 +143,20 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
       textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
     }
-    
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop, mode);
     Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);  
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop, mode);  
     
     CommonCacheGroup group = new CommonCacheGroup(item.getID(), item.getName(), "tablet");
     
-    tabletSelectionSupport(group, selected, extraPad, origin.getX(), origin.getY(), np, rcx.forWeb);
+    tabletSelectionSupport(group, selected, extraPad, origin.getX(), origin.getY(), np, rcx.isForWeb());
   
-    if (rcx.showBubbles) {
+    if (rcx.getShowBubbles()) {
     	renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
     }
     
-    renderGlyph(group, item, origin, extraPad, col, np, dop, isGhosted);    
+    renderGlyph(group, item, origin, extraPad, col, np, dop, isGhosted, mode);    
     
     double textX = x + TEXT_PAD_;
     double textY = y - TEXT_PAD_;
@@ -171,7 +170,8 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
     }
     
     textCol = (textGhosted) ? dop.getInactiveGray() : textCol;
-    Point2D textEnd = renderText(group, (float)textX, (float)textY, name, textCol, np.getHideName(), amFont, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr, textFactory);
+    Point2D textEnd = renderText(group, (float)textX, (float)textY, name, textCol, np.getHideName(), amFont, 
+                                         np.getLineBreakDef(), rcx.getFrc(), rcx.getFontManager(), textFactory);
     
     // alpha beta chi "\u03b1 \u03b2 \u03c7"
     
@@ -195,7 +195,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   */
   void fillBoundsArray(ArrayList<ModelObjectCache.ModalShape> targetArray, GenomeItem item, 
                        DataAccessContext rcx) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
 
   //  double halfWidth = glyphHalfWidth();
@@ -203,13 +203,13 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
    // double maxRadius = Math.max(halfWidth, halfHeight);
    // double intersectSq = maxRadius * maxRadius;
 
-    TextStats stats = genTextStats(extraPadRectangle(item, rcx.getLayout()),
+    TextStats stats = genTextStats(extraPadRectangle(item, rcx.getCurrentLayout()),
             origin, np.getExtraGrowthDirection());
 
     String name = item.getName();
     if ((name != null) && (!name.trim().equals(""))) {
         MultiLineRenderSupport.fillBoundsArrayTextLabel(targetArray, (float)stats.textX, (float)stats.textY, name,
-                np.getHideName(), FontManager.MEDIUM, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr);
+                np.getHideName(), FontManager.MEDIUM, np.getLineBreakDef(), rcx.getFrc(), rcx.getFontManager());
     }
 
     //double cX = origin.getX();
@@ -291,7 +291,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   
   protected abstract void renderGlyph(ModalShapeContainer group, GenomeItem item, Point2D origin, 
                                       Rectangle2D extraPad, Color fillColor, NodeProperties np, 
-                                      DisplayOptions dopt, boolean isGhosted);
+                                      DisplayOptions dopt, boolean isGhosted, Mode mode);
 
   /***************************************************************************
   **
@@ -379,7 +379,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   
   public Intersection intersects(GenomeItem item, Point2D pt, DataAccessContext rcx, Object miscInfo) {
 
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double x = origin.getX();
     double y = origin.getY();
@@ -392,15 +392,15 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
     double maxRadius = Math.max(halfWidth, halfHeight);
     double intersectSq = maxRadius * maxRadius;
 
-    TextStats stats = genTextStats(extraPadRectangle(item, rcx.getLayout()), 
+    TextStats stats = genTextStats(extraPadRectangle(item, rcx.getCurrentLayout()), 
                                    origin, np.getExtraGrowthDirection());
        
     String name = item.getName();
     if ((name != null) && (!name.trim().equals(""))) {         
       if (isTextCandidate(rcx.getFrc(), FontManager.MEDIUM, np.getFontOverride(), name, stats.textPad, 
-                          dx, distsq, np.getLineBreakDef(), false, np.getHideName(), rcx.fmgr)) {
+                          dx, distsq, np.getLineBreakDef(), false, np.getHideName(), rcx.getFontManager())) {
         if (intersectTextLabel(rcx.getFrc(), (float)stats.textX, (float)stats.textY, 
-                               name, pt, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.fmgr)) {
+                               name, pt, np.getHideName(), FontManager.MEDIUM, np.getFontOverride(), np.getLineBreakDef(), rcx.getFontManager())) {
           return (new Intersection(item.getID(), null, 0.0));
         }
       }
@@ -466,7 +466,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   
   public Rectangle2D getBoundsForLayout(GenomeItem item, DataAccessContext rcx, 
                                         int orientation, boolean labelToo, Integer topPadCount) {
-     NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+     NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
      Node theBox = (Node)item;
      int type = theBox.getNodeType();
      Point2D origin = new Point2D.Double(0.0, 0.0);
@@ -479,10 +479,10 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
                                                         origin, theBox.getNodeType());
        TextStats stats = genTextStats(extraRect, origin, NodeProperties.HORIZONTAL_GROWTH);
 
-       AnnotatedFont amFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+       AnnotatedFont amFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
        String breakDef = np.getLineBreakDef();    
        Rectangle2D textRect = getTextBounds(rcx.getFrc(),(float)stats.textX, (float)stats.textY, 
-                                            item.getName(), false, amFont, breakDef, rcx.fmgr);
+                                            item.getName(), false, amFont, breakDef, rcx.getFontManager());
        Rectangle fullRect = UiUtil.rectFromRect2D(textRect);
        return (fullRect.union(basic));
      } else {
@@ -509,7 +509,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   */
 
   public Intersection intersects(GenomeItem item, Rectangle rect, boolean countPartial, DataAccessContext rcx, Object miscInfo) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     double cX = origin.getX();
     double cY = origin.getY();
@@ -580,7 +580,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
                                       DataAccessContext icx) {    
     Node theBubble = (Node)item;
     int totalPads = theBubble.getPadCount();
-    NodeProperties np = icx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = icx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     int growthDir = np.getExtraGrowthDirection();    
     return (getLandingPadOffsetGuts(padNum, item, origin, sign, growthDir, totalPads));
@@ -690,7 +690,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   public Rectangle getBounds(GenomeItem item, DataAccessContext rcx, Object miscInfo) {
     Node theBubble = (Node)item;
     int totalPads = theBubble.getPadCount();
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     Point2D origin = np.getLocation();
     int growthDir = np.getExtraGrowthDirection();   
     return (getBoundsGuts(growthDir, totalPads, origin, theBubble.getNodeType()));
@@ -729,9 +729,9 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   
   public double getHeight(GenomeItem item, DataAccessContext rcx) {
     double retval = glyphHalfHeight() * 2.0;        
-    Rectangle2D extra = extraPadRectangle(item, rcx.getLayout());
+    Rectangle2D extra = extraPadRectangle(item, rcx.getCurrentLayout());
     if (extra != null) {
-      NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
       if (np.getExtraGrowthDirection() == NodeProperties.HORIZONTAL_GROWTH) {
         return (retval);
       } else {
@@ -758,9 +758,9 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   
   public double getWidth(GenomeItem item, DataAccessContext rcx) {
     double retval = glyphHalfWidth() * 2.0;        
-    Rectangle2D extra = extraPadRectangle(item, rcx.getLayout());
+    Rectangle2D extra = extraPadRectangle(item, rcx.getCurrentLayout());
     if (extra != null) {
-      NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+      NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
       if (np.getExtraGrowthDirection() == NodeProperties.HORIZONTAL_GROWTH) {
         return (retval + extra.getWidth());
       } else {
@@ -846,17 +846,6 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
       x = extraPad.getX();
       y = extraPad.getY() - SELECTION_RADIUS_PAD_ + bigRadius;
       
-      /*
-			ModelObjectCache.Arc arc11 = new ModelObjectCache.Arc(x - bigRadius, y - SELECTION_RADIUS_PAD_,
-					2.0 * bigRadius, 2.0 * bigRadius, 90, 180,
-					Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
-			
-			x += extraPad.getWidth();
-			ModelObjectCache.Arc arc12 = new ModelObjectCache.Arc(x - bigRadius, y - SELECTION_RADIUS_PAD_,
-					2.0 * bigRadius, 2.0 * bigRadius, 270, 180,
-					Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
-      */
-      
 			ModelObjectCache.Arc arc11 = new ModelObjectCache.Arc(x, y, bigRadius, 90, 180,
 					Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
 			
@@ -875,17 +864,6 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
     } else {
       x = extraPad.getX() - SELECTION_RADIUS_PAD_ + bigRadius;
       y = extraPad.getY();
-      
-      /*
-   		ModelObjectCache.Arc arc11 = new ModelObjectCache.Arc(x - SELECTION_RADIUS_PAD_, y - bigRadius,
-      2.0 * bigRadius, 2.0 * bigRadius, 0, 180,
-			Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
-
-      y += extraPad.getHeight();
-			ModelObjectCache.Arc arc12 = new ModelObjectCache.Arc(x - SELECTION_RADIUS_PAD_, y - bigRadius,
-      2.0 * bigRadius, 2.0 * bigRadius, 180, 180,
-			Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
-       */
       
 			ModelObjectCache.Arc arc11 = new ModelObjectCache.Arc(x, y, bigRadius, 0, 180,
 					Type.OPEN, DrawMode.FILL, Color.orange, new BasicStroke());
@@ -932,7 +910,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
       return (null);
     }
     int extraPerSide = (numPads - MAX_PADS_) / 2;
-    double extraSize = (double)(extraPerSide) * PAD_SPACING_;
+    double extraSize = extraPerSide * PAD_SPACING_;
     if (growthDir == NodeProperties.HORIZONTAL_GROWTH) {
       double height = 2.0 * glyphHalfHeight();
       double minX = origin.getX() - extraSize / 2.0;

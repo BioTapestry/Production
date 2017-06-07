@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,9 +23,11 @@ import java.awt.geom.Point2D;
 import java.util.HashSet;
 import java.util.Set;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -73,8 +75,7 @@ public class OptimizeLink extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public OptimizeLink(BTState appState, boolean forPopup, boolean allowReparent) {
-    super(appState); 
+  public OptimizeLink(boolean forPopup, boolean allowReparent) { 
     forPopup_ = forPopup;
     allowReparent_ = allowReparent;
     if (forPopup_) {
@@ -114,7 +115,8 @@ public class OptimizeLink extends AbstractControlFlow {
   */
    
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     if (!forPopup_) {
       throw new IllegalStateException();
     }
@@ -125,12 +127,12 @@ public class OptimizeLink extends AbstractControlFlow {
     //if (slp.hasSegments() && slp.getNonOrthoSegments(genome, lo, frc).isEmpty()) {      
   
     String oid = inter.getObjectID();
-    if (rcx.getGenome() instanceof GenomeInstance) {
-      if (rcx.getGenomeAsInstance().getVfgParent() != null) {
+    if (rcx.currentGenomeIsAnInstance()) {
+      if (rcx.getCurrentGenomeAsInstance().getVfgParent() != null) {
         return (false);
       }
     }      
-    LinkProperties lp = rcx.getLayout().getLinkProperties(oid);
+    LinkProperties lp = rcx.getCurrentLayout().getLinkProperties(oid);
     if (lp.isDirect()) {
       return (false);
     } 
@@ -151,8 +153,8 @@ public class OptimizeLink extends AbstractControlFlow {
   */ 
    
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    return (new StepState(appState_, forPopup_, allowReparent_, dacx));  
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    return (new StepState(forPopup_, allowReparent_, dacx));  
   }
   
   /***************************************************************************
@@ -166,10 +168,11 @@ public class OptimizeLink extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, forPopup_, allowReparent_, cfh.getDataAccessContext());
+        StepState ans = new StepState(forPopup_, allowReparent_, cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -188,13 +191,10 @@ public class OptimizeLink extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, BackgroundWorkerOwner {
 
-    private Object[] args_;
-    private String nextStep_;    
-    private BTState appState_;  
+    private Object[] args_;    
     private boolean myForPopup_;
-    private DataAccessContext rcxT_;
     private boolean myAllowReparent_;
          
     /***************************************************************************
@@ -202,21 +202,23 @@ public class OptimizeLink extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, boolean forPopup, boolean allowReparent, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(boolean forPopup, boolean allowReparent, StaticDataAccessContext dacx) {
+      super(dacx);
       myForPopup_ = forPopup;
       myAllowReparent_ = allowReparent;
-      rcxT_ = dacx;
       nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
     **
-    ** Next step...
+    ** Construct
     */ 
-     
-    public String getNextStep() {
-      return (nextStep_);
+    
+    public StepState(boolean forPopup, boolean allowReparent, ServerControlFlowHarness cfh) {
+      super(cfh);
+      myForPopup_ = forPopup;
+      myAllowReparent_ = allowReparent;
+      nextStep_ = "stepDoIt";
     }
       
     /***************************************************************************
@@ -229,12 +231,12 @@ public class OptimizeLink extends AbstractControlFlow {
         throw new IllegalStateException();
       }
       String interID = inter.getObjectID();
-      LinkProperties lp = rcxT_.getLayout().getLinkProperties(interID);
+      LinkProperties lp = dacx_.getCurrentLayout().getLinkProperties(interID);
       LinkSegmentID[] ids = inter.segmentIDsFromIntersect();
       if (ids.length != 1) {
         throw new IllegalStateException();
       }                    
-      Genome genome = rcxT_.getGenome();
+      Genome genome = dacx_.getCurrentGenome();
       HashSet<String> linkID = new HashSet<String>();
       linkID.add(lp.getALinkID(genome));  // Just need one; the optimizer works on the whole tree          
       //
@@ -270,7 +272,7 @@ public class OptimizeLink extends AbstractControlFlow {
             
       boolean allowReparent;
       if (allowReparentObj == null) {      
-        AllowReparentOptimizeDialog arpd = new AllowReparentOptimizeDialog(appState_);
+        AllowReparentOptimizeDialog arpd = new AllowReparentOptimizeDialog(uics_, dacx_);
         arpd.setVisible(true);
         if (!arpd.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this)); 
@@ -286,26 +288,26 @@ public class OptimizeLink extends AbstractControlFlow {
       // invalid after the layout changes stuff around!
       //
       
-      SUPanel sup = appState_.getSUPanel();
+      SUPanel sup = uics_.getSUPanel();
       if (sup.hasASelection()) {
-        sup.selectNone(appState_.getUndoManager(), rcxT_);
+        sup.selectNone(uics_, uFac_, dacx_);
         sup.drawModel(false);
       }
    
       String undoString = (links == null) ? "undo.optimizeLinks" : "undo.optimizeSingleTree"; 
-      UndoSupport support = new UndoSupport(appState_, undoString);
-      OptimizeRunner runner = new OptimizeRunner(appState_, links, frozen, allowReparent, support, rcxT_);
+      UndoSupport support = uFac_.provideUndoSupport(undoString, dacx_);
+      OptimizeRunner runner = new OptimizeRunner(links, frozen, allowReparent, support, dacx_);
       BackgroundWorkerClient bwc;     
-      if (!appState_.isHeadless()) { // not headless, true background thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
+      if (!uics_.isHeadless()) { // not headless, true background thread
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
       } else { // headless; on this thread
-        bwc = new BackgroundWorkerClient(appState_, this, runner, support);
+        bwc = new BackgroundWorkerClient(uics_, dacx_, this, runner, support);
       }
       runner.setClient(bwc);
       bwc.launchWorker();
             // In the server case, this won't execute until thread has returned.  In desktop case, we do not refresh view!
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((appState_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
-                                                                                       : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
+      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd((uics_.isHeadless()) ? DialogAndInProcessCmd.Progress.DONE 
+                                                                                   : DialogAndInProcessCmd.Progress.DONE_ON_THREAD, this); // Done
       return (daipc);
     }
     
@@ -322,7 +324,7 @@ public class OptimizeLink extends AbstractControlFlow {
     }     
         
     public void cleanUpPostRepaint(Object result) {
-      (new LayoutStatusReporter(appState_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
+      (new LayoutStatusReporter(uics_, dacx_, (LinkRouter.RoutingResult)result)).doStatusAnnouncements();
       return;
     }  
   }   
@@ -334,18 +336,16 @@ public class OptimizeLink extends AbstractControlFlow {
     
   private static class OptimizeRunner extends BackgroundWorker {
     
-    private BTState myAppState_; 
     private UndoSupport support_;
     private Set<String> links_;
     private Set<Point2D> frozen_;
     private boolean allowReroutes_;
     private String loKey_;
-    private DataAccessContext rcx_;
+    private StaticDataAccessContext rcx_;
     
-    public OptimizeRunner(BTState appState, Set<String> links, Set<Point2D> frozen, 
-                          boolean allowReroutes, UndoSupport support, DataAccessContext rcx) {
+    public OptimizeRunner(Set<String> links, Set<Point2D> frozen, 
+                          boolean allowReroutes, UndoSupport support, StaticDataAccessContext rcx) {
       super(new LinkRouter.RoutingResult());
-      myAppState_ = appState;
       links_ = links;
       allowReroutes_ = allowReroutes;
       frozen_ = frozen;
@@ -354,7 +354,7 @@ public class OptimizeLink extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      LinkRouter.RoutingResult result = LayoutLinkSupport.optimizeLinks(myAppState_, links_, frozen_, rcx_, support_, allowReroutes_, this, 0.0, 1.0);
+      LinkRouter.RoutingResult result = LayoutLinkSupport.optimizeLinks(links_, frozen_, rcx_, support_, allowReroutes_, this, 0.0, 1.0);
       return (result);
     }
     

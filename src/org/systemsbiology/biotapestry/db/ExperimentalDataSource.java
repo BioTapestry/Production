@@ -23,7 +23,6 @@ import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
-import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 
 /****************************************************************************
@@ -79,7 +78,7 @@ public interface ExperimentalDataSource  {
   ** Set the perturbation data
   */
 
-  public void setPertData(PerturbationData pd);
+  public DatabaseChange setPertData(PerturbationData pd);
   
   /***************************************************************************
   **
@@ -114,14 +113,14 @@ public interface ExperimentalDataSource  {
   ** Start an undo transaction
   */
   
-  public DatabaseChange startTemporalInputUndoTransaction();
+//  public DatabaseChange startTemporalInputUndoTransaction();
  
   /***************************************************************************
   **
   ** Finish an undo transaction
   */
   
-  public DatabaseChange finishTemporalInputUndoTransaction(DatabaseChange change);
+ // public DatabaseChange finishTemporalInputUndoTransaction(DatabaseChange change);
   
   /***************************************************************************
   **
@@ -142,7 +141,7 @@ public interface ExperimentalDataSource  {
   ** Set the Time Course data
   */
 
-  public void setTimeCourseData(TimeCourseData timeCourse);
+  public DatabaseChange setTimeCourseData(TimeCourseData timeCourse);
 
   /***************************************************************************
   ** 
@@ -156,21 +155,21 @@ public interface ExperimentalDataSource  {
   ** Set the copies per embryo data
   */
 
-  public void setCopiesPerEmbryoData(CopiesPerEmbryoData copies);
+  public DatabaseChange setCopiesPerEmbryoData(CopiesPerEmbryoData copies);
  
   /***************************************************************************
   ** 
   ** Get the Temporal Range Data
   */
 
-  public TemporalInputRangeData getTemporalInputRangeData();
+//  public TemporalInputRangeData getTemporalInputRangeData();
  
   /***************************************************************************
   ** 
   ** Set the Temporal Range Data
   */
 
-  public void setTemporalInputRangeData(TemporalInputRangeData rangeData);
+ // public void setTemporalInputRangeData(TemporalInputRangeData rangeData);
  
   /***************************************************************************
   ** 
@@ -191,6 +190,13 @@ public interface ExperimentalDataSource  {
   ** Set the time axis definition
   */
 
-  public void installLegacyTimeAxisDefinition();
- 
+  public void installLegacyTimeAxisDefinition(DataAccessContext dacx);
+  
+  /***************************************************************************
+  ** 
+  ** Set the time axis definition
+  */
+
+  public boolean amUsingSharedExperimentalData();
+
 }

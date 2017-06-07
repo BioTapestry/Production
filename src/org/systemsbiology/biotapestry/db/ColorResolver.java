@@ -83,7 +83,7 @@ public interface ColorResolver {
   ** Get next color
   */
   
-  public String getNextColor();
+  public String getNextColor(GenomeSource gs, LayoutSource ls);
   
   /***************************************************************************
   **

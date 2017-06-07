@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.Splitter;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -71,7 +71,7 @@ class Measurement implements Cloneable {
   private Boolean isSignificant_;
   private String comments_;
   private String colorDisplay_;
-  private BTState appState_;
+  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -84,11 +84,11 @@ class Measurement implements Cloneable {
   ** Constructor.  Not doing validation; use class function first.
   */
 
-  Measurement(BTState appState, String value, String time, String notes, String control, Boolean isSig, String comments) {
-    appState_ = appState; 
+  Measurement(DataAccessContext dacx, String value, String time, String notes, String control, Boolean isSig, String comments) {
+    dacx_ = dacx; 
     // Can be null while being created
     value_ = (value == null) ? null : value.trim().toUpperCase();
-    time_ = timeConversion(appState_, time);
+    time_ = timeConversion(dacx_, time);
     nonStdMaxTime_ = null;
     notes_ = notes;
     control_ = control;
@@ -102,7 +102,7 @@ class Measurement implements Cloneable {
   */
 
   Measurement(Measurement other) {
-    this.appState_ = other.appState_;
+    this.dacx_ = other.dacx_;
     this.value_ = other.value_;
     this.time_ = other.time_;
     this.nonStdMaxTime_ = other.nonStdMaxTime_;
@@ -124,7 +124,7 @@ class Measurement implements Cloneable {
   */
 
    void setNonStdMaxTime(String nonStdMax) {
-     nonStdMaxTime_ = timeConversion(appState_, nonStdMax);
+     nonStdMaxTime_ = timeConversion(dacx_, nonStdMax);
      return;
    }
  
@@ -245,7 +245,8 @@ class Measurement implements Cloneable {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime) {
+  @SuppressWarnings("unused")
+  void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime) {
     boolean closeColor = false;
     if ((colorDisplay_ != null) && !colorDisplay_.equalsIgnoreCase("black")) {
       qtp.openColor(colorDisplay_);
@@ -280,11 +281,11 @@ class Measurement implements Cloneable {
     if (time_ == null) {
       return (null);
     }
-    String minDisp = TimeAxisDefinition.getTimeDisplay(appState_, time_, showUnits, abbreviate);
+    String minDisp = TimeAxisDefinition.getTimeDisplay(dacx_, time_, showUnits, abbreviate);
     if (nonStdMaxTime_ == null) {
       return (minDisp);  
     } else {
-      String maxDisp = TimeAxisDefinition.getTimeDisplay(appState_, nonStdMaxTime_, showUnits, abbreviate);
+      String maxDisp = TimeAxisDefinition.getTimeDisplay(dacx_, nonStdMaxTime_, showUnits, abbreviate);
       return (minDisp + "-" + maxDisp);
     }  
   }  
@@ -324,7 +325,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static Measurement buildFromXML(BTState appState, String elemName, 
+   static Measurement buildFromXML(DataAccessContext dacx, String elemName, 
                                    Attributes attrs, double legacyThresh) throws IOException {
     if (!elemName.equals("measurement") && !elemName.equals("nullMeasurement")) {
       return (null);
@@ -369,7 +370,7 @@ class Measurement implements Cloneable {
       throw new IOException();
     }
     
-    if (!isValidTime(appState, time)) {
+    if (!isValidTime(dacx, time)) {
       throw new IOException();
     }
     
@@ -380,7 +381,7 @@ class Measurement implements Cloneable {
     legacyThresh = Math.abs(legacyThresh);
     Boolean isSig = (isSigString != null) ? Boolean.valueOf(isSigString) 
                                           : new Boolean(!isBelowThreshold(value, null, -legacyThresh, legacyThresh)); 
-    return (new Measurement(appState, value, time, notes, control, isSig, comments));
+    return (new Measurement(dacx, value, time, notes, control, isSig, comments));
   }
   
   /***************************************************************************
@@ -418,7 +419,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static boolean isValidTime(BTState appState, String input) {
+   static boolean isValidTime(DataAccessContext dacx, String input) {
     if (input == null) {
       return (true);
     } 
@@ -427,7 +428,7 @@ class Measurement implements Cloneable {
       return (true);
     }
    
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (tad.haveNamedStages()) {
       int stageNum = tad.getIndexForNamedStage(input);      
       return (stageNum != TimeAxisDefinition.INVALID_STAGE_NAME);
@@ -447,7 +448,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static Integer timeConversion(BTState appState, String input) {
+   static Integer timeConversion(DataAccessContext dacx, String input) {
     if (input == null) {
       return (null);
     } 
@@ -456,7 +457,7 @@ class Measurement implements Cloneable {
       return (null);
     }
    
-    TimeAxisDefinition tad = appState.getDB().getTimeAxisDefinition();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (tad.haveNamedStages()) {
       int stageNum = tad.getIndexForNamedStage(input);      
       if (stageNum == TimeAxisDefinition.INVALID_STAGE_NAME) {

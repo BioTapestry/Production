@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -42,12 +42,15 @@ import javax.swing.JTabbedPane;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
+import org.systemsbiology.biotapestry.cmd.flow.FlowMeister.FlowKey;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
-import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.NetModule;
 import org.systemsbiology.biotapestry.genome.NetModuleMember;
 import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
@@ -59,8 +62,10 @@ import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
+import org.systemsbiology.biotapestry.ui.dialogs.factory.SerializableDialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.NameValuePairTablePanel;
+import org.systemsbiology.biotapestry.ui.xplat.dialog.XPlatUIDialog;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.ColorDeletionListener;
 import org.systemsbiology.biotapestry.util.ColorSelectionWidget;
@@ -69,6 +74,7 @@ import org.systemsbiology.biotapestry.util.ListWidget;
 import org.systemsbiology.biotapestry.util.ListWidgetClient;
 import org.systemsbiology.biotapestry.util.NameValuePairList;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
@@ -157,15 +163,13 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     HashSet<String> allNames;
     HashSet<String> allValues;
     HashMap<String, Set<String>> valsForNames;
-    
-      
-    public NetModulePropsArgs(BTState appState, Genome genome, String modID) {
-      super(genome); 
+ 
+    public NetModulePropsArgs(DataAccessContext dacx, String modID) {
+      super(dacx.getCurrentGenome()); 
       this.modID = modID;
-      Database db = appState.getDB();
-      Layout layout = db.getLayout(appState.getLayoutKey());
-      String ovrKey = appState.getCurrentOverlay();
-      NetOverlayOwner owner = db.getOverlayOwnerFromGenomeKey(genome.getID());
+      Layout layout = dacx.getLayoutSource().getLayout(dacx.getCurrentLayoutID());
+      String ovrKey = dacx.getOSO().getCurrentOverlay();
+      NetOverlayOwner owner = dacx.getGenomeSource().getOverlayOwnerFromGenomeKey(genome.getID());
       NetworkOverlay novr = owner.getNetworkOverlay(ovrKey);
       NetOverlayProperties nop = layout.getNetOverlayProperties(ovrKey);
       NetModuleProperties nmop = nop.getNetModuleProperties(modID);
@@ -196,7 +200,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       origDesc = nmod.getDescription(); 
       origName = nmod.getName();      
       origNvpl = nmod.getNVPairs();   
-      typeChoices = NetOverlayProperties.getOverlayTypes(appState);
+      typeChoices = NetOverlayProperties.getOverlayTypes(dacx);
       desc = novr.getDescription();  
       hideLinks = nop.hideLinks();    
       origType = nop.getType(); 
@@ -210,7 +214,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       valsForNames = new HashMap<String, Set<String>>();
       HashSet<String> junkSet = new HashSet<String>();
       HashMap<String, Set<String>> junkMap = new HashMap<String, Set<String>>();
-      FullGenomeHierarchyOracle oracle = new FullGenomeHierarchyOracle(appState);
+      FullGenomeHierarchyOracle oracle = dacx.getFGHO();
       oracle.getGlobalTagsAndNVPairsForModules(junkMap, otherNames, junkSet, globalTags, nmod);   
       oracle.getGlobalTagsAndNVPairsForModules(valsForNames, allNames, allValues, junkSet, null);   
     }
@@ -237,6 +241,74 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
   // DIALOG CLASSES
   //
   ////////////////////////////////////////////////////////////////////////////    
+  
+  public static class SerializableDialog implements SerializableDialogPlatform.Dialog {
+	  
+	  // Original values
+	  private NetModulePropsArgs nmpa_;
+	  
+	  private XPlatUIDialog xplatDialog_;
+	  private ServerControlFlowHarness scfh_;
+	  private ResourceManager rMan_;
+	  
+	  
+	  public SerializableDialog(ServerControlFlowHarness cfh, NetModulePropsArgs nmpa) {
+		 this.scfh_ = cfh; 
+		 this.rMan_ = cfh.getDataAccessContext().getRMan();
+		 this.nmpa_ = nmpa;
+		 
+		 buildDialog(); 
+	  }
+	  
+	  
+	  
+	  
+	  ///////////////////
+	  // buildDialog
+	  ///////////////////
+	  //
+	  //
+	  private void buildDialog() {
+		  this.xplatDialog_ = new XPlatUIDialog(this.rMan_.getString("nmodprop.title"),600,650);
+		  
+		  this.xplatDialog_.setUserInputs(new NetModulePropsRequest(true));
+		  
+		  
+		  
+		  
+	  }
+	  
+	  
+	public boolean dialogIsModal() {
+    return (true);
+  }
+
+	public SimpleUserFeedback checkForErrors(UserInputs ui) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	public XPlatUIDialog getDialog() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	public XPlatUIDialog getDialog(FlowKey keyVal) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+
+
+
+	public DialogAndInProcessCmd handleSufResponse(DialogAndInProcessCmd daipc) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+	  
+	  
+  }
+    
   
   public static class DesktopDialog extends BTTransmitResultsDialog implements ListWidgetClient { 
 
@@ -267,7 +339,9 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     private JComboBox fadeCombo_;
     private JLabel fadeLabel_;  
     private NodeAndLinkPropertiesSupport nps_;
-    private DataAccessContext dacx_;
+    private StaticDataAccessContext dacx_;
+    private UIComponentSource uics_;
+    private HarnessBuilder hBld_;
        
     private static final long serialVersionUID = 1L;
    
@@ -286,11 +360,12 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       super(cfh, "nmodprop.title", new Dimension(650, 600), 1, new NetModulePropsRequest(), true);
       nmpa_ = nmpa;
       dacx_ = cfh.getDataAccessContext();
+      hBld_ = cfh.getHarnessBuilder();
       currTags_ = new TreeSet<String>(nmpa.origTags);
       currTagsList_ = new ArrayList<String>(currTags_);
       globalTags_ = new HashSet<String>(nmpa.globalTags);
-      nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx_);
-      nvptab_ = new NameValuePairTablePanel(appState_, appState_.getTopFrame(), nmpa.origNvpl, nmpa.allNames, nmpa.allValues, nmpa.valsForNames, false);     
+      nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx_);
+      nvptab_ = new NameValuePairTablePanel(uics_, dacx_, uics_.getTopFrame(), nmpa.origNvpl, nmpa.allNames, nmpa.allValues, nmpa.valsForNames, false);     
       
       //
       // Build the tabs.
@@ -310,7 +385,11 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     // PUBLIC METHODS
     //
     ////////////////////////////////////////////////////////////////////////////  
-     
+    
+    public boolean dialogIsModal() {
+      return (true);
+    }
+    
     /***************************************************************************
     **
     ** Add a row to the list
@@ -318,7 +397,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     
     public List addRow(ListWidget widget) {
   
-      TagWorkingDialog twd = new TagWorkingDialog(appState_, null, globalTags_, currTags_); 
+      TagWorkingDialog twd = new TagWorkingDialog(uics_, dacx_, null, globalTags_, currTags_); 
       twd.setVisible(true);
       
       if (!twd.haveResult()) {
@@ -366,7 +445,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
         throw new IllegalArgumentException();
       }
    
-      TagWorkingDialog twd = new TagWorkingDialog(appState_, currTagsList_.get(selectedRows[0]), globalTags_, currTags_); 
+      TagWorkingDialog twd = new TagWorkingDialog(uics_, dacx_, currTagsList_.get(selectedRows[0]), globalTags_, currTags_); 
       twd.setVisible(true);
       
       if (!twd.haveResult()) {
@@ -406,7 +485,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     private JPanel buildModelTab() {
       
       JPanel retval = new JPanel();
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       retval.setBorder(new EmptyBorder(20, 20, 20, 20));
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();   
@@ -447,7 +526,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       // Add the module tags:
       //
         
-      tlw_ = new ListWidget(appState_, new ArrayList(), this);    
+      tlw_ = new ListWidget(uics_.getHandlerAndManagerSource(), new ArrayList(), this);    
       
       label = new JLabel(rMan.getString("nmodprop.tags")); 
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 5, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);
@@ -482,7 +561,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
     private JPanel buildLayoutTab() {
       
       JPanel retval = new JPanel();
-      ResourceManager rMan = appState_.getRMan();   
+      ResourceManager rMan = dacx_.getRMan();   
       retval.setBorder(new EmptyBorder(20, 20, 20, 20));
       retval.setLayout(new GridBagLayout());
       GridBagConstraints gbc = new GridBagConstraints();   
@@ -493,7 +572,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       
       int rowNum = 0;
       JLabel label = new JLabel(rMan.getString("nmodule.displayType"));
-      Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(appState_, true);
+      Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(dacx_, true);
       typeCombo_ = new JComboBox(choices);
   
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
@@ -507,10 +586,10 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       // built last to hand it listener:
       //
       
-      colorWidget2_ = new ColorSelectionWidget(appState_, dacx_, null, true, "nmodprop.fillColor", false, false);
+      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "nmodprop.fillColor", false, false);
       ArrayList<ColorDeletionListener> colorDeletionListeners = new ArrayList<ColorDeletionListener>();
       colorDeletionListeners.add(colorWidget2_);
-      colorWidget1_ = new ColorSelectionWidget(appState_, dacx_, colorDeletionListeners, true, "nmodprop.borderColor", true, false);    
+      colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorDeletionListeners, true, "nmodprop.borderColor", true, false);    
       
       UiUtil.gbcSet(gbc, 0, rowNum++, 11, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
       retval.add(colorWidget1_, gbc); 
@@ -531,14 +610,14 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
             fadeLabel_.setEnabled(!hideLabelBox_.isSelected());
             fadeCombo_.setEnabled(!hideLabelBox_.isSelected());
           } catch (Exception ex) {
-            appState_.getExceptionHandler().displayException(ex);
+            uics_.getExceptionHandler().displayException(ex);
           }
           return;
         }
       });
   
       fadeLabel_ = new JLabel(rMan.getString("nmodProp.fadeMode"));
-      Vector<ChoiceContent> fadeChoices = NetModuleProperties.getNameFades(appState_);
+      Vector<ChoiceContent> fadeChoices = NetModuleProperties.getNameFades(dacx_);
       fadeCombo_ = new JComboBox(fadeChoices);
   
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
@@ -587,10 +666,10 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
         colorWidget2_.setEnabled(false);
       }
 
-      typeCombo_.setSelectedItem(NetModuleProperties.typeForCombo(appState_, nmpa_.origModType)); 
+      typeCombo_.setSelectedItem(NetModuleProperties.typeForCombo(dacx_, nmpa_.origModType)); 
        
       hideLabelBox_.setSelected(nmpa_.origIsHiding);
-      fadeCombo_.setSelectedItem(NetModuleProperties.fadeForCombo(appState_, nmpa_.origFade)); 
+      fadeCombo_.setSelectedItem(NetModuleProperties.fadeForCombo(dacx_, nmpa_.origFade)); 
       fadeLabel_.setEnabled(!hideLabelBox_.isSelected());
       fadeCombo_.setEnabled(!hideLabelBox_.isSelected());
       
@@ -655,8 +734,8 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
         // module!
         //  
         if ((typeSelection.val == NetModuleProperties.MEMBERS_ONLY) && nmpa_.existingMembers.isEmpty()) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("nmodprop.needMembersForMembersOnly"), 
                                         rMan.getString("nmodprop.typeConversionErrorTitle"),
                                         JOptionPane.ERROR_MESSAGE); 
@@ -670,8 +749,8 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       nmprq.nameToSubmit = nmpa_.origName;
       if (!newName.equals(nmpa_.origName)) {
         if (newName.equals("")) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("nmodprop.emptyName"), 
                                         rMan.getString("nmodprop.emptyNameTitle"),
                                         JOptionPane.ERROR_MESSAGE); 
@@ -679,8 +758,8 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
         }          
   
         if (DataUtil.containsKey(nmpa_.existingNames, newName)) {
-          ResourceManager rMan = appState_.getRMan();
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+          ResourceManager rMan = dacx_.getRMan();
+          JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("nmodprop.dupName"), 
                                         rMan.getString("nmodprop.dupNameTitle"),
                                         JOptionPane.ERROR_MESSAGE); 
@@ -729,7 +808,6 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
 
   public static class NetModulePropsRequest implements ServerControlFlowHarness.UserInputs {   
    
-   
     public boolean submit;
     public boolean submitTags;
     public boolean submitNV;
@@ -755,22 +833,68 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
    
     private boolean haveResult;
     private boolean forApply_;
+    
+    public NetModulePropsRequest() {
+    	
+    }
+    
+    // constructor which initializes everything so it can be serialized with null excludes
+    public NetModulePropsRequest(boolean forTransit) {
+        submit = false;
+        submitTags = false;
+        submitNV = false;
+        nameToSubmit = "";
+        descToSubmit = "";
+        color1 = "";
+        color2 = "";
+        colorChange = false;
+        newFont = new FontManager.FontOverride(-2,false,false,false);
+        fontChange = false;    
+        newTags = new TreeSet<String>();
+        newNvpl = new NameValuePairList();    
+        hideLabelChg = false;  
+        typeVal = -1;    
+        typeValChange = false;
+        doLinks = false;  
+        hideLabel = false;   
+        newFade  = -1;
+        fadeChg = false;      
+        untrimmed = "";
+        newLineBrkDef = "";
+        brkChg = false;
+    }
 
     public void clearHaveResults() {
       haveResult = false;
       return;
     }   
+    
     public boolean haveResults() {
       return (haveResult);
     }
-     
+    
+    public boolean isForApply() {
+      return (forApply_);
+    }
+    
+    // getters/setters for serialization
+    
     public void setForApply(boolean forApply) {
       forApply_ = forApply;
       return;
     }
-     
-    public boolean isForApply() {
-      return (forApply_);
+    	
+	public boolean getForApply() {
+        return (forApply_);
     }
+	
+	public void setHasResults() {
+		this.haveResult = true;
+		return;
+	}  
+
+    public boolean getHaveResult() {
+		return haveResult;
+	}
   }
 }

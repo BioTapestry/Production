@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.Vector;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -44,6 +44,7 @@ import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -79,8 +80,9 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   private PertSimpleNameEditPanel ctrlep_;    
   private String pendingKey_;
   private PertManageHelper pmh_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -95,21 +97,22 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   ** Constructor 
   */ 
   
-  public PertExpSetupManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw,
+  public PertExpSetupManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
                                  PerturbationData pd, PendingEditTracker pet, 
                                  PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    uFac_ = uFac;
     pd_ = pd;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
  
     
     ArrayList<ReadOnlyTable> allTabs = new ArrayList<ReadOnlyTable>();
 
-    rtexco_ = new ReadOnlyTable(appState_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(appState_, "pmsm.condition"), new ReadOnlyTable.EmptySelector());
+    rtexco_ = new ReadOnlyTable(uics_, dacx_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, dacx_, "pmsm.condition"), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtexco_);
      
-    rtctrl_ = new ReadOnlyTable(appState_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(appState_, "pmsm.control"), new ReadOnlyTable.EmptySelector());
+    rtctrl_ = new ReadOnlyTable(uics_, dacx_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, dacx_, "pmsm.control"), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtctrl_);
     
     //
@@ -132,10 +135,10 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     UiUtil.gbcSet(gbc_, 1, rowNum_++, 1, 1, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 1.0);    
     topPanel_.add(ctrlPanel, gbc_);  
        
-    excep_ = new PertSimpleNameEditPanel(appState_, dacx_, parent_, this, "pmsmp.conditionName", this, EXC_KEY);
+    excep_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pmsmp.conditionName", this, EXC_KEY);
     addEditPanel(excep_, EXC_KEY);
      
-    ctrlep_ = new PertSimpleNameEditPanel(appState_, dacx_, parent_, this, "pmsmp.controlName", this, CONTROL_KEY);
+    ctrlep_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pmsmp.controlName", this, CONTROL_KEY);
     addEditPanel(ctrlep_, CONTROL_KEY);
  
     finishConstruction();
@@ -193,6 +196,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   ** 
   */
   
+  @Override
   public void editIsComplete(String key, int what) {
     if (key.equals(EXC_KEY)) {
       if (joinKeys_ == null) {
@@ -285,6 +289,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   ** Handle duplication operations 
   */ 
   
+  @Override
   public void doADuplication(String key) {
     if (key.equals(EXC_KEY)) {
       String useKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtexco_.getModel()).getSelectedKey(rtexco_.selectedRows);
@@ -311,6 +316,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   ** Handle join operations 
   */ 
   
+  @Override
   public void doAJoin(String key) {
     if (key.equals(EXC_KEY)) {
       joinKeys_ = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtexco_.getModel()).getSelectedKeys(rtexco_.selectedRows);
@@ -320,7 +326,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
         pendingKey_ = stdco;
       } else {
         DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-        Map refCounts = da.getAllExprConditionReferenceCounts();
+        Map<String, Integer>refCounts = da.getAllExprConditionReferenceCounts();
         pendingKey_ = pmh_.getMostUsedKey(refCounts, joinKeys_); 
       }
       TreeSet nameOptions = new TreeSet(String.CASE_INSENSITIVE_ORDER);
@@ -340,7 +346,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
       int numk = joinKeys_.size();
       ConditionDictionary cd = pd_.getConditionDictionary();
       for (int i = 0; i < numk; i++) {
-        String nextJk = (String)joinKeys_.get(i);
+        String nextJk = joinKeys_.get(i);
         nameOptions.add(cd.getExprControl(nextJk).getDescription());
       }
       ctrlep_.setMergeName(pendingKey_, nameOptions, new ArrayList(joinKeys_));
@@ -356,15 +362,16 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   ** Handle filter jumps
   */ 
   
+  @Override
   public void doAFilterJump(String key) {
     if (key.equals(EXC_KEY)) {
       String filterKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtexco_.getModel()).getSelectedKey(rtexco_.selectedRows);
-      PertFilter filter = new PertFilter(PertFilter.EXP_CONDITION, PertFilter.STR_EQUALS, filterKey);
+      PertFilter filter = new PertFilter(PertFilter.Cat.EXP_CONDITION, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(filter);
       pfet_.jumpWithNewFilter(pfe); 
     } else if (key.equals(CONTROL_KEY)) {
       String filterKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtctrl_.getModel()).getSelectedKey(rtctrl_.selectedRows);
-      PertFilter filter = new PertFilter(PertFilter.EXP_CONTROL, PertFilter.STR_EQUALS, filterKey);
+      PertFilter filter = new PertFilter(PertFilter.Cat.EXP_CONTROL, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(filter);
       pfet_.jumpWithNewFilter(pfe); 
     } else {
@@ -401,18 +408,18 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     //
     // Experiment conditions
     //
-    List selKeys = (rtexco_.selectedRows == null) ? null :
-                     ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtexco_.getModel()).getSelectedKeys(rtexco_.selectedRows);
+    List<String> selKeys = (rtexco_.selectedRows == null) ? null :
+                                     ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtexco_.getModel()).getSelectedKeys(rtexco_.selectedRows);
       
     rtexco_.rowElements.clear();
-    Vector eco = pd_.getConditionDictionary().getExprConditionsOptions();
+    Vector<TrueObjChoiceContent> eco = pd_.getConditionDictionary().getExprConditionsOptions();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map sdrefs = da.getAllExprConditionReferenceCounts();
+    Map<String, Integer> sdrefs = da.getAllExprConditionReferenceCounts();
     Integer noCount = new Integer(0);
-    Iterator ecit = eco.iterator();  
+    Iterator<TrueObjChoiceContent> ecit = eco.iterator();  
     while (ecit.hasNext()) {
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)ecit.next();
-      Integer count = (Integer)sdrefs.get(tocc.val);
+      TrueObjChoiceContent tocc = ecit.next();
+      Integer count = sdrefs.get((String)tocc.val);
       if (count == null) {
         count = noCount;
       }
@@ -434,12 +441,12 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     selKeys = (rtctrl_.selectedRows == null) ? null :
                 ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtctrl_.getModel()).getSelectedKeys(rtctrl_.selectedRows);   
     rtctrl_.rowElements.clear();
-    Vector ectrl = pd_.getConditionDictionary().getExprControlOptions();
-    Map ctrlRefs = da.getAllExprControlReferenceCounts();
-    Iterator ecrlit = ectrl.iterator();  
+    Vector<TrueObjChoiceContent> ectrl = pd_.getConditionDictionary().getExprControlOptions();
+    Map<String, Integer> ctrlRefs = da.getAllExprControlReferenceCounts();
+    Iterator<TrueObjChoiceContent> ecrlit = ectrl.iterator();  
     while (ecrlit.hasNext()) {
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)ecrlit.next();
-      Integer count = (Integer)ctrlRefs.get(tocc.val);
+      TrueObjChoiceContent tocc = ecrlit.next();
+      Integer count = ctrlRefs.get((String)tocc.val);
       if (count == null) {
         count = noCount;
       }
@@ -530,10 +537,10 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
         return;
       }
        
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteExprCondition");
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteExprCondition", dacx_);
       da.killOffDependencies(refs, dacx_, support);
       PertDataChange pdc = pd_.deleteExperimentConditions(selKey);
-      support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
@@ -546,10 +553,10 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
       if (!pmh_.warnAndAsk(refs)) {
         return;
       }      
-      UndoSupport support = new UndoSupport(appState_, "undo.deleteExprControl");
+      UndoSupport support = uFac_.provideUndoSupport("undo.deleteExprControl", dacx_);
       da.killOffDependencies(refs, dacx_, support);
       PertDataChange pdc = pd_.deleteExperimentControl(selKey);
-      support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
@@ -577,14 +584,14 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     String name = ctrlep_.getResult();
     
     ConditionDictionary ecd = pd_.getConditionDictionary(); 
-    ExperimentControl revisedECtrl = (ExperimentControl)ecd.getExprControl(pendingKey_).clone();
+    ExperimentControl revisedECtrl = ecd.getExprControl(pendingKey_).clone();
     revisedECtrl.setDescription(name);   
-    UndoSupport support = new UndoSupport(appState_, "undo.mergeExpControls");   
-    DependencyAnalyzer.Dependencies refs = da.getExprControlMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeExpControls", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getExprControlMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergeExprControls(joinKeys_, pendingKey_, revisedECtrl);
     for (int i = 0; i < pdc.length; i++) {
-      support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc[i]));
+      support.addEdit(new PertDataChangeCmd(dacx_, pdc[i]));
     }
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
@@ -609,7 +616,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     boolean mustMatchStd = joinKeys_.contains(std);
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();  
     String name = excep_.getResult();
-    ExperimentConditions revisedECond = (ExperimentConditions)ecd.getExprConditions(pendingKey_).clone();
+    ExperimentConditions revisedECond = ecd.getExprConditions(pendingKey_).clone();
     revisedECond.setDescription(name);
     if (mustMatchStd) { 
       ExperimentConditions stdCond = ecd.getExprConditions(std);
@@ -621,11 +628,11 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
       }      
     }
     
-    UndoSupport support = new UndoSupport(appState_, "undo.mergeExprConditions");   
-    DependencyAnalyzer.Dependencies refs = da.getExprConditionMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeExprConditions", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getExprConditionMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergeExprConditions(joinKeys_, pendingKey_, revisedECond);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -646,19 +653,19 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   
   private void editCondition(String key, int what) {
     String name = excep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createConditionName" 
-                                                                           : "undo.editConditionName"); 
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createConditionName" 
+                                                                         : "undo.editConditionName", dacx_); 
     ConditionDictionary ecd = pd_.getConditionDictionary(); 
     ExperimentConditions revisedEC;
     if (pendingKey_ == null) {
       pendingKey_ = ecd.getNextDataKey();
       revisedEC = new ExperimentConditions(pendingKey_, name);
     } else {
-      revisedEC = (ExperimentConditions)ecd.getExprConditions(pendingKey_).clone();
+      revisedEC = ecd.getExprConditions(pendingKey_).clone();
       revisedEC.setDescription(name);
     }   
     PertDataChange pdc = pd_.setExperimentConditions(revisedEC);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -679,19 +686,19 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
   
   private void editControl(String key, int what) {
     String name = ctrlep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createExpControl" 
-                                                                           : "undo.editExpControl"); 
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createExpControl" 
+                                                                         : "undo.editExpControl", dacx_); 
     ConditionDictionary ecd = pd_.getConditionDictionary(); 
     ExperimentControl revisedECtrl;
     if (pendingKey_ == null) {
       pendingKey_ = ecd.getNextDataKey();
       revisedECtrl = new ExperimentControl(pendingKey_, name);
     } else {
-      revisedECtrl = (ExperimentControl)ecd.getExprControl(pendingKey_).clone();
+      revisedECtrl = ecd.getExprControl(pendingKey_).clone();
       revisedECtrl.setDescription(name);
     }   
     PertDataChange pdc = pd_.setExperimentControl(revisedECtrl);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();

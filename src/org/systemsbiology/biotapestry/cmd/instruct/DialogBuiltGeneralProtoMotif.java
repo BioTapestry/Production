@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -156,7 +156,7 @@ public class DialogBuiltGeneralProtoMotif extends DialogBuiltProtoMotif {
     // real motif in the full list:
     //
     
-    Set<String> existing = matchingLinkSet(genome, pair, fullList);
+    Set<String> existing = matchingLinkSet(pair, fullList);
     
     Set<String> lb = ist.getLinksBetween(real.getSourceId(), real.getTargetId());
     
@@ -207,7 +207,7 @@ public class DialogBuiltGeneralProtoMotif extends DialogBuiltProtoMotif {
     String oldID = oldGen.getSourceId();    
     if ((oldID != null) || !bd.existingOnly) {
       if (real.getSourceId() == null) {
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, sourceName_, sourceType_, oldID, support);
         String newID = newNode.getID();
         real.setSourceId(newID);
         String normSrc =bd. normNames.get(sourceName_);
@@ -230,7 +230,7 @@ public class DialogBuiltGeneralProtoMotif extends DialogBuiltProtoMotif {
     oldID = oldGen.getTargetId();    
     if ((oldID != null) || !bd.existingOnly) {    
       if ((real.getTargetId() == null) && (targetName_ != null)) {  
-        DBNode newNode = genNode(bd.appState, bd.dacx, bd.genome, bd.oldGenome, targetName_, targetType_, oldID, support);
+        DBNode newNode = genNode(bd.dacx, bd.genome, bd.oldGenome, targetName_, targetType_, oldID, support);
         String newID = newNode.getID();
         real.setTargetId(newID);
         String normTrg = bd.normNames.get(targetName_);
@@ -259,9 +259,9 @@ public class DialogBuiltGeneralProtoMotif extends DialogBuiltProtoMotif {
                                                          oldGen.getLinkId(), bd.newNodeToOldNode);
       if ((real.getLinkId() == null) && (targetName_ != null)) { 
         DBLinkage newLink = 
-          (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.appState, bd.dacx, real.getSourceId(), real.getTargetId(), 
-                                                            GeneralBuildInstruction.mapToLinkageSign(linkSign_),
-                                                            bd.oldGenome, support, true, oldID, pc, evidenceLevel_, bd.ist);
+          (DBLinkage)AddCommands.autoAddOldOrNewLinkToRoot(bd.dacx, real.getSourceId(), real.getTargetId(), 
+                                                           GeneralBuildInstruction.mapToLinkageSign(linkSign_),
+                                                           bd.oldGenome, support, true, oldID, pc, evidenceLevel_, bd.ist);
         real.setLinkId(newLink.getID());
         bd.padConstraintSaver.put(real.getLinkId(), pc);
         bd.newLinksToOldLinks.put(real.getLinkId(), oldGen.getLinkId()); // May be null
@@ -334,7 +334,7 @@ public class DialogBuiltGeneralProtoMotif extends DialogBuiltProtoMotif {
   ** Helper
   */  
   
-  private Set<String> matchingLinkSet(DBGenome genome, DialogBuiltMotifPair pair, List<DialogBuiltMotifPair> fullList) {
+  private Set<String> matchingLinkSet(DialogBuiltMotifPair pair, List<DialogBuiltMotifPair> fullList) {
     DialogBuiltGeneralMotif myMotif = (DialogBuiltGeneralMotif)pair.real;
     if ((myMotif.getSourceId() == null) || 
         (myMotif.getTargetId() == null) ||

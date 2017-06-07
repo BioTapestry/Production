@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -37,7 +37,6 @@ import java.util.TreeSet;
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.MinMax;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -296,8 +295,8 @@ public class LinkBundleSplicer {
     int nextKey = task.start;
     
     if (!task.externalPerpTrackUsage.isEmpty()) {
-      firstKey = ((Integer)task.externalPerpTrackUsage.firstKey()).intValue();
-      lastKey = ((Integer)task.externalPerpTrackUsage.lastKey()).intValue();
+      firstKey = task.externalPerpTrackUsage.firstKey().intValue();
+      lastKey = task.externalPerpTrackUsage.lastKey().intValue();
     }
     
     if (task.exclusive && !task.antisense) {
@@ -508,10 +507,10 @@ public class LinkBundleSplicer {
     int leftDetour; 
     int rightDetour;
      
-    leftDetour = ((Integer)task.backTracks.first()).intValue();
+    leftDetour = task.backTracks.first().intValue();
     TreeSet<Integer> forInternalLeftMost = (task.leftTurnTurnsTowardsMin) ? new TreeSet<Integer>() : new TreeSet<Integer>(Collections.reverseOrder());
     forInternalLeftMost.addAll(bep.allInternalTrackVals());
-    Integer internalLeftmostObj = (Integer)forInternalLeftMost.first();
+    Integer internalLeftmostObj = forInternalLeftMost.first();
     int internalLeftmost = internalLeftmostObj.intValue();
     if ((task.leftTurnTurnsTowardsMin && (internalLeftmost < leftDetour)) ||
         (!task.leftTurnTurnsTowardsMin && (internalLeftmost > leftDetour))) {
@@ -519,10 +518,10 @@ public class LinkBundleSplicer {
     }  
 
     // Note task.antisense is true in this case, so backTracks goes left. 
-    rightDetour = ((Integer)task.backTracks.first()).intValue();
+    rightDetour = task.backTracks.first().intValue();
     TreeSet<Integer> forInternalRightmost = (task.leftTurnTurnsTowardsMin) ? new TreeSet<Integer>() : new TreeSet<Integer>(Collections.reverseOrder());
     forInternalRightmost.addAll(bep.allInternalTrackVals());
-    Integer internalRightmostObj = (Integer)forInternalRightmost.last();
+    Integer internalRightmostObj = forInternalRightmost.last();
     int internalRightmost = internalRightmostObj.intValue();
     if ((task.leftTurnTurnsTowardsMin && (internalRightmost > rightDetour)) ||
         (!task.leftTurnTurnsTowardsMin && (internalRightmost < rightDetour))) {
@@ -608,7 +607,7 @@ public class LinkBundleSplicer {
     HashSet<MultiInstanceKey> rightPartialRecoveryTurnsInternal = new HashSet<MultiInstanceKey>();
     HashSet<MultiInstanceKey> rightPartialRecoveryTurnsExternal = new HashSet<MultiInstanceKey>();
     HashSet<MultiInstanceKey> rightDirectTurns = new HashSet<MultiInstanceKey>();
-    PerpTask rightTask = (PerpTask)preTask.clone();    
+    PerpTask rightTask = preTask.clone();    
     int rightRecoveryCount = checkDirectDirection(bep, rightRecoveryTurns, 
                                                   rightPartialRecoveryTurnsInternal, 
                                                   rightPartialRecoveryTurnsExternal, 
@@ -618,7 +617,7 @@ public class LinkBundleSplicer {
     HashSet<MultiInstanceKey> leftPartialRecoveryTurnsInternal = new HashSet<MultiInstanceKey>();
     HashSet<MultiInstanceKey> leftPartialRecoveryTurnsExternal = new HashSet<MultiInstanceKey>();
     HashSet<MultiInstanceKey> leftDirectTurns = new HashSet<MultiInstanceKey>();
-    PerpTask leftTask = (PerpTask)preTask.clone();    
+    PerpTask leftTask = preTask.clone();    
     int leftRecoveryCount = checkDirectDirection(bep, leftRecoveryTurns, 
                                                  leftPartialRecoveryTurnsInternal, 
                                                  leftPartialRecoveryTurnsExternal, 
@@ -783,7 +782,7 @@ public class LinkBundleSplicer {
         int crossTrack = crossTrackObj.intValue();
         Integer recoveryObj = indirRecoveryS.get(ebSrcK.tag); 
         int recoveryTrack = recoveryObj.intValue();
-        Integer use = (Integer)assignedDetours.get(ebSrcK);
+        Integer use = assignedDetours.get(ebSrcK);
         int useVal = use.intValue();        
         path.add((task.tracksAreYCoord) ? new Point(recoveryTrack, internalTrack) : new Point(internalTrack, recoveryTrack));
         path.add((task.tracksAreYCoord) ? new Point(recoveryTrack, useVal) : new Point(useVal, recoveryTrack));
@@ -919,8 +918,8 @@ public class LinkBundleSplicer {
       //
       
       TreeSet<Integer> targTracks = new TreeSet<Integer>(rap.internalBundle_.get(ridK.tag));
-      Integer minTrg = (Integer)targTracks.first();
-      Integer maxTrg = (Integer)targTracks.last();    
+      Integer minTrg = targTracks.first();
+      Integer maxTrg = targTracks.last();    
       int lenViaMax = Math.abs(availMaxTrack - trackNum) + Math.abs(availMaxTrack - maxTrg.intValue());
       int lenViaMin = Math.abs(availMinTrack - trackNum) + Math.abs(availMinTrack - minTrg.intValue());
       int sign = (task.internalIsMin) ? 1 : -1;
@@ -952,7 +951,7 @@ public class LinkBundleSplicer {
   
   private boolean trackIsAvailable(String ebSrc, Integer checkTrack, RightAngleProblem rap, PerpTask task, int target) {
     // Can we get there?
-    Integer backBlock = (Integer)rap.internalContraints_.get(checkTrack);
+    Integer backBlock = rap.internalContraints_.get(checkTrack);
      // No block, we can go direct.
     if (backBlock == null) {
       return (true);
@@ -1109,6 +1108,7 @@ public class LinkBundleSplicer {
       return;
     }
 
+    @SuppressWarnings("unused")
     public void putTargetTrace(String src, int coord) {
       if ((side_ == BOTTOM) || (side_ == RIGHT)) {
         if (coord < interfaceCoord_) {
@@ -1462,7 +1462,7 @@ public class LinkBundleSplicer {
     */
 
     void routeDirect(ButtEndProblem bep, Integer externTrackObj, SpliceSolution retval, boolean isRight) {
-      MultiInstanceKey ebSrcK = (MultiInstanceKey)bep.externalBundle_.get(externTrackObj);
+      MultiInstanceKey ebSrcK = bep.externalBundle_.get(externTrackObj);
       int trackNum = externTrackObj.intValue();
       ArrayList<Point> path = new ArrayList<Point>();
       retval.addPath(ebSrcK, path);
@@ -1512,6 +1512,7 @@ public class LinkBundleSplicer {
     //int leftDetour;    
    //int rightDetour;    
 
+    @SuppressWarnings("unused")
     EndRunAnswer(SortedSet<Integer> availDetours, int endRun, int endIncrement, int leftDetour, int leftEndIncrement, int leftMax, int rightDetour, int rightEndIncrement, int rightMax) {
       this.availDetours = availDetours;
       //this.endRun = endRun;
@@ -1537,12 +1538,12 @@ public class LinkBundleSplicer {
     
     TaggedMinMax(MultiInstanceKey mik, MinMax range) {
       this.mik = new MultiInstanceKey(mik);
-      this.range = (MinMax)range.clone();
+      this.range = range.clone();
     }
     
     TaggedMinMax(TaggedMinMax other) {
       this.mik = new MultiInstanceKey(other.mik);
-      this.range = (MinMax)other.range.clone();      
+      this.range = other.range.clone();      
     }    
   }
   

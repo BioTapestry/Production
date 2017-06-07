@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -31,7 +31,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EtchedBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -45,6 +45,7 @@ import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
@@ -79,6 +80,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   private List<String> joinKeys_;
   private PertManageHelper pmh_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -93,16 +95,17 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertMeasurementManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
+  public PertMeasurementManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
                                     PerturbationData pd, PendingEditTracker pet, 
                                     PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
          
 
-    rtdm_ = new ReadOnlyTable(appState_, new MeasurementModel(appState_), new ReadOnlyTable.EmptySelector());      
+    rtdm_ = new ReadOnlyTable(uics_, dacx_, new MeasurementModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());      
        
     //
     // Build the measurement properties panel:
@@ -112,7 +115,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 6, 1, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 1.0);    
     topPanel_.add(mPanel, gbc_);  
  
-    pmaep_ = new PertMeasureAddOrEditPanel(appState_, dacx_, parent_, pd_, this, MEAS_KEY);  
+    pmaep_ = new PertMeasureAddOrEditPanel(uics_, dacx_, parent_, pd_, this, MEAS_KEY);  
     addEditPanel(pmaep_, MEAS_KEY);
     
     finishConstruction();
@@ -152,7 +155,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   ** Let us know if we are done sliding
   ** 
   */  
-    
+   @Override 
    public void finished() {
      rtdm_.makeCurrentSelectionVisible();
      return;
@@ -214,7 +217,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle duplication operations 
   */ 
-  
+  @Override
   public void doADuplication(String key) {
     if (key.equals(MEAS_KEY)) { 
       String useKey = ((MeasurementModel)rtdm_.getModel()).getSelectedKey(rtdm_.selectedRows);
@@ -231,7 +234,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle join operations 
   */ 
-  
+  @Override
   public void doAJoin(String key) {
     if (key.equals(MEAS_KEY)) { 
       joinKeys_ = ((MeasurementModel)rtdm_.getModel()).getSelectedKeys(rtdm_.selectedRows);
@@ -271,11 +274,11 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle filter jumps
   */ 
-  
+  @Override
   public void doAFilterJump(String key) {
     if (key.equals(MEAS_KEY)) {
       String filterKey = ((MeasurementModel)rtdm_.getModel()).getSelectedKey(rtdm_.selectedRows);    
-      PertFilter pertFilter = new PertFilter(PertFilter.MEASURE_TECH, PertFilter.STR_EQUALS, filterKey);
+      PertFilter pertFilter = new PertFilter(PertFilter.Cat.MEASURE_TECH, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression pfe = new PertFilterExpression(pertFilter);
       pfet_.jumpWithNewFilter(pfe); 
     } else {
@@ -308,17 +311,17 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   
   protected void displayProperties(boolean fireChange) {    
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map mprefs = da.getAllMeasurePropReferenceCounts();
+    Map<String, Integer> mprefs = da.getAllMeasurePropReferenceCounts();
     Integer noCount = new Integer(0);
-    List selKeys = (rtdm_.selectedRows == null) ? null :
-                     ((MeasurementModel)rtdm_.getModel()).getSelectedKeys(rtdm_.selectedRows); 
+    List<String> selKeys = (rtdm_.selectedRows == null) ? null :
+                             ((MeasurementModel)rtdm_.getModel()).getSelectedKeys(rtdm_.selectedRows); 
     rtdm_.rowElements.clear(); 
     MeasureDictionary mDict = pd_.getMeasureDictionary();
-    Iterator mtit = mDict.getKeys();
+    Iterator<String> mtit = mDict.getKeys();
     while (mtit.hasNext()) {
-      String key = (String)mtit.next();
+      String key = mtit.next();
       MeasureProps mp = mDict.getMeasureProps(key);
-      Integer count = (Integer)mprefs.get(key);
+      Integer count = mprefs.get(key);
       if (count == null) {
         count = noCount;
       }        
@@ -397,11 +400,11 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   private void joinMeasures(String key, int what) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();  
     MeasureProps mp = pmaep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, "undo.mergePertMeasure");   
-    DependencyAnalyzer.Dependencies refs = da.getMeasurePropMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertMeasure", dacx_);   
+    DependencyAnalyzer.Dependencies refs = da.getMeasurePropMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergeMeasureProps(joinKeys_, pendingKey_, mp);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -422,16 +425,16 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   
   private void editMeasure(String key, int what) {
     MeasureProps mp = pmaep_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createPertMeasure" 
-                                                                        : "undo.editPertMeasure");
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createPertMeasure" 
+                                                                         : "undo.editPertMeasure", dacx_);
     if (pendingKey_ == null) {
       pendingKey_ = mp.getID();
     }      
     PertDataChange pdc = pd_.setMeasureProp(mp);
     String resultKey = pendingKey_;
     pendingKey_ = null;
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
-    appState_.getDisplayOptMgr().modifyForPertDataChange(support, dacx_);
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+    dacx_.getDisplayOptsSource().modifyForPertDataChange(support, dacx_);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -446,9 +449,9 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
   ** Build the perturbation measurement panel 
   */ 
   
-  private JPanel buildMeasurementPanel(List allTabs) {
+  private JPanel buildMeasurementPanel(List<ReadOnlyTable> allTabs) {
    
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     //
     // Table:
     //
@@ -493,11 +496,11 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
       return (false);
     }
        
-    UndoSupport support = new UndoSupport(appState_, "undo.deleteMeasureProp");  
+    UndoSupport support = uFac_.provideUndoSupport("undo.deleteMeasureProp", dacx_);  
     da.killOffDependencies(refs, dacx_, support);
     PertDataChange pdc2 = pd_.deleteMeasureProp(key);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc2));
-    appState_.getDisplayOptMgr().modifyForPertDataChange(support, dacx_);
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
+    dacx_.getDisplayOptsSource().modifyForPertDataChange(support, dacx_);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -527,8 +530,8 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     private final static int HIDDEN_NAME_ID_ = 0;
     private final static int NUM_HIDDEN_     = 1;
     
-    MeasurementModel(BTState appState) {
-      super(appState, NUM_COL_);
+    MeasurementModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"pertMeas.name",
                                 "pertMeas.scale",
                                 "pertMeas.posThresh",

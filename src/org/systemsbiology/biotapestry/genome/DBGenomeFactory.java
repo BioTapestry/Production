@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,7 +24,6 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -87,7 +86,7 @@ public class DBGenomeFactory extends AbstractFactoryClient {
   private StringBuffer descBuf_;
   private StringBuffer urlBuf_;
   
-  private BTState appState_;
+  private NetworkOverlay.NetOverlayWorker now_;
   private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -101,10 +100,9 @@ public class DBGenomeFactory extends AbstractFactoryClient {
   ** Constructor for a genome factory
   */
 
-  public DBGenomeFactory(BTState appState, DataAccessContext dacx) {
+  public DBGenomeFactory() {
     super(new FactoryWhiteboard());
-    appState_ = appState;
-    dacx_ = dacx;
+    dacx_ = null;
     genomeKeys_ = DBGenome.keywordsOfInterest();
     geneKeys_ = DBGene.keywordsOfInterest();
     nodeKeys_ = DBNode.keywordsOfInterest();
@@ -125,7 +123,8 @@ public class DBGenomeFactory extends AbstractFactoryClient {
 
     FactoryWhiteboard whiteboard = (FactoryWhiteboard)sharedWhiteboard_;
     whiteboard.genomeType = NetworkOverlay.DB_GENOME;
-    installWorker(new NetworkOverlay.NetOverlayWorker(appState_, whiteboard), new MyGlue());
+    now_ = new NetworkOverlay.NetOverlayWorker(whiteboard);
+    installWorker(now_, new MyGlue());
     myKeys_.addAll(genomeKeys_);
     
     descBuf_ = new StringBuffer();
@@ -138,13 +137,25 @@ public class DBGenomeFactory extends AbstractFactoryClient {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////  
+
+  /***************************************************************************
+  **
+  ** Set the current context
+  */
   
+  public void setContext(DataAccessContext dacx) {
+    dacx_ = dacx;
+    now_.installContext(dacx);
+    return;
+  }
+
   /***************************************************************************
   **
   ** Callback for completion of the element
   **
   */
   
+  @Override
   protected void localFinishElement(String elemName) {
     if (charTarget_ == NODE_DESCRIPTION_) {
       if (!elemName.equals(nodeDescripKey_)) {
@@ -176,6 +187,7 @@ public class DBGenomeFactory extends AbstractFactoryClient {
   ** Handle incoming characters
   */
 
+  @Override
   protected void localProcessCharacters(char[] chars, int start, int length) {
     String nextString = new String(chars, start, length);
     switch (charTarget_) {
@@ -215,40 +227,42 @@ public class DBGenomeFactory extends AbstractFactoryClient {
   protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
     
     if (genomeKeys_.contains(elemName)) {
-      DBGenome dbg = DBGenome.buildFromXML(appState_, elemName, attrs);
+      DBGenome dbg = DBGenome.buildFromXML(dacx_, elemName, attrs);
       if (dbg != null) {
         dacx_.getGenomeSource().setGenome(dbg);
         currGenome_ = dbg;
         ((FactoryWhiteboard)sharedWhiteboard_).genome = dbg;
         NavTree tree = dacx_.getGenomeSource().getModelHierarchy();
-        tree.addNode(null, null, dbg.getID());        
+        if (tree.needLegacyGlue()) {
+          tree.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID(dbg.getID()), null, null, dacx_);           
+        }
         return (dbg);
       }
       return (null);
     } else if (geneKeys_.contains(elemName)) {
-      currGene_ = DBGene.buildFromXML(appState_, currGenome_, attrs);
+      currGene_ = DBGene.buildFromXML(dacx_, attrs);
       currNode_ = currGene_;
       currGenome_.addGene(currGene_);
     } else if (nodeKeys_.contains(elemName)) {
-      currNode_ = DBNode.buildFromXML(appState_, currGenome_, elemName, attrs);      
+      currNode_ = DBNode.buildFromXML(dacx_, elemName, attrs);      
       currGenome_.addNode(currNode_);
     } else if (linkKeys_.contains(elemName)) {
-      currLink_ = DBLinkage.buildFromXML(appState_, currGenome_, attrs);
+      currLink_ = DBLinkage.buildFromXML(dacx_, attrs);
       currGenome_.addLinkage(currLink_);
     } else if (regionKeys_.contains(elemName)) {
-      currGene_.addRegion(DBGeneRegion.buildFromXML(currGenome_, attrs));      
+      currGene_.addRegion(DBGeneRegion.buildFromXML(attrs));      
     } else if (logicKeys_.contains(elemName)) {
-      DBInternalLogic ilog = DBInternalLogic.buildFromXML(currGenome_, elemName, attrs);
+      DBInternalLogic ilog = DBInternalLogic.buildFromXML(elemName, attrs);
       if (ilog != null) {
         currILog_ = ilog;
         currNode_.setInternalLogic(currILog_);
       }
     } else if (internalNodeKeys_.contains(elemName)) {
-      InternalFunction ifunc = InternalFunction.buildFromXML(appState_, currGenome_, attrs);
+      InternalFunction ifunc = InternalFunction.buildFromXML(dacx_, attrs);
       currILog_.addFunctionNodeWithExistingLabel(ifunc);
     } else if (internalLinkKeys_.contains(elemName)) {
-      InternalLink.buildFromXML(appState_, currGenome_, attrs);
-      InternalLink iLink = InternalLink.buildFromXML(appState_, currGenome_, attrs);
+      InternalLink.buildFromXML(dacx_, attrs);
+      InternalLink iLink = InternalLink.buildFromXML(dacx_, attrs);
       currILog_.addFunctionLinkWithExistingLabel(iLink);
     } else if (noteKeys_.contains(elemName)) {
       Note newNote = Note.buildFromXML(elemName, attrs);

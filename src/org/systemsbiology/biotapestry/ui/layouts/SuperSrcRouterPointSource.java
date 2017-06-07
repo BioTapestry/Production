@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2012 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 
 /***************************************************************************
@@ -114,7 +114,7 @@ public class SuperSrcRouterPointSource {
   
   public void init(GeneAndSatelliteCluster sc, 
                    SpecialtyLayoutEngine.NodePlaceSupport nps,
-                   DataAccessContext irx, 
+                   StaticDataAccessContext irx, 
                    Double traceX, Double track,
                    Map<String, Integer> srcToTrack, Map<Integer, Double> trackToY, 
                    Map<String, Double> srcToFeedbackY, 
@@ -219,7 +219,7 @@ public class SuperSrcRouterPointSource {
   */
     
   public Point2D startInternalBranch(SpecialtyLayoutLinkData sin, String linkID, 
-                                     SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+                                     SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     Point2D hotTip = null;
     
     if (!prePointsPlaced_ && (prePoints_ != null)) {
@@ -254,7 +254,7 @@ public class SuperSrcRouterPointSource {
   */
   
   public Point2D convertToPoint(SpecialtyLayoutLinkData.TrackPos tpos, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                DataAccessContext irx) {  
+                                StaticDataAccessContext irx) {  
     Point2D convIB;
     if (tpos.needsConversion()) {
       TrackedGrid.TrackPosRC ibrc = (TrackedGrid.TrackPosRC)tpos;
@@ -423,7 +423,7 @@ public class SuperSrcRouterPointSource {
   ** A function
   */
    
-  public Point2D getInternalBranch(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
+  public Point2D getInternalBranch(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext irx) {
     return ((internalBranch_ == null) ? null : convertToPoint(internalBranch_, nps, irx));
   }  
       
@@ -536,7 +536,7 @@ public class SuperSrcRouterPointSource {
   
   public Point2D startOutboundBranch(SpecialtyLayoutLinkData sin, String linkID, 
                                      SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                     DataAccessContext irx) {
+                                     StaticDataAccessContext irx) {
     Point2D hotTip = null;
     
     //
@@ -615,7 +615,7 @@ public class SuperSrcRouterPointSource {
   
   public Point2D startFeedbackBranch(SpecialtyLayoutLinkData sin, String linkID,
                                      SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                     DataAccessContext irx) {
+                                     StaticDataAccessContext irx) {
     Point2D hotTip = null;
     
     if (!prePointsPlaced_ && (prePoints_ != null)) {
@@ -667,7 +667,7 @@ public class SuperSrcRouterPointSource {
 
   public void stackedSetupForOutboundSources(SpecialtyLayoutLinkData sin, 
                                              SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                             DataAccessContext irx, 
+                                             StaticDataAccessContext irx, 
                                              Rectangle bounds) {
          
     Point2D backTip = getFeedbackHotTip();
@@ -754,6 +754,7 @@ public class SuperSrcRouterPointSource {
   ** FROM ANOTHER SOURCE
   */
 
+  @SuppressWarnings("unused")
   public void stackedSetupForInboundSources(SpecialtyLayoutLinkData sin,
                                             SpecialtyLayoutEngine.NodePlaceSupport nps,
                                             Rectangle bounds) {
@@ -797,7 +798,7 @@ public class SuperSrcRouterPointSource {
 
   public boolean finishDeferredInbounds(String srcID, List<GeneAndSatelliteCluster.InboundCorners> perClust,
                                         SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                        DataAccessContext irx, 
+                                        StaticDataAccessContext irx, 
                                         Set<String> skipLinks,
                                         SpecialtyLayoutLinkData sin,
                                         Map<String, Integer> inboundTraces, double traceDistance, Point2D base,
@@ -846,9 +847,10 @@ public class SuperSrcRouterPointSource {
   ** Do final inbound link routing
   */
 
+  @SuppressWarnings("unused")
   public void finishDeferredStackedInbounds(String srcID, List<GeneAndSatelliteCluster.InboundCorners> perClust,
                                             SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                            DataAccessContext irx,
+                                            StaticDataAccessContext irx,
                                             Set<String> skipLinks,
                                             SpecialtyLayoutLinkData sin,
                                             Point2D lastDrop) {
@@ -882,7 +884,7 @@ public class SuperSrcRouterPointSource {
   private void finishStackedDeferred(GeneAndSatelliteCluster.InboundCorners ic, 
                                      SpecialtyLayoutLinkData sin,
                                      SpecialtyLayoutEngine.NodePlaceSupport nps,
-                                     DataAccessContext irx,
+                                     StaticDataAccessContext irx,
                                      Point2D lastDrop) {
        
     //

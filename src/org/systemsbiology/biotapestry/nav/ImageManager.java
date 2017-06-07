@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -24,9 +24,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.Set;
 import java.util.TreeSet;
-import java.util.HashSet;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Arrays;
@@ -34,6 +32,8 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
@@ -43,14 +43,21 @@ import javax.imageio.stream.ImageOutputStream;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
+import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 import org.systemsbiology.biotapestry.util.Base64Util;
 
 /****************************************************************************
 **
-** Image Manager.  This is a Singleton.
+** Image Manager.
 */
 
 public class ImageManager {
@@ -64,6 +71,9 @@ public class ImageManager {
   public static final int WARN_DIM_X = 200;
   public static final int WARN_DIM_Y = 200;  
   
+  public static final int GROUP_WARN_DIM_X = 1900;
+  public static final int GROUP_WARN_DIM_Y = 1000; 
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE CONSTANTS
@@ -81,8 +91,6 @@ public class ImageManager {
   private HashMap<String, String> typeDictionary_;
   private HashMap<String, Integer> imgCounts_;  
   private UniqueLabeller labels_;
-  private StringBuffer buildBuf_;
-  private String bufKey_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -272,54 +280,48 @@ public class ImageManager {
     retval.change.newCount = 0;
     return (retval);
   } 
-  
+ 
   /***************************************************************************
-  ** 
-  ** Add to an image definition
-  */
-
-  public void appendToImageDefinition(String key, char[] chars, int start, int length) {   
-    if (buildBuf_ == null) {
-      buildBuf_ = new StringBuffer();
-    }
-    if ((bufKey_ == null) || !bufKey_.equals(key)) {
-      throw new IllegalStateException();
-    }
-    buildBuf_.append(chars, start, length);
-    return;
-  } 
+  **
+  ** Load for IO
+  **
+  */  
   
-  /***************************************************************************
-  ** 
-  ** Finish an image definition
-  */
+  public String loadForIO(LoadedImageInfo lfi, boolean isForAppend) {
+    String retval = null;
+    
+    //
+    // Look for a match already the cache:
+    //
+    
+    Iterator<String> skit = stringCache_.keySet().iterator();
+    while (skit.hasNext()) {
+      String key = skit.next();
+      String cacheString = stringCache_.get(key);
+      if (cacheString.equals(lfi.finished)) {  // Image already in use
+        System.out.println("Image match!");
+        int currCount = imgCounts_.get(key).intValue();
+        imgCounts_.put(key, Integer.valueOf(currCount + lfi.refCount));   
+        return (key);
+      }
+    }  
 
-  public void finishImageDefinition(String key) {
-    if ((bufKey_ == null) || !bufKey_.equals(key)) {
+    String useKey = lfi.key;
+    boolean isNew = labels_.addExistingLabel(useKey);
+    if (isForAppend) {
+      if (!isNew) {
+        useKey = labels_.getNextLabel();
+        retval = useKey;
+      }     
+    } else if (!isNew) {
       throw new IllegalStateException();
-    }
-     bufKey_ = null;
-    if (buildBuf_ == null) {
-      return;
-    }
-     // "Trim" the character array:
-    int bufLen = buildBuf_.length();
-    int index = bufLen - 1;
-    while (Character.isWhitespace(buildBuf_.charAt(index))) {
-      buildBuf_.setLength(index--);
-    }
-    index = 0;
-    while (Character.isWhitespace(buildBuf_.charAt(index))) {
-      buildBuf_.deleteCharAt(index++);
-    }
-    // Turn it into a String:
-    stringCache_.put(key, buildBuf_.toString());
-    if (buildBuf_ != null) {
-      buildBuf_.setLength(0);
-    }
-    return;
-  }  
-   
+    }    
+    stringCache_.put(useKey, lfi.finished);
+    typeDictionary_.put(useKey, lfi.encoding);
+    imgCounts_.put(useKey, Integer.valueOf(lfi.refCount));    
+    return (retval);
+  }
+ 
   /***************************************************************************
   **
   ** Write the image library to XML
@@ -432,78 +434,29 @@ public class ImageManager {
   // PUBLIC STATIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-  
-  /***************************************************************************
-  **
-  ** Return the element keywords that we are interested in
-  **
-  */
-  
-  public static Set<String> keywordsOfInterest() {
-    HashSet<String> retval = new HashSet<String>();
-    retval.add("images");
-    return (retval);
-  }
 
   /***************************************************************************
   **
-  ** Get image keyword
+  ** Need to be able to repair image keys after tab appending. Has to go someplace...
   **
-  */
+  */    
   
-  public static String getImageKeyword() {
-    return ("image");
+  public static void repairMergedRefs(DataAccessContext dacx, Map<String, String> aikm) {
+    Genome dbg = dacx.getGenomeSource().getRootDBGenome();
+    dbg.mapImageKeyForAppend(aikm);
+    Iterator<GenomeInstance> iit = dacx.getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      gi.mapImageKeyForAppend(aikm);
+    }
+    Iterator<DynamicInstanceProxy> dit = dacx.getGenomeSource().getDynamicProxyIterator();
+    while (dit.hasNext()) {
+      DynamicInstanceProxy dip = dit.next();
+      dip.mapImageKeyForAppend(aikm);
+    }     
+    return;
   }
-  
-  /***************************************************************************
-  **
-  ** Handle image creation
-  **
-  */
-  
-  public static String installFromXML(BTState appState, String elemName, 
-                                      Attributes attrs) throws IOException {
-    String imgKey = null;
-    String encodingStr = null;
-    String countStr = null;
-    if (attrs != null) {
-      int count = attrs.getLength();
-      for (int i = 0; i < count; i++) {
-        String key = attrs.getQName(i);
-        if (key == null) {
-          continue;
-        }
-        String val = attrs.getValue(i);
-        if (key.equals("key")) {
-          imgKey = val;
-        } else if (key.equals("encoding")) {
-          encodingStr = val;          
-        } else if (key.equals("refCount")) {
-          countStr = val;          
-        }
-      }
-    }
-    
-    if ((encodingStr == null) || (imgKey == null) || (countStr == null)) {
-      throw new IOException();
-    }
-    
-    int count = 0;
-    try {
-      count = Integer.parseInt(countStr); 
-    } catch (NumberFormatException nfe) {
-      throw new IOException();
-    }
-    
-    ImageManager mgr = appState.getImageMgr();
-    mgr.stringCache_.put(imgKey, "");
-    mgr.typeDictionary_.put(imgKey, encodingStr);
-    mgr.imgCounts_.put(imgKey, new Integer(count));    
-    mgr.labels_.addExistingLabel(imgKey);
-    mgr.bufKey_ = imgKey;
-    return (imgKey);
-  }
-
+ 
   /***************************************************************************
   **
   ** Test frame. Having the sun.misc class references in the code base
@@ -583,12 +536,152 @@ public class ImageManager {
     
     public int getWidth() {
       return ((img == null) ? 0 : img.getWidth());     
+    }   
+  }
+
+  /***************************************************************************
+  **
+  ** Used to hold image under development
+  */
+  
+  public static class LoadedImageInfo {
+    
+    String key;
+    String encoding;
+    int refCount;
+    StringBuffer buildBuf;
+    String finished;
+       
+    public LoadedImageInfo(String key, String encoding, int refCount) {    
+      this.key = key;
+      this.encoding = encoding;
+      this.refCount = refCount;
+      this.buildBuf = new StringBuffer();
     }
     
+    public void finishImageDefinition() {   
+       // "Trim" the character array:
+      int bufLen = buildBuf.length();
+      int index = bufLen - 1;
+      while (Character.isWhitespace(buildBuf.charAt(index))) {
+        buildBuf.setLength(index--);
+      }
+      index = 0;
+      while (Character.isWhitespace(buildBuf.charAt(index))) {
+        buildBuf.deleteCharAt(index++);
+      }
+      // Turn it into a String:
+      finished = buildBuf.toString();
+      buildBuf.setLength(0);
+      return;
+    } 
+    
+    public void appendToImageDefinition(char[] chars, int start, int length) {
+      buildBuf.append(chars, start, length);
+      return;
+    }
+  }  
+  
+  /***************************************************************************
+  **
+  ** For XML input
+  */    
+  
+  public static class ImageManagerWorker extends AbstractFactoryClient {
+     
+    private UIComponentSource uics_;
+    private boolean isForAppend_;
+    
+    public ImageManagerWorker(FactoryWhiteboard board, boolean isForAppend) {
+      super(board);
+      isForAppend_ = isForAppend;
+      myKeys_.add("images");
+      installWorker(new ImageWorker(board, isForAppend_), null);
+    }
+    
+    public void setContext(UIComponentSource uics) {
+      uics_ = uics;
+      return;
+    }
+
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("images")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        // BOGUS! It already exists...
+        board.imgMgr = uics_.getImageMgr(); 
+        retval = board.invest;
+      }
+      return (retval);     
+    }
   }
   
-
+  /***************************************************************************
+  **
+  ** For XML input
+  */    
   
+  public static class ImageWorker extends AbstractFactoryClient {
+ 
+    private LoadedImageInfo lfi_;
+    private boolean isForAppend_;
+    
+    public ImageWorker(FactoryWhiteboard whiteboard, boolean isForAppend) {
+      super(whiteboard);
+      isForAppend_ = isForAppend;
+      myKeys_.add("image");
+    }
+    
+    protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
+      Object retval = null;
+      if (elemName.equals("image")) {
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        board.loadImg = buildFromXML(elemName, attrs);
+        retval = board.loadImg;
+        lfi_ = board.loadImg;
+      }
+      return (retval);     
+    }  
+      
+    private LoadedImageInfo buildFromXML(String elemName, Attributes attrs) throws IOException {
+      String id = AttributeExtractor.extractAttribute(elemName, attrs, "image", "key", true);     
+      String enc = AttributeExtractor.extractAttribute(elemName, attrs, "image", "encoding", true);
+      String countStr = AttributeExtractor.extractAttribute(elemName, attrs, "image", "refCount", true);
+      
+      int count = 0;
+      try {
+        count = Integer.parseInt(countStr); 
+      } catch (NumberFormatException nfe) {
+        throw new IOException();
+      }
+      return (new LoadedImageInfo(id, enc, count));
+    }
+    
+    @Override
+    public void localFinishElement(String elemName) {
+      lfi_.finishImageDefinition();
+      FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+      String newKey = board.imgMgr.loadForIO(lfi_, isForAppend_);
+      if (newKey != null) {
+        if (!isForAppend_) { 
+          throw new IllegalStateException();
+        }
+        if (board.appendImgKeyMap == null) {
+          board.appendImgKeyMap = new HashMap<String, String>();
+        }
+        board.appendImgKeyMap.put(lfi_.key, newKey);
+      }
+      return;
+    }
+  
+    @Override    
+    public void localProcessCharacters(char[] chars, int start, int length) {
+      lfi_.appendToImageDefinition(chars, start, length);
+      return;
+    }
+  }
+
+   
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE METHODS

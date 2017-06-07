@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,6 +22,8 @@ package org.systemsbiology.biotapestry.event;
 import java.util.HashSet;
 import java.util.Iterator;
 
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+
 /****************************************************************************
 **
 ** Event Manager.  Not currently thread-safe.
@@ -40,6 +42,9 @@ public class EventManager {
   private HashSet<SelectionChangeListener> selectListeners_;
   private HashSet<GeneralChangeListener> generalListeners_;
   private HashSet<OverlayDisplayChangeListener> overlayListeners_;
+  private HashSet<ModelBuilder.ChangeListener> modelBuildChangeListeners_;
+  private HashSet<TreeNodeChangeListener> treeNodeChangeListeners_;
+  private HashSet<TabChangeListener> tabChangeListeners_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -58,6 +63,9 @@ public class EventManager {
      selectListeners_ = new HashSet<SelectionChangeListener>();
      generalListeners_ = new HashSet<GeneralChangeListener>();    
      overlayListeners_ = new HashSet<OverlayDisplayChangeListener>(); 
+     modelBuildChangeListeners_ = new HashSet<ModelBuilder.ChangeListener>();
+     treeNodeChangeListeners_ = new HashSet<TreeNodeChangeListener>();
+     tabChangeListeners_ = new HashSet<TabChangeListener>();
   }
  
   ////////////////////////////////////////////////////////////////////////////
@@ -250,6 +258,104 @@ public class EventManager {
     }
     return;
   }  
+ 
+ /***************************************************************************
+  ** 
+  ** Add an event listener
+  */
+
+  public void addModelBuildChangeListener(ModelBuilder.ChangeListener wrcl) {
+    modelBuildChangeListeners_.add(wrcl);
+    return;
+  }
   
+  /***************************************************************************
+  ** 
+  ** Remove an event listener
+  */
+
+  public void removeModelBuildChangeListener(ModelBuilder.ChangeListener wrcl) {
+    modelBuildChangeListeners_.remove(wrcl);
+    return;
+  }  
   
+  /***************************************************************************
+  ** 
+  ** Add an event listener
+  */
+
+  public void addTreeNodeChangeListener(TreeNodeChangeListener tncl) {
+    treeNodeChangeListeners_.add(tncl);
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Remove an event listener
+  */
+
+  public void removeTreeNodeChangeListener(TreeNodeChangeListener tncl) {
+    treeNodeChangeListeners_.remove(tncl);
+    return;
+  }  
+
+  /***************************************************************************
+  ** 
+  ** Ask for an event to be sent.
+  */
+
+  public void sendModelBuildChangeEvent(ModelBuilder.MBChangeEvent wrcev) {
+    Iterator<ModelBuilder.ChangeListener> wrclit = modelBuildChangeListeners_.iterator();
+    while (wrclit.hasNext()) {
+      ModelBuilder.ChangeListener wrcl = wrclit.next();
+      wrcl.modelBuildHasChanged(wrcev);
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Ask for an event to be sent.
+  */
+
+  public void sendTreeNodeChangeEvent(TreeNodeChangeEvent tncev) {
+    Iterator<TreeNodeChangeListener> tnclit = treeNodeChangeListeners_.iterator();
+    while (tnclit.hasNext()) {
+      TreeNodeChangeListener tncl = tnclit.next();
+      tncl.treeNodeHasChanged(tncev);
+    }
+    return;
+  } 
+  
+  /***************************************************************************
+  ** 
+  ** Add an event listener
+  */
+
+  public void addTabChangeListener(TabChangeListener tcl) {
+    tabChangeListeners_.add(tcl);
+    return;
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Remove an event listener
+  */
+
+  public void removeTabChangeListener(TabChangeListener tcl) {
+    tabChangeListeners_.remove(tcl);
+    return;
+  }  
+
+  /***************************************************************************
+  ** 
+  ** Ask for an event to be sent.
+  */
+
+  public void sendTabChangeEvent(TabChangeEvent tce) {
+    for (TabChangeListener tcl : tabChangeListeners_) {
+      tcl.tabHasChanged(tce);
+    }
+    return;
+  }
 }

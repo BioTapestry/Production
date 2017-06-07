@@ -34,7 +34,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertAnnotations;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -83,8 +83,8 @@ public class PertAnnotEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertAnnotEditPanel(BTState appState, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) {
-    super(appState, dacx, parent, pet, myKey, 5);
+  public PertAnnotEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) {
+    super(uics, dacx, parent, pet, myKey, 5);
     pd_ = pd;
     currKey_ = null;
   

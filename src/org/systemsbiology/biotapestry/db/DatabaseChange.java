@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,16 +22,17 @@ package org.systemsbiology.biotapestry.db;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.ui.Layout;
-import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
-
 
 /***************************************************************************
 **
@@ -45,25 +46,49 @@ public class DatabaseChange {
   public DynamicInstanceProxy newProxy;  
   public Layout oldLayout;
   public Layout newLayout;
+  
+  public boolean dataSharingPolicyChange;
+  public Metabase.DataSharingPolicy oldDsp;
+  public Metabase.DataSharingPolicy newDsp;
+  
+  public boolean sharedTimeAxisChange;
+  public boolean localTimeAxisChange;  
+  public TimeAxisDefinition oldTimeAxis;
+  public TimeAxisDefinition newTimeAxis;
+  
+  public boolean sharedPertDataChange;
+  public boolean localPertDataChange;
+  public PerturbationData oldSharedPertData;
+  public PerturbationData newSharedPertData;  
+
+  public boolean sharedTcdChange;
+  public boolean localTcdChange;
   public TimeCourseData oldTcd;
   public TimeCourseData newTcd;
+
+  public boolean sharedCPEChange;
+  public boolean localCPEChange;  
   public CopiesPerEmbryoData oldCpe;
   public CopiesPerEmbryoData newCpe;
+  
   public TemporalInputRangeData oldTir;
-  public TemporalInputRangeData newTir;
+  public TemporalInputRangeData newTir;  
   public ArrayList<BuildInstruction> oldBuildInst;
   public ArrayList<BuildInstruction> newBuildInst;
   public InstanceInstructionSet oldInstructSet;
   public String instructSetKey;
   public InstanceInstructionSet newInstructSet; 
-  public Genome oldGenome;
-  public Genome newGenome;
+  public DBGenome oldGenome;
+  public DBGenome newGenome;
   public HashMap<String, Layout> oldLayouts;
   public HashMap<String, Layout> newLayouts;
-  public TimeAxisDefinition oldTimeAxis;
-  public TimeAxisDefinition newTimeAxis;
+
   public Workspace oldWorkspace;
   public Workspace newWorkspace;  
   public StartupView oldStartupView;
   public StartupView newStartupView;
+  public TabNameData oldTabData;
+  public TabNameData newTabData;
+  public ModelBuilder.Undo oldModelBuilderData;
+  public ModelBuilder.Undo newModelBuilderData;   
 }

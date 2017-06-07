@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,11 +19,12 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
@@ -56,8 +57,7 @@ public class EditNetModuleMembers extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditNetModuleMembers(BTState appState) {
-    super(appState);   
+  public EditNetModuleMembers() {
     name = "modulePopup.editModuleMemberDisplay";
     desc = "modulePopup.editModuleMemberDisplay";
     mnem =  "modulePopup.editModuleMemberDisplayMnem";
@@ -76,8 +76,8 @@ public class EditNetModuleMembers extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
 
   /***************************************************************************
@@ -86,9 +86,10 @@ public class EditNetModuleMembers extends AbstractControlFlow {
   ** 
   */
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                         DataAccessContext rcx, UIComponentSource uics) {
     // Can only edit members via dialog if we are dynamic:
-    return (rcx.getGenome() instanceof DynamicGenomeInstance);
+    return (rcx.currentGenomeIsADynamicInstance());
   }
   
       
@@ -103,10 +104,11 @@ public class EditNetModuleMembers extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -125,15 +127,18 @@ public class EditNetModuleMembers extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
+
     private String interID_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+       
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
@@ -141,10 +146,9 @@ public class EditNetModuleMembers extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState,  DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
     
     /***************************************************************************
@@ -163,18 +167,17 @@ public class EditNetModuleMembers extends AbstractControlFlow {
     */  
    
     private DialogAndInProcessCmd stepDoIt() {  
-      String ovrKey = dacx_.oso.getCurrentOverlay(); 
-      Database db = appState_.getDB();
-      String genomeKey = appState_.getGenome();
-      Genome useGenome = db.getGenome(genomeKey);
-      if (!(useGenome instanceof DynamicGenomeInstance)) {
+      String ovrKey = dacx_.getOSO().getCurrentOverlay(); 
+      if (!dacx_.currentGenomeIsADynamicInstance()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }  
-      DynamicGenomeInstance dgi = (DynamicGenomeInstance)useGenome;
+      DynamicGenomeInstance dgi = dacx_.getCurrentGenomeAsDynamicInstance();
+      String genomeKey = dacx_.getCurrentGenomeID();
       String proxID = dgi.getProxyID();
-      DynamicInstanceProxy dip = db.getDynamicProxy(proxID);
+      DynamicInstanceProxy dip = dacx_.getGenomeSource().getDynamicProxy(proxID);
       GenomeInstance gi = dip.getStaticVfgParent();
-      EditModuleMemberDialog emmd = new EditModuleMemberDialog(appState_, genomeKey, gi.getID(), ovrKey, interID_);
+      StaticDataAccessContext rcx = new StaticDataAccessContext(dacx_);     
+      EditModuleMemberDialog emmd = new EditModuleMemberDialog(uics_, rcx, genomeKey, gi.getID(), ovrKey, interID_, uFac_);
       emmd.setVisible(true);
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }

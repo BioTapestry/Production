@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@ import java.util.Set;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -42,6 +42,7 @@ import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
@@ -75,8 +76,9 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   private String pendingKey_;
   private PertSourceDefAddOrEditPanel pspp_;
   private PertManageHelper pmh_;
-  private List joinKeys_;
+  private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
 
@@ -91,15 +93,16 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertSrcDefsManagePanel(BTState appState, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
+  public PertSrcDefsManagePanel(UIComponentSource uics, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
                                 PerturbationData pd, PendingEditTracker pet,  
-                                PertFilterExpressionJumpTarget pfet) {
-    super(appState, dacx, pmw, pet, MANAGER_KEY);
+                                PertFilterExpressionJumpTarget pfet, UndoFactory uFac) {
+    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    uFac_ = uFac;
     pd_ = pd;
-    pmh_ = new PertManageHelper(appState_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics, dacx, pmw, pd, rMan_, gbc_, pet_);
     pfet_ = pfet;
     
-    rtdps_ = new ReadOnlyTable(appState_, new PertSourceModel(appState_), new ReadOnlyTable.EmptySelector());
+    rtdps_ = new ReadOnlyTable(uics, dacx, new PertSourceModel(uics, dacx), new ReadOnlyTable.EmptySelector());
  
     //
     // Build the pert sources panel:
@@ -121,7 +124,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
     // Edit panels:
     //
     
-    pspp_ = new PertSourceDefAddOrEditPanel(appState_, dacx_, parent_, pd_, this, PERT_DEF_KEY);
+    pspp_ = new PertSourceDefAddOrEditPanel(uics_, dacx_, parent_, pd_, this, PERT_DEF_KEY);
     addEditPanel(pspp_, PERT_DEF_KEY);
 
     finishConstruction();
@@ -140,6 +143,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
+  @Override
   public void editIsComplete(String key, int what) {
     if (key.equals(PERT_DEF_KEY)) {
       if (joinKeys_ == null) {
@@ -158,7 +162,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   ** Let us know if we are done sliding
   ** 
   */  
-    
+   @Override 
    public void finished() {
      rtdps_.makeCurrentSelectionVisible();
      return;
@@ -220,7 +224,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle join operations 
   */ 
-  
+  @Override  
   public void doAJoin(String key) {
     if (key.equals(PERT_DEF_KEY)) {
       joinKeys_ = ((PertSourceModel)rtdps_.getModel()).getSelectedKeys(rtdps_.selectedRows);
@@ -236,7 +240,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle duplication operations 
   */ 
-  
+  @Override  
   public void doADuplication(String key) {
     if (key.equals(PERT_DEF_KEY)) {
       String useKey = ((PertSourceModel)rtdps_.getModel()).getSelectedKey(rtdps_.selectedRows);
@@ -253,11 +257,11 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   **
   ** Handle filter jumps
   */ 
-  
+  @Override  
   public void doAFilterJump(String key) {
     if (key.equals(PERT_DEF_KEY)) {
       String filterKey = ((PertSourceModel)rtdps_.getModel()).getSelectedKey(rtdps_.selectedRows);
-      PertFilter srcFilter = new PertFilter(PertFilter.SOURCE, PertFilter.STR_EQUALS, filterKey);
+      PertFilter srcFilter = new PertFilter(PertFilter.Cat.SOURCE, PertFilter.Match.STR_EQUALS, filterKey);
       PertFilterExpression srcExp = new PertFilterExpression(srcFilter);      
       /*
        * Can't do this, since two pert defs may have same source name & pert type!      
@@ -299,18 +303,18 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   
   protected void displayProperties(boolean fireChange) { 
     
-    List selKeys = (rtdps_.selectedRows == null) ? null :
-                     ((PertSourceModel)rtdps_.getModel()).getSelectedKeys(rtdps_.selectedRows);   
+    List<String> selKeys = (rtdps_.selectedRows == null) ? null :
+                               ((PertSourceModel)rtdps_.getModel()).getSelectedKeys(rtdps_.selectedRows);   
     rtdps_.rowElements.clear();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map sdrefs = da.getAllSrcDefReferenceCounts();   
+    Map<String, Integer> sdrefs = da.getAllSrcDefReferenceCounts();   
     Integer noCount = new Integer(0);    
     
-    Iterator pskit = pd_.getSourceDefKeys();
+    Iterator<String> pskit = pd_.getSourceDefKeys();
     while (pskit.hasNext()) {
-      String key = (String)pskit.next();
+      String key = pskit.next();
       PertSource ps = pd_.getSourceDef(key);
-      Integer count = (Integer)sdrefs.get(key);
+      Integer count = sdrefs.get(key);
       if (count == null) {
         count = noCount;
       }        
@@ -392,10 +396,10 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }       
-    UndoSupport support = new UndoSupport(appState_, "undo.deleteSourceDef");
+    UndoSupport support = uFac_.provideUndoSupport("undo.deleteSourceDef", dacx_);
     da.killOffDependencies(refs, dacx_, support);
     PertDataChange pdc2 = pd_.deleteSourceDef(key);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc2));
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -411,12 +415,12 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   private boolean joinPertDefs(String key, int what) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();  
     PertSource psrc = pspp_.getResult();
-    UndoSupport support = new UndoSupport(appState_, "undo.mergeSourceDefs");  
-    DependencyAnalyzer.Dependencies refs = da.getSourceDefMergeSet(new HashSet(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeSourceDefs", dacx_);  
+    DependencyAnalyzer.Dependencies refs = da.getSourceDefMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }
-    Set multiPertCollapse = da.getMultiSourceDefCollapseMergeSet(new HashSet(joinKeys_), pendingKey_);
+    Set<String> multiPertCollapse = da.getMultiSourceDefCollapseMergeSet(new HashSet<String>(joinKeys_));
     if (!multiPertCollapse.isEmpty()) {
       int doit = JOptionPane.showConfirmDialog(parent_, UiUtil.convertMessageToHtml(rMan_.getString("sdmp.multiPertCollapseOnJoin")),
                                                rMan_.getString("sdmp.multiPertCollapseOnJoinTitle"),
@@ -427,7 +431,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
     }
     da.mergeDependencies(refs, dacx_, support);
     PertDataChange[] pdc = pd_.mergePertSourceDefs(joinKeys_, pendingKey_, psrc);
-    support.addEdits(PertDataChangeCmd.wrapChanges(appState_, dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -448,14 +452,14 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
   
   public void editAPertDef(String key, int what) {
     PertSource psrc = pspp_.getResult();
-    UndoSupport support = new UndoSupport(appState_, (pendingKey_ == null) ? "undo.createPertSourceDef" 
-                                                                           : "undo.editPertSourceDef");      
+    UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createPertSourceDef" 
+                                                                         : "undo.editPertSourceDef", dacx_);      
     if (pendingKey_ == null) { 
       pendingKey_ = psrc.getID();
     }
     
     PertDataChange pdc = pd_.setSourceDef(psrc);
-    support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -493,8 +497,8 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
     
     private static final long serialVersionUID = 1L;
    
-    PertSourceModel(BTState appState) {
-      super(appState, NUM_COL_);
+    PertSourceModel(UIComponentSource uics, DataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"psdm.srcName",
                                 "psdm.pertType",
                                 "psdm.proxSign",
@@ -538,8 +542,8 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
       return ((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[0])));
     }  
     
-    List getSelectedKeys(int[] selected) {
-      ArrayList retval = new ArrayList();
+    List<String> getSelectedKeys(int[] selected) {
+      ArrayList<String> retval = new ArrayList<String>();
       for (int i = 0; i < selected.length; i++) {
         retval.add((String)hiddenColumns_[HIDDEN_NAME_ID_].get(mapSelectionIndex(selected[i])));
       }
@@ -570,7 +574,7 @@ public class PertSrcDefsManagePanel extends AnimatedSplitManagePanel {
       String proxSign = ps.getProxySign();
       boolean haveAProx = !proxSign.equals(PertSource.mapProxySignIndex(PertSource.NO_PROXY_INDEX));
       if (haveAProx) {
-        ObjChoiceContent occP = PertSource.getProxySignValue(appState_, proxSign);
+        ObjChoiceContent occP = PertSource.getProxySignValue(dacx_, proxSign);
         proxSignStr = occP.name;
       } else {
         proxSignStr = "";

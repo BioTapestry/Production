@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -523,7 +523,7 @@ public class GeneralBuildInstruction extends BuildInstruction {
       throw new IOException();
     }                                                
                                                                                                 
-    String linkSignStr = ((String)tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 1)).trim().toLowerCase();
+    String linkSignStr = tokens.get(startIndex + BASE_TOKENS + CSV_TARGET_COUNT + CSV_TOKEN_COUNT - 1).trim().toLowerCase();
     
     if ((linkSignStr == null) || (linkSignStr.trim().equals(""))) {
       throw new IOException();
@@ -543,7 +543,7 @@ public class GeneralBuildInstruction extends BuildInstruction {
     if (tokens.size() > advancedBase) {
       int evidenceIndex = advancedBase;
       if (tokens.size() > evidenceIndex) {
-        String evidenceStr = ((String)tokens.get(evidenceIndex)).trim().toLowerCase();
+        String evidenceStr = tokens.get(evidenceIndex).trim().toLowerCase();
         if (!evidenceStr.equals("")) {
           try {
             evidenceLevel = Integer.parseInt(evidenceStr);

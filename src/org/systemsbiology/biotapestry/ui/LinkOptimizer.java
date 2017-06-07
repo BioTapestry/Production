@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.ui.freerender.PlacementGridRenderer;
@@ -130,7 +130,7 @@ public class LinkOptimizer {
   
   public double relativeDifficulty(int optType, boolean includeShorterPaths) {
     double[] use = (includeShorterPaths) ? difficultyFull_ : difficultyPartial_;
-    return ((double)use.length * use[optType]);
+    return (use.length * use[optType]);
   }
  
  /***************************************************************************
@@ -139,7 +139,7 @@ public class LinkOptimizer {
   */
   
   public void optimizeLinks(int optType, LinkProperties lp, LinkPlacementGrid grid, 
-                            DataAccessContext icx,
+                            StaticDataAccessContext icx,
                             String overID, Set<Point2D> pinnedPoints,
                             double startFrac, double maxFrac, BTProgressMonitor monitor) 
                             throws AsynchExitRequestException {
@@ -176,7 +176,7 @@ public class LinkOptimizer {
   */
   
   public boolean eliminateUselessCornersGridless(LinkProperties bp,
-                                                 DataAccessContext icx,
+                                                 StaticDataAccessContext icx,
                                                  String overID,
                                                  double startFrac, double maxFrac, BTProgressMonitor monitor) 
                                                  throws AsynchExitRequestException {
@@ -254,7 +254,7 @@ public class LinkOptimizer {
   ** to work in concert with the other link optimization steps.
   */
   
-  public void eliminateUselessCorners(LinkProperties bp, LinkPlacementGrid grid, DataAccessContext icx,
+  public void eliminateUselessCorners(LinkProperties bp, LinkPlacementGrid grid, StaticDataAccessContext icx,
                                       String overID,
                                       double startFrac, double maxFrac, BTProgressMonitor monitor) 
                                       throws AsynchExitRequestException {
@@ -305,8 +305,8 @@ public class LinkOptimizer {
          uselessID = LinkSegmentID.buildIDForSegment(uselessSeg.getID());
          uselessID.tagIDWithEndpoint(LinkSegmentID.END);
       }
-      icx.getLayout().deleteLinkageCornerForTree(bp, uselessID, null, icx);      
-      grid.dropLink(src, icx.getGenome(), overID);
+      icx.getCurrentLayout().deleteLinkageCornerForTree(bp, uselessID, null, icx);      
+      grid.dropLink(src, icx.getCurrentGenome(), overID);
       pgRender.renderToPlacementGrid(bp, grid, null, overID, icx);
       rootSK = bp.buildSegmentTree(icx); // Segments dropped, so gotta rebuild... 
       if (monitor != null) {
@@ -328,7 +328,7 @@ public class LinkOptimizer {
   */
   
   public void eliminateStaggeredRuns(LinkProperties bp, LinkPlacementGrid grid, int staggerBound,
-                                     DataAccessContext icx,
+                                     StaticDataAccessContext icx,
                                      String overID, Set<Point2D> pinnedPoints,
                                      double startFrac, double endFrac, BTProgressMonitor monitor) 
                                      throws AsynchExitRequestException {
@@ -339,7 +339,7 @@ public class LinkOptimizer {
     if ((rootSK == null) || !isOrthogonal(rootSK)) {
       return;
     } 
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     String src = bp.getSourceTag();
     double currProg = startFrac;
@@ -402,13 +402,13 @@ public class LinkOptimizer {
   ** or link ink.
   */
   
-  public void optimizeOrthoRuns(LinkProperties bp, LinkPlacementGrid grid, DataAccessContext icx,
+  public void optimizeOrthoRuns(LinkProperties bp, LinkPlacementGrid grid, StaticDataAccessContext icx,
                                 String overID, Set<Point2D> pinnedPoints,
                                 double startFrac, double endFrac, BTProgressMonitor monitor)
                                 throws AsynchExitRequestException {
     
     PlacementGridRenderer pgRender = (PlacementGridRenderer)bp.getRenderer();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     SegmentWithKids rootSK = bp.buildSegmentTree(icx);
     if ((rootSK == null) || !isOrthogonal(rootSK)) {
@@ -636,7 +636,7 @@ public class LinkOptimizer {
   */
   
   public void findShorterPaths(LinkProperties bp, LinkPlacementGrid grid, 
-                               DataAccessContext icx,
+                               StaticDataAccessContext icx,
                                String overID,
                                double startFrac, double endFrac, BTProgressMonitor monitor) 
                                throws AsynchExitRequestException {
@@ -656,7 +656,7 @@ public class LinkOptimizer {
     // However, to avoid infinite loops due to non-convergence, we'll cap
     // the loops to a fixed limit:
     //
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     
     for (int i = 0; i < 8; i++) {  // escape hatch for non-convergence...
       if (!shortenAPath(bp, grid, icx, overID)) {
@@ -686,7 +686,7 @@ public class LinkOptimizer {
   */
   
   private boolean shortenAPath(LinkProperties bp, LinkPlacementGrid grid,
-                               DataAccessContext icx, String overID) {
+                               StaticDataAccessContext icx, String overID) {
                                  
     //
     // Start at targets.  Walk up segments until we get one that has siblings.  Find
@@ -706,7 +706,7 @@ public class LinkOptimizer {
     //
     
     String src = bp.getSourceTag();
-    Genome genome = icx.getGenome();
+    Genome genome = icx.getCurrentGenome();
     Iterator<LinkBusDrop> dit = bp.getDrops();
     while (dit.hasNext()) {
       LinkBusDrop bd = dit.next();      

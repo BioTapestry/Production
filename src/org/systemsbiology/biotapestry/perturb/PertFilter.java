@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -26,7 +26,7 @@ import java.util.TreeSet;
 
 import java.util.Vector;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 
@@ -48,22 +48,23 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   // Categories:
   //
   
-  public final static int EXPERIMENT           = 0;
-  public final static int SOURCE               = 1;
-  public final static int SOURCE_NAME          = 2;
-  public final static int SOURCE_OR_PROXY_NAME = 3;
-  public final static int PERT                 = 4;
-  public final static int TARGET               = 5; 
-  public final static int TIME                 = 6;
-  public final static int VALUE                = 7; 
-  public final static int INVEST               = 8; 
-  public final static int INVEST_LIST          = 9;
-  public final static int EXP_CONTROL          = 10;
-  public final static int EXP_CONDITION        = 11;
-  public final static int MEASURE_SCALE        = 12;
-  public final static int ANNOTATION           = 13;
-  public final static int MEASURE_TECH         = 14; 
-  public final static int NUM_CAT              = 15;   
+  public enum Cat {
+    EXPERIMENT,
+    SOURCE,
+    SOURCE_NAME,
+    SOURCE_OR_PROXY_NAME,
+    PERT,
+    TARGET,
+    TIME,
+    VALUE,
+    INVEST,
+    INVEST_LIST,
+    EXP_CONTROL,
+    EXP_CONDITION,
+    MEASURE_SCALE,
+    ANNOTATION,
+    MEASURE_TECH,
+  }
   
   public final static String INVEST_STR       = "Investigator"; 
   public final static String INVEST_LIST_STR  = "InvestigatorList";
@@ -72,27 +73,29 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   // match types
   //
   
-  public final static int STR_EQUALS   = 0;
-  public final static int STR_CONTAINS = 1;
-  public final static int NUMB_EQ      = 2;
-  public final static int NUMB_GTE     = 3; 
-  public final static int NUMB_LTE     = 4; 
-  public final static int NUMB_ABS_GTE = 5; 
-  public final static int NUMB_ABS_LTE = 6; 
-  public final static int RANGE_EQUALS   = 7; 
-  public final static int RANGE_OVERLAPS = 8; 
-  public final static int ABOVE_THRESH   = 9; 
-  public final static int IS_SIGNIFICANT = 10;
-   
+  public enum Match {
+    STR_EQUALS,
+    STR_CONTAINS,
+    NUMB_EQ,
+    NUMB_GTE,
+    NUMB_LTE,
+    NUMB_ABS_GTE,
+    NUMB_ABS_LTE,
+    RANGE_EQUALS,
+    RANGE_OVERLAPS,
+    ABOVE_THRESH,
+    IS_SIGNIFICANT,
+  }  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE VARIABLES
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private int category_;
+  private Cat category_;
   private Object value_;
-  private int matchType_;
+  private Match matchType_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -105,7 +108,7 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Constructor
   */  
   
-  public PertFilter(int category, int matchType, Object value) {    
+  public PertFilter(Cat category, Match matchType, Object value) {    
     category_ = category;
     value_ = value;
     matchType_ = matchType;
@@ -137,7 +140,7 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get the category
   */
   
-  public int getCategory() {
+  public Cat getCategory() {
     return (category_);
   }
   
@@ -182,7 +185,7 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get the match Type
   */
   
-  public int getMatchType() {
+  public Match getMatchType() {
     return (matchType_);
   }
   
@@ -210,6 +213,7 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get string
   */
   
+  @Override
   public String toString() {
     return ("[pertFilt: " + category_ + ",t=" + matchType_ + ",v=" + value_ + "]");
   } 
@@ -219,10 +223,10 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get the choices for controls
   */
   
-  public static Vector<TrueObjChoiceContent> getMatchOptions(BTState appState) { 
+  public static Vector<TrueObjChoiceContent> getMatchOptions(DataAccessContext dacx) { 
     TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
-    sorted.add(getMatchOptionsChoice(appState, STR_EQUALS));
-    sorted.add(getMatchOptionsChoice(appState, STR_CONTAINS));
+    sorted.add(getMatchOptionsChoice(dacx, Match.STR_EQUALS));
+    sorted.add(getMatchOptionsChoice(dacx, Match.STR_CONTAINS));
     return (new Vector<TrueObjChoiceContent>(sorted));
   }  
   
@@ -231,11 +235,11 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** Get the choice for a Match
   */
   
-  public static TrueObjChoiceContent getMatchOptionsChoice(BTState appState, int choice) {
-    if (choice == STR_EQUALS) {
-      return (new TrueObjChoiceContent(appState.getRMan().getString("pertFilt.equals"), new Integer(choice)));
-    } else if (choice == STR_CONTAINS) {
-      return (new TrueObjChoiceContent(appState.getRMan().getString("pertFilt.contains"), new Integer(choice)));
+  public static TrueObjChoiceContent getMatchOptionsChoice(DataAccessContext dacx, Match choice) {
+    if (choice == Match.STR_EQUALS) {
+      return (new TrueObjChoiceContent(dacx.getRMan().getString("pertFilt.equals"), choice));
+    } else if (choice == Match.STR_CONTAINS) {
+      return (new TrueObjChoiceContent(dacx.getRMan().getString("pertFilt.contains"), choice));
     } else {
       throw new IllegalArgumentException();
     }
@@ -246,7 +250,7 @@ public class PertFilter implements Cloneable, PertFilterOpTarget {
   ** map the category (incomplete...)
   */
   
-  public static String mapCategory(int cat) {
+  public static String mapCategory(Cat cat) {
     switch (cat) {
       case INVEST:
         return (INVEST_STR);      

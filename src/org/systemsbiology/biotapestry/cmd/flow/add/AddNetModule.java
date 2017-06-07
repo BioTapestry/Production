@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,12 +30,14 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
@@ -44,7 +46,6 @@ import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
@@ -94,8 +95,8 @@ public class AddNetModule extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public AddNetModule(BTState appState, boolean forNew) {
-    super(appState);  
+  public AddNetModule(boolean forNew) {
+    super();  
     forNew_ = forNew;
     name = (forNew_) ? "command.DrawNewNetworkModule" : "modulePopup.addRegionToModule";
     desc = (forNew_) ? "command.DrawNewNetworkModule" : "modulePopup.addRegionToModule";
@@ -137,9 +138,10 @@ public class AddNetModule extends AbstractControlFlow {
   ** 
   */
   @Override
-  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, DataAccessContext rcx) {
-    String overlayKey = rcx.oso.getCurrentOverlay();
-    NetOverlayProperties nop = rcx.getLayout().getNetOverlayProperties(overlayKey);
+  public boolean isValid(Intersection inter, boolean isSingleSeg, boolean canSplit, 
+                           DataAccessContext rcx, UIComponentSource uics) {
+    String overlayKey = rcx.getOSO().getCurrentOverlay();
+    NetOverlayProperties nop = rcx.getCurrentLayout().getNetOverlayProperties(overlayKey);
     NetModuleProperties nmp = nop.getNetModuleProperties(inter.getObjectID());
     int displayType = nmp.getType();
     return (displayType != NetModuleProperties.CONTIG_RECT);
@@ -151,8 +153,8 @@ public class AddNetModule extends AbstractControlFlow {
   ** 
   */ 
   @Override    
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {
-    StepState retval = new StepState(appState_, forNew_, dacx);
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {
+    StepState retval = new StepState(forNew_, dacx);
     return (retval);
   }
   
@@ -182,14 +184,11 @@ public class AddNetModule extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, forNew_, cfh.getDataAccessContext());
-        ans.cfh = cfh;       
+        StepState ans = new StepState(cfh, forNew_);    
         next = ans.stepStart();
       } else {
         StepState ans = (StepState)last.currStateX;
-        if (ans.cfh == null) {
-          ans.cfh = cfh;
-        }
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepStart")) {
           next = ans.stepStart();
         } else if (ans.getNextStep().equals("stepSetToMode")) {
@@ -217,7 +216,7 @@ public class AddNetModule extends AbstractControlFlow {
     StepState ans = (StepState)cmds;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
-    ans.nextStep_ = "stepContinueNetModuleDrawing"; 
+    ans.setNextStep("stepContinueNetModuleDrawing"); 
     return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans));
   }
    
@@ -226,32 +225,16 @@ public class AddNetModule extends AbstractControlFlow {
   ** Running State: Kinda needs cleanup!
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState, DialogAndInProcessCmd.MouseClickCmdState {
 
-    private DataAccessContext rcxT_;
     private boolean myForNew_;
     public CommonNetModuleCandidate nmc_;
     private String currentOverlay;
-    private ServerControlFlowHarness cfh;
     private String runningID_;
-    private NetworkOverlay targNov_; 
-    
-    //--------------------
-     
-    private String nextStep_;
+    private NetworkOverlay targNov_;   
     private int x;
     private int y; 
-    private BTState appState_;
-   
-    /***************************************************************************
-    **
-    ** step thru
-    */
-    
-    public String getNextStep() {
-      return (nextStep_);
-    } 
-    
+      
     /***************************************************************************
     **
     ** mouse masking
@@ -314,16 +297,26 @@ public class AddNetModule extends AbstractControlFlow {
     ** Constructor
     */
        
-    public StepState(BTState appState, boolean forNew, DataAccessContext dacx) {
+    public StepState(ServerControlFlowHarness cfh, boolean forNew) {
+      super(cfh);
       myForNew_ = forNew;
-      appState_ = appState;
       runningID_ = null;
-      rcxT_ = dacx;
-      currentOverlay = rcxT_.oso.getCurrentOverlay();
-      targNov_ = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID()).getNetworkOverlay(currentOverlay); 
+      currentOverlay = dacx_.getOSO().getCurrentOverlay();
+      targNov_ = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID()).getNetworkOverlay(currentOverlay); 
       nextStep_ = "stepStart";  
     }
      
+    /***************************************************************************
+    **
+    ** Constructor
+    */
+       
+    public StepState(boolean forNew, StaticDataAccessContext dacx) {
+      super(dacx);
+      myForNew_ = forNew;
+      nextStep_ = "stepStart";  
+    }
+
     /***************************************************************************
     **
     ** For ongoing adds
@@ -387,9 +380,9 @@ public class AddNetModule extends AbstractControlFlow {
         NetModule nm = mit.next();
         existingNames.add(nm.getName());
       }  
-      boolean askForAttach = !(rcxT_.getGenome() instanceof DBGenome);
-      boolean gotNodes = (rcxT_.getGenome().getFullNodeCount() > 0);
-      NetModuleCreationDialog nmcd = new NetModuleCreationDialog(appState_, existingNames, askForAttach, gotNodes);
+      boolean askForAttach = !dacx_.currentGenomeIsRootDBGenome();
+      boolean gotNodes = (dacx_.getCurrentGenome().getFullNodeCount() > 0);
+      NetModuleCreationDialog nmcd = new NetModuleCreationDialog(uics_, dacx_, existingNames, askForAttach, gotNodes);
       nmcd.setVisible(true);
       if (!nmcd.haveResult()) {
         return (null);
@@ -421,20 +414,20 @@ public class AddNetModule extends AbstractControlFlow {
         if (nmc_.currMode == CommonNetModuleCandidate.Mode.DRAWING) {
           if (nmc_.attachToGroup) {
             // *** Note that attachment is ALWAYS occuring to main group, not e.g. activated subgroup.
-            Intersection group = appState_.getGenomePresentation().selectGroup(x, y, rcxT_);
+            Intersection group = uics_.getGenomePresentation().selectGroup(x, y, dacx_);
             if (group != null) {
               nmc_.attachedGroup = group.getObjectID();
             }
           }
         }
         if (nmc_.displayType == NetModuleProperties.MEMBERS_ONLY) {
-          List<Intersection.AugmentedIntersection> augs = appState_.getGenomePresentation().intersectItem(x, y, rcxT_, true, false);
-          Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, rcxT_)).selectionRanker(augs);
+          List<Intersection.AugmentedIntersection> augs = uics_.getGenomePresentation().intersectItem(x, y, dacx_, true, false);
+          Intersection.AugmentedIntersection ai = (new IntersectionChooser(true, dacx_)).selectionRanker(augs);
           if ((ai == null) || (ai.intersect == null)) {
             return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
           }
           String objID = ai.intersect.getObjectID();
-          Genome gen = rcxT_.getGenome();
+          Genome gen = dacx_.getCurrentGenome();
           Node node = gen.getNode(objID);
           if (node != null) {
             if (nmc_.attachedGroup != null) {
@@ -460,7 +453,7 @@ public class AddNetModule extends AbstractControlFlow {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.PROCESSED, this));
         } else {
           if ((nmc_.currMode == CommonNetModuleCandidate.Mode.ADDING) && (nmc_.attachedGroup != null)) {
-            Intersection group = appState_.getGenomePresentation().selectGroup(x, y, rcxT_);
+            Intersection group = uics_.getGenomePresentation().selectGroup(x, y, dacx_);
             if (group != null) {
               String checkGroup = group.getObjectID();           
               if (!nmc_.attachedGroup.equals(checkGroup)) {
@@ -470,7 +463,7 @@ public class AddNetModule extends AbstractControlFlow {
           }
           nmc_.points.add(new Point(x, y));
           nmc_.buildState = CommonNetModuleCandidate.ADDING;
-          appState_.getGenomePresentation().setFloater(new Rectangle2D.Double(x, y, 0, 0));   
+          uics_.getGenomePresentation().setFloater(new Rectangle2D.Double(x, y, 0, 0));   
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this));
         }
       } else if (nmc_.buildState == CommonNetModuleCandidate.ADDING) {
@@ -479,7 +472,7 @@ public class AddNetModule extends AbstractControlFlow {
           return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
         }
         if ((nmc_.currMode == CommonNetModuleCandidate.Mode.DRAWING) && (nmc_.attachToGroup)) {
-          Intersection group = appState_.getGenomePresentation().selectGroup(x, y, rcxT_);
+          Intersection group = uics_.getGenomePresentation().selectGroup(x, y, dacx_);
           if (group != null) {
             String checkGroup = group.getObjectID();
             if (nmc_.attachedGroup != null) {
@@ -493,13 +486,13 @@ public class AddNetModule extends AbstractControlFlow {
         }
         
         FreezeDriedOverlayOracle fdoo = new FreezeDriedOverlayOracle(null, null, NetModuleFree.CurrentSettings.NOTHING_MASKED, null);
-        DataAccessContext rcxF = new DataAccessContext(rcxT_);
-        rcxF.oso = fdoo;
+        StaticDataAccessContext rcxF = new StaticDataAccessContext(dacx_);
+        rcxF.setOSO(fdoo);
         Rectangle rect = new Rectangle((int)nextRect.getX(), (int)nextRect.getY(), 
                                        (int)nextRect.getWidth(), (int)nextRect.getHeight());
-        List<Intersection> intersects = appState_.getGenomePresentation().intersectItems(rect, rcxF);
+        List<Intersection> intersects = uics_.getGenomePresentation().intersectItems(rect, rcxF);
                                                      
-        Genome gen = rcxT_.getGenome();
+        Genome gen = dacx_.getCurrentGenome();
         int numInter = intersects.size();
         for (int i = 0; i < numInter; i++) {
           Intersection inter = intersects.get(i);
@@ -528,7 +521,7 @@ public class AddNetModule extends AbstractControlFlow {
         }
         nmc_.allRects.add(nextRect);
         nmc_.buildState = CommonNetModuleCandidate.DONE;
-        appState_.getGenomePresentation().setFloater(null);
+        uics_.getGenomePresentation().setFloater(null);
         if (nmc_.currMode == CommonNetModuleCandidate.Mode.DRAWING) {
           drawNetworkModuleFinish();
         } else {
@@ -546,9 +539,9 @@ public class AddNetModule extends AbstractControlFlow {
    
     private void drawNetworkModuleFinish() {
      
-      UndoSupport support = new UndoSupport(appState_, "undo.newNetworkModule");
-      nmc_.netModuleID = rcxT_.getNextKey();
-      Genome targG = rcxT_.getGenome();
+      UndoSupport support = uFac_.provideUndoSupport("undo.newNetworkModule", dacx_);
+      nmc_.netModuleID = dacx_.getNextKey();
+      Genome targG = dacx_.getCurrentGenome();
       NetModule nmod = new NetModule(nmc_.netModuleID, nmc_.name, null, nmc_.attachedGroup);
       if (nmc_.addNodes) {
         int numMem = nmc_.nodes.size();
@@ -561,25 +554,25 @@ public class AddNetModule extends AbstractControlFlow {
       Point2D memberOnlyLabelLoc = null;
       if (nmc_.displayType == NetModuleProperties.MEMBERS_ONLY) {
         String firstNodeID = nmc_.nodes.get(0);
-        memberOnlyLabelLoc = NodeBounder.prelimLabelLocation(firstNodeID, rcxT_, NodeBounder.DEFAULT_EXTRA_PAD);
+        memberOnlyLabelLoc = NodeBounder.prelimLabelLocation(firstNodeID, dacx_, NodeBounder.DEFAULT_EXTRA_PAD);
       }
      
-      NetworkOverlayChange noc = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(targG.getID()).addNetworkModule(currentOverlay, nmod); 
+      NetworkOverlayChange noc = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(targG.getID()).addNetworkModule(currentOverlay, nmod); 
       if (noc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, rcxT_, noc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(dacx_, noc);
         support.addEdit(gcc);
       }
       NetModuleProperties nmp = new NetModuleProperties(nmc_.netModuleID, nmc_.displayType, nmc_.allRects, memberOnlyLabelLoc);
-      Layout.PropChange pc = rcxT_.getLayout().setNetModuleProperties(nmc_.netModuleID, nmp, currentOverlay);
+      Layout.PropChange pc = dacx_.getCurrentLayout().setNetModuleProperties(nmc_.netModuleID, nmp, currentOverlay);
       if (pc != null) {
-        support.addEdit(new PropChangeCmd(appState_, rcxT_, pc));
+        support.addEdit(new PropChangeCmd(dacx_, pc));
       }
       
-      support.addEvent(new ModelChangeEvent(targG.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
-      support.addEvent(new LayoutChangeEvent(rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), targG.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
        
-      NetOverlayController noctr = appState_.getNetOverlayController();
-      noctr.addToCurrentModules(nmc_.netModuleID, support, rcxT_);
+      NetOverlayController noctr = uics_.getNetOverlayController();
+      noctr.addToCurrentModules(nmc_.netModuleID, support, dacx_);
       support.finish();
       return;
     }
@@ -591,9 +584,9 @@ public class AddNetModule extends AbstractControlFlow {
  
     private CommonNetModuleCandidate beginAddRegionsToNetworkModule(String moduleID) {
       NetModule nmod = targNov_.getModule(moduleID);
-      NetOverlayProperties nop = rcxT_.getLayout().getNetOverlayProperties(currentOverlay);
+      NetOverlayProperties nop = dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay);
       NetModuleProperties nmp = nop.getNetModuleProperties(moduleID);
-      Color currCol = nmp.getColor(appState_.getDB());
+      Color currCol = nmp.getColor(dacx_.getColorResolver());
       String attachedGroup = nmod.getGroupAttachment();
       return (new CommonNetModuleCandidate(CommonNetModuleCandidate.Mode.ADDING, moduleID, nmp.getType(), attachedGroup, currCol));
     } 
@@ -605,16 +598,16 @@ public class AddNetModule extends AbstractControlFlow {
    
     private void finishAddRegionsToNetworkModule() {
     
-      UndoSupport support = new UndoSupport(appState_, "undo.addToNetworkModule");
+      UndoSupport support = uFac_.provideUndoSupport("undo.addToNetworkModule", dacx_);
     
       //
       // Adding in a region may mess up existing net module linkages.  Record exisiting
       // state before changing anything:
       //
       
-      Layout.PadNeedsForLayout padFixups = rcxT_.getLayout().findAllNetModuleLinkPadRequirements(rcxT_);   
+      Layout.PadNeedsForLayout padFixups = dacx_.getCurrentLayout().findAllNetModuleLinkPadRequirements(dacx_);   
       
-      NetOverlayOwner owner = rcxT_.getGenomeSource().getOverlayOwnerFromGenomeKey(rcxT_.getGenomeID());
+      NetOverlayOwner owner = dacx_.getGenomeSource().getOverlayOwnerFromGenomeKey(dacx_.getCurrentGenomeID());
       NetworkOverlay nov = owner.getNetworkOverlay(currentOverlay);
       NetModule nmod = nov.getModule(nmc_.netModuleID);
       
@@ -632,29 +625,29 @@ public class AddNetModule extends AbstractControlFlow {
         NetModuleMember nmm = new NetModuleMember(nodeID);
         NetModuleChange nmc = nmod.addMember(nmm, owner.getID(), owner.overlayModeForOwner(), currentOverlay);
         if (nmc != null) {
-          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, rcxT_, nmc);
+          NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(dacx_, nmc);
           support.addEdit(gcc);
         }    
       }
       
-      support.addEvent(new ModelChangeEvent(rcxT_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));   
      
       if (nmc_.displayType != NetModuleProperties.MEMBERS_ONLY) {
-        NetOverlayProperties noProps =  rcxT_.getLayout().getNetOverlayProperties(currentOverlay);
+        NetOverlayProperties noProps =  dacx_.getCurrentLayout().getNetOverlayProperties(currentOverlay);
         NetModuleProperties nmp = noProps.getNetModuleProperties(nmc_.netModuleID);
         NetModuleProperties modProps = nmp.clone();
         Rectangle2D rect = nmc_.allRects.get(0);
         modProps.addShape(rect);
   
-        Layout.PropChange pc =  rcxT_.getLayout().replaceNetModuleProperties(nmc_.netModuleID, modProps, currentOverlay);
+        Layout.PropChange pc =  dacx_.getCurrentLayout().replaceNetModuleProperties(nmc_.netModuleID, modProps, currentOverlay);
         if (pc != null) {
-          support.addEdit(new PropChangeCmd(appState_, rcxT_, pc));
-          support.addEvent(new LayoutChangeEvent( rcxT_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
+          support.addEdit(new PropChangeCmd(dacx_, pc));
+          support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));  
         }       
         //
         // Module link pad fixups:
         //    
-        AddCommands.finishNetModPadFixups(appState_, null, null, rcxT_, padFixups, support);
+        AddCommands.finishNetModPadFixups(null, null, dacx_, padFixups, support);
       }
       support.finish();   
       return;

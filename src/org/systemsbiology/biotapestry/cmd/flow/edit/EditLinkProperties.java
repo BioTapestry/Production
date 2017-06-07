@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,11 +19,11 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.edit;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
 import org.systemsbiology.biotapestry.ui.dialogs.LinkPropertiesDialog;
@@ -52,8 +52,7 @@ public class EditLinkProperties extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public EditLinkProperties(BTState appState) {
-    super(appState);   
+  public EditLinkProperties() {  
     name = "linkPopup.LinkProperties";
     desc = "linkPopup.LinkProperties";
     mnem =  "linkPopup.LinkPropertiesMnem";
@@ -72,8 +71,8 @@ public class EditLinkProperties extends AbstractControlFlow {
   */ 
   
   @Override
-  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(DataAccessContext dacx) {  
-    return (new StepState(appState_, dacx));
+  public DialogAndInProcessCmd.CmdState getEmptyStateForPreload(StaticDataAccessContext dacx) {  
+    return (new StepState(dacx));
   }
 
   /***************************************************************************
@@ -87,10 +86,11 @@ public class EditLinkProperties extends AbstractControlFlow {
     DialogAndInProcessCmd next;
     while (true) {
       if (last == null) {
-        StepState ans = new StepState(appState_, cfh.getDataAccessContext());
+        StepState ans = new StepState(cfh);
         next = ans.stepDoIt();
       } else {
         StepState ans = (StepState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
         if (ans.getNextStep().equals("stepDoIt")) {
           next = ans.stepDoIt();      
         } else {
@@ -109,15 +109,18 @@ public class EditLinkProperties extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class StepState implements DialogAndInProcessCmd.PopupCmdState {
+  public static class StepState extends AbstractStepState implements DialogAndInProcessCmd.PopupCmdState {
     
-    private String nextStep_;    
-    private BTState appState_;
     private String interID_;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public StepState(StaticDataAccessContext dacx) {
+      super(dacx);
+      nextStep_ = "stepDoIt";
     }
     
     /***************************************************************************
@@ -125,12 +128,11 @@ public class EditLinkProperties extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public StepState(BTState appState, DataAccessContext dacx) {
-      appState_ = appState;
+    public StepState(ServerControlFlowHarness cfh) {
+      super(cfh);
       nextStep_ = "stepDoIt";
-      dacx_ = dacx;
     }
-    
+
     /***************************************************************************
     **
     ** for preload
@@ -148,9 +150,9 @@ public class EditLinkProperties extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepDoIt() {  
       
-      LinkProperties lp = dacx_.getLayout().getLinkProperties(interID_);
+      LinkProperties lp = dacx_.getCurrentLayout().getLinkProperties(interID_);
       if (lp != null) {
-        LinkPropertiesDialog lpd = new LinkPropertiesDialog(appState_, dacx_, interID_, false, null);
+        LinkPropertiesDialog lpd = new LinkPropertiesDialog(uics_, dacx_, hBld_, interID_, false, null, uFac_);
         lpd.setVisible(true);
       }  
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,9 +33,8 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -113,7 +112,7 @@ public class ClusterSeries {
     isStacked_ = isStacked;
     preSources_ = new HashSet<String>();
     postTargets_ = new HashSet<String>();
-    traceOffset_ = UiUtil.GRID_SIZE * (double)traceMult;
+    traceOffset_ = UiUtil.GRID_SIZE * traceMult;
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -196,7 +195,7 @@ public class ClusterSeries {
   ** Prep the series.
   */
 
-  public void prepForStackPass1(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx, 
+  public void prepForStackPass1(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx, 
                                 Map<String, Point> targets, Map<String, Point> sources, Map<Point, Integer> order, int myRow) {
     
     //
@@ -229,6 +228,7 @@ public class ClusterSeries {
   ** Prep the series.
   */
 
+  @SuppressWarnings("unused")
   public void prepForStackPass2(SpecialtyLayoutEngine.NodePlaceSupport nps, 
                                 Map<String, Point> targets, Map<String, Point> sources, 
                                 Map<Point, Integer> order, int myRow, GlobalTrackAssignment gta) {
@@ -280,7 +280,7 @@ public class ClusterSeries {
   ** Prep the series for a single row
   */
 
-  public void prepForSingle(GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {
+  public void prepForSingle(GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {
         
     HashMap<String, Point> targets = new HashMap<String, Point>();
     HashMap<String, Point> sources = new HashMap<String, Point>();
@@ -716,7 +716,7 @@ public class ClusterSeries {
   ** Get the maxiumum height of the series:
   */
   
-  public double getMaximumHeight(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {
+  public double getMaximumHeight(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {
   
     double maxHeight = Double.NEGATIVE_INFINITY;
     Iterator<Integer> scit = superClusters_.keySet().iterator();
@@ -737,7 +737,7 @@ public class ClusterSeries {
   ** Get the bounds of JUST the nodes:
   */
   
-  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {
+  public Rectangle getNodeOnlyBounds(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {
     Rectangle retval = null;
     Iterator<Integer> scit = superClusters_.keySet().iterator();
     while (scit.hasNext()) {
@@ -767,7 +767,7 @@ public class ClusterSeries {
   ** Locate the cluster series
   */
   
-  public Point2D locate(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx, Double matchMax) {
+  public Point2D locate(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx, Double matchMax) {
    
     //
     // Lay them out:
@@ -801,7 +801,7 @@ public class ClusterSeries {
         useForMin = 0.0;
       } else {
         // This handles the center bus getting bigger as we go right:
-        pos = new Point2D.Double(currX, baseY + ((double)baseVal * traceOffset_) + (sign * 100.0));
+        pos = new Point2D.Double(currX, baseY + (baseVal * traceOffset_) + (sign * 100.0));
         useForNext = nextLas;
         useForMin = MIN_CLUSTER_SEPARATION_;
       }
@@ -860,7 +860,7 @@ public class ClusterSeries {
     while (trit.hasNext()) {
       Integer trackNum = trit.next();
       int trackNumVal = trackNum.intValue();
-      double trackY = baseY + ((double)trackNumVal * traceOffset_);
+      double trackY = baseY + (trackNumVal * traceOffset_);
       trackToY_.put(trackNum, new Double(trackY));
       if (trackY > maxTrackY) {
         maxTrackY = trackY;
@@ -920,7 +920,7 @@ public class ClusterSeries {
     while (trit.hasNext()) {
       Integer trackNum = trit.next();
       int trackNumVal = trackNum.intValue();
-      double trackY = baseY + ((double)trackNumVal * traceOffset_);
+      double trackY = baseY + (trackNumVal * traceOffset_);
       trackToY_.put(trackNum, new Double(trackY));
       if (trackY > maxTrackY) {
         maxTrackY = trackY;
@@ -963,7 +963,7 @@ public class ClusterSeries {
   ** Finish cluster preparations
   */
   
-  public void finishClusterPrep(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext rcx) {
+  public void finishClusterPrep(SpecialtyLayoutEngine.NodePlaceSupport nps, StaticDataAccessContext rcx) {
 
     boolean baseAtTop = (isStacked_) ? true : false;
     Iterator<Integer> scit = superClusters_.keySet().iterator();
@@ -986,7 +986,7 @@ public class ClusterSeries {
   */
   
   public void routeLinks(GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                         DataAccessContext rcx, 
+                         StaticDataAccessContext rcx, 
                          Map<String, Integer> lengthChanges,
                          Map<String, Integer> extraGrowthChanges, SpecialtyInstructions si, 
                          Map<String, SuperSrcRouterPointSource> traceDefs) {    
@@ -1053,8 +1053,9 @@ public class ClusterSeries {
   ** we defer ALL link creation until after all the SSCs have been generate.
   */
   
+  @SuppressWarnings("unused")
   public void routeLinksForStackPass1(GenomeSubset subset, SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                      DataAccessContext rcx, 
+                                      StaticDataAccessContext rcx, 
                                       Map<String, Integer> lengthChanges, 
                                       Map<String, Integer> extraGrowthChanges, 
                                       SpecialtyInstructions si, 
@@ -1121,9 +1122,10 @@ public class ClusterSeries {
   ** Handle link routing second pass for stack usage.  Note with stacked usage,
   ** we defer ALL link creation until after all the SSCs have been generated.
   */
-  
+ 
+  @SuppressWarnings("unused")
   public void routeLinksForStackPass2(SpecialtyLayoutEngine.NodePlaceSupport nps, 
-                                      DataAccessContext rcx,
+                                      StaticDataAccessContext rcx,
                                       Map<String, Integer> lengthChanges, 
                                       Map<String, Integer> extraGrowthChanges, 
                                       SpecialtyInstructions si, 

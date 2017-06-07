@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -82,10 +82,10 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
   ** Render the box node using the provided layout
   */
   
-  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Object miscInfo) {
+  public void render(ModelObjectCache cache, GenomeItem item, Intersection selected, DataAccessContext rcx, Mode mode, Object miscInfo) {
   	ModalTextShapeFactory textFactory = null;
   	
-  	if (rcx.forWeb) {
+  	if (rcx.isForWeb()) {
   		textFactory = new ModalTextShapeFactoryForWeb(rcx.getFrc());
   	}
   	else {
@@ -99,7 +99,7 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
     // Modify the ghosted state to include inactive nodes:
     //
         
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
+    NodeProperties np = rcx.getCurrentLayout().getNodeProperties(item.getID());
     boolean isGhosted = rcx.isGhosted();
     boolean textGhosted = isGhosted;
     if (item instanceof NodeInstance) {
@@ -107,13 +107,12 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
       textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
     }
-    
     DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
-    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop, mode);
     Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop, mode);
 
-    AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
+    AnnotatedFont mFont = rcx.getFontManager().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
     Point2D origin = np.getLocation();
 
     CommonCacheGroup group = new CommonCacheGroup(item.getID(), item.getName(), "box");
@@ -134,46 +133,7 @@ public class BoxNodeFree extends AbstractRectangleNodeFree {
     
     setGroupBounds(group, item, rcx);
   }
-  
-  /*
-  public void renderOld(Graphics2D g2, RenderObjectCache cache, Genome genome, GenomeItem item, 
-                     Layout layout, Intersection selected, 
-                     boolean isGhosted, boolean showBubbles, 
-                     Rectangle2D clipRect, double pixDiam, Object miscInfo, ModelObjectCache moc) {
-         
-    DisplayOptionsManager dopmgr = appState_.getDisplayOptMgr();
-    DisplayOptions dopt = dopmgr.getDisplayOptions(); 
-    
-    //
-    // Modify the ghosted state to include inactive nodes:
-    //
-        
-    NodeProperties np = layout.getNodeProperties(item.getID());
-    boolean textGhosted = isGhosted;
-    if (item instanceof NodeInstance) {
-      int activityLevel = ((NodeInstance)item).getActivity();
-      isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
-      textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
-    }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, dopt);
-    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dopt);
-           
-    Font mFont = appState_.getFontMgr().getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
-    Point2D origin = np.getLocation();
 
-    Rectangle2D textBounds = new Rectangle2D.Double(); 
-    Rectangle2D bounds = renderSupportA(null, item, layout, selected, textBounds);
-    g2.setStroke(new BasicStroke(BOX_LINE_));
-    g2.setPaint(col);
-    g2.draw(bounds);    
-    
-    renderSupportB(null, item, layout, isGhosted, textGhosted, showBubbles, 
-                   mFont, origin, textBounds, col, textCol, dopt);
-    return;
-  }
-  */
-  
   /***************************************************************************
   **
   ** Get the pad tweak

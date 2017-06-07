@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2009 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,7 @@ import java.util.Set;
 public class RectDefinedByRects {
   
   private Rectangle2D myOrig_;
-  private HashMap myDef_;
+  private HashMap<TaggedRect, Rectangle2D> myDef_;
   private double deltaMinX_;
   private double deltaMinY_;
   private double deltaMaxX_;
@@ -55,7 +55,7 @@ public class RectDefinedByRects {
   ** Define the given rectangle in terms of the other rectangle
   */
   
-  public RectDefinedByRects(Rectangle2D myRect, Set otherRects) {
+  public RectDefinedByRects(Rectangle2D myRect, Set<TaggedRect> otherRects) {
     //
     // For each rectangle, find the intersection.  If there is one, store that 
     // intersection in a map.   Then find the bounding rect defined by those
@@ -63,15 +63,15 @@ public class RectDefinedByRects {
     // bound.
     //
     
-    ArrayList fixedOrder = new ArrayList(otherRects);
+    ArrayList<TaggedRect> fixedOrder = new ArrayList<TaggedRect>(otherRects);
     Collections.sort(fixedOrder, new RectOrdering());
     
-    myDef_ = new HashMap();
+    myDef_ = new HashMap<TaggedRect, Rectangle2D>();
     myOrig_ = (Rectangle2D)myRect.clone();
-    Iterator orit = fixedOrder.iterator();
+    Iterator<TaggedRect> orit = fixedOrder.iterator();
     Rectangle2D interUnion = null;
     while (orit.hasNext()) {
-      TaggedRect otherRect = (TaggedRect)orit.next();
+      TaggedRect otherRect = orit.next();
       Rectangle2D interRect = myRect.createIntersection(otherRect.rect);
       //
       // Non-intersection is indicated by negative height and/or width:
@@ -110,7 +110,7 @@ public class RectDefinedByRects {
   ** Find out the keys we need to get defined
   */
   
-  public Set definedByKeys() {
+  public Set<TaggedRect> definedByKeys() {
     return (myDef_.keySet());
   }    
   
@@ -121,7 +121,7 @@ public class RectDefinedByRects {
   ** of this rectangle.
   */
   
-  public Rectangle2D generateNewRect(Map oldToNew) {
+  public Rectangle2D generateNewRect(Map<TaggedRect, Rectangle2D> oldToNew) {
     //
     // For each defining rectangle, convert the overlap based on the new geometry.
     // Take the union, then increase it based on the deltas.
@@ -130,15 +130,15 @@ public class RectDefinedByRects {
     Point2D interPt = new Point2D.Double();
     Rectangle2D interUnion = null;
     
-    ArrayList fixedOrder = new ArrayList(myDef_.keySet());
+    ArrayList<TaggedRect> fixedOrder = new ArrayList<TaggedRect>(myDef_.keySet());
     Collections.sort(fixedOrder, new RectOrdering());
     
-    Iterator mdkit = fixedOrder.iterator();
+    Iterator<TaggedRect> mdkit = fixedOrder.iterator();
     while (mdkit.hasNext()) {
-      TaggedRect defTagRect = (TaggedRect)mdkit.next();
+      TaggedRect defTagRect = mdkit.next();
       Rectangle2D defRect = defTagRect.rect;
-      Rectangle2D interRect = (Rectangle2D)myDef_.get(defTagRect);
-      Rectangle2D transDefRect = (Rectangle2D)oldToNew.get(defTagRect);
+      Rectangle2D interRect = myDef_.get(defTagRect);
+      Rectangle2D transDefRect = oldToNew.get(defTagRect);
       
       Point2D ulp = new Point2D.Double(interRect.getX(), interRect.getY());
       convertPtToRectFrame(defRect, ulp, interPt);
@@ -232,7 +232,8 @@ public class RectDefinedByRects {
       this.tag = tag;
     }
     
-    public Object clone() {
+    @Override
+    public TaggedRect clone() {
       try {
         TaggedRect newVal = (TaggedRect)super.clone();
         newVal.rect = (Rectangle2D)this.rect.clone();
@@ -241,11 +242,13 @@ public class RectDefinedByRects {
         throw new IllegalStateException();     
       }    
     }
-
+    
+    @Override
     public int hashCode() {
       return (rect.hashCode() + tag.hashCode());
     }
 
+    @Override
     public boolean equals(Object other) {
       if (other == null) {
         return (false);
@@ -320,7 +323,7 @@ public class RectDefinedByRects {
       TaggedRect tr0 = new TaggedRect(baseRect0, "0");
       TaggedRect tr1 = new TaggedRect(baseRect1, "1");
       TaggedRect tr2 = new TaggedRect(baseRect2, "2");
-      HashSet baseSet = new HashSet();
+      HashSet<TaggedRect> baseSet = new HashSet<TaggedRect>();
       baseSet.add(tr0);
       baseSet.add(tr1);
       baseSet.add(tr2);
@@ -328,7 +331,7 @@ public class RectDefinedByRects {
       Rectangle2D transRect0 = new Rectangle2D.Double(-10.0, -10.0, 5.0, 5.0);
       Rectangle2D transRect1 = new Rectangle2D.Double(-10.0, -50.0, 20.0, 40.0);
       Rectangle2D transRect2 = new Rectangle2D.Double(-10.0, 200.0, 30.0, 10.0);
-      HashMap o2n = new HashMap();
+      HashMap<TaggedRect, Rectangle2D> o2n = new HashMap<TaggedRect, Rectangle2D>();
       o2n.put(tr0, transRect0);
       o2n.put(tr1, transRect1);
       o2n.put(tr2, transRect2);

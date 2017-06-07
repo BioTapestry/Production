@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -18,7 +18,6 @@
 */
 
 package org.systemsbiology.biotapestry.ui.dialogs;
-
 
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -42,11 +41,12 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -84,6 +84,7 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrackingDoubleRenderer;
 import org.systemsbiology.biotapestry.util.TrackingUnit;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -106,9 +107,11 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   private LinkProperties props_;
   private LinkProperties changedProps_;
   private List<ColorDeletionListener> deletionListeners_;
-  private DataAccessContext dacx_;
+  private StaticDataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
+  private HarnessBuilder hBld_;
   
-  private BTState appState_;
   private JComboBox dirCombo_;
   private JCheckBox doSourceBox_;
   private SuggestedDrawStylePanel sdsPan_;
@@ -136,21 +139,23 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   ** Constructor 
   */ 
   
-  public LinkPropertiesDialog(BTState appState, DataAccessContext dacx, 
-                              String propKey, boolean forModules, String ovrRef) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("lprop.title"), true);
-    appState_ = appState;
+  public LinkPropertiesDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld,
+                              String propKey, boolean forModules, String ovrRef, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("lprop.title"), true);
     propKey_ = propKey;
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
+    hBld_ = hBld;
     forModules_ = forModules;
-    dOpt_ = appState_.getDisplayOptMgr().getDisplayOptions();
-    nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx_);  
+    dOpt_ = dacx.getDisplayOptsSource().getDisplayOptions();
+    nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx_);  
      
-    Layout layout = dacx_.getLayout();
+    Layout layout = dacx_.getCurrentLayout();
     props_ = (forModules) ? (LinkProperties)layout.getNetModuleLinkagePropertiesFromTreeID(propKey_, ovrRef)
                           : (LinkProperties)layout.getLinkProperties(propKey_);
        
-    Genome genome = dacx_.getGenome(); 
+    Genome genome = dacx_.getCurrentGenome(); 
     isForInstance_ = !forModules_ && (genome instanceof GenomeInstance);
     if (forModules_) {
       myLinks_ = new HashSet<String>(props_.getLinkageList());
@@ -173,7 +178,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     evidence_ = buildEvidenceEnum();
     signs_ = buildSignEnum(forModules_);
      
-    ResourceManager rMan = appState_.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(975, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -202,14 +207,14 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         try {
           stopTheEditing(false);
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
     
-    DialogSupport ds = new DialogSupport(this, appState_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
   }
   
@@ -308,9 +313,9 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
 
-    sdsPan_ = new SuggestedDrawStylePanel(appState_, dacx_, false, deletionListeners_);          
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld_, false, deletionListeners_);          
     int rowNum = 0;
     UiUtil.gbcSet(gbc, 0, rowNum++, 8, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     retval.add(sdsPan_, gbc);
@@ -354,7 +359,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     // Per-link property overrides:
     //
     
-    rot_ = new ReadOnlyTable(appState_, new PerLinkSpecialDrawTableModel(appState_), new Selector());   
+    rot_ = new ReadOnlyTable(uics_, dacx_, new PerLinkSpecialDrawTableModel(uics_, dacx_), new Selector());   
     rot_.setButtonHandler(new ButtonHand());
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = true;
@@ -386,7 +391,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
        
-    est_ = new EditableTable(appState_, new LinkTableModel(appState_), appState_.getTopFrame());
+    est_ = new EditableTable(uics_, dacx_, new LinkTableModel(uics_, dacx_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.NO_BUTTONS;
@@ -395,12 +400,12 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     etp.tableIsUnselectable = false;
     etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
     if (forModules_) {
-      etp.perColumnEnums.put(new Integer(LinkTableModel.MOD_SIGN_), new EditableTable.EnumCellInfo(false, signs_));
+      etp.perColumnEnums.put(new Integer(LinkTableModel.MOD_SIGN_), new EditableTable.EnumCellInfo(false, signs_, EnumCell.class));
     } else {
-      etp.perColumnEnums.put(new Integer(LinkTableModel.SIGN_), new EditableTable.EnumCellInfo(false, signs_));
-      etp.perColumnEnums.put(new Integer(LinkTableModel.EVIDENCE_), new EditableTable.EnumCellInfo(false, evidence_));
+      etp.perColumnEnums.put(new Integer(LinkTableModel.SIGN_), new EditableTable.EnumCellInfo(false, signs_, EnumCell.class));
+      etp.perColumnEnums.put(new Integer(LinkTableModel.EVIDENCE_), new EditableTable.EnumCellInfo(false, evidence_, EnumCell.class));
       if (isForInstance_) {
-        etp.perColumnEnums.put(new Integer(LinkTableModel.ACTIVITY_), new EditableTable.EnumCellInfo(false, activities_));
+        etp.perColumnEnums.put(new Integer(LinkTableModel.ACTIVITY_), new EditableTable.EnumCellInfo(false, activities_, EnumCell.class));
       }
     }
     JPanel tablePan = est_.buildEditableTable(etp);
@@ -412,7 +417,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       TrackingUnit tu = new TrackingUnit.ListTrackingUnit(activList, LinkageInstance.VARIABLE);
       HashMap<Integer, TrackingUnit> tdrMap = new HashMap<Integer, TrackingUnit>();
       tdrMap.put(new Integer(LinkTableModel.LEVEL_), tu);   
-      est_.getTable().setDefaultRenderer(ProtoDouble.class, new TrackingDoubleRenderer(tdrMap, appState_));
+      est_.getTable().setDefaultRenderer(ProtoDouble.class, new TrackingDoubleRenderer(tdrMap, uics_.getHandlerAndManagerSource()));
     }
     return (retval);
   }
@@ -442,7 +447,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       return (false);
     }
     PerLinkDrawStyle plfe = null;
-    Genome genome = dacx_.getGenome();
+    Genome genome = dacx_.getCurrentGenome();
     Linkage link = genome.getLinkage(linkID);
     int evidence = link.getTargetLevel(); 
     plfe = (dOpt_ == null) ? null : dOpt_.getEvidenceDrawChange(evidence);
@@ -494,8 +499,8 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     
     private static final long serialVersionUID = 1L;
   
-    LinkTableModel(BTState appState) {
-      super(appState, (isForInstance_) ? NUM_INST_COL_ : ((forModules_) ? NUM_MOD_COL_ : NUM_ROOT_COL_));
+    LinkTableModel(UIComponentSource uics, StaticDataAccessContext dacx) {
+      super(uics, dacx, (isForInstance_) ? NUM_INST_COL_ : ((forModules_) ? NUM_MOD_COL_ : NUM_ROOT_COL_));
       if (isForInstance_) {
         colNames_ = new String[] {"lptable.src",
                                   "lptable.targ",
@@ -594,7 +599,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
           }        
         }
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return;
     } 
@@ -607,7 +612,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         EnumCell currVala = (EnumCell)columns_[ACTIVITY_].get(r);
         return (currVala.value == LinkageInstance.VARIABLE);
       } catch (Exception ex) {
-        appState_.getExceptionHandler().displayException(ex);
+        uics_.getExceptionHandler().displayException(ex);
       }
       return (false);
     }
@@ -773,8 +778,8 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     private final static int HIDDEN_LINKID_ = 0;
     private final static int NUM_HIDDEN_    = 1;
    
-    PerLinkSpecialDrawTableModel(BTState appState) {
-      super(appState, NUM_COL_);
+    PerLinkSpecialDrawTableModel(UIComponentSource uics, StaticDataAccessContext dacx) {
+      super(uics, dacx, NUM_COL_);
       colNames_ = new String[] {"lptable.src",
                                 "lptable.targ",
                                 "lptable.drawDesc"};
@@ -840,7 +845,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
           }
           PerLinkSpecialDrawTableModel pls = (PerLinkSpecialDrawTableModel)rot_.getModel();
           String linkID = pls.getSelectedKey(rot_.selectedRows);
-          LinkSpecialPropsDialog lpsd = new LinkSpecialPropsDialog(appState_, dacx_, changedProps_, linkID, deletionListeners_);       
+          LinkSpecialPropsDialog lpsd = new LinkSpecialPropsDialog(uics_, dacx_, hBld_, changedProps_, linkID, deletionListeners_);       
           lpsd.setVisible(true);      
           if (lpsd.haveResult()) {
             changedProps_.setDrawStyleForLinkage(linkID, lpsd.getProps());
@@ -870,7 +875,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   */
   
   private void displayProperties() {
-    Genome genome = dacx_.getGenome();
+    Genome genome = dacx_.getCurrentGenome();
     boolean haveDynInstance = (genome instanceof DynamicGenomeInstance);
     boolean haveStatInstance = (genome instanceof GenomeInstance) && !haveDynInstance;
     boolean haveRoot = !haveStatInstance && !haveDynInstance;
@@ -880,7 +885,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       topTwoLevels = gi.isRootInstance();
     }
     
-    if ((!(dacx_.getGenome() instanceof DynamicGenomeInstance)) || forModules_) {
+    if ((!(dacx_.getCurrentGenome() instanceof DynamicGenomeInstance)) || forModules_) {
       List linkList = buildModelLinkList();
       ((LinkTableModel)est_.getModel()).extractValues(linkList);
     }
@@ -895,7 +900,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     
     if (!forModules_) {
       int dir = props_.getTextDirection();
-      ResourceManager rMan = appState_.getRMan();    
+      ResourceManager rMan = dacx_.getRMan();    
       dirCombo_.setSelectedItem(
         new ChoiceContent(rMan.getString("lprop." + BusProperties.mapDirectionToTag(dir)), dir));
     }
@@ -924,7 +929,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   
   private boolean applyProperties() {
 
-    Genome genome = dacx_.getGenome();
+    Genome genome = dacx_.getCurrentGenome();
     boolean haveDynInstance = (genome instanceof DynamicGenomeInstance);
     boolean haveStatInstance = (genome instanceof GenomeInstance) && !haveDynInstance;   
     boolean haveRoot = !haveStatInstance && !haveDynInstance;
@@ -952,7 +957,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     // Undo/Redo support
     //
 
-    UndoSupport support = new UndoSupport(appState_, "undo.lprop"); 
+    UndoSupport support = uFac_.provideUndoSupport("undo.lprop", dacx_); 
     
     if (!haveDynInstance || forModules_) {    
       applyTableValues(tableResults, support);
@@ -967,7 +972,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       nps_.installLinkURLs(support);
     }
     
-    Layout layout = dacx_.getLayout();
+    Layout layout = dacx_.getCurrentLayout();
 
     //
     // Though we hold layout's property directly, make change by changing
@@ -1000,15 +1005,15 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     }
         
     if (lpc[0] != null) {
-      PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+      PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
       support.addEdit(mov);
       props_ = changedProps_;
       changedProps_ = props_.clone();
-      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
+      LayoutChangeEvent ev = new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(ev);
       if (doSourceBox_.isSelected()) {
         if (forModules_) {
-          applyColorToSourceForModules(support, qsds.sds.getColorName(), dacx_);
+          applyColorToSourceForModules(support, qsds.sds.getColorName());
         } else {
           applyColorToSource(support, qsds.sds.getColorName());
         }
@@ -1026,11 +1031,11 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   
   private void applyColorToSource(UndoSupport support, String colName) {
             
-    Set<String> links = dacx_.getLayout().getSharedItems(propKey_);
-    Linkage link = getALinkageWeOwn(links, dacx_.getGenome());
+    Set<String> links = dacx_.getCurrentLayout().getSharedItems(propKey_);
+    Linkage link = getALinkageWeOwn(links, dacx_.getCurrentGenome());
     String srcID = link.getSource();
-    NodeProperties props = dacx_.getLayout().getNodeProperties(srcID);
-    Node node = dacx_.getGenome().getNode(srcID);
+    NodeProperties props = dacx_.getCurrentLayout().getNodeProperties(srcID);
+    Node node = dacx_.getCurrentGenome().getNode(srcID);
  
     //
     // Though we hold layout's property directly, make change by changing
@@ -1048,10 +1053,10 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     }
    
     Layout.PropChange[] lpc = new Layout.PropChange[1];    
-    lpc[0] = dacx_.getLayout().replaceNodeProperties(props, changedProps); 
+    lpc[0] = dacx_.getCurrentLayout().replaceNodeProperties(props, changedProps); 
         
     if (lpc[0] != null) {
-      PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpc);
+      PropChangeCmd mov = new PropChangeCmd(dacx_, lpc);
       support.addEdit(mov);    
     } 
 
@@ -1063,16 +1068,16 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   ** Apply color value to source node
   */
   
-  private void applyColorToSourceForModules(UndoSupport support, String colName, DataAccessContext rcx) {
+  private void applyColorToSourceForModules(UndoSupport support, String colName) {
     NetModuleLinkageProperties nmlp = (NetModuleLinkageProperties)props_;        
     String ovrKey = nmlp.getOverlayID();
     String modKey = nmlp.getSourceTag();
      
-    Layout.PropChange[] lpcs = dacx_.getLayout().applySameColorToModuleAndLinks(ovrKey, modKey, colName, true, propKey_, rcx);
+    Layout.PropChange[] lpcs = dacx_.getCurrentLayout().applySameColorToModuleAndLinks(ovrKey, modKey, colName, true, propKey_, dacx_);
     if (lpcs.length > 0) {
-      PropChangeCmd mov = new PropChangeCmd(appState_, dacx_, lpcs);
+      PropChangeCmd mov = new PropChangeCmd(dacx_, lpcs);
       support.addEdit(mov);
-      support.addEvent(new LayoutChangeEvent(dacx_.getLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new LayoutChangeEvent(dacx_.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE));
     }
     return;
   }  
@@ -1086,7 +1091,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   private ArrayList<EnumCell> buildEvidenceEnum() {
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     StringBuffer buf = new StringBuffer();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     List<String> evi = DBLinkage.linkEvidence();
     Iterator<String> eit = evi.iterator();
     int count = 0;
@@ -1109,7 +1114,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   
   private ArrayList<EnumCell> buildActivityEnum() { 
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
-    Vector<ChoiceContent> choices = LinkageInstance.getActivityChoices(appState_);
+    Vector<ChoiceContent> choices = LinkageInstance.getActivityChoices(dacx_);
     int numChoices = choices.size();
     for (int i = 0; i < numChoices; i++) {
       ChoiceContent cc = choices.get(i);
@@ -1128,7 +1133,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();   
     if (forModules) {
       // Wrap new method into old out-of-date method:
-      Vector<ChoiceContent> signs = NetModuleLinkage.getLinkSigns(appState_);
+      Vector<ChoiceContent> signs = NetModuleLinkage.getLinkSigns(dacx_);
       int numSigns = signs.size();
       for (int i = 0; i < numSigns; i++) {
         ChoiceContent cc = signs.get(i);
@@ -1136,7 +1141,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       }
     } else {
       StringBuffer buf = new StringBuffer();
-      ResourceManager rMan = appState_.getRMan();
+      ResourceManager rMan = dacx_.getRMan();
       Set<String> signs = DBLinkage.linkSigns();
       Iterator<String> sit = signs.iterator();
       int count = 0;
@@ -1201,13 +1206,13 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   
   private List<LinkModelTableEntry> fillRows() {
     ArrayList<LinkModelTableEntry> retval = new ArrayList<LinkModelTableEntry>();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     HashMap<String, Integer> seenLinks = new HashMap<String, Integer>();
 
     Iterator<String> lit = myLinks_.iterator();
     while (lit.hasNext()) {
       String linkID = lit.next();
-      Linkage link = dacx_.getGenome().getLinkage(linkID);
+      Linkage link = dacx_.getCurrentGenome().getLinkage(linkID);
       // Fix for BT-10-05-06:1: Don't show model rows not in a VFN.  Better to
       // ghost those entries?
       if (link == null) {
@@ -1219,10 +1224,10 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         Integer prevRow = seenLinks.get(bid);
         if (prevRow == null) {
           seenLinks.put(bid, new Integer(retval.size())); 
-          addLinkageRow(dacx_.getGenome(), link, rMan, -1, retval);
+          addLinkageRow(dacx_.getCurrentGenome(), link, rMan, -1, retval);
         } else {
           int prow = prevRow.intValue();
-          addLinkageRow(dacx_.getGenome(), link, rMan, prow, retval);
+          addLinkageRow(dacx_.getCurrentGenome(), link, rMan, prow, retval);
           Iterator<String> slit = new HashSet<String>(seenLinks.keySet()).iterator();
           while (slit.hasNext()) {
             String nextID = slit.next();
@@ -1234,7 +1239,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
           }
         }
       } else {
-        addLinkageRow(dacx_.getGenome(), link, rMan, -1, retval);
+        addLinkageRow(dacx_.getCurrentGenome(), link, rMan, -1, retval);
       }
     }
     return (retval);
@@ -1328,7 +1333,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     if (!isForInstance_) {
       return (true);
     }
-    GenomeInstance gi = dacx_.getGenomeAsInstance();
+    GenomeInstance gi = dacx_.getCurrentGenomeAsInstance();
     int count = results.size();
     for (int i = 0; i < count; i++) {
       ModelLinkModelTableEntry ent = (ModelLinkModelTableEntry)results.get(i);
@@ -1382,12 +1387,12 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       }
       ProtoDouble num = ent.level;
       if (!num.valid) {
-        DoubleEditor.triggerWarning(appState_, appState_.getTopFrame());
+        DoubleEditor.triggerWarning(uics_.getHandlerAndManagerSource(), uics_.getTopFrame());
         return (false);
       }
       if ((num.value < 0.0) || (num.value > 1.0)) {
-        ResourceManager rMan = appState_.getRMan();
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("lprop.badActivityValue"), 
                                       rMan.getString("lprop.badActivityValueTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -1414,13 +1419,13 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         doEvent |= transferModuleModelValues(support, ent);
       } else {
         ModelLinkModelTableEntry ent = (ModelLinkModelTableEntry)results.get(i);
-        doEvent |= transferModelValues(support, ent, dacx_.getGenome());
+        doEvent |= transferModelValues(support, ent, dacx_.getCurrentGenome());
       }
     }
 
     if (doEvent) {
       // FIX ME: Actually, all models may change. The backing changes for sure.)
-      support.addEvent(new ModelChangeEvent(dacx_.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
     }
     return;
   }
@@ -1445,7 +1450,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     if (!(newName.equals(oldName)) || (oldEvidence != newEvidence) || (oldSign != newSign)) {
       GenomeChange gc = genome.replaceLinkageProperties(linkID, newName, newSign, newEvidence);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
         support.addEdit(gcc);
         retval = true;
       }
@@ -1461,7 +1466,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         GenomeInstance gi = (GenomeInstance)genome;
         GenomeChange gc = gi.replaceLinkageInstanceActivity(linkID, newActivity, newLevel);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
           support.addEdit(gcc);
           retval = true;
         }          
@@ -1488,7 +1493,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     if (oldSign != newSign) {
       NetworkOverlayChange noc = owner.modifyNetModuleLinkage(ovrKey, linkID, newSign);
       if (noc != null) {
-        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(appState_, dacx_, noc);
+        NetOverlayChangeCmd gcc = new NetOverlayChangeCmd(dacx_, noc);
         support.addEdit(gcc);
         retval = true;
       }
@@ -1503,13 +1508,13 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
   
   private List fillRowsForLayout() {
     ArrayList retval = new ArrayList();
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
     HashMap<String, Integer> seenLinks = new HashMap<String, Integer>();
 
     Iterator<String> lit = myLinks_.iterator();
     while (lit.hasNext()) {
       String linkID = lit.next();
-      Linkage link = dacx_.getGenome().getLinkage(linkID);
+      Linkage link = dacx_.getCurrentGenome().getLinkage(linkID);
       // Fix for BT-10-05-06:1: Don't show model rows not in a VFN.  Better to
       // ghost those entries?
       if (link == null) {
@@ -1521,10 +1526,10 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         Integer prevRow = seenLinks.get(bid);
         if (prevRow == null) {
           seenLinks.put(bid, new Integer(retval.size()));            
-          addLinkageRowForLayout(dacx_.getGenome(), link, rMan, -1, retval);
+          addLinkageRowForLayout(dacx_.getCurrentGenome(), link, rMan, -1, retval);
         } else {
           int prow = prevRow.intValue();
-          addLinkageRowForLayout(dacx_.getGenome(), link, rMan, prow, retval);
+          addLinkageRowForLayout(dacx_.getCurrentGenome(), link, rMan, prow, retval);
           Iterator<String> slit = new HashSet<String>(seenLinks.keySet()).iterator();
           while (slit.hasNext()) {
             String nextID = slit.next();
@@ -1536,7 +1541,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
           }        
         }
       } else {
-        addLinkageRowForLayout(dacx_.getGenome(), link, rMan, -1, retval);
+        addLinkageRowForLayout(dacx_.getCurrentGenome(), link, rMan, -1, retval);
       }
     }
     return (retval);
@@ -1586,7 +1591,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     while (lit.hasNext()) {
       String linkID = lit.next();
       NetModuleLinkage link = nov.getLinkage(linkID);
-      addModuleLinkageRowForLayout(link, nov, dacx_.rMan, retval);
+      addModuleLinkageRowForLayout(link, nov, dacx_.getRMan(), retval);
     }
     return (retval);
   } 
@@ -1623,7 +1628,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     } else if (plds == null) {
       return (rMan.getString("lptable.noSpecLinkSty")); 
     } else {
-      return (plds.getDisplayString(appState_.getRMan(), dacx_.cRes));
+      return (plds.getDisplayString(dacx_.getRMan(), dacx_.getColorResolver()));
     }
   }
 

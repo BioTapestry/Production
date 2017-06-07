@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,7 +35,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
@@ -47,6 +47,7 @@ import org.systemsbiology.biotapestry.util.ListWidget;
 import org.systemsbiology.biotapestry.util.ListWidgetClient;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -64,8 +65,9 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
   
   private ListWidget lw_;
   private TemporalInputRangeData tird_;
-  private BTState appState_;
   private DataAccessContext dacx_;
+  private UIComponentSource uics_;
+  private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
   
@@ -80,12 +82,13 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
   ** Constructor 
   */ 
   
-  public TemporalInputTableManageDialog(BTState appState, DataAccessContext dacx) {     
-    super(appState.getTopFrame(), appState.getRMan().getString("titmd.title"), true);
-    appState_ = appState;
+  public TemporalInputTableManageDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+    super(uics.getTopFrame(), dacx.getRMan().getString("titmd.title"), true);
     dacx_ = dacx;
+    uics_ = uics;
+    uFac_ = uFac;
     
-    ResourceManager rMan = appState.getRMan();    
+    ResourceManager rMan = dacx_.getRMan();    
     setSize(500, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -96,7 +99,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     // Create a list of the target genes available:
     //
     
-    tird_ = dacx_.getExpDataSrc().getTemporalInputRangeData();
+    tird_ = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     Iterator<TemporalRange> entries = tird_.getEntries();
     
     ArrayList<String> srcs = new ArrayList<String>();
@@ -109,7 +112,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
     cp.add(lab, gbc);
 
-    lw_ = new ListWidget(appState_, srcs, this);    
+    lw_ = new ListWidget(uics_.getHandlerAndManagerSource(), srcs, this);    
     UiUtil.gbcSet(gbc, 1, 0, 5, 5, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 1.0);       
     cp.add(lw_, gbc);
         
@@ -124,7 +127,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
           TemporalInputTableManageDialog.this.setVisible(false);
           TemporalInputTableManageDialog.this.dispose();
         } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
+          uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
@@ -137,7 +140,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     //
     UiUtil.gbcSet(gbc, 0, 6, 6, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
     cp.add(buttonPanel, gbc);
-    setLocationRelativeTo(appState_.getTopFrame());
+    setLocationRelativeTo(uics_.getTopFrame());
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -152,10 +155,10 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
   */
   
   public List addRow(ListWidget widget) {
-    ResourceManager rMan = appState_.getRMan();
+    ResourceManager rMan = dacx_.getRMan();
      
     String newEntry = 
-      (String)JOptionPane.showInputDialog(appState_.getTopFrame(), 
+      (String)JOptionPane.showInputDialog(uics_.getTopFrame(), 
                                           rMan.getString("titmd.newEntry"), 
                                           rMan.getString("titmd.newEntryTitle"),     
                                           JOptionPane.QUESTION_MESSAGE, null, 
@@ -170,18 +173,18 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     }
     
     if (tird_.getRange(newEntry) != null) {
-      JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+      JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("titmd.nameNotUnique"), 
                                     rMan.getString("titmd.errorTitle"),
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     } 
     
-    UndoSupport support = new UndoSupport(appState_, "undo.titmdadd");
+    UndoSupport support = uFac_.provideUndoSupport("undo.titmdadd", dacx_);
     
     TemporalRange newRange = new TemporalRange(newEntry, null, false);    
     TemporalInputChange tic = tird_.addEntry(newRange);
-    support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));
+    support.addEdit(new TemporalInputChangeCmd(dacx_, tic));
  
     Iterator<TemporalRange> entries = tird_.getEntries();
     ArrayList<String> srcs = new ArrayList<String>();
@@ -206,17 +209,17 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState_, "undo.titmddelete");     
+    UndoSupport support = uFac_.provideUndoSupport("undo.titmddelete", dacx_);     
     
     for (int i = 0; i < rows.length; i++) {
       String dropName = tird_.getEntry(rows[i]).getName();
       //FIX ME: Can't drop maps used in for rows to other tables!
       TemporalInputChange[] changes = tird_.dropMapsTo(dropName);
       for (int j = 0; j < changes.length; j++) {
-        support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, changes[j]));
+        support.addEdit(new TemporalInputChangeCmd(dacx_, changes[j]));
       }      
       TemporalInputChange tic = tird_.dropEntry(rows[i]);
-      support.addEdit(new TemporalInputChangeCmd(appState_, dacx_, tic));
+      support.addEdit(new TemporalInputChangeCmd(dacx_, tic));
       for (int j = i + 1; j < rows.length; j++) {
         if (rows[j] > rows[i]) {
           rows[j]--;
@@ -251,7 +254,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     ArrayList<String> list = new ArrayList<String>();
     list.add(name);
            
-    TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(appState_, dacx_, list, true);
+    TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(uics_, dacx_, list, true, uFac_);
     if (tid != null) {
       tid.setVisible(true);
     }

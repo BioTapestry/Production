@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -20,12 +20,12 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.userPath;
 
-import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
+import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.SimpleRestrictedNameDialogFactory;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
@@ -56,8 +56,7 @@ public class PathManage extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathManage(BTState appState, boolean doCreate) {
-    super(appState);
+  public PathManage(boolean doCreate) {
     name =  (doCreate) ? "command.TreePathCreate" : "command.TreePathDelete";
     desc = (doCreate) ? "command.TreePathCreate" : "command.TreePathDelete";
     icon = (doCreate) ? "NewTreePath24.gif" : "DeleteTreePath24.gif";
@@ -77,6 +76,7 @@ public class PathManage extends AbstractControlFlow {
   ** 
   */
  
+  @Override
   public boolean externallyEnabled() {
     return ((doCreate_) ? false : true); // Second case actually managed manually!
   }
@@ -104,9 +104,10 @@ public class PathManage extends AbstractControlFlow {
     while (true) {
       ManageState ans;
       if (last == null) {
-        ans = new ManageState(appState_, doCreate_, cfh, cfh.getDataAccessContext());      
+        ans = new ManageState(doCreate_, cfh);      
       } else {
         ans = (ManageState)last.currStateX;
+        ans.stockCfhIfNeeded(cfh);
       }
       if (ans.getNextStep().equals("stepOneForCreate")) {
         next = ans.stepOneForCreate();      
@@ -131,16 +132,18 @@ public class PathManage extends AbstractControlFlow {
   ** Running State
   */
         
-  public static class ManageState implements DialogAndInProcessCmd.CmdState {
-    
-    private String nextStep_;    
-    private BTState appState_;
+  public static class ManageState extends AbstractStepState implements DialogAndInProcessCmd.CmdState {
+
     private String createName_;
-    private ServerControlFlowHarness cfh;
-    private DataAccessContext dacx_;
-     
-    public String getNextStep() {
-      return (nextStep_);
+   
+    /***************************************************************************
+    **
+    ** Construct
+    */ 
+    
+    public ManageState(boolean doCreate, ServerControlFlowHarness cfh) {
+      super(cfh);
+      nextStep_ = (doCreate) ? "stepOneForCreate" : "stepForDelete";
     }
     
     /***************************************************************************
@@ -148,13 +151,11 @@ public class PathManage extends AbstractControlFlow {
     ** Construct
     */ 
     
-    public ManageState(BTState appState, boolean doCreate, ServerControlFlowHarness cfh, DataAccessContext dacx) {
-      appState_ = appState;
+    public ManageState(boolean doCreate, StaticDataAccessContext dacx) {
+      super(dacx);
       nextStep_ = (doCreate) ? "stepOneForCreate" : "stepForDelete";
-      this.cfh = cfh;
-      dacx_ = dacx;
     }
-      
+
     /***************************************************************************
     **
     ** Do the creation
@@ -163,11 +164,11 @@ public class PathManage extends AbstractControlFlow {
     private DialogAndInProcessCmd stepOneForCreate() {     
       String messageKey = "addPath.ChooseName";
       String titleKey = "addPath.ChooseTitle";
-      String defaultName = appState_.getRMan().getString("addPath.defaultName");
+      String defaultName = dacx_.getRMan().getString("addPath.defaultName");
       
       SimpleRestrictedNameDialogFactory.RestrictedNameBuildArgs ba = 
         new SimpleRestrictedNameDialogFactory.RestrictedNameBuildArgs(titleKey, messageKey, defaultName, null, false);
-      SimpleRestrictedNameDialogFactory dgcdf = new SimpleRestrictedNameDialogFactory(cfh);
+      SimpleRestrictedNameDialogFactory dgcdf = new SimpleRestrictedNameDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = dgcdf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);         
       nextStep_ = "stepTwoForCreate";
@@ -186,7 +187,7 @@ public class PathManage extends AbstractControlFlow {
         return (retval);
       }    
       createName_ = crq.nameResult;
-      ResourceManager rMan = appState_.getRMan(); 
+      ResourceManager rMan = dacx_.getRMan(); 
       String message = rMan.getString("addPath.addsFirstStop");
       String title = rMan.getString("addPath.addsFirstStopTitle");
       SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.WARNING, message, title);
@@ -201,8 +202,8 @@ public class PathManage extends AbstractControlFlow {
     */ 
          
     private DialogAndInProcessCmd stepThreeForCreate() {
-      appState_.getPathController().addAPath(createName_, dacx_);
-      appState_.getPathControls().handlePathButtons();
+      uics_.getPathController().addAPath(createName_, dacx_, uFac_);
+      uics_.getPathControls().handlePathButtons();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
   
@@ -212,8 +213,8 @@ public class PathManage extends AbstractControlFlow {
     */ 
         
     private DialogAndInProcessCmd stepForDelete() {
-      appState_.getPathController().deleteCurrentPath(dacx_); 
-      appState_.getPathControls().handlePathButtons();      
+      uics_.getPathController().deleteCurrentPath(dacx_, uFac_); 
+      uics_.getPathControls().handlePathButtons();      
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
   }  
