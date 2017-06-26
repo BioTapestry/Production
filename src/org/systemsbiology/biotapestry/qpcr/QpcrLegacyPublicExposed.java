@@ -23,7 +23,14 @@ import java.io.PrintWriter;
 import java.util.Map;
 
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.DataMapSource;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -44,7 +51,6 @@ public class QpcrLegacyPublicExposed {
   
   private QPCRData legacyQPCR_;
   private QPCRData qpcrForDisplay_;
-  private TabPinnedDynamicDataAccessContext tpdacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -60,12 +66,10 @@ public class QpcrLegacyPublicExposed {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public QpcrLegacyPublicExposed(TabPinnedDynamicDataAccessContext tpdacx) {
-    tpdacx_ = tpdacx;  
+  public QpcrLegacyPublicExposed() {  
   }
   
-  QpcrLegacyPublicExposed(QPCRData data, TabPinnedDynamicDataAccessContext tpdacx) {
-    tpdacx_ = tpdacx;  
+  QpcrLegacyPublicExposed(QPCRData data) {
     legacyQPCR_ = data;
   }
     
@@ -73,14 +77,15 @@ public class QpcrLegacyPublicExposed {
     return (qpcrForDisplay_.columnDefinitionsUsed());
   }
   
-  public void transferFromLegacy() {
-    legacyQPCR_.transferFromLegacy();
+  public void transferFromLegacy(PerturbationData pd, DataMapSource dms, DisplayOptions dOpt, TimeAxisDefinition tad) {
+    legacyQPCR_.transferFromLegacy(pd, dms, dOpt, tad);
     return;
   }
   
-  public void createQPCRFromPerts() {
-    QpcrDisplayGenerator qdg = new QpcrDisplayGenerator(tpdacx_);
-    qpcrForDisplay_ = qdg.createQPCRFromPerts();
+  public void createQPCRFromPerts(PerturbationData pd, TimeAxisDefinition tad, PerturbationDataMaps pdms,
+                                  DBGenome genome, ResourceManager rMan) {
+    QpcrDisplayGenerator qdg = new QpcrDisplayGenerator();
+    qpcrForDisplay_ = qdg.createQPCRFromPerts(pd, tad, pdms, genome, rMan);
     return;
   }
   
@@ -93,19 +98,19 @@ public class QpcrLegacyPublicExposed {
     return;
   }
   
-  @SuppressWarnings("unused")
-  public String getHTML(String geneId, String sourceID, boolean noCss, boolean bigScreen, TabPinnedDynamicDataAccessContext dacx) {
-    DisplayOptions dOpt = dacx.getDisplayOptsSource().getDisplayOptions();
+  public String getHTML(String geneId, String sourceID, boolean noCss,
+                        boolean bigScreen, DBGenome dbGenome, 
+                        PerturbationData pd, TimeAxisDefinition tad, ResourceManager rMan) {
+    PertDisplayOptions dOpt = pd.getPertDisplayOptions();
     Map<String, String> colors = dOpt.getMeasurementDisplayColors();
-    QpcrTablePublisher qtp = new QpcrTablePublisher(dacx, bigScreen, colors);
-    return (qpcrForDisplay_.getHTML(geneId, sourceID, qtp, dacx));
+    QpcrTablePublisher qtp = new QpcrTablePublisher(bigScreen, colors, dOpt);
+    return (qpcrForDisplay_.getHTML(geneId, sourceID, qtp, dbGenome, pd, tad, rMan));
   }
   
-  public boolean publish(PrintWriter out, TabPinnedDynamicDataAccessContext dacx) {
-    DisplayOptions dOpt = dacx.getDisplayOptsSource().getDisplayOptions();
+  public boolean publish(PrintWriter out, PerturbationData pd, TimeAxisDefinition tad, PertDisplayOptions dOpt, ResourceManager rMan) {
     Map<String, String> colors = dOpt.getMeasurementDisplayColors();
-    QpcrTablePublisher qtp = new QpcrTablePublisher(dacx, colors);
-    return (qtp.publish(out, qpcrForDisplay_));
+    QpcrTablePublisher qtp = new QpcrTablePublisher(colors, dOpt);
+    return (qtp.publish(out, qpcrForDisplay_, pd, tad, rMan));
   }    
 }
   

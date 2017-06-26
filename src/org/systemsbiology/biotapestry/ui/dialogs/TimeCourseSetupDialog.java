@@ -80,6 +80,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   private TimeAxisDefinition tad_;
   private TimeCourseData tcData_;
   private TimeCourseDataMaps tcdm_;
+  private PerturbationData pd_;
   private String unitHeading_;
   
   private static final long serialVersionUID = 1L;
@@ -134,7 +135,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     uics_ = uics;
     uFac_ = uFac;
   
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     setSize(500, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -145,6 +146,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Figure out if we accept numbers or names for the stages:
     //
     
+    pd_ = dacx_.getExpDataSrc().getPertData();
     tcData_ = dacx_.getExpDataSrc().getTimeCourseData();
     tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
     tcdm_ = dacx_.getDataMapSrc().getTimeCourseDataMaps();
@@ -152,7 +154,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     String displayUnits = tad_.unitDisplayString();
     unitHeading_ = MessageFormat.format(rMan.getString("tcsedit.timeUnitFormat"), new Object[] {displayUnits});      
    
-    est_ = new EditableTable(uics_, dacx_, new TimeCourseSetupTableModel(uics_, dacx_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new TimeCourseSetupTableModel(uics_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
@@ -164,7 +166,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 10, 10, true, false);   
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -258,8 +260,8 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       }
     }
   
-    TimeCourseSetupTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    TimeCourseSetupTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {unitHeading_,
                                 "tcsedit.region"};
       Class firstClass = (namedStages_) ? String.class : ProtoInteger.class;
@@ -345,7 +347,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   
   private boolean applyProperties() {
  
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+    
     
     //
     // Figure out the existing set of regions names:
@@ -362,7 +364,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // Make sure the integers/stages are OK, and increasing:
     //
 
-    ResourceManager rMan = dacx_.getRMan();         
+    ResourceManager rMan = uics_.getRMan();         
 
     int lastNum = 0;     
     TimeCourseSetupTableModel tcs = (TimeCourseSetupTableModel)est_.getModel(); 
@@ -564,7 +566,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     // If perturbation data needs pruning, let user confirm or abort:
     //
 
-    boolean dropFromPert = pd.haveRegionNameInRegionRestrictions(droppedRegions);
+    boolean dropFromPert = pd_.haveRegionNameInRegionRestrictions(droppedRegions);
     if (dropFromPert) {
       int ok = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                              rMan.getString("tcsedit.pertRegRestDropped"), 
@@ -606,7 +608,7 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       TimeCourseChange[] tcca = 
         tcdm_.repairDanglingRegionMaps(dangling, newGeneTemplate);
       for (int i = 0; i < tcca.length; i++) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, tcca[i]));
+        support.addEdit(new TimeCourseChangeCmd(tcca[i]));
         doIssue = true;
       }
     }
@@ -619,13 +621,13 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
       
       TimeCourseChange drtopo = tcData_.dropRegionTopologyRegionName(dropRegion);
       if (drtopo != null) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, drtopo));
+        support.addEdit(new TimeCourseChangeCmd(drtopo));
         doIssue = true;
       }
 
-      PertDataChange[] pdc = pd.dropRegionNameForRegionRestrictions(dropRegion);
+      PertDataChange[] pdc = pd_.dropRegionNameForRegionRestrictions(dropRegion);
       if (pdc.length > 0) {
-        support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+        support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
         doPerts = true;
       }
     
@@ -649,14 +651,14 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
     TimeCourseChange tcc = 
       tcData_.updateWithNewGeneTemplate(newGeneTemplate, origIndices);
     if (tcc != null) {
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(tcc));
       doIssue = true;
     }
 
     if (ph != null) {
       TimeCourseChange htcc = tcData_.setRegionHierarchy(ph.parents, ph.roots, true);
       if (htcc != null) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, htcc));
+        support.addEdit(new TimeCourseChangeCmd(htcc));
         doIssue = true;
       }
     }

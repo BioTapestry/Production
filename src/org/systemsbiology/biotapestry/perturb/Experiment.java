@@ -30,6 +30,7 @@ import java.util.TreeSet;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -67,7 +68,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   private String conditionKey_;
   private int legacyMaxTime_; // Used for legacy data with no specific time point
   private ArrayList<String> invest_;
-  private DataAccessContext dacx_;
+//  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,8 +81,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Constructor
   */
 
-  public Experiment(DataAccessContext dacx, String id, PertSources sources, int time, List<String> investigators, String condKey) {
-    dacx_ = dacx;
+  public Experiment(String id, PertSources sources, int time, List<String> investigators, String condKey) {
     id_ = id;
     sources_ = sources;
     time_ = time;
@@ -95,10 +95,9 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Constructor
   */
 
-  public Experiment(DataAccessContext dacx, String id, int time, int legacyMaxTime, String condKey) {
-    dacx_ = dacx;
+  public Experiment(PerturbationData pd, String id, int time, int legacyMaxTime, String condKey) {
     id_ = id;
-    sources_ = new PertSources(dacx);
+    sources_ = new PertSources(pd);
     time_ = time;
     legacyMaxTime_= legacyMaxTime;
     conditionKey_ = condKey;
@@ -193,8 +192,8 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill in the experiment choice to the set
   */
   
-  public void addToExperimentSet(Set<TrueObjChoiceContent> sourceInfos, SourceSrc ss) {
-    sourceInfos.add(getChoiceContent(ss));
+  public void addToExperimentSet(Set<TrueObjChoiceContent> sourceInfos, SourceSrc ss, TimeAxisDefinition tad) {
+    sourceInfos.add(getChoiceContent(ss, tad));
     return;
   }  
   
@@ -203,8 +202,8 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Get the choice content
   */
   
-  public TrueObjChoiceContent getChoiceContent(SourceSrc ss) {
-    String ds = getDisplayString(ss);    
+  public TrueObjChoiceContent getChoiceContent(SourceSrc ss, TimeAxisDefinition tad) {
+    String ds = getDisplayString(ss, tad);    
     return (new TrueObjChoiceContent(ds, id_));
   }  
   
@@ -213,9 +212,9 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Get the display string
   */
   
-  public String getDisplayString(SourceSrc ss) {
+  public String getDisplayString(SourceSrc ss, TimeAxisDefinition tad) {
     String perts = getPertDisplayString(ss, PertSources.BRACKET_FOOTS);
-    String times = getTimeDisplayString(true, true);
+    String times = getTimeDisplayString(tad, true, true);
     String invest = getInvestigatorDisplayString(ss);
     String ds = getDisplayString(perts, times, invest);    
     return (ds);
@@ -661,8 +660,8 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public String getTimeDisplayString(boolean showUnits, boolean abbreviate) {
-    return (getTimeDisplayString(dacx_, getTimeRange(), showUnits, abbreviate));
+  public String getTimeDisplayString(TimeAxisDefinition tad, boolean showUnits, boolean abbreviate) {
+    return (getTimeDisplayString(tad, getTimeRange(), showUnits, abbreviate));
   } 
 
   /***************************************************************************
@@ -747,15 +746,15 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public static String getTimeDisplayString(DataAccessContext dacx, MinMax mm, boolean showUnits, boolean abbreviate) {
+  public static String getTimeDisplayString(TimeAxisDefinition tad, MinMax mm, boolean showUnits, boolean abbreviate) {
     if (mm == null) {
       return ("");
     }
-    String td = PerturbationData.getTimeDisplay(dacx, new Integer(mm.min), showUnits, abbreviate);
+    String td = PerturbationData.getTimeDisplay(tad, new Integer(mm.min), showUnits, abbreviate);
     if (mm.max == mm.min) {
       return (td);
     }
-    String ltd = PerturbationData.getTimeDisplay(dacx, new Integer(mm.max), showUnits, abbreviate);
+    String ltd = PerturbationData.getTimeDisplay(tad, new Integer(mm.max), showUnits, abbreviate);
     return (td + " to " + ltd); // FIX ME: resource manager & format
   }
   
@@ -794,13 +793,13 @@ public class Experiment implements Cloneable, PertFilterTarget {
       Object retval = null;
       if (elemName.equals("experiment")) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-        board.pertSrcInfo = buildFromXML(elemName, attrs);
+        board.pertSrcInfo = buildFromXML(board.pertData, elemName, attrs);
         retval = board.pertSrcInfo;
       }
       return (retval);     
     }  
         
-    private Experiment buildFromXML(String elemName, Attributes attrs) throws IOException { 
+    private Experiment buildFromXML(PerturbationData pd, String elemName, Attributes attrs) throws IOException { 
       String id = AttributeExtractor.extractAttribute(elemName, attrs, "experiment", "id", true); 
       String time = AttributeExtractor.extractAttribute(elemName, attrs, "experiment", "time", false);      
       String legMax = AttributeExtractor.extractAttribute(elemName, attrs, "experiment", "legMax", false);
@@ -825,10 +824,13 @@ public class Experiment implements Cloneable, PertFilterTarget {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }
-      Experiment retval = new Experiment(dacx_, id, timeNum, legMaxNum, cond);
+      if (pd == null) {
+        throw new IllegalStateException();
+      }
+      Experiment retval = new Experiment(pd, id, timeNum, legMaxNum, cond);
       
       // Add sources:
-      PertSources pss = new PertSources(dacx_);
+      PertSources pss = new PertSources(pd);
       List<String> srcList = Splitter.stringBreak(srcs, ",", 0, false);
       int numSrc = srcList.size();
       for (int i = 0; i < numSrc; i++){

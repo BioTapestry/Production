@@ -88,9 +88,6 @@ public class NetworkOverlay implements Cloneable {
 
   public NetworkOverlay(NetworkOverlay other) {
     this.dacx_ = other.dacx_;
-    if (dacx_ == null) {
-      System.out.println("Hello world");
-    }
     this.id_ = other.id_;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
@@ -117,9 +114,6 @@ public class NetworkOverlay implements Cloneable {
 
   public NetworkOverlay(NetworkOverlay other, String newID) {
     this.dacx_ = other.dacx_;
-       if (dacx_ == null) {
-      System.out.println("Hello world");
-    }
     this.id_ = newID;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
@@ -147,9 +141,6 @@ public class NetworkOverlay implements Cloneable {
   public NetworkOverlay(NetworkOverlay other, String newID, Map<String, String> groupMap, Map<String, String> nodeMap, 
                         Map<String, String> modIDMap, Map<String, String> linkIDMap) {
     this.dacx_ = other.dacx_;
-       if (dacx_ == null) {
-      System.out.println("Hello world");
-    }
     this.id_ = newID;
     this.name_ = other.name_;
     this.desc_ = other.desc_;    
@@ -201,9 +192,6 @@ public class NetworkOverlay implements Cloneable {
 
   public NetworkOverlay(DataAccessContext dacx, String id, String name, String desc) {
     dacx_ = dacx;
-       if (dacx_ == null) {
-      System.out.println("Hello world");
-    }
     id_ = id;
     name_ = name;
     desc_ = desc;    

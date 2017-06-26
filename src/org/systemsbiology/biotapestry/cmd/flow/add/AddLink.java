@@ -1029,7 +1029,7 @@ public class AddLink extends AbstractControlFlow {
       
       GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().addLinkWithExistingLabel(newLinkage);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
       
@@ -1144,7 +1144,7 @@ public class AddLink extends AbstractControlFlow {
                                            trgPad, srcPad);
       GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().addLinkWithExistingLabel(newLinkage);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
   
@@ -1595,7 +1595,7 @@ public class AddLink extends AbstractControlFlow {
    
       GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addLinkage(newLink);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }     
       

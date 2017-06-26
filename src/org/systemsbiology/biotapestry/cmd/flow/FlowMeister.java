@@ -822,13 +822,13 @@ public class FlowMeister {
       case EDIT_CURR_NETWORK_OVERLAY:
         return (new EditNetOverlay(false));    
       case TREE_PATH_BACK:          
-        return (new PathStep(false)); 
+        return (new PathStep(false, appState_)); 
       case TREE_PATH_FORWARD:
-        return (new PathStep(true));
+        return (new PathStep(true, appState_));
       case TREE_PATH_CREATE:
-        return (new PathManage(true));
+        return (new PathManage(true, appState_));
       case TREE_PATH_DELETE:        
-        return (new PathManage(false));
+        return (new PathManage(false, appState_));
       case SELECT_ALL:
         return (new Selection(Selection.SelectAction.ALL));
       case SELECT_NONE:
@@ -972,9 +972,9 @@ public class FlowMeister {
       case ALIGN_ALL_LAYOUTS:
         return (new Align()); 
       case TREE_PATH_ADD_STOP:
-        return (new PathStop(true));
+        return (new PathStop(true, appState_));
       case TREE_PATH_DELETE_STOP:
-        return (new PathStop(false));   
+        return (new PathStop(false, appState_));   
       case REPAIR_ALL_NON_ORTHO_MIN_SHIFT:
         return (new LayoutNonOrthoLink(true, false, false, false));      
       case REPAIR_ALL_NON_ORTHO_MIN_SPLIT:

@@ -278,7 +278,7 @@ public class LaunchBuilder extends AbstractControlFlow {
         // FIXME: Does this apply to the link case as well???
         TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
         if (!tcd.hierarchyIsSet()) {    
-          boolean done = DevelopmentSpecDialog.assembleAndApplyHierarchy(uics_, dacx_, uFac_);  
+          boolean done = DevelopmentSpecDialog.assembleAndApplyHierarchy(uics_, tcd, uFac_, dacx_);  
           if (!done) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
           }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -33,7 +33,6 @@ import java.util.Map;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -70,7 +69,6 @@ public class NameMapper implements Cloneable {
   private HashMap<String, List<String>> mapToData_;
   private long serialNumber_;
   private String usage_;
-  private DataAccessContext dacx_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -83,8 +81,7 @@ public class NameMapper implements Cloneable {
   ** Constructor
   */
 
-  public NameMapper(DataAccessContext dacx, String usage) {
-    dacx_ = dacx;
+  public NameMapper(String usage) {
     mapToData_ = new HashMap<String, List<String>>();
     serialNumber_ = 0L;
     usage_ = usage;
@@ -352,8 +349,7 @@ public class NameMapper implements Cloneable {
   ** detect such a map, we will drop it.
   */
   
-  public PertDataChange[] dropIdentityMaps(Map<String, String> nameResolver) {    
-    DBGenome genome = dacx_.getDBGenome();    
+  public PertDataChange[] dropIdentityMaps(DBGenome genome, Map<String, String> nameResolver) {      
     ArrayList<PertDataChange> retvalList = new ArrayList<PertDataChange>();       
     // copy avoids concurrent modification:
     Iterator<String> mit = new HashSet<String>(mapToData_.keySet()).iterator();
@@ -476,7 +472,7 @@ public class NameMapper implements Cloneable {
   ** Get the node IDs that target the given map entry
   */
 
-  public Set<String> getDataKeyInverse(String key, Map<String, String> nameResolver) {
+  public Set<String> getDataKeyInverse(DBGenome genome, String key, Map<String, String> nameResolver) {
         
     HashSet<String> retval = new HashSet<String>();
     //
@@ -484,7 +480,6 @@ public class NameMapper implements Cloneable {
     // will map by default:
     //
     
-    DBGenome genome = dacx_.getDBGenome();
     String resolvesToName = nameResolver.get(key);
     Node node = genome.getGeneWithName(resolvesToName);
     if (node != null) {
@@ -539,14 +534,13 @@ public class NameMapper implements Cloneable {
   ** in danger from a name change
   */
 
-  public boolean onlyInverseIsDefault(String key, Map<String, String> nameResolver) {
+  public boolean onlyInverseIsDefault(DBGenome genome, String key, Map<String, String> nameResolver) {
 
     //
     // If there is anybody out there with the same name _and no custom map_, we
     // have an issue:
     //
     
-    DBGenome genome = dacx_.getDBGenome();
     String resolvesToName = nameResolver.get(key);
     Node node = genome.getGeneWithName(resolvesToName);
     if (node != null) {
@@ -666,17 +660,10 @@ public class NameMapper implements Cloneable {
       
   public static class NameMapperWorker extends AbstractFactoryClient {
  
-    private DataAccessContext dacx_;
-    
     public NameMapperWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add("dataMap");
       installWorker(new MapFromWorker(whiteboard), new MyMapFromGlue());
-    }
-    
-    public void installContext(DataAccessContext dacx) {
-      dacx_ = dacx;
-      return;
     }
     
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
@@ -692,7 +679,7 @@ public class NameMapper implements Cloneable {
     private NameMapper buildFromXML(String elemName, Attributes attrs) throws IOException {  
       String serNum = AttributeExtractor.extractAttribute(elemName, attrs, "dataMap", "serialNum", false);
       String usage = AttributeExtractor.extractAttribute(elemName, attrs, "dataMap", "usage", true);
-      NameMapper retval = new NameMapper(dacx_, usage);
+      NameMapper retval = new NameMapper(usage);
       if (serNum != null) { 
         try {
           long sNum = Long.parseLong(serNum);

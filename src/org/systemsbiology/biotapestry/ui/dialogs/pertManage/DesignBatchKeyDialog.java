@@ -26,7 +26,6 @@ import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -64,8 +63,8 @@ public class DesignBatchKeyDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public DesignBatchKeyDialog(UIComponentSource uics, DataAccessContext dacx) {     
-    super(uics, dacx, "designBatchKey.title", new Dimension(500, 300), 6);
+  public DesignBatchKeyDialog(UIComponentSource uics) {     
+    super(uics, "designBatchKey.title", new Dimension(500, 300), 6);
   
     useDateBox_ = new JCheckBox(rMan_.getString("designBatchKey.useDate"), true);   
     useInvestBox_ = new JCheckBox(rMan_.getString("designBatchKey.useInvest"), false);

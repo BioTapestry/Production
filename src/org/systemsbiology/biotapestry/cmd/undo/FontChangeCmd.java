@@ -51,8 +51,8 @@ public class FontChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public FontChangeCmd(DataAccessContext dacx, FontChange restore) {
-    super(dacx);
+  public FontChangeCmd(FontChange restore) {
+    super();
     restore_ = restore;
   }  
   

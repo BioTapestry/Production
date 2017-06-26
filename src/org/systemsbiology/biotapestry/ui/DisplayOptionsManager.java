@@ -21,10 +21,8 @@ package org.systemsbiology.biotapestry.ui;
 
 import java.io.PrintWriter;
 
-import java.util.Map;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UndoSupport;
-import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
@@ -61,8 +59,8 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
   ** constructor
   */
     
-  public DisplayOptionsManager(DynamicDataAccessContext dacx) {
-    options_ = new DisplayOptions(dacx);
+  public DisplayOptionsManager() {
+    options_ = new DisplayOptions();
   }
    
   ////////////////////////////////////////////////////////////////////////////
@@ -101,30 +99,6 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
     options_ = opts;
     retval.newOpts = options_.clone();    
     return (retval);
-  }
-  
-  /***************************************************************************
-  ** 
-  ** Do modifications if the perturbation data changes
-  */
-
-  public void modifyForPertDataChange(UndoSupport support, DataAccessContext dacx) {
-    
-    Map<String, String> revMap = options_.haveInconsistentMeasurementDisplayColors();
-    String revSTag = options_.haveInconsistentScaleTag();
-    if ((revMap != null) || (revSTag != null)) {
-      DisplayOptions revDO = options_.clone();
-      if (revMap != null) {
-        revDO.setMeasurementDisplayColors(revMap);
-      }
-      if (revSTag != null) {      
-        revDO.setPerturbDataDisplayScaleKey(revSTag);
-      }
-      DisplayOptionsChange doc = setDisplayOptions(revDO);
-      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx, doc);
-      support.addEdit(docc);
-    }
-    return;   
   }
 
   /***************************************************************************

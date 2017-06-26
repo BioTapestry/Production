@@ -29,12 +29,12 @@ import java.io.PrintWriter;
 
 import org.xml.sax.Attributes;  
  
-import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.MinMax;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **
@@ -104,7 +104,7 @@ public class TimeAxisDefinition implements Cloneable {
   private String userUnitAbbrev_;
   private boolean userUnitIsSuffix_;
   private ArrayList<NamedStage> namedStages_;
-  private DataAccessContext dacx_;
+  private ResourceManager rMan_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -117,8 +117,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Constructor
   */
 
-  public TimeAxisDefinition(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public TimeAxisDefinition(ResourceManager rMan) {
+    rMan_ = rMan;
     initialized_ = false;
   }
 
@@ -359,7 +359,7 @@ public class TimeAxisDefinition implements Cloneable {
     if (haveCustomUnits()) {
       return (userUnits_);
     } else {
-      return (displayStringForUnit(dacx_, units_));
+      return (displayStringForUnit(rMan_, units_));
     }
   }
   
@@ -372,7 +372,7 @@ public class TimeAxisDefinition implements Cloneable {
     if (haveCustomUnits()) {
       return (userUnitAbbrev_);
     } else {
-      return (abbrevStringForUnit(dacx_, units_));
+      return (abbrevStringForUnit(rMan_, units_));
     }
   } 
   
@@ -680,10 +680,10 @@ public class TimeAxisDefinition implements Cloneable {
   ** Return possible unit values
   */
   
-  public static Vector<ChoiceContent> getUnitTypeChoices(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getUnitTypeChoices(ResourceManager rMan) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_UNIT_TYPES_; i++) {
-      retval.add(unitTypeForCombo(dacx, i));    
+      retval.add(unitTypeForCombo(rMan, i));    
     }
     return (retval);
   }
@@ -693,8 +693,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent unitTypeForCombo(DataAccessContext dacx, int unitType) {
-    return (new ChoiceContent(displayStringForUnit(dacx, unitType), unitType));
+  public static ChoiceContent unitTypeForCombo(ResourceManager rMan, int unitType) {
+    return (new ChoiceContent(displayStringForUnit(rMan, unitType), unitType));
   }
   
   /***************************************************************************
@@ -702,8 +702,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a localized display string
   */
   
-  public static String displayStringForUnit(DataAccessContext dacx, int unitType) {
-    return (dacx.getRMan().getString("timeAxis." + mapUnitTypes(unitType)));
+  public static String displayStringForUnit(ResourceManager rMan, int unitType) {
+    return (rMan.getString("timeAxis." + mapUnitTypes(unitType)));
   }
   
   /***************************************************************************
@@ -711,8 +711,8 @@ public class TimeAxisDefinition implements Cloneable {
   ** Get a localized display string
   */
   
-  public static String abbrevStringForUnit(DataAccessContext dacx, int unitType) {
-    return (dacx.getRMan().getString("timeAxis.abbrev_" + mapUnitTypes(unitType)));
+  public static String abbrevStringForUnit(ResourceManager rMan, int unitType) {
+    return (rMan.getString("timeAxis.abbrev_" + mapUnitTypes(unitType)));
   }  
   
   /***************************************************************************
@@ -752,12 +752,10 @@ public class TimeAxisDefinition implements Cloneable {
   **
   */
   
-  public static String getTimeDisplay(DataAccessContext dacx, Integer timeObj, boolean showUnits, boolean abbreviate) {
+  public static String getTimeDisplay(TimeAxisDefinition tad, Integer timeObj, boolean showUnits, boolean abbreviate) {
     if (timeObj == null) {
       return (null);
     }
-
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String timeStr;
     if (tad.haveNamedStages()) {
       int timeNum = timeObj.intValue();
@@ -843,7 +841,7 @@ public class TimeAxisDefinition implements Cloneable {
       customAbbrev = CharacterEntityMapper.unmapEntities(customAbbrev, false);
     }        
  
-    TimeAxisDefinition tfd = new TimeAxisDefinition(new StaticDataAccessContext(dacx).getContextForRoot());
+    TimeAxisDefinition tfd = new TimeAxisDefinition(dacx.getRMan());
     tfd.startDefinition(unit, custom, customAbbrev, isSuffixVal);
     return (tfd);
   }

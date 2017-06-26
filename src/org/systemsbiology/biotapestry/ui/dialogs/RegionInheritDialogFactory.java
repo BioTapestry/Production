@@ -155,7 +155,7 @@ public class RegionInheritDialogFactory extends DialogFactory {
       workingRegions_ = workingRegions;
       parentRegions_ = parentRegions;
       
-      est_ = new EditableTable(uics_, dacx_, new RegionInheritTableModel(uics_, dacx_), parent_);
+      est_ = new EditableTable(uics_, new RegionInheritTableModel(uics_), parent_);
       EditableTable.TableParams etp = new EditableTable.TableParams();
       etp.addAlwaysAtEnd = true;
       etp.singleSelectOnly = true;
@@ -300,8 +300,8 @@ public class RegionInheritDialogFactory extends DialogFactory {
       
       private static final long serialVersionUID = 1L;
     
-      RegionInheritTableModel(UIComponentSource uics, DataAccessContext dacx) {
-        super(uics, dacx, NUM_COL_);
+      RegionInheritTableModel(UIComponentSource uics) {
+        super(uics, NUM_COL_);
         colNames_ = new String[] {"reinherit.region",
                                   "reinherit.include"};
         colClasses_ = new Class[] {String.class,

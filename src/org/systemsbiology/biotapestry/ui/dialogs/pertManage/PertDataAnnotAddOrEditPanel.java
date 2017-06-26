@@ -30,8 +30,8 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.EnumCell;
@@ -72,11 +72,11 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertDataAnnotAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd,
-                                     PendingEditTracker pet, String myKey) {
-    super(uics, dacx, parent, pet, myKey, 1);
+  public PertDataAnnotAddOrEditPanel(UIComponentSource uics, JFrame parent, PerturbationData pd,
+                                     TimeCourseData tcd, PendingEditTracker pet, String myKey) {
+    super(uics, parent, pet, myKey, 1);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics, parent, pd, tcd, rMan_, gbc_, pet_);
   
     annotList_ = new ArrayList(); 
     
@@ -84,7 +84,7 @@ public class PertDataAnnotAddOrEditPanel extends AnimatedSplitEditPanel {
     // Build the values table tabs.
     //
 
-    estAnnot_ = new EditableTable(uics, dacx, new EditableTable.OneEnumTableModel(uics, dacx, "psAddEditDataAnnot.annot", annotList_), parent_);
+    estAnnot_ = new EditableTable(uics, new EditableTable.OneEnumTableModel(uics, "psAddEditDataAnnot.annot", annotList_), parent_);
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);
     JPanel annotTablePan = estAnnot_.buildEditableTable(etp);
     JPanel annotTableWithButton = pmh_.addEditButton(annotTablePan, "psAddEditDataAnnot.annotEdit", true, new ActionListener() {

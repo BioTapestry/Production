@@ -55,7 +55,15 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
 
   /***************************************************************************
   **
-  ** Migrate to this constructor now!
+  ** DataAccess now arrives from Support framework
+  */ 
+   
+  public BTUndoCmd() {
+  }
+ 
+  /***************************************************************************
+  **
+  ** Migrate away from constructor now!
   */ 
    
   public BTUndoCmd(DataAccessContext dacx) {
@@ -74,10 +82,11 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
   ** allows us to avoid needing to pass appState around so much!
   */ 
   
-  public void setAppState(TabSource tSrc, CmdSource cSrc, UIComponentSource uics) {
+  public void setAppState(TabSource tSrc, CmdSource cSrc, UIComponentSource uics, StaticDataAccessContext dacx) {
     tSrc_ = tSrc;
     uics_ = uics;
     cSrc_ = cSrc;
+    dacx_ = dacx;
     return;
   }
 

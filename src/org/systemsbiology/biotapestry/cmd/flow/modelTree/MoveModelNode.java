@@ -230,9 +230,9 @@ public class MoveModelNode extends AbstractControlFlow {
       //
 
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-      ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
+      ExpansionChange ec = treeSupp_.buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(ec)); 
       
       //
       // Do actual move
@@ -277,10 +277,10 @@ public class MoveModelNode extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = treeSupp_.buildExpansionChange(false, dacx_);
+      ec = treeSupp_.buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
       ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(ec));
 
       support.finish();
    

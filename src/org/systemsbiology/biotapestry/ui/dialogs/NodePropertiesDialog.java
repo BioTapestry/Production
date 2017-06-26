@@ -156,7 +156,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tabPane, gbc);
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -325,14 +325,14 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
     boolean doSecond = (node.getNodeType() == Node.INTERCELL);  // FIX ME: Make more abstract
     boolean firstHasButton = !doSecond;
 
-    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "nprop.color", firstHasButton, false);
+    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, null, true, "nprop.color", firstHasButton, false);
     UiUtil.gbcSet(gbc, 0, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     retval.add(colorWidget1_, gbc);     
     
     if (doSecond) {
       ArrayList<ColorDeletionListener> colorDeletionListeners = new ArrayList<ColorDeletionListener>();
       colorDeletionListeners.add(colorWidget1_);
-      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorDeletionListeners, true, "nprop.color2", true, false);
+      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, colorDeletionListeners, true, "nprop.color2", true, false);
       UiUtil.gbcSet(gbc, 0, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
       retval.add(colorWidget2_, gbc);         
     } 
@@ -585,7 +585,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
         }
         GenomeChange gc = dacx_.getCurrentGenome().changeNodeName(ref, newName);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
           globalNameChange = true;
           rootChange = true;
@@ -616,7 +616,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
         if (pads != newPads) {
           GenomeChange gc = dacx_.getCurrentGenome().changeNodeSize(ref, newPads);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             rootChange = true;
           }
@@ -662,7 +662,7 @@ public class NodePropertiesDialog extends JDialog implements DialogSupport.Dialo
           }          
           GenomeChange gc = dacx_.getCurrentGenome().replaceNode(copyNode);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             instanceChange = true;
           }

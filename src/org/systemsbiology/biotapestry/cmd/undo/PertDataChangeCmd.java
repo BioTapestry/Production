@@ -54,8 +54,8 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PertDataChangeCmd( DataAccessContext dacx, PertDataChange restore) {
-    super(dacx);
+  public PertDataChangeCmd(PertDataChange restore) {
+    super();
     restore_ = restore;
     doEvent_ = false;
   }  
@@ -65,8 +65,8 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public PertDataChangeCmd(DataAccessContext dacx, PertDataChange restore, boolean doEvent) {
-    super(dacx);
+  public PertDataChangeCmd(PertDataChange restore, boolean doEvent) {
+    super();
     restore_ = restore;
     doEvent_ = doEvent;
   }  
@@ -143,10 +143,10 @@ public class PertDataChangeCmd extends BTUndoCmd {
   ** Wrap changes in command array
   */ 
   
-  public static PertDataChangeCmd[] wrapChanges(DataAccessContext dacx, PertDataChange[] restores) {
+  public static PertDataChangeCmd[] wrapChanges(PertDataChange[] restores) {
     PertDataChangeCmd[] retval = new PertDataChangeCmd[restores.length];
     for (int i = 0; i < retval.length; i++) {
-      retval[i] = new PertDataChangeCmd(dacx, restores[i]);
+      retval[i] = new PertDataChangeCmd(restores[i]);
     }
     return (retval);
   }  

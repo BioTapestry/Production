@@ -31,7 +31,6 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
@@ -62,7 +61,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
   private Map<String, Map<String, String>> closest_;
   private boolean keepGoing_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
+  //private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -77,14 +76,13 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
   ** Constructor 
   */ 
   
-  public NewbieReportingDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, Map<String, Set<String>> newbies, Map<String, Map<String, String>> newbieClosest) {
-    super(parent, dacx.getRMan().getString("newbieReport.dialogTitle"), true);
+  public NewbieReportingDialog(UIComponentSource uics, JFrame parent, Map<String, Set<String>> newbies, Map<String, Map<String, String>> newbieClosest) {
+    super(parent, uics.getRMan().getString("newbieReport.dialogTitle"), true);
     uics_ = uics;
-    dacx_ = dacx;
     newbies_ = newbies;
     closest_ = newbieClosest;
     keepGoing_ = false;
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     setSize(1000, 650);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -95,7 +93,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(uics_, dacx_, new NewbieReportModel(uics_, dacx_), null);   
+    rot_ = new ReadOnlyTable(uics_, new NewbieReportModel(uics_), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
     tp.tableIsUnselectable = true;
@@ -114,7 +112,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     rowNum += 8;
     cp.add(tabPan, gbc);
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true); 
     setLocationRelativeTo(parent);
     displayProperties(); 
@@ -195,8 +193,8 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
       }
     }
 
-    NewbieReportModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    NewbieReportModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"newbieReport.class",
                                 "newbieReport.name",
                                 "newbieReport.alternative"};
@@ -250,7 +248,7 @@ public class NewbieReportingDialog extends JDialog implements DialogSupportClien
 
   private List<NewbieReportModel.TableRow> initTableRows() {
     ArrayList<NewbieReportModel.TableRow> retval = new ArrayList<NewbieReportModel.TableRow>();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     NewbieReportModel ctm = (NewbieReportModel)rot_.getModel();
     Iterator<String> nbit = newbies_.keySet().iterator();
     while (nbit.hasNext()) {

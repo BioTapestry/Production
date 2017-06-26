@@ -286,7 +286,6 @@ public class SetDataSharingDialogFactory extends DialogFactory {
 
     protected Vector<TrueObjChoiceContent> buildOptions(List<TabSource.AnnotatedTabData> tabs) {    
       Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
-      System.out.println("tabs = " + tabs.size());
       for (TabSource.AnnotatedTabData atd : tabs) {
         TrueObjChoiceContent cc = new TrueObjChoiceContent(atd.tnd.getTitle(), atd.dbID);
         retval.add(cc);

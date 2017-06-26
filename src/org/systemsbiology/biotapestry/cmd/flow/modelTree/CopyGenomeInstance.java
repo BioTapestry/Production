@@ -212,7 +212,7 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       String origName = nt.getNodeName(popupNode_);  
       boolean hasKids = (popupNode_.getChildCount() != 0);
       
-      GenomeInstanceCopyDialog gicd = new GenomeInstanceCopyDialog(uics_, dacx_, origName, hasKids);   
+      GenomeInstanceCopyDialog gicd = new GenomeInstanceCopyDialog(uics_, origName, hasKids);   
       gicd.setVisible(true);
       if (!gicd.haveResult()) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
@@ -249,9 +249,9 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
   
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
-      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(ec)); 
       int sibIndex = nt.getNewSiblingIndex(popupNode_);
           
       //
@@ -318,10 +318,10 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       //
   
       NavTreeChange ntc = navTreeChanges.get(navTreeChanges.size() - 1);
-      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
       ec.selected = nt.mapAPath(ec.selected, ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec)); 
+      support.addEdit(new ExpansionChangeCmd(ec)); 
           
       //
       // The new models need to have region maps duplicated. Before group nodes appeared, the user
@@ -383,7 +383,7 @@ public class CopyGenomeInstance extends AbstractControlFlow {
         }
         TimeCourseChange tcc = tcdm.copyTimeCourseGroupMapForDuplicateGroup(oldID, newID, maps.modelIDMap);
         if (tcc != null) {
-          support.addEdit(new TimeCourseChangeCmd(rcx, tcc));      
+          support.addEdit(new TimeCourseChangeCmd(tcc));      
         }            
       }
       return;
@@ -402,10 +402,9 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       // note IDs.  Augmented if we are copying below the root, which doubles the number
       // of notes we need to create.  Need to do the same to overlays
       //
-      
-      UiUtil.fixMePrintout("Logic here is screwed up. Notes not copying OK");
+      ;
       boolean doAdd = !maps.topModelIsRoot;
-      String loTarg = rootInstance.getID();
+      String loTarg = maps.modelIDMap.get(rootInstance.getID());
           
       Iterator<Layout> loit = dacx_.getLayoutSource().getLayoutIterator();
       while (loit.hasNext()) {

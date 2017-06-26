@@ -462,7 +462,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
     String newName = (nameField_ != null) ? nameField_.getText().trim() : targGI.getName();  
     
     GenomeChange gc = targGI.setProperties(newName, longName, descripField_.getText().trim(), needBounds, minResult, maxResult);
-    GenomeChangeCmd cmd = new GenomeChangeCmd(rcx, gc);
+    GenomeChangeCmd cmd = new GenomeChangeCmd(gc);
     support.addEdit(cmd);
     
     if ((nameField_ != null) && !oldName.equals(newName)) {
@@ -496,7 +496,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
             } else {
               gc = gi.dropTimes();
             }
-            cmd = new GenomeChangeCmd(rcx, gc);
+            cmd = new GenomeChangeCmd(gc);
             support.addEdit(cmd);
             eventList.add(gi.getID());
           }

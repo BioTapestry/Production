@@ -356,6 +356,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       boolean warnUser = false;
       HashSet<String> deadSet = new HashSet<String>(mergeMap_.keySet());
       for (String deadID : deadSet) {
+        DBGenome dbGenome = dacx_.getGenomeSource().getRootDBGenome();
         String deadName = dacx_.getCurrentGenome().getNode(deadID).getRootName();
         TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
         TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();  
@@ -363,7 +364,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
         if (((tcd != null) && tcd.haveDataForNodeOrName(deadID, deadName, dacx_.getDataMapSrc())) ||
             ((tird != null) && tird.haveDataForNodeOrName(deadID, deadName)) ||
-            ((pd != null) && pd.haveDataForNode(deadID, null, pdms))) {
+            ((pd != null) && pd.haveDataForNode(dbGenome, deadID, null, pdms))) {
           warnUser = true;
           break;
         }
@@ -438,13 +439,13 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         if (!mapSet.isEmpty()) {
           TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(toNode, new ArrayList<TimeCourseDataMaps.TCMapping>(mapSet), true);
           if (tcc != null) {
-            support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+            support.addEdit(new TimeCourseChangeCmd(tcc));
             aChange = true;
           }
         } else {
           TimeCourseChange tchg = tcdm.dropDataKeys(toNode);
           if (tchg != null) {
-            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
+            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
             support.addEdit(cmd);
             aChange = true;
           }
@@ -609,14 +610,14 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         if (!mapSetS.isEmpty()) {
           PertDataChange pdc = pdms.setSourceMap(toNode, new ArrayList<String>(mapSetS));
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(pdc);
             support.addEdit(pdcc);
             aChange = true;
           }
         } else {
           PertDataChange pdc = pdms.dropDataSourceKeys(toNode);
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(pdc);
             support.addEdit(pdcc);
             aChange = true; // Not strictly true: if it was empty before, it is still empty, so no change....
           }
@@ -625,14 +626,14 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         if (!mapSetE.isEmpty()) {
           PertDataChange pdc = pdms.setEntryMap(toNode, new ArrayList<String>(mapSetE));
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(pdc);
             support.addEdit(pdcc);
             aChange = true;
           }
         } else {         
           PertDataChange pdc = pdms.dropDataEntryKeys(toNode);
           if (pdc != null) {
-            PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
+            PertDataChangeCmd pdcc = new PertDataChangeCmd(pdc);
             support.addEdit(pdcc);
             aChange = true; // Not strictly true: if it was empty before, it is still empty, so no change.... 
           }
@@ -907,7 +908,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         BusProperties bp = rlo.getLinkPropertiesForSource(srcSwitch);
         int lp = (bp != null) ? bp.getLaunchPad(dbg, rlo) : 0;
         GenomeChange gc = dbg.changeLinkageSourceNode(link, srcSwitch, lp);
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         changingGs.add(dbg.getID());
       }
@@ -917,7 +918,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         PadCalculatorToo pcalc = new PadCalculatorToo();
         PadCalculatorToo.PadResult pads = pcalc.padCalc(dacx_.getGenomeSource(), link.getSource(), trgSwitch, null, false);
         GenomeChange gc = dbg.changeLinkageTargetNode(link, trgSwitch, pads.landing);
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         changingGs.add(dbg.getID());
       } 
@@ -989,7 +990,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           if (childLink != null) { // Those darn VfNs!
             String newSrc = newSources.get(lkey);
             GenomeChange gc = gi.changeLinkageSourceNode(childLink, newSrc, childLink.getLaunchPad());
-            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxi, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             changingGs.add(gi.getID());
           }
@@ -999,7 +1000,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
           if (childLink != null) { // Those darn VfNs!
             String newTrg = newTargs.get(lkey);
             GenomeChange gc = gi.changeLinkageTargetNode(childLink, newTrg, childLink.getLandingPad());
-            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxi, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             changingGs.add(gi.getID());
           }

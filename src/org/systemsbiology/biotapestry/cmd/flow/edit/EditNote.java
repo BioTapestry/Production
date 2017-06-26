@@ -181,7 +181,7 @@ public class EditNote extends AbstractControlFlow {
       UndoSupport support = uFac_.provideUndoSupport("undo.noteEdit", dacx_);
       GenomeChange gc = dacx_.getCurrentGenome().changeNote(noteToEdit, crq.nameResult, crq.textResult, crq.interactiveResult);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }

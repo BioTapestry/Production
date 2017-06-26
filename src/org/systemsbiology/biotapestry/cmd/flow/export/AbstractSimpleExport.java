@@ -222,7 +222,16 @@ public abstract class AbstractSimpleExport extends AbstractControlFlow {
      UndoFactory getUFac() {
       return (uFac_);
     }
-
+     
+    /***************************************************************************
+    **
+    ** Needed by subclasses of AbstractSimpleExport
+    */
+       
+     TabSource getTSrc() {
+      return (tSrc_);
+    } 
+ 
     /***************************************************************************
     **
     ** Get any pre-file dialog:

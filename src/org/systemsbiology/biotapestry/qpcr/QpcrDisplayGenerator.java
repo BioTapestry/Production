@@ -32,15 +32,14 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.LegacyPert;
 import org.systemsbiology.biotapestry.perturb.PertAnnotations;
 import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertDictionary;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
 import org.systemsbiology.biotapestry.perturb.PertSource;
@@ -48,7 +47,6 @@ import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
-import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -67,8 +65,7 @@ class QpcrDisplayGenerator {
   ////////////////////////////////////////////////////////////////////////////
   
   private HashMap<String, String> tempFoots_;
-  private TabPinnedDynamicDataAccessContext tpdacx_;
-  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -80,8 +77,7 @@ class QpcrDisplayGenerator {
   ** Constructor
   */
 
-  QpcrDisplayGenerator(TabPinnedDynamicDataAccessContext tpdacx) {
-    tpdacx_ = tpdacx;
+  QpcrDisplayGenerator() {
     tempFoots_ = new HashMap<String, String>();
   }
 
@@ -96,16 +92,14 @@ class QpcrDisplayGenerator {
   ** Build it
   */
 
-  QPCRData createQPCRFromPerts() {
-    PerturbationData pd = tpdacx_.getExpDataSrc().getPertData();
-    PerturbationDataMaps pdms = tpdacx_.getDataMapSrc().getPerturbationDataMaps();
-    
-    QPCRData qpcr = new QPCRData(tpdacx_);
+  QPCRData createQPCRFromPerts(PerturbationData pd, TimeAxisDefinition tad,
+                               PerturbationDataMaps pdms, DBGenome genome, ResourceManager rMan) {
+
+    QPCRData qpcr = new QPCRData();
     PertDictionary pDict = pd.getPertDictionary();
-    ResourceManager rMan = tpdacx_.getRMan();
     String etAl = rMan.getString("qpcrData.andOthers");
       
-    DisplayOptions dOpt = tpdacx_.getDisplayOptsSource().getDisplayOptions();
+    PertDisplayOptions dOpt = pd.getPertDisplayOptions();
     if (dOpt.hasColumns()) {
       Iterator<MinMax> cit = dOpt.getColumnIterator();
       while (cit.hasNext()) {
@@ -225,7 +219,7 @@ class QpcrDisplayGenerator {
     
     HashMap<PertSources, Set<String>> footHoistForNull = new HashMap<PertSources, Set<String>>();
     HashMap<PertSources, Map<String, List<String>>> retainFootsForNull = new HashMap<PertSources, Map<String, List<String>>>();
-    resolveFootnotesForNulls(pd, pertData, results, footHoistForNull, retainFootsForNull);
+    resolveFootnotesForNulls(pd, pertData, results, footHoistForNull, retainFootsForNull, rMan);
     
     HashMap<PertSources, Set<String>> allTargsForSources = new HashMap<PertSources, Set<String>>();
     HashMap<PertSources, Set<String>> hoistedFootsPerSource = new HashMap<PertSources, Set<String>>();
@@ -269,7 +263,7 @@ class QpcrDisplayGenerator {
         //
         // Build and add null target:
         //
-        NullTarget targ = buildNullTarget(pd, sst, retainFootsForNull, myHoistedFoots, regRes, timeBounds, tpdacx_);
+        NullTarget targ = buildNullTarget(pd, sst, retainFootsForNull, myHoistedFoots, regRes, timeBounds, rMan);
         npert.addTarget(targ);
         //
         // Investigators:
@@ -287,14 +281,14 @@ class QpcrDisplayGenerator {
       }  
     }
     
-    fillInPerturbations(qpcr, allTargsForSources, pertData, pd, pDict, scaleKey, techColors, tpdacx_);
+    fillInPerturbations(qpcr, allTargsForSources, pertData, pd, tad, pDict, scaleKey, techColors, rMan);
     
     
     //
     // Get the maps filled in:
     //
     
-    Genome genome = tpdacx_.getDBGenome();
+    
     Iterator<Node> anit = genome.getAllNodeIterator();
     while (anit.hasNext()) {
       Node node = anit.next();
@@ -366,7 +360,7 @@ class QpcrDisplayGenerator {
   private NullTarget buildNullTarget(PerturbationData pd, PertSourcesAndTargKey sst, 
                                      Map<PertSources, Map<String, List<String>>> retainFootsForNull, Set<String> myHoistedFoots,
                                      Map<PertSourcesAndTargKey, RegRestrictAggregation> regRes, 
-                                     Map<PertSourcesAndTargKey, SortedSet<Integer>> timeBounds, DataAccessContext dacx) {
+                                     Map<PertSourcesAndTargKey, SortedSet<Integer>> timeBounds, ResourceManager rMan) {
   
   
     Map<String, List<String>> retainFootsPerSource = retainFootsForNull.get(sst.srcs);
@@ -382,7 +376,7 @@ class QpcrDisplayGenerator {
     // Add region-restricted based notes:
     RegRestrictAggregation rra = regRes.get(sst);
     if (!rra.legacyVals.isEmpty() || !rra.actualFoots.isEmpty()) {
-      foots.addAll(buildRegionFootsForNullTarg(pd, rra));
+      foots.addAll(buildRegionFootsForNullTarg(pd, rra, rMan));
     }
     String noteStr = PertAnnotations.convertFootnoteListToString(foots);
     targ.setFootsForHTML(noteStr);   
@@ -391,10 +385,10 @@ class QpcrDisplayGenerator {
     //
     SortedSet<Integer> mm = timeBounds.get(sst);
     if (mm.size() == 1) {
-      NullTimeSpan nts = new NullTimeSpan(dacx, mm.first().intValue());
+      NullTimeSpan nts = new NullTimeSpan(mm.first().intValue());
       targ.addTimeSpan(nts); 
     } else {
-      NullTimeSpan nts = new NullTimeSpan(dacx, mm.first().intValue(), mm.last().intValue());
+      NullTimeSpan nts = new NullTimeSpan(mm.first().intValue(), mm.last().intValue());
       targ.addTimeSpan(nts);
     }
     return (targ);
@@ -409,7 +403,7 @@ class QpcrDisplayGenerator {
   private void resolveFootnotesForNulls(PerturbationData pd, List<PertDataPoint> pertList, 
                                         Map<PertSourcesAndTargKey, Boolean> results, 
                                         Map<PertSources, Set<String>> hoistFoots, 
-                                        Map<PertSources, Map<String, List<String>>> retainFoots) {
+                                        Map<PertSources, Map<String, List<String>>> retainFoots, ResourceManager rMan) {
       
     HashMap<PertSources, Map<String, Map<String, Integer>>> retainFootCountsForNull = new HashMap<PertSources, Map<String, Map<String, Integer>>>();
     HashMap<PertSources, Map<String, Integer>> pointCountsPerTargPerSource = new HashMap<PertSources, Map<String, Integer>>();
@@ -535,7 +529,7 @@ class QpcrDisplayGenerator {
           Integer perFootCount = retainFootCountsPerTarget.get(footKey);
           revised.add(footKey);
           if (!perFootCount.equals(pointCount)) {
-            pnt = getPartialNullTag(pd);
+            pnt = getPartialNullTag(pd, rMan);
           }
         }
         List<String> footsPerSource = pd.getFootnoteList(new ArrayList<String>(revised));
@@ -554,8 +548,7 @@ class QpcrDisplayGenerator {
   ** Build the partial null tag
   */
   
-  private String getPartialNullTag(PerturbationData pd) {
-    ResourceManager rMan = tpdacx_.getRMan();
+  private String getPartialNullTag(PerturbationData pd, ResourceManager rMan) {
     String foot = rMan.getString("qpcrDisplay.incompleteNullFootnoteCoverage");    
     String tag = tempFoots_.get(foot);
     if (tag == null) {
@@ -610,8 +603,8 @@ class QpcrDisplayGenerator {
 
   private boolean fillInPerturbations(QPCRData qpcr, HashMap<PertSources, Set<String>> atfs, 
                                       List<PertDataPoint> pertList, 
-                                      PerturbationData pd, PertDictionary pDict, 
-                                      String scaleKey, Map<String, String> techColors, DataAccessContext dacx) {
+                                      PerturbationData pd, TimeAxisDefinition tad, PertDictionary pDict,
+                                      String scaleKey, Map<String, String> techColors, ResourceManager rMan) {
  
     HashMap<PertSources, Map<String, FormerNullFootData>> droppedMultiNull = new HashMap<PertSources, Map<String, FormerNullFootData>>();
     HashMap<PertSources, Map<String, Set<String>>> hoistFoots = new HashMap<PertSources, Map<String, Set<String>>>();
@@ -655,7 +648,7 @@ class QpcrDisplayGenerator {
               timesPerDrop = new FormerNullFootData();
               droppedPerSource.put(targKey, timesPerDrop);
             }
-            timesPerDrop.times.add(TimeSpan.spanToString(dacx, new MinMax(timeVal, timeMax)));
+            timesPerDrop.times.add(TimeSpan.spanToString(tad, new MinMax(timeVal, timeMax)));
             if (regList != null) {
               timesPerDrop.regions.add(regList);
             }
@@ -684,7 +677,7 @@ class QpcrDisplayGenerator {
       Map<String, Set<String>> footsPerSource = hoistFoots.get(ps);
       Set<String> footsPerTarg = footsPerSource.get(targKey);
       Map<String, FormerNullFootData> droppedPerSource = droppedMultiNull.get(ps);
-      fillForTarg(qpcr, ps, targKey, pdp, pd, pDict, footsPerTarg, droppedPerSource, scaleKey, techColors);
+      fillForTarg(qpcr, ps, targKey, pdp, pd, tad, pDict, footsPerTarg, droppedPerSource, scaleKey, techColors, rMan);
     }
     return (true);
   } 
@@ -728,10 +721,10 @@ class QpcrDisplayGenerator {
   */
 
   private void fillForTarg(QPCRData qpcr, PertSources ps, String targKey, 
-                           PertDataPoint pdp, PerturbationData pd, 
+                           PertDataPoint pdp, PerturbationData pd, TimeAxisDefinition tad, 
                            PertDictionary pDict,
                            Set<String> hoistFoots, Map<String, FormerNullFootData> droppedPerSource, 
-                           String scaleKey, Map<String, String> techColors) {
+                           String scaleKey, Map<String, String> techColors, ResourceManager rMan) {
     
    
     List<Source> sources = getQPCRSourceList(ps, pd, pDict);
@@ -767,8 +760,7 @@ class QpcrDisplayGenerator {
           }
           if (droppedPerSource != null) { 
             FormerNullFootData timesPerDrop = droppedPerSource.get(targKey);
-            if (timesPerDrop != null) {      
-              ResourceManager rMan = tpdacx_.getRMan();
+            if (timesPerDrop != null) {
               String fmt;
               Object[] list;
               if (timesPerDrop.regions.isEmpty()) {
@@ -832,7 +824,6 @@ class QpcrDisplayGenerator {
           throw new IllegalStateException();
         }   
       }
-      ResourceManager rMan = tpdacx_.getRMan();
       String msg = rMan.getString("qpcrDisplay.exactMultiDrop");
       String tag = tempFoots_.get(msg);
       if (tag == null) {
@@ -893,7 +884,7 @@ class QpcrDisplayGenerator {
       
     PerturbationData.RegionRestrict rr = pdp.getRegionRestriction(pd);
     if (rr != null) {
-      String tag = buildRegResFootnote(pd, rr);
+      String tag = buildRegResFootnote(pd, rr, rMan);
       localTags.add(tag);
     }
     
@@ -919,13 +910,13 @@ class QpcrDisplayGenerator {
     String invest = psi.getInvestigatorDisplayString(pd);
     Batch batch = span.getBatchWithIDAndInvest(csvBatch, invest);
     if (batch == null) {
-      batch = new Batch(tpdacx_, timeVal, pdp.getDate(), invest, csvBatch);
+      batch = new Batch(timeVal, pdp.getDate(), invest, csvBatch);
       span.addBatch(batch);
     }
-    Measurement meas = new Measurement(tpdacx_, pdp.getScaledDisplayValueOldStyle(scaleKey, pd, false), nonStdTime, noteStr, 
+    Measurement meas = new Measurement(tad, pdp.getScaledDisplayValueOldStyle(scaleKey, pd, false), nonStdTime, noteStr, 
                                        pdp.getControl(), pdp.getForcedSignificance(), pdp.getComment());
     if (nonStdMaxTime != null) {
-      meas.setNonStdMaxTime(nonStdMaxTime);
+      meas.setNonStdMaxTime(tad, nonStdMaxTime);
     }
     
     String colStr = techColors.get(pdp.getMeasurementTypeKey());
@@ -946,9 +937,8 @@ class QpcrDisplayGenerator {
   ** Build footnotes for null targets:
   */
   
-  private List<String> buildRegionFootsForNullTarg(PerturbationData pd, RegRestrictAggregation rra) {
+  private List<String> buildRegionFootsForNullTarg(PerturbationData pd, RegRestrictAggregation rra, ResourceManager rMan) {
     ArrayList<String> retval = new ArrayList<String>();
-    ResourceManager rMan = tpdacx_.getRMan();
     if (rra.noRestrict == 0) {
       if (rra.actualFoots.isEmpty()) {
         Iterator<String> lvit = rra.legacyVals.iterator();
@@ -1096,8 +1086,7 @@ class QpcrDisplayGenerator {
   ** Build a region restriction footnote
   */
 
-  private String buildRegResFootnote(PerturbationData pd, PerturbationData.RegionRestrict rr) {
-    ResourceManager rMan = tpdacx_.getRMan();
+  private String buildRegResFootnote(PerturbationData pd, PerturbationData.RegionRestrict rr, ResourceManager rMan) {
     String regList;
     if (rr.isLegacyNullStyle()) {
       regList = rr.getLegacyValue();

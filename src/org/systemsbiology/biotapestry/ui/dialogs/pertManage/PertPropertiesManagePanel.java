@@ -35,6 +35,7 @@ import javax.swing.border.EtchedBorder;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
@@ -44,11 +45,13 @@ import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 
@@ -83,6 +86,8 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   private PertManageHelper pmh_;
   private PertFilterExpressionJumpTarget pfet_;
   private UndoFactory uFac_;
+  private DataAccessContext dacx_;
+  private TimeCourseData tcd_;
   
   private static final long serialVersionUID = 1L;
 
@@ -97,16 +102,18 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertPropertiesManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
-                                   PerturbationData pd, PendingEditTracker pet, 
+  public PertPropertiesManagePanel(UIComponentSource uics, FontManager fMgr, TimeAxisDefinition tad, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
+                                   PerturbationData pd, TimeCourseData tcd, PendingEditTracker pet, 
                                    PertFilterExpressionJumpTarget pfet) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, fMgr, tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
     uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
+    dacx_ = dacx;
+    tcd_ = tcd;
+    pmh_ = new PertManageHelper(uics_, pmw, pd_, tcd_, rMan_, gbc_, pet_);
            
-    rtdp_ = new ReadOnlyTable(uics_, dacx_, new PertPropsModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());
+    rtdp_ = new ReadOnlyTable(uics_, new PertPropsModel(uics_), new ReadOnlyTable.EmptySelector());
   
     //
     // Build the perturbation properties panel:
@@ -116,7 +123,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 6, 1, UiUtil.BO, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 1.0);    
     topPanel_.add(ppPanel, gbc_);      
       
-    ppaep_ = new PertPropsAddOrEditPanel(uics_, dacx_, parent_, pd_, this, PERT_KEY);
+    ppaep_ = new PertPropsAddOrEditPanel(uics_, parent_, pd_, tcd_, this, PERT_KEY);
     addEditPanel(ppaep_, PERT_KEY);
         
     finishConstruction();
@@ -138,9 +145,9 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   public void editIsComplete(String key, int what) {
     if (key.equals(PERT_KEY)) {
       if (joinKeys_ == null) {
-        editPertProp(key, what);
+        editPertProp(key, what, dacx_);
       } else {
-        joinPertProps(key, what);
+        joinPertProps(key, what, dacx_);
       }
     } else {
       throw new IllegalArgumentException();
@@ -312,7 +319,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
       
     rtdp_.rowElements.clear();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map<String, Integer> pprefs = da.getAllPertPropReferenceCounts();   
+    Map<String, Integer> pprefs = da.getAllPertPropReferenceCounts(tcd_);   
     Integer noCount = new Integer(0);
        
     PertDictionary pDict = pd_.getPertDictionary();
@@ -376,7 +383,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   protected void doADelete(String key) {
     if (key.equals(PERT_KEY)) {
       String selected = ((PertPropsModel)rtdp_.getModel()).getSelectedKey(rtdp_.selectedRows);
-      if (deletePertProps(selected)) {
+      if (deletePertProps(selected, dacx_)) {
         pet_.itemDeleted(PERT_KEY);
       }
     } else {
@@ -397,14 +404,14 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
-  private void editPertProp(String key, int what) {
+  private void editPertProp(String key, int what, DataAccessContext dacx) {
     PertProperties pp = ppaep_.getResult();
     UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createPertProp" 
-                                                                        : "undo.editPertProp", dacx_);
+                                                                        : "undo.editPertProp", dacx);
     PertDataChange pdc = pd_.setPerturbationProp(pp);
     String resultKey = pp.getID();
     pendingKey_ = null;
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -419,17 +426,17 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** Join pert props
   */ 
   
-  private boolean joinPertProps(String key, int what) {  
+  private boolean joinPertProps(String key, int what, DataAccessContext dacx) {  
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();  
     PertProperties pp = ppaep_.getResult();
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertProps", dacx_);   
-    DependencyAnalyzer.Dependencies refs = da.getPertPropMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertProps", dacx);   
+    DependencyAnalyzer.Dependencies refs = da.getPertPropMergeSet(new HashSet<String>(joinKeys_), pendingKey_, tcd_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }          
-    da.mergeDependencies(refs, dacx_, support);
+    da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergePertProps(joinKeys_, pendingKey_, pp);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -475,7 +482,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   
   private JPanel buildPertPropertiesPanel(List<ReadOnlyTable> allTabs) {
     
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
  
     //
     // Table:
@@ -515,17 +522,17 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
-  private boolean deletePertProps(String key) {
+  private boolean deletePertProps(String key, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    DependencyAnalyzer.Dependencies refs = da.getPertTypeReferenceSets(key);
+    DependencyAnalyzer.Dependencies refs = da.getPertTypeReferenceSets(key, tcd_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }
        
-    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertProp", dacx_);  
-    da.killOffDependencies(refs, dacx_, support);
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertProp", dacx);  
+    da.killOffDependencies(refs, tcd_, support);
     PertDataChange pdc2 = pd_.deletePerturbationProp(key);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
+    support.addEdit(new PertDataChangeCmd(pdc2));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -558,8 +565,8 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
     
     private static final long serialVersionUID = 1L;
     
-    PertPropsModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    PertPropsModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"pertProp.type",
                                 "pertProp.abbrev",
                                 "pertProp.sign",
@@ -638,7 +645,7 @@ public class PertPropertiesManagePanel extends AnimatedSplitManagePanel {
         String format = rMan_.getString("ptmp.legacyAltFormat");
         expAbbrev = MessageFormat.format(format, new Object[] {expAbbrev, legacyAltTag}); 
       }
-      sign = pp.getLinkSignRelationship().getDisplayTag(dacx_);
+      sign = pp.getLinkSignRelationship().getDisplayTag(uics_);
       
       Iterator<String> nvpkit = pp.getNvpKeys();
       if (nvpkit.hasNext()) {   

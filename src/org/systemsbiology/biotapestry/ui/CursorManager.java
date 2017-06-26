@@ -28,8 +28,6 @@ import java.awt.Toolkit;
 import javax.swing.JPanel;
 import javax.swing.Timer;
 
-import org.systemsbiology.biotapestry.app.UIComponentSource;
-
 import java.net.URL;
 
 /***************************************************************************
@@ -46,12 +44,11 @@ public class CursorManager  {
   private Cursor errCur_;
   private boolean active_;
 
-  public CursorManager(UIComponentSource uics) {
-
+  public CursorManager(JPanel panel) {
     errCount_ = 0;
-    active_ = !uics.isHeadless();
+    active_ = (panel != null);
     if (active_) {
-      pan_ = uics.getSUPanel().getPanel();
+      pan_ = panel;
       pan_.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
       buildCursors();
     }

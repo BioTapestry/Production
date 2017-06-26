@@ -57,7 +57,6 @@ public class NameValuePairTablePanel extends JPanel {
   private List<EnumCell> valuesList_;
   private NameValuePairList nvpList_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -67,11 +66,10 @@ public class NameValuePairTablePanel extends JPanel {
   //
   ////////////////////////////////////////////////////////////////////////////      
 
-  public NameValuePairTablePanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, NameValuePairList currList, 
+  public NameValuePairTablePanel(UIComponentSource uics, JFrame parent, NameValuePairList currList, 
                                  Set<String> allKeys, Set<String> allValues, 
                                  Map allMappedValues, boolean buttonsOnSide) {
     uics_ = uics;
-    dacx_ = dacx;
     parent_ = parent;
     nvpList_ = currList;
     
@@ -81,7 +79,7 @@ public class NameValuePairTablePanel extends JPanel {
     namesList_ = buildEnumList(allKeys);
     valuesList_ = buildEnumList(allValues);
     
-    est_ = new EditableTable(uics, dacx, new NameValuePairTable(uics, dacx), parent_);
+    est_ = new EditableTable(uics, new NameValuePairTable(uics), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -199,8 +197,8 @@ public class NameValuePairTablePanel extends JPanel {
       }
     }
   
-    NameValuePairTable(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    NameValuePairTable(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"nvpEntry.name",    
                                 "nvpEntry.value"};
       colClasses_ = new Class[] {EnumCell.class,
@@ -313,7 +311,7 @@ public class NameValuePairTablePanel extends JPanel {
     // There may not be any blank names.  There may be blank values.  There
     // may not be duplicate names.
 
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     HashSet<String> otherNames = new HashSet<String>();
     int numRow = vals.size();  
     for (int i = 0; i < numRow; i++) {

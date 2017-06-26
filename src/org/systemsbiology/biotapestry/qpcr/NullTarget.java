@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -28,7 +28,7 @@ import java.io.IOException;
 
 import java.util.List;
 import org.xml.sax.Attributes;
-
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Splitter;
 
@@ -380,7 +380,7 @@ class NullTarget implements Cloneable {
   **
   */
   
-   String displayString(boolean fullyQualified, String units, boolean isSuffix) {
+   String displayString(boolean fullyQualified, String units, boolean isSuffix, TimeAxisDefinition tad) {
     StringBuffer buf = new StringBuffer();
     buf.append(target_);
 
@@ -393,7 +393,7 @@ class NullTarget implements Cloneable {
       return (buf.toString());
     }
     buf.append(" (");
-    buf.append(displayTimeSpansString(units, isSuffix));
+    buf.append(displayTimeSpansString(units, isSuffix, tad));
     buf.append(")");
     return (buf.toString());
   }
@@ -404,7 +404,7 @@ class NullTarget implements Cloneable {
   **
   */
   
-   String displayTimeSpansString(String units, boolean isSuffix) {
+   String displayTimeSpansString(String units, boolean isSuffix, TimeAxisDefinition tad) {
     StringBuffer buf = new StringBuffer();
     boolean isFirst = true;
     if (!isSuffix) {
@@ -421,7 +421,7 @@ class NullTarget implements Cloneable {
       } else {
         buf.append(", ");
       }
-      buf.append(nts.displayString());
+      buf.append(nts.displayString(tad));
     }
     if (isSuffix) {
       buf.append(" ");

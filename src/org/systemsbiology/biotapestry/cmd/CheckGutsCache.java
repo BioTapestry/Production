@@ -20,6 +20,7 @@
 
 package org.systemsbiology.biotapestry.cmd;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.ui.OverlayStateOracle;
 import org.systemsbiology.biotapestry.ui.SUPanel;
@@ -107,6 +108,10 @@ public class CheckGutsCache {
     return (genome_ != null);
   }
 
+  public int getTabCount() {
+    return (dacx_.getMetabase().getNumDB());
+  }
+  
   public boolean genomeNotEmpty() {
     return ((genome_ != null) && !genome_.isEmpty());
   }
@@ -124,6 +129,10 @@ public class CheckGutsCache {
   
   public boolean currNodeHasGroupImage(boolean forMap) {
     return (uics_.getTree().currNodeHasGroupImage(forMap));
+  }
+  
+  public boolean currNodeIsGroupNode() {
+    return (uics_.getTree().currNodeIsGroupNode());
   }
 
   public boolean moreThanOneModel() {

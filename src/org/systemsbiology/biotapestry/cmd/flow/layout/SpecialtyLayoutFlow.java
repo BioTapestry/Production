@@ -326,7 +326,7 @@ public class SpecialtyLayoutFlow extends AbstractControlFlow  {
             OverlayLayoutAnalyzer.OverlayReport olaor = ola.canSupport(dacx_, overlayKey);
             if (olaor.getResult() == OverlayLayoutAnalyzer.OverlayReport.MISSING_LINKS) {
                MessageTableReportingDialog mtrd = 
-                 new MessageTableReportingDialog(uics_, dacx_, olaor.getMissingLinkMessages(), 
+                 new MessageTableReportingDialog(uics_, olaor.getMissingLinkMessages(), 
                                                  "specLayout.overlayMissingLinksTitle", 
                                                  "specLayout.overlayMissingLinks", 
                                                  "specLayout.overlayMissingLink",

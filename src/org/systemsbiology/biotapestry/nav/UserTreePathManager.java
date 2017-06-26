@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -158,14 +158,12 @@ public class UserTreePathManager {
   ** Add a new tree path stop at given index
   */
 
-  public UserTreePathChange addPathStop(String pathKey, String genomeID, int stopIndex,
-                                        String ovrKey, TaggedSet mods, TaggedSet revs) {
+  public UserTreePathChange addPathStop(String pathKey, int stopIndex,UserTreePathStop newStop) {
     UserTreePathChange utpc = new UserTreePathChange();
     utpc.oldIndex = -1;
     UserTreePath currPath = paths_.get(pathKey);
     utpc.oldPath = currPath.clone();
     
-    UserTreePathStop newStop = new UserTreePathStop(genomeID, ovrKey, mods, revs);
     currPath.addStop(newStop, stopIndex);       
     utpc.newIndex = -1;
     utpc.newPath = currPath.clone();

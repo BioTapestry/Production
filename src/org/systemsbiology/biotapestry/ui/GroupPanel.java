@@ -36,6 +36,7 @@ import java.awt.image.LookupOp;
 import java.awt.image.LookupTable;
 import java.awt.image.RGBImageFilter;
 import java.awt.image.Raster;
+import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,8 +45,14 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.app.CmdSource;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.genome.DBGenome;
+import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
+import org.systemsbiology.biotapestry.genome.Genome;
+import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.ui.dialogs.GroupColorMapDialog;
 
 /***************************************************************************
 ** 
@@ -63,6 +70,8 @@ public class GroupPanel {
   private UIComponentSource uics_; 
   private CmdSource cSrc_;
   private StaticDataAccessContext dacx_;
+ 
+  private CursorManager cm_;
 
   //
   // Null when headless:
@@ -98,10 +107,11 @@ public class GroupPanel {
     JPanel mymip = myPanel_.getPanel();
     if (mymip != null) {
       mymip.addMouseListener(new MouseHandler());
-    }
-    if (mymip != null) {
       mymip.addMouseMotionListener(new MouseMotionHandler());
     }
+    
+    cm_ = new CursorManager(mymip);
+
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -116,7 +126,6 @@ public class GroupPanel {
   */
   
   public void setDataContext(StaticDataAccessContext dacx) {
-    UiUtil.fixMePrintout("BOGUS DACX, but cannot be null");
     dacx_ = dacx;
     return;
   }
@@ -242,6 +251,72 @@ public class GroupPanel {
     return (myPanel_.getPanel());
   } 
   
+  /***************************************************************************
+  **
+  ** Model drawing
+  */
+   
+  public String mapToDisplayText(NavTree.GroupNodeMapEntry gnme) {
+    String gName = null;
+    String grName = null;
+    String timeStr = null;
+    String format;
+    Object[] args;
+    GenomeSource gs = dacx_.getGenomeSource();
+    if (gnme.modelID != null) {
+      Genome genome = gs.getGenome(gnme.modelID);
+      gName = genome.getName();
+      if (gnme.regionID != null) {
+        GenomeInstance gi = (GenomeInstance)genome;
+        Group grp = gi.getGroup(gnme.regionID);
+        grName = grp.getDisplayName();
+        format = dacx_.getRMan().getString("grpPanel.gotoFormatWithReg");
+        args = new Object[] {gName, grName};
+      } else {
+        if (genome instanceof DBGenome) {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatRoot");
+          args = new Object[0];
+        } else {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatAllReg");
+          args = new Object[] {gName};
+        } 
+      }   
+    } else if (gnme.proxyID != null) {
+      DynamicInstanceProxy prox = gs.getDynamicProxy(gnme.proxyID);
+      gName = prox.getName();
+      if (gnme.regionID != null) {
+        GenomeInstance gi = prox.getAnInstance();
+        Group grp = gi.getGroup(gnme.regionID);
+        grName = grp.getInheritedDisplayName(gi);
+      }
+      if (gnme.proxyTime != null) {
+        timeStr = GroupColorMapDialog.timeValToString(dacx_.getExpDataSrc().getTimeAxisDefinition(), 
+                                                      gnme.proxyTime.intValue(), uics_.getRMan());
+      }
+      if (grName != null) {
+        if (timeStr != null) {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatProxOneRegWithTime");
+          args = new Object[] {gName, grName, timeStr}; 
+        } else {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatProxOneRegNoTime");
+          args = new Object[] {gName, grName};       
+        }
+      } else {
+        if (timeStr != null) {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatProxAllRegWithTime");
+          args = new Object[] {gName, timeStr}; 
+        } else {
+          format = dacx_.getRMan().getString("grpPanel.gotoFormatProxAllRegNoTime");
+          args = new Object[] {gName};       
+        }     
+      }
+    } else {
+      format = dacx_.getRMan().getString("grpPanel.gotoNoMapping");
+      args = new Object[0];    
+    }
+    return (MessageFormat.format(format, args));
+  }  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // INNER CLASSES
@@ -379,85 +454,36 @@ public class GroupPanel {
   */  
   
   public class MouseHandler extends MouseAdapter {
-
-    private final static int CLICK_SLOP_  = 2;
-    
-    @Override
-    public void mousePressed(MouseEvent me) {
-      try {
-        // IGNORE drags except with button 1 only
-        int mods = me.getModifiers();
-        int onmask = MouseEvent.BUTTON1_MASK;
-        int offmask = MouseEvent.BUTTON2_MASK | MouseEvent.BUTTON3_MASK;
-        boolean oneOnly = false;
-        if ((mods & (onmask | offmask)) == onmask) {
-          oneOnly = true;
-        }
-        if (!me.isPopupTrigger()) {
-          //
-        }
-        if (me.isPopupTrigger()) {
-       //
-        } else if (oneOnly) {
-//
-        }
-      } catch (Exception ex) {
-        uics_.getExceptionHandler().displayException(ex);
-      }
-      return;
-    }
-
-    @Override
-    public void mouseClicked(MouseEvent me) {
-      if (me.isPopupTrigger()) {
- 
-      }
-      return;
-    }    
-    
-    //
-    // We want to catch the mouse position when overlaid dialog windows close
-    // but the mouse is not moving:
-    //
-    
-    @Override
-    public void mouseEntered(MouseEvent me) {
-      try {
-      } catch (Exception ex) {
-        uics_.getExceptionHandler().displayException(ex);
-      }        
-      return;
-    }       
     
     @Override
     public void mouseReleased(MouseEvent me) { 
       try {
         int currX = me.getX();
         int currY = me.getY();
-        System.out.println("scr " + currX + " " + currY);
         if (myMap_ != null) {
           Point wpt = myPanel_.screenToWorld(new Point(currX, currY));
-          System.out.println(currX + " " + currY);
-          System.out.println("wo " + wpt);
           if ((wpt.x < 0) || (wpt.y < 0)) {
-            System.out.println("OOB");
+            cm_.signalError();
             return;
           }
           int width = myMap_.getWidth();
           int height = myMap_.getHeight();
           if ((wpt.x >= width) || (wpt.y >= height)) {
-            System.out.println("OOB");
+            cm_.signalError();
             return;
           }
           Color daCol = new Color(myMap_.getRGB(wpt.x, wpt.y));
-          System.out.println(daCol.getRed() + " " + daCol.getGreen() + " " + daCol.getBlue());
-          NavTree.GroupNodeMapEntry gnme = modelMap_.get(daCol);
+          // Model map will be null after index image installed, but not yet set up:
+          NavTree.GroupNodeMapEntry gnme = (modelMap_ == null) ? null : modelMap_.get(daCol);
           if (gnme == null) {
-            UiUtil.fixMePrintout("Probably error cursor");
+            cm_.signalError();
             return;
           }
-
-          cSrc_.getGroupPanelCmds().processMouseClick(gnme.modelID, gnme.proxyID, gnme.proxyTime, dacx_);
+          if ((gnme.modelID == null) && (gnme.proxyID == null)) {
+            cm_.signalError();
+            return;
+          }
+          cSrc_.getGroupPanelCmds().processMouseClick(gnme.modelID, gnme.proxyID, gnme.proxyTime, gnme.regionID, dacx_);
         }
         
       } catch (Exception ex) {
@@ -479,29 +505,25 @@ public class GroupPanel {
       try {
         int currX = me.getX();
         int currY = me.getY();
-        System.out.println("scr " + currX + " " + currY);
         if (myMap_ != null) {
           Point wpt = myPanel_.screenToWorld(new Point(currX, currY));
-          System.out.println(currX + " " + currY);
-          System.out.println("wo " + wpt);
           if ((wpt.x < 0) || (wpt.y < 0)) {
-            System.out.println("OOB");
             return;
           }
           int width = myMap_.getWidth();
           int height = myMap_.getHeight();
           if ((wpt.x >= width) || (wpt.y >= height)) {
-            System.out.println("OOB");
             return;
           }
           Color daCol = new Color(myMap_.getRGB(wpt.x, wpt.y));
-          System.out.println(daCol.getRed() + " " + daCol.getGreen() + " " + daCol.getBlue());
-          NavTree.GroupNodeMapEntry gnme = modelMap_.get(daCol);
+          // Model map will be null after index image installed, but not yet set up:
+          NavTree.GroupNodeMapEntry gnme = (modelMap_ == null) ? null : modelMap_.get(daCol);
           if (gnme == null) {
             uics_.getTextBoxMgr().clearCurrentMouseOver();
             myPanel_.setImage(myImg_);
           } else {
-            uics_.getTextBoxMgr().setCurrentMouseOver(gnme.modelID + " " + gnme.proxyID + " " + gnme.proxyTime);
+            String disp = mapToDisplayText(gnme);
+            uics_.getTextBoxMgr().setCurrentMouseOver(disp);
             BufferedImage bim = buildMaskedImageToo(myImg_, myMap_, daCol.getRed(), daCol.getGreen(), daCol.getBlue());
             myPanel_.setImage(bim);
           }

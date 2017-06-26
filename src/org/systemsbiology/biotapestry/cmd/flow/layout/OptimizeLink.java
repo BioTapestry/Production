@@ -272,7 +272,7 @@ public class OptimizeLink extends AbstractControlFlow {
             
       boolean allowReparent;
       if (allowReparentObj == null) {      
-        AllowReparentOptimizeDialog arpd = new AllowReparentOptimizeDialog(uics_, dacx_);
+        AllowReparentOptimizeDialog arpd = new AllowReparentOptimizeDialog(uics_);
         arpd.setVisible(true);
         if (!arpd.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this)); 

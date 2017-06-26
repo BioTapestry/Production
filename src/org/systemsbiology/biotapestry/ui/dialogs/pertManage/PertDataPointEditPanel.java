@@ -41,13 +41,14 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.LegacyPert;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureProps;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
 import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
@@ -76,6 +77,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   private PertDataPoint pdpResult_;
   private List userValsResult_;
   private PerturbationData pd_;
+  private TimeAxisDefinition tad_;
   private String currKey_;
   private List<String> currAnnots_;
   private PerturbationData.RegionRestrict currRegRes_;
@@ -109,11 +111,12 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertDataPointEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, 
-                                PendingEditTracker pet, String myKey, int legacyModes) { 
-    super(uics, dacx, parent, pet, myKey, 6);
+  public PertDataPointEditPanel(UIComponentSource uics, JFrame parent, PerturbationData pd, 
+                                TimeCourseData tcd, TimeAxisDefinition tad, PendingEditTracker pet, String myKey, int legacyModes) { 
+    super(uics, parent, pet, myKey, 6);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);
+    tad_ = tad;
+    pmh_ = new PertManageHelper(uics, parent, pd, tcd, rMan_, gbc_, pet_);
   
     int colNum = 0;
     // -----------------------------------------------
@@ -214,7 +217,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     UiUtil.gbcSet(gbc_, colNum++, rowNum_, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     add(mtCombo, gbc_);
        
-    Vector sigOps = PertDataPoint.getSignificanceOptions(dacx_);
+    Vector sigOps = PertDataPoint.getSignificanceOptions(uics_);
     JLabel forceLabel = new JLabel(rMan_.getString("pertDataPointEdit.forceSig"));
     forceCombo_ = new JComboBox(sigOps);
     UiUtil.gbcSet(gbc_, colNum++, rowNum_, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);
@@ -338,7 +341,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     //
 
     userCols_ = buildUserColumns(pd);
-    etudf_ = new EditableTable(uics, dacx, new UserFieldsTableModel(uics, dacx, userCols_, pd.getUserFieldCount() > 0), parent_);
+    etudf_ = new EditableTable(uics, new UserFieldsTableModel(uics, userCols_, pd.getUserFieldCount() > 0), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.tableIsUnselectable = true;
     etp.buttons = EditableTable.NO_BUTTONS;
@@ -387,13 +390,13 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  public void setDataPoint(String pointKey) {
+  public void setDataPoint(String pointKey, TimeAxisDefinition tad) {
     mode_ = EDIT_MODE;
     currKey_ = pointKey;
     PertDataPoint pdp = (currKey_ == null) ? null : pd_.getDataPoint(currKey_); 
     currAnnots_ = (pdp == null) ? null : pd_.getDataPointNotes(currKey_);
     currRegRes_ = (pdp == null) ? null : pd_.getRegionRestrictionForDataPoint(currKey_);
-    displayProperties();
+    displayProperties(tad);
     return;
   }
   
@@ -403,13 +406,13 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  public void setDataPointForDup(String origKey) {
+  public void setDataPointForDup(String origKey, TimeAxisDefinition tad) {
     mode_ = DUP_MODE;
     currKey_ = origKey;
     PertDataPoint pdp = pd_.getDataPoint(currKey_); 
     currAnnots_ = (pdp == null) ? null : pd_.getDataPointNotes(currKey_);
     currRegRes_ = (pdp == null) ? null : pd_.getRegionRestrictionForDataPoint(currKey_);
-    displayProperties();
+    displayProperties(tad);
     return;
   }
     
@@ -507,7 +510,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   */
   
   protected void updateOptions() {
-    Vector srcVec = pd_.getExperimentOptions();
+    Vector srcVec = pd_.getExperimentOptions(tad_);
     UiUtil.replaceComboItems(sourceCombo_, srcVec);
     
     Vector targVec = pd_.getTargetOptions(true);
@@ -516,7 +519,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     Vector measureTypes = pd_.getMeasureDictionary().getMeasurementOptions();
     UiUtil.replaceComboItems(measureTypeCombo_, measureTypes);
        
-    Vector sigOps = PertDataPoint.getSignificanceOptions(dacx_);
+    Vector sigOps = PertDataPoint.getSignificanceOptions(uics_);
     UiUtil.replaceComboItems(forceCombo_, sigOps);
     
     Vector ctrlOps = pd_.getConditionDictionary().getExprControlOptions();
@@ -771,7 +774,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  private void displayProperties() {
+  private void displayProperties(TimeAxisDefinition tad) {
 
     updateOptions();
      
@@ -810,7 +813,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     
     idLabel_.setText(linkMsg);
 
-    TrueObjChoiceContent tocc = pdp.getExperiment(pd_).getChoiceContent(pd_);
+    TrueObjChoiceContent tocc = pdp.getExperiment(pd_).getChoiceContent(pd_, tad);
     sourceCombo_.setSelectedItem(tocc);
   
     TrueObjChoiceContent tocct = pd_.getTargetChoiceContent(pdp.getTargetKey(), true);
@@ -839,7 +842,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
     TrueObjChoiceContent toccM = pd_.getMeasureDictionary().getMeasurementChoice(pdp.getMeasurementTypeKey());
     measureTypeCombo_.setSelectedItem(toccM);
       
-    TrueObjChoiceContent toccf = pdp.getForcedSignificanceChoice(dacx_);
+    TrueObjChoiceContent toccf = pdp.getForcedSignificanceChoice(uics_);
     forceCombo_.setSelectedItem(toccf);
    
     String curr = pdp.getControl();
@@ -887,7 +890,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
       }
     }
     if (badNum) {   
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JOptionPane.showMessageDialog(parent_, 
                                     rMan.getString("pdpe.badValueNumber"), 
                                     rMan.getString("pdpe.badValueNumberTitle"),
@@ -941,8 +944,8 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
       }
     }
  
-    public UserFieldsTableModel(UIComponentSource uics, DataAccessContext dacx, List columns, boolean haveFields) {
-      super(uics, dacx, columns.size());
+    public UserFieldsTableModel(UIComponentSource uics, List columns, boolean haveFields) {
+      super(uics, columns.size());
       int numCol = columns_.length;
       colNames_ = new String[numCol];
       colClasses_ = new Class[numCol];
@@ -1061,7 +1064,7 @@ public class PertDataPointEditPanel extends AnimatedSplitEditPanel {
       }
       
       if (sourceComboTocc != null) {
-        sourceCombo_.setSelectedItem(pd_.getExperimentChoice((String)sourceComboTocc.val));
+        sourceCombo_.setSelectedItem(pd_.getExperimentChoice((String)sourceComboTocc.val, tad_));
       }
       if (targComboTocc != null) {
         targCombo_.setSelectedItem(pd_.getTargetChoiceContent((String)targComboTocc.val, true));

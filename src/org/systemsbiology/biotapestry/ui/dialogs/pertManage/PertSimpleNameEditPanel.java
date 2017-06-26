@@ -34,7 +34,6 @@ import javax.swing.JPanel;
 import javax.swing.text.JTextComponent;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
@@ -75,8 +74,8 @@ public class PertSimpleNameEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertSimpleNameEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String label, Client client, String myKey) { 
-    super(uics, dacx, parent, pet, myKey, 4);
+  public PertSimpleNameEditPanel(UIComponentSource uics, JFrame parent, PendingEditTracker pet, String label, Client client, String myKey) { 
+    super(uics, parent, pet, myKey, 4);
     client_ = client;
     
     JPanel editPanel = new JPanel();

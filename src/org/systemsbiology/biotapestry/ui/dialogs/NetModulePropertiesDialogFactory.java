@@ -365,7 +365,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       currTagsList_ = new ArrayList<String>(currTags_);
       globalTags_ = new HashSet<String>(nmpa.globalTags);
       nps_ = new NodeAndLinkPropertiesSupport(uics_, dacx_);
-      nvptab_ = new NameValuePairTablePanel(uics_, dacx_, uics_.getTopFrame(), nmpa.origNvpl, nmpa.allNames, nmpa.allValues, nmpa.valsForNames, false);     
+      nvptab_ = new NameValuePairTablePanel(uics_, uics_.getTopFrame(), nmpa.origNvpl, nmpa.allNames, nmpa.allValues, nmpa.valsForNames, false);     
       
       //
       // Build the tabs.
@@ -572,7 +572,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       
       int rowNum = 0;
       JLabel label = new JLabel(rMan.getString("nmodule.displayType"));
-      Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(dacx_, true);
+      Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(uics_, true);
       typeCombo_ = new JComboBox(choices);
   
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
@@ -586,10 +586,10 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       // built last to hand it listener:
       //
       
-      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "nmodprop.fillColor", false, false);
+      colorWidget2_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, null, true, "nmodprop.fillColor", false, false);
       ArrayList<ColorDeletionListener> colorDeletionListeners = new ArrayList<ColorDeletionListener>();
       colorDeletionListeners.add(colorWidget2_);
-      colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorDeletionListeners, true, "nmodprop.borderColor", true, false);    
+      colorWidget1_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, colorDeletionListeners, true, "nmodprop.borderColor", true, false);    
       
       UiUtil.gbcSet(gbc, 0, rowNum++, 11, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
       retval.add(colorWidget1_, gbc); 
@@ -617,7 +617,7 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
       });
   
       fadeLabel_ = new JLabel(rMan.getString("nmodProp.fadeMode"));
-      Vector<ChoiceContent> fadeChoices = NetModuleProperties.getNameFades(dacx_);
+      Vector<ChoiceContent> fadeChoices = NetModuleProperties.getNameFades(uics_);
       fadeCombo_ = new JComboBox(fadeChoices);
   
       UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
@@ -666,10 +666,10 @@ public class NetModulePropertiesDialogFactory extends DialogFactory {
         colorWidget2_.setEnabled(false);
       }
 
-      typeCombo_.setSelectedItem(NetModuleProperties.typeForCombo(dacx_, nmpa_.origModType)); 
+      typeCombo_.setSelectedItem(NetModuleProperties.typeForCombo(uics_, nmpa_.origModType)); 
        
       hideLabelBox_.setSelected(nmpa_.origIsHiding);
-      fadeCombo_.setSelectedItem(NetModuleProperties.fadeForCombo(dacx_, nmpa_.origFade)); 
+      fadeCombo_.setSelectedItem(NetModuleProperties.fadeForCombo(uics_, nmpa_.origFade)); 
       fadeLabel_.setEnabled(!hideLabelBox_.isSelected());
       fadeCombo_.setEnabled(!hideLabelBox_.isSelected());
       

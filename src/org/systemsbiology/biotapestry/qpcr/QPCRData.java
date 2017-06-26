@@ -40,8 +40,9 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
-import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataMapSource;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.ConditionDictionary;
@@ -49,6 +50,7 @@ import org.systemsbiology.biotapestry.perturb.LegacyPert;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertDictionary;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PertSources;
@@ -97,7 +99,6 @@ class QPCRData {
   private HashMap<String, List<String>> sourceMap_;
   private double threshold_;
   private long serialNumber_;
-  private TabPinnedDynamicDataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -110,8 +111,7 @@ class QPCRData {
   ** Constructor
   */
 
-  QPCRData(TabPinnedDynamicDataAccessContext dacx) {
-    dacx_ = dacx;
+  QPCRData() {
     genes_ = new ArrayList<TargetGene>();
     nullPerturbations_ = new ArrayList<NullPerturb>();
     nullPertDefaultSpan_ = null;
@@ -134,12 +134,10 @@ class QPCRData {
   ** Stock the new perturbation system from the old QPCR storage:
   */
   
-  void transferFromLegacy() {
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    DataMapSource dms = dacx_.getDataMapSrc();
+  void transferFromLegacy(PerturbationData pd, DataMapSource dms, DisplayOptions dOpt, TimeAxisDefinition tad) {
     PerturbationDataMaps pdms = dms.getPerturbationDataMaps();
     if (pdms == null) {
-      pdms = new PerturbationDataMaps(dacx_);
+      pdms = new PerturbationDataMaps();
       dms.setPerturbationDataMaps(pdms);
     }
 
@@ -149,7 +147,6 @@ class QPCRData {
     String legCondition = cDict.getStandardConditionKey(); 
     String legMeasure = mDict.createLegacyMeasureProps(threshold_);
     
-    DisplayOptions dOpt = dacx_.getDisplayOptsSource().getDisplayOptions(); 
     dOpt.setColumns(getColumns());
     
     long timeStamp = System.currentTimeMillis();
@@ -253,7 +250,7 @@ class QPCRData {
     // Now handle null perturbations:
     //
   
-    NullTimeSpan dnts = getLegacyNullPerturbationsDefaultTimeSpan(dacx_);
+    NullTimeSpan dnts = getLegacyNullPerturbationsDefaultTimeSpan(tad);
  
     int numNull = nullPerturbations_.size();
     for (int i = 0; i < numNull; i++) {
@@ -924,13 +921,13 @@ class QPCRData {
   ** Get the default time span for null perturbations
   */
   
-  NullTimeSpan getLegacyNullPerturbationsDefaultTimeSpan(TabPinnedDynamicDataAccessContext dacx) {
+  NullTimeSpan getLegacyNullPerturbationsDefaultTimeSpan(TimeAxisDefinition tad) {
     //
     // Kinda weird; don;t actually set it unless user does so explicitly. Don't
     // want it written out or considered committed unless we actually set it.
     if (nullPertDefaultSpan_ == null) {
-      MinMax mm = dacx.getExpDataSrc().getTimeAxisDefinition().getDefaultTimeSpan();
-      return (new NullTimeSpan(dacx, mm.min, mm.max));
+      MinMax mm = tad.getDefaultTimeSpan();
+      return (new NullTimeSpan(mm.min, mm.max));
     } else {
       return (nullPertDefaultSpan_);
     }
@@ -1238,11 +1235,11 @@ class QPCRData {
   ** Get the list of targets names for the gene ID.  May be empty.
   */
   
-  private List<String> getQPCRDataEntryKeysWithDefault(String nodeId, TabPinnedDynamicDataAccessContext dacx) {  
+  private List<String> getQPCRDataEntryKeysWithDefault(String nodeId, DBGenome dbGenome) {  
     List<String> retval = entryMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<String>();
-      Node node = dacx.getGenomeSource().getRootDBGenome().getNode(nodeId);
+      Node node = dbGenome.getNode(nodeId);
       if (node == null) {
         throw new IllegalStateException();
       }
@@ -1261,11 +1258,11 @@ class QPCRData {
   ** Get the list of source names for the gene ID.  May be empty.
   */
   
-  private List<String> getQPCRDataSourceKeysWithDefault(String nodeId, TabPinnedDynamicDataAccessContext dacx) {  
+  private List<String> getQPCRDataSourceKeysWithDefault(String nodeId, DBGenome dbGenome) {  
     List<String> retval = sourceMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<String>();
-      Node node = dacx.getGenomeSource().getRootDBGenome().getNode(nodeId);
+      Node node = dbGenome.getNode(nodeId);
       if (node == null) {
         throw new IllegalStateException();
       }
@@ -1301,15 +1298,16 @@ class QPCRData {
   ** Get the HTML table for the given gene.  May be null.
   */
   
-   String getHTML(String geneId, String sourceID, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
-    List<String> keys = getQPCRDataEntryKeysWithDefault(geneId, dacx);
+   String getHTML(String geneId, String sourceID, QpcrTablePublisher qtp, DBGenome dbGenome, 
+                  PerturbationData pd, TimeAxisDefinition tad, ResourceManager rMan) {
+    List<String> keys = getQPCRDataEntryKeysWithDefault(geneId, dbGenome);
     if (keys == null) {
       return (null);
     }
     
     List<String> srcKeys = null;
     if (sourceID != null) {
-      srcKeys = getQPCRDataSourceKeysWithDefault(sourceID, dacx);
+      srcKeys = getQPCRDataSourceKeysWithDefault(sourceID, dbGenome);
       if (srcKeys == null) {
         return (null);
       }
@@ -1330,7 +1328,7 @@ class QPCRData {
     }
     // needs keys for ALL targets, even those that did not map to table data, to fill out
     // null perturbation lists.
-    writeHTMLForGenes(out, ind, targetGenes, keys, srcKeys, true, qtp, dacx);
+    writeHTMLForGenes(out, ind, targetGenes, keys, srcKeys, true, qtp, pd, tad, rMan);
     return (sw.toString());
   }  
   
@@ -1340,7 +1338,7 @@ class QPCRData {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, PerturbationData pd, TimeAxisDefinition tad, ResourceManager rMan) {
     Iterator<TargetGene> trgit = genes_.iterator();
     TreeMap<String, TargetGene> sortedGeneMap = new TreeMap<String, TargetGene>();    
     while (trgit.hasNext()) {
@@ -1356,7 +1354,7 @@ class QPCRData {
       geneNames.add(trg.getName());
       sortedGenes.add(trg);
     }
-    writeHTMLForGenes(out, ind, sortedGenes, geneNames, null, false, qtp, dacx);
+    writeHTMLForGenes(out, ind, sortedGenes, geneNames, null, false, qtp, pd, tad, rMan);
     return;
   }
 
@@ -1368,17 +1366,18 @@ class QPCRData {
   
    void writeHTMLForGenes(PrintWriter out, Indenter ind, 
                           List<TargetGene> targetGenes, List<String> names, List<String> srcNames,
-                          boolean doTrim, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) {
+                          boolean doTrim, QpcrTablePublisher qtp, PerturbationData pd, 
+                          TimeAxisDefinition tad, ResourceManager rMan) {
      
-    qtp.colorsAndScaling();
-    DisplayOptions dopt = dacx.getDisplayOptsSource().getDisplayOptions();
+    qtp.colorsAndScaling(pd, rMan);
+    PertDisplayOptions dopt = pd.getPertDisplayOptions();
     boolean breakOutInvest = dopt.breakOutInvestigators();
     ind.indent();
     out.println("<center>");   
     out.println("<table width=\"100%\" border=\"1\" bordercolor=\"#000000\" cellpadding=\"7\" cellspacing=\"0\" >");
  
     // Print out table heading row
-    outputSpanRow(out, ind, qtp, dacx);
+    outputSpanRow(out, ind, qtp, rMan, tad);
    
     //
     // Crank out the genes
@@ -1388,9 +1387,9 @@ class QPCRData {
     Set<String> footNumbers = new HashSet<String>();
     while (git.hasNext()) {
       TargetGene tg = git.next();
-      rowCount = tg.writeHTML(out, ind, timeSpanCols_, qtp, rowCount, breakOutInvest, srcNames, footNumbers, dacx);
+      rowCount = tg.writeHTML(out, ind, timeSpanCols_, qtp, rowCount, breakOutInvest, srcNames, footNumbers, tad);
       if ((rowCount > HEADING_SPACING_) && git.hasNext()){
-        outputSpanRow(out, ind, qtp, dacx);
+        outputSpanRow(out, ind, qtp, rMan, tad);
         rowCount = 0;
       }
     }
@@ -1398,7 +1397,6 @@ class QPCRData {
     out.println("</table>");
 
     qtp.paragraph(false);
-    ResourceManager rMan = dacx.getRMan();
     out.print(rMan.getString("qpcrData.qpcrTableNote"));    
     out.println("</p>");
     
@@ -1414,18 +1412,18 @@ class QPCRData {
       }
     }
     Iterator<String> perout = sortedPert.keySet().iterator();
-    NullTimeSpan ndts = new NullTimeSpan(dacx, dopt.getNullPertDefaultSpan());
+    NullTimeSpan ndts = new NullTimeSpan(dopt.getNullPertDefaultSpan(tad));
     boolean doHeading = true;    
     while (perout.hasNext()) {
       String pertName = perout.next();
       NullPerturb per = sortedPert.get(pertName);
       if (!doTrim || per.appliesToTargets(names)) {
         if (doHeading) {
-          qtp.writePerturbationHeader(ind, ndts);
+          qtp.writePerturbationHeader(ind, ndts, tad, rMan);
           ind.up();
           doHeading = false;
         }  
-        per.writeHTML(out, ind, qtp, ndts, dacx);
+        per.writeHTML(out, ind, qtp, rMan, ndts, tad);
         if (doTrim) {
           Set<String> foots = per.getFootnoteNumbers();
           footNumbers.addAll(foots);
@@ -1463,7 +1461,8 @@ class QPCRData {
   ** Output column headers
   */
   
-  private void outputSpanRow(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, TabPinnedDynamicDataAccessContext dacx) { 
+  private void outputSpanRow(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, 
+                             ResourceManager rMan, TimeAxisDefinition tad) { 
     ind.up().indent();
     out.println("<tbody>");
     // Print out table heading row
@@ -1496,9 +1495,9 @@ class QPCRData {
       out.print("<b>");
       String tdisp;
       if ((tc.min == Integer.MIN_VALUE) && (tc.max == Integer.MAX_VALUE)) {
-        tdisp = dacx.getRMan().getString("qpcrDisplay.allTimes");
+        tdisp = rMan.getString("qpcrDisplay.allTimes");
       } else {     
-        tdisp = TimeSpan.spanToString(dacx, tc);
+        tdisp = TimeSpan.spanToString(tad, tc);
       }
       tdisp = tdisp.replaceAll(" ", "&nbsp;");     
       out.print(tdisp);
@@ -1660,7 +1659,7 @@ class QPCRData {
   **
   */
   
-   static QPCRData buildFromXML(TabPinnedDynamicDataAccessContext dacx, String elemName, 
+   static QPCRData buildFromXML(String elemName, 
                                 Attributes attrs, 
                                 boolean serialNumberIsIllegal) throws IOException {
     if (!elemName.equals("QPCR")) {
@@ -1672,7 +1671,7 @@ class QPCRData {
       throw new IOException();
     }
     
-    QPCRData retval = new QPCRData(dacx);
+    QPCRData retval = new QPCRData();
     if (threshString != null) {
       try {
         double thresh = Double.parseDouble(threshString);

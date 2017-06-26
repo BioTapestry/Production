@@ -370,7 +370,7 @@ public class MetabaseSharedCore {
       ind.down();
     }
     
-    if ((pertData_ != null) && pertData_.haveData()) {
+    if (pertData_ != null) {
       pertData_.writeXML(out, ind.up());
       ind.down();
     }

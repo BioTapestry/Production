@@ -29,6 +29,7 @@ import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.SelectionChangeEvent;
+import org.systemsbiology.biotapestry.event.TreeNodeChangeEvent;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
 import org.systemsbiology.biotapestry.modelBuild.ModelBuilder;
@@ -133,7 +134,11 @@ public class CompoundPreEventCmd extends BTUndoCmd {
       } else if (ce instanceof OverlayDisplayChangeEvent) {
         mgr.sendOverlayDisplayChangeEvent((OverlayDisplayChangeEvent)ce);
       } else if (ce instanceof ModelBuilder.MBChangeEvent) {
-        mgr.sendModelBuildChangeEvent((ModelBuilder.MBChangeEvent)ce);       
+        mgr.sendModelBuildChangeEvent((ModelBuilder.MBChangeEvent)ce);   
+      } else if (ce instanceof TreeNodeChangeEvent) {
+        mgr.sendTreeNodeChangeEvent((TreeNodeChangeEvent)ce);       
+        
+        
       } else {
         throw new IllegalArgumentException();
       }

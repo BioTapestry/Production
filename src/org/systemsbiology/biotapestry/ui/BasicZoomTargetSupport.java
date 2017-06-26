@@ -32,6 +32,7 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
 import org.systemsbiology.biotapestry.nav.ZoomTarget;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /***************************************************************************
@@ -158,6 +159,16 @@ public class BasicZoomTargetSupport implements ZoomTarget {
     // gives us the necessary component size we need to accommodate that world
     // at the given zoom level.
     //
+    UiUtil.fixMePrintout("seeing NPE here after append tab, undo, redo, undo:");
+    if (rcx_ == null) {
+      System.out.println("hi");
+    }
+    if (rcx_.getWorkspaceSource() == null) {
+      System.out.println("hi2");
+    }
+    if (rcx_.getWorkspaceSource().getWorkspace() == null) {
+      System.out.println("hi3");
+    }
     Rectangle rect = rcx_.getWorkspaceSource().getWorkspace().getWorkspace();
     int width = (int)(rect.width * zoom_); 
     int height = (int)(rect.height * zoom_);

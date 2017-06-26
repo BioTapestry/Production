@@ -233,7 +233,7 @@ public class SetSelectedInactive extends AbstractControlFlow {
           copyNode.setActivity(NodeInstance.INACTIVE);
           GenomeChange gc = (node.getNodeType() == Node.GENE) ? dacx_.getCurrentGenome().replaceGene((Gene)copyNode) : dacx_.getCurrentGenome().replaceNode(copyNode);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             needEvent = true;
           }          
@@ -249,7 +249,7 @@ public class SetSelectedInactive extends AbstractControlFlow {
         if (activeSetting != LinkageInstance.INACTIVE) {
           GenomeChange gc = dacx_.getCurrentGenomeAsInstance().replaceLinkageInstanceActivity(linkID, LinkageInstance.INACTIVE, 0.0);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             needEvent = true;
           }          

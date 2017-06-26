@@ -21,7 +21,13 @@
 package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.Dimension;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+
 import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
+import javax.swing.border.EmptyBorder;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import javax.swing.JOptionPane;
@@ -41,11 +47,13 @@ import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.ProtoInteger;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
+import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.TimeAxisHelper;
 import org.systemsbiology.biotapestry.util.EnumCell;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -65,26 +73,14 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private EditableTable est_;
-  private EditableTable mcet_;
-  private boolean namedStages_;
-  private ArrayList<MinMax> origCols_;
-  private ArrayList<MinMax> resultCols_;
-  private ArrayList<EnumCell> colorList_;
-  
-  private TreeMap<String, MeasureColorTableModel.TableRow> origColorMap_;
   private TimeAxisDefinition tad_;
-  private JComboBox scaleOptions_;
-  private JCheckBox investMode_;
-  
-  private boolean resultInvestMode_;
-  private MinMax resultDefaultSpan_;
-  private String resultCurrentScale_;
-  private Map<String, String> resultCurrColors_;
   private TimeAxisHelper tah_;
+  private PerturbationData pd_;
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private ArrayList<PerTab> ptDat_;
+  private boolean namedStages_;
   
   private static final long serialVersionUID = 1L;
 
@@ -102,10 +98,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   
   public static QpcrSetupDialog qpcrSetupDialogWrapper(UIComponentSource uics,
                                                        DataAccessContext dacx,
-                                                       List<MinMax> currColumns, 
-                                                       Map<String, String> currColors, 
-                                                       String currentScale, boolean currentInvestMode,
-                                                       MinMax currentNullDefaultSpan, UndoFactory uFac) {
+                                                       List<PertDisplayOptions> currPdos, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
       TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
@@ -122,8 +115,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       return (null);
     }
     
-    QpcrSetupDialog qsd = new QpcrSetupDialog(uics, dacx, currColumns, currColors, currentScale, 
-                                              currentInvestMode, currentNullDefaultSpan, uFac);
+    QpcrSetupDialog qsd = new QpcrSetupDialog(uics, dacx, currPdos, uFac);
     return (qsd);
   }    
   
@@ -136,68 +128,41 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   /***************************************************************************
   **
   ** Constructor 
+  *List<MinMax> currColumns, Map<String, String> currColors, 
+                          String currentScale, boolean currentInvestMode, 
+                          MinMax currentNullDefaultSpan
   */ 
   
-  private QpcrSetupDialog(UIComponentSource uics, DataAccessContext dacx, List<MinMax> currColumns, Map<String, String> currColors, 
-                          String currentScale, boolean currentInvestMode, MinMax currentNullDefaultSpan, UndoFactory uFac) {
-    super(uics, dacx, "qsedit.title", new Dimension(900, 500), 10);
+  private QpcrSetupDialog(UIComponentSource uics, DataAccessContext dacx, List<PertDisplayOptions> currPdos, UndoFactory uFac) {
+    super(uics, "qsedit.title", new Dimension(900, 500), 10);
     uics_ = uics;
     dacx_ = dacx;
+    pd_ = dacx.getExpDataSrc().getPertData();
     uFac_ = uFac;
     tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
-    namedStages_ = tad_.haveNamedStages(); 
-       
-    JLabel t1Lab = new JLabel(rMan_.getString("qsedit.setDisplayColumns"), JLabel.LEFT);
-    addWidgetFullRow(t1Lab, true);
+    namedStages_ = tad_.haveNamedStages();
+    ptDat_ = new ArrayList<PerTab>();
     
-    est_ = new EditableTable(uics_, dacx_, new ColumnTableModel(uics_, dacx_, tad_, namedStages_), uics_.getTopFrame());
-    EditableTable.TableParams etp = new EditableTable.TableParams();
-    etp.addAlwaysAtEnd = true;
-    etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
-    etp.singleSelectOnly = true;
-    JPanel tablePan = est_.buildEditableTable(etp);
-    addTable(tablePan, 8);
+    //
+    // Build the tabs.
+    //
+
+    JTabbedPane tabPane = new JTabbedPane();
     
-    scaleOptions_ = new JComboBox();
-    JLabel sLab = new JLabel(rMan_.getString("qsedit.chooseScale"));
-    addLabeledWidget(sLab, scaleOptions_, true, false);
-     
-    investMode_ = new JCheckBox(rMan_.getString("qsedit.breakUpInvest"));
-    addWidgetFullRow(investMode_, true);
-     
-    //
-    // First time thru, we might needt to grab this from the TAD:
-    //
- 
-    if (currentNullDefaultSpan == null) {
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-      currentNullDefaultSpan = tad.getDefaultTimeSpan();
+    for (PertDisplayOptions pdo : currPdos) {
+      PerTab pt = new PerTab(pdo);
+      ptDat_.add(pt);
+      JPanel pan = perTabPanel(pt, tad_);
+      pt.tabPanel_ = pan;
+      tabPane.addTab(rMan_.getString("propDialogs.layoutProp"), pt.tabPanel_);
     }
-    
-    tah_ = new TimeAxisHelper(uics_, dacx_, this, currentNullDefaultSpan.min, currentNullDefaultSpan.max, uFac_);
-    JPanel helper = tah_.buildHelperPanel();
-    JLabel dLab = new JLabel(rMan_.getString("qsedit.defaultSpan"));
-    addLabeledWidget(dLab, helper, true, false);
-  
-    //
-    // measurement->color table:
-    //
-  
-    JLabel t2Lab = new JLabel(rMan_.getString("qsedit.setColors"), JLabel.LEFT);
-    addWidgetFullRow(t2Lab, true);
-    
-    colorList_ = buildColors();    
-    mcet_ = new EditableTable(uics_, dacx_, new MeasureColorTableModel(uics_, dacx_), uics_.getTopFrame());
-    etp = new EditableTable.TableParams();
-    etp.buttons = EditableTable.NO_BUTTONS;
-    etp.tableIsUnselectable = true;
-    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(MeasureColorTableModel.COLOR), new EditableTable.EnumCellInfo(false, colorList_, EnumCell.class));
-    tablePan = mcet_.buildEditableTable(etp);
-    addTable(tablePan, 4);
+    addTable(tabPane, 4);
        
-    finishConstruction(); 
-    displayProperties(currColumns, currColors, currentScale, currentInvestMode, currentNullDefaultSpan);
+    finishConstruction();
+    
+    for (PerTab pt : ptDat_) {
+      displayProperties(pt, tad_);
+    }   
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -205,57 +170,24 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////    
-   
-  /***************************************************************************
-  **
-  ** Get the column results
-  ** 
-  */
-  
-  public List<MinMax> getColumnResults() {
-    return (resultCols_);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the investigator display mode
-  ** 
-  */
-  
-  public boolean getInvestModeResults() {
-    return (resultInvestMode_);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the default span result
-  ** 
-  */
-  
-  public MinMax getSpanResult() {
-    return (resultDefaultSpan_);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the display scale result
-  ** 
-  */
-  
-  public String getScaleResult() {
-    return (resultCurrentScale_);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the color result
-  ** 
-  */
-  
-  public Map<String, String> getColorResults() {
-    return (resultCurrColors_);
-  }
  
+  /***************************************************************************
+  **
+  ** Get the results
+  ** 
+  */
+  
+  public PertDisplayOptions getResults(int tabNum) {
+    PerTab pt = ptDat_.get(tabNum);
+    PertDisplayOptions pdo = pt.currPdo_.clone();
+    pdo.setColumns(pt.resultCols_);         
+    pdo.setBreakOutInvestigatorMode(pt.resultInvestMode_);
+    pdo.setNullDefaultSpan(pt.resultDefaultSpan_);  
+    pdo.setPerturbDataDisplayScaleKey(pt.resultCurrentScale_); 
+    pdo.setMeasurementDisplayColors(pt.resultCurrColors_);     
+    return (pdo);
+  }
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // INNER CLASSES
@@ -274,10 +206,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     private final static int NUM_COL_  = 2;  
     private static final long serialVersionUID = 1L;
    
-    ColumnTableModel(UIComponentSource uics, DataAccessContext dacx, TimeAxisDefinition tad, boolean namedStages) {
-      super(uics, dacx, NUM_COL_);
+    ColumnTableModel(UIComponentSource uics, TimeAxisDefinition tad, boolean namedStages) {
+      super(uics, NUM_COL_);
       String displayUnits = tad.unitDisplayString();
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String minHeading = MessageFormat.format(rMan.getString("qsedit.minTimeUnitFormat"), new Object[] {displayUnits});
       String maxHeading = MessageFormat.format(rMan.getString("qsedit.maxTimeUnitFormat"), new Object[] {displayUnits});
  
@@ -319,11 +251,11 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       return;
     }
 
-    boolean applyValues() {
+    boolean applyValues(PerTab pt) {
     
-      ResourceManager rMan = dacx_.getRMan();
-      if (dacx_.getExpDataSrc().getPertData().columnDefinitionsLocked()) { 
-        resultCols_ = new ArrayList<MinMax>(origCols_); 
+      ResourceManager rMan = uics_.getRMan();
+      if (pd_.columnDefinitionsLocked()) { 
+        pt.resultCols_ = new ArrayList<MinMax>(pt.origCols_); 
         return (true);
       }
       
@@ -336,7 +268,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       // Make sure the integers are OK, non-overlapping, etc:
       //
       
-      resultCols_ = new ArrayList<MinMax>();
+      pt.resultCols_ = new ArrayList<MinMax>();
       int size = vals.size();
       int lastMax = -1;
       for (int i = 0; i < size; i++) {     
@@ -353,7 +285,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
             JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("qsedit.badStageName"),
                                           rMan.getString("qsedit.badStageNameTitle"),
                                           JOptionPane.ERROR_MESSAGE);
-            resultCols_ = null;
+            pt.resultCols_ = null;
             return (false);
           }   
         } else {      
@@ -362,7 +294,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
           if (((min == null) || (!min.valid)) ||
               ((max == null) || (!max.valid))) {
             IntegerEditor.triggerWarning(uics_.getHandlerAndManagerSource(), uics_.getTopFrame());
-            resultCols_ = null;
+            pt.resultCols_ = null;
             return (false);
           }
           minTimeVal = min.value;
@@ -373,11 +305,11 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
           JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("qsedit.badBounds"),
                                                  rMan.getString("qsedit.badBoundsTitle"),
                                                  JOptionPane.ERROR_MESSAGE);
-          resultCols_ = null;
+          pt.resultCols_ = null;
           return (false); 
         }
         lastMax = maxTimeVal;
-        resultCols_.add(new MinMax(minTimeVal, maxTimeVal));
+        pt.resultCols_.add(new MinMax(minTimeVal, maxTimeVal));
       }
       return (true);
     }
@@ -420,8 +352,8 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       }
     }
   
-    MeasureColorTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    MeasureColorTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"qpcrSetup.measureType",
                                 "qpcrSetup.color"};
       colClasses_ = new Class[] {String.class,
@@ -451,6 +383,32 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     }
   }
 
+  private static class PerTab {
+    EditableTable est_;
+    EditableTable mcet_;
+    ArrayList<MinMax> origCols_;
+    ArrayList<MinMax> resultCols_;
+    ArrayList<EnumCell> colorList_;
+    
+    TreeMap<String, MeasureColorTableModel.TableRow> origColorMap_;
+    JComboBox scaleOptions_;
+    JCheckBox investMode_;
+    
+    boolean resultInvestMode_;
+    MinMax resultDefaultSpan_;
+    String resultCurrentScale_;
+    Map<String, String> resultCurrColors_;
+    
+    PertDisplayOptions currPdo_;
+    
+    
+    JPanel tabPanel_;
+    
+    PerTab(PertDisplayOptions pdo) {
+      currPdo_ = pdo.clone();     
+    }
+  }
+ 
   ////////////////////////////////////////////////////////////////////////////
   //
   // PROTECTED/PRIVATE METHODS
@@ -459,69 +417,140 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
 
   /***************************************************************************
   **
+  ** Get the column results
+  ** 
+  */
+  
+  private JPanel perTabPanel(PerTab pt, TimeAxisDefinition tad) {
+  
+    JPanel jp = new JPanel();
+    jp.setBorder(new EmptyBorder(20, 20, 20, 20));
+    jp.setLayout(new GridBagLayout());
+    GridBagConstraints gbc = new GridBagConstraints();
+    DialogSupport ptds = new DialogSupport(uics_, gbc);
+    int rowNum = 0;
+    
+    JLabel t1Lab = new JLabel(rMan_.getString("qsedit.setDisplayColumns"), JLabel.LEFT);
+   
+   
+    rowNum = ptds.addWidgetFullRow(jp, t1Lab, true, false, rowNum, 10);
+    
+    pt.est_ = new EditableTable(uics_, new ColumnTableModel(uics_, tad_, namedStages_), uics_.getTopFrame());
+    EditableTable.TableParams etp = new EditableTable.TableParams();
+    etp.addAlwaysAtEnd = true;
+    etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
+    etp.singleSelectOnly = true;
+    JPanel tablePan = pt.est_.buildEditableTable(etp);
+    rowNum = ptds.addTable(jp, tablePan, 8, rowNum, 10);
+    
+    pt.scaleOptions_ = new JComboBox();
+    JLabel sLab = new JLabel(rMan_.getString("qsedit.chooseScale"));
+    rowNum = ptds.addLabeledWidget(jp, sLab, pt.scaleOptions_, true, false, rowNum, 10);
+     
+    pt.investMode_ = new JCheckBox(rMan_.getString("qsedit.breakUpInvest"));
+    rowNum = ptds.addWidgetFullRow(jp, pt.investMode_, true, false, rowNum, 10);
+     
+    //
+    // First time thru, we might need to grab this from the TAD:
+    //
+  
+    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(tad);
+    if (mm == null) {
+      mm = tad.getDefaultTimeSpan().clone();
+      pt.currPdo_.setNullDefaultSpan(mm);
+    }
+    
+    tah_ = new TimeAxisHelper(uics_, dacx_, this, mm.min, mm.max, uFac_);
+    JPanel helper = tah_.buildHelperPanel();
+    JLabel dLab = new JLabel(rMan_.getString("qsedit.defaultSpan"));
+    rowNum = ptds.addLabeledWidget(jp, dLab, helper, true, false, rowNum, 10);
+
+  
+    //
+    // measurement->color table:
+    //
+  
+    JLabel t2Lab = new JLabel(rMan_.getString("qsedit.setColors"), JLabel.LEFT);
+    rowNum = ptds.addWidgetFullRow(jp, t2Lab, true, false, rowNum, 10);
+    
+    pt.colorList_ = buildColors();    
+    pt.mcet_ = new EditableTable(uics_, new MeasureColorTableModel(uics_), uics_.getTopFrame());
+    etp = new EditableTable.TableParams();
+    etp.buttons = EditableTable.NO_BUTTONS;
+    etp.tableIsUnselectable = true;
+    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
+    etp.perColumnEnums.put(new Integer(MeasureColorTableModel.COLOR), new EditableTable.EnumCellInfo(false, pt.colorList_, EnumCell.class));
+    tablePan = pt.mcet_.buildEditableTable(etp);
+    rowNum = ptds.addTable(jp, tablePan, 4, rowNum, 10);
+    return (jp);
+  }
+  
+  
+  /***************************************************************************
+  **
   ** Apply the current data values to our UI components
   ** 
   */
   
-  private void displayProperties(List<MinMax> currColumns, Map<String, String> currColors, String currentScale, 
-                                 boolean currentInvestMode, MinMax currentNullDefaultSpan) {
-    
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    MeasureDictionary md = pd.getMeasureDictionary();
+  private void displayProperties(PerTab pt, TimeAxisDefinition tad) {
+   
+    MeasureDictionary md = pd_.getMeasureDictionary();
     
     Vector<TrueObjChoiceContent> scaleTypes = md.getScaleOptions();
-    UiUtil.replaceComboItems(scaleOptions_, scaleTypes);   
+    UiUtil.replaceComboItems(pt.scaleOptions_, scaleTypes);   
     
-    TrueObjChoiceContent toccScale = md.getScaleChoice(currentScale);
-    scaleOptions_.setSelectedItem(toccScale);
+    TrueObjChoiceContent toccScale = md.getScaleChoice(pt.currPdo_.getPerturbDataDisplayScaleKey());
+    pt.scaleOptions_.setSelectedItem(toccScale);
       
-    investMode_.setSelected(currentInvestMode);
+    pt.investMode_.setSelected(pt.currPdo_.breakOutInvestigators());
     
-    if (currentNullDefaultSpan == null) {
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-      currentNullDefaultSpan = tad.getDefaultTimeSpan();
+    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(tad);
+     
+    if (mm == null) {
+      pt.currPdo_.setNullDefaultSpan(tad_.getDefaultTimeSpan());
     }
     
     // Default span had to be loaded in constructor!
  
-
-    origCols_ = new ArrayList<MinMax>();
-    Iterator<MinMax> colIt = currColumns.iterator();
+    pt.origCols_ = new ArrayList<MinMax>();
+    Iterator<MinMax> colIt = pt.currPdo_.getColumnIterator();
     while (colIt.hasNext()) {
       MinMax nextCol = colIt.next();
-      origCols_.add(nextCol.clone());   
+      pt.origCols_.add(nextCol.clone());   
     }
-    est_.getModel().extractValues(origCols_);
+    pt.est_.getModel().extractValues(pt.origCols_);
     
     //
     // FIX ME: legacy spanned data points prevent changes to column definitions
     // once they are in use.
     //     
      
-    if (pd.columnDefinitionsLocked()) {
-      est_.setEnabled(false);   
+    if (pd_.columnDefinitionsLocked()) {
+      pt.est_.setEnabled(false);   
     }
       
-    MeasureColorTableModel mctm = (MeasureColorTableModel)mcet_.getModel(); 
-    origColorMap_ = new TreeMap<String, MeasureColorTableModel.TableRow>();
+    
+    MeasureColorTableModel mctm = (MeasureColorTableModel)pt.mcet_.getModel(); 
+    pt.origColorMap_ = new TreeMap<String, MeasureColorTableModel.TableRow>();
+    Map<String, String> currColors = pt.currPdo_.getMeasurementDisplayColors();
     Iterator<String> dcit = currColors.keySet().iterator();
     while (dcit.hasNext()) {
       MeasureColorTableModel.TableRow tr = mctm.new TableRow();
       tr.measureKey = dcit.next();
       String colString = currColors.get(tr.measureKey);
-      int clsize = colorList_.size();
+      int clsize = pt.colorList_.size();
       for (int i = 0; i < clsize; i++) {
-        EnumCell cCell = colorList_.get(i);
+        EnumCell cCell = pt.colorList_.get(i);
         if (cCell.internal.equals(colString)) {
           tr.color = new EnumCell(cCell);
           break;
         }   
       }
       tr.measure = md.getMeasureProps(tr.measureKey).getName();
-      origColorMap_.put(tr.measure, tr);
+      pt.origColorMap_.put(tr.measure, tr);
     }
     
-    mcet_.getModel().extractValues(new ArrayList<MeasureColorTableModel.TableRow>(origColorMap_.values()));
+    pt.mcet_.getModel().extractValues(new ArrayList<MeasureColorTableModel.TableRow>(pt.origColorMap_.values()));
     return;
   }
 
@@ -531,31 +560,46 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  protected boolean stashForOK() { 
-    
-    resultDefaultSpan_ = tah_.getSpanResult();
-    if (resultDefaultSpan_ == null) {
+  protected boolean stashForOK() {    
+    for (PerTab pt : ptDat_) {
+      boolean ok = stashPerTab(pt);
+      if (!ok) {
+        return (false);
+      }
+    }                 
+    return (true);
+  }
+   
+  /***************************************************************************
+  **
+  ** Stash our results for later interrogation
+  ** 
+  */
+  
+  private boolean stashPerTab(PerTab pt) { 
+      
+    pt.resultDefaultSpan_ = tah_.getSpanResult();
+    if (pt.resultDefaultSpan_ == null) {
       return (false);
     }
       
-    ((ColumnTableModel)est_.getModel()).applyValues();
+    ((ColumnTableModel)pt.est_.getModel()).applyValues(pt);
     
-    TrueObjChoiceContent tocc = (TrueObjChoiceContent)scaleOptions_.getSelectedItem();
-    resultCurrentScale_ = (String)tocc.val;
+    TrueObjChoiceContent tocc = (TrueObjChoiceContent)pt.scaleOptions_.getSelectedItem();
+    pt.resultCurrentScale_ = (String)tocc.val;
   
-    resultInvestMode_ = investMode_.isSelected();
-    resultCurrColors_ = new HashMap<String, String>();
-    List vals = ((MeasureColorTableModel)mcet_.getModel()).getValuesFromTable();
+    pt.resultInvestMode_ = pt.investMode_.isSelected();
+    pt.resultCurrColors_ = new HashMap<String, String>();
+    List vals = ((MeasureColorTableModel)pt.mcet_.getModel()).getValuesFromTable();
     int num = vals.size();
     for (int i = 0; i < num; i++) {
       MeasureColorTableModel.TableRow tr = (MeasureColorTableModel.TableRow)vals.get(i);
-      resultCurrColors_.put(tr.measureKey, tr.color.internal);
+      pt.resultCurrColors_.put(tr.measureKey, tr.color.internal);
     }
                   
     return (true);
   }
-   
-  
+
   /***************************************************************************
   **
   ** Build color list
@@ -580,4 +624,6 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     retval.add(new EnumCell("Yellow", "yellow", 14, 14));
     return (retval);
   }
+  
+
 }

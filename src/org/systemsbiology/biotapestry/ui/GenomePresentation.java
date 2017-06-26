@@ -711,7 +711,6 @@ public class GenomePresentation implements ZoomPresentation {
   */
   
   public void setPresentationZoomFactor(double zoom, DataAccessContext dacx) {
-    System.out.println("set presentation Zoom");
     AffineTransform trans = new AffineTransform();
     trans.scale(zoom, zoom);
     dacx.setFrc(new FontRenderContext(trans, true, true));

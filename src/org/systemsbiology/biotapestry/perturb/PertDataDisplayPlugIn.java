@@ -23,6 +23,8 @@ import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
 import org.systemsbiology.biotapestry.plugin.InternalNodeDataDisplayPlugIn;
@@ -121,13 +123,14 @@ public class PertDataDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
     TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(ddacx_, dbID);
     StaticDataAccessContext dacx = new StaticDataAccessContext(tpdacx).getContextForRoot();
     
-    
     nodeID = GenomeItemInstance.getBaseID(nodeID);
     
     StringBuffer buf = new StringBuffer();
     PerturbationData pd = dacx.getExpDataSrc().getPertData();
     PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
-    if (!pd.haveDataForNode(nodeID, null, pdms)) {
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+    DBGenome dbGenome = dacx.getGenomeSource().getRootDBGenome();
+    if (!pd.haveDataForNode(dbGenome, nodeID, null, pdms)) {
       return("");
     }
     
@@ -137,7 +140,7 @@ public class PertDataDisplayPlugIn implements InternalNodeDataDisplayPlugIn {
     buf.append("</h1></center>\n");
     
     boolean largeFont = uics_.doBig();
-    String table = pd.getHTML(nodeID, null, true, largeFont, tpdacx);
+    String table = pd.getHTML(nodeID, null, true, largeFont, dbGenome, tad, pdms, uics_.getRMan());
     if (table != null) {
       buf.append(table);
     } else {

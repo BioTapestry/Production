@@ -42,6 +42,7 @@ import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -83,7 +84,6 @@ public class PerturbationDataMaps implements Cloneable {
   
   private NameMapper entryMap_;
   private NameMapper sourceMap_;
-  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -96,10 +96,9 @@ public class PerturbationDataMaps implements Cloneable {
   ** Constructor
   */
 
-  public PerturbationDataMaps(DataAccessContext dacx) {
-    dacx_ = dacx;
-    entryMap_ = new NameMapper(dacx_, "targets");
-    sourceMap_ = new NameMapper(dacx_, "sources"); 
+  public PerturbationDataMaps() {
+    entryMap_ = new NameMapper("targets");
+    sourceMap_ = new NameMapper("sources"); 
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -288,8 +287,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Drop identity maps
   */
   
-  public PertDataChange[] dropIdentityMapsForEntries(Map<String, String> targets) {
-    return (entryMap_.dropIdentityMaps(targets));
+  public PertDataChange[] dropIdentityMapsForEntries(DBGenome genome, Map<String, String> targets) {
+    return (entryMap_.dropIdentityMaps(genome, targets));
   }  
   
   /***************************************************************************
@@ -297,8 +296,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Drop identity maps
   */
   
-  public PertDataChange[] dropIdentityMapsForSources(Map<String, String> targets) {
-    return (sourceMap_.dropIdentityMaps(targets));
+  public PertDataChange[] dropIdentityMapsForSources(DBGenome genome, Map<String, String> targets) {
+    return (sourceMap_.dropIdentityMaps(genome, targets));
   }  
   
   
@@ -383,8 +382,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Get the list of targets names for the gene ID.  May be empty.
   */
   
-  public List<String> getDataEntryKeysWithDefault(String nodeId, PerturbationData pd) {
-    String name = dacx_.getDBGenome().getNode(nodeId).getName();
+  public List<String> getDataEntryKeysWithDefault(DBGenome genome, String nodeId, PerturbationData pd) {
+    String name = genome.getNode(nodeId).getName();
     return (entryMap_.getDataKeysWithDefault(nodeId, pd.getTargKeyFromName(name)));
   }
   
@@ -393,8 +392,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Get the list of source names for the gene ID.  May be empty.
   */
   
-  public List<String> getDataSourceKeysWithDefault(String nodeId, PerturbationData pd) {
-    String name = dacx_.getDBGenome().getNode(nodeId).getName();
+  public List<String> getDataSourceKeysWithDefault(DBGenome genome, String nodeId, PerturbationData pd) {
+    String name = genome.getNode(nodeId).getName();
     return (sourceMap_.getDataKeysWithDefault(nodeId, pd.getSourceKeyFromName(name)));
   }
 
@@ -430,8 +429,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Get the node IDs mapped to the given perturbation target key
   */
 
-  public Set<String> getDataEntryKeyInverse(String key, Map<String, String> targets) {
-    return (entryMap_.getDataKeyInverse(key, targets));
+  public Set<String> getDataEntryKeyInverse(DBGenome genome, String key, Map<String, String> targets) {
+    return (entryMap_.getDataKeyInverse(genome, key, targets));
   }
   
   /***************************************************************************
@@ -439,8 +438,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Get the node IDs mapped to the given perturbation source key
   */
 
-  public Set<String> getDataSourceKeyInverse(String key, Map<String, String> sourceNames) {
-    return (sourceMap_.getDataKeyInverse(key, sourceNames));
+  public Set<String> getDataSourceKeyInverse(DBGenome genome, String key, Map<String, String> sourceNames) {
+    return (sourceMap_.getDataKeyInverse(genome, key, sourceNames));
   }
   
   /***************************************************************************
@@ -448,8 +447,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Answer if we are vulnerable to a disconnect:
   */
 
-  public boolean dataEntryOnlyInverseIsDefault(String key, Map<String, String> targets) {
-    return (entryMap_.onlyInverseIsDefault(key, targets));
+  public boolean dataEntryOnlyInverseIsDefault(DBGenome genome, String key, Map<String, String> targets) {
+    return (entryMap_.onlyInverseIsDefault(genome, key, targets));
   }
   
   /***************************************************************************
@@ -457,8 +456,8 @@ public class PerturbationDataMaps implements Cloneable {
   ** Answer if we are vulnerable to a disconnect:
   */
 
-  public boolean dataSourceOnlyInverseIsDefault(String key, Map<String, String> sourceNames) {
-    return (sourceMap_.onlyInverseIsDefault(key, sourceNames));
+  public boolean dataSourceOnlyInverseIsDefault(DBGenome genome, String key, Map<String, String> sourceNames) {
+    return (sourceMap_.onlyInverseIsDefault(genome, key, sourceNames));
   }
 
   /***************************************************************************
@@ -627,7 +626,6 @@ public class PerturbationDataMaps implements Cloneable {
   
     public void setContext(DataAccessContext dacx) {
       dacx_ = dacx;
-      nmw_.installContext(dacx);
       return;
     }
  
@@ -645,7 +643,7 @@ public class PerturbationDataMaps implements Cloneable {
     }  
     
     private PerturbationDataMaps buildFromXML(String elemName, Attributes attrs) throws IOException {  
-      return (new PerturbationDataMaps(dacx_));
+      return (new PerturbationDataMaps());
     }
   }
   

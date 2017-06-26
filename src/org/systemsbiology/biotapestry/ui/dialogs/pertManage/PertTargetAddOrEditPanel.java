@@ -42,6 +42,7 @@ import javax.swing.text.JTextComponent;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.EnumCell;
@@ -64,6 +65,7 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   private JTextField nameFieldForEdit_;
   private JComboBox nameCombo_;
   private PerturbationData pd_;
+  private TimeCourseData tcd_;
   private String currKey_;
   private PertManageHelper pmh_;
   private String nameResult_;
@@ -89,11 +91,13 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertTargetAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, 
+  public PertTargetAddOrEditPanel(UIComponentSource uics,
+                                  JFrame parent, PerturbationData pd, TimeCourseData tcd, PendingEditTracker pet, 
                                   PertSimpleNameEditPanel.Client client, String myKey) { 
-    super(uics, dacx, parent, pet, myKey, 4);
+    super(uics, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    pmh_ = new PertManageHelper(uics_, parent, pd_, tcd_, rMan_, gbc_, pet_);
     client_ = client;
     annotList_ = new ArrayList<EnumCell>();
     
@@ -353,10 +357,10 @@ public class PertTargetAddOrEditPanel extends AnimatedSplitEditPanel {
   private JPanel buildAnnotTable(boolean forMerge) {   
     final EditableTable useTable;
     if (!forMerge) {
-      estAnnotForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "ptae.annot", annotList_), parent_);
+      estAnnotForEdit_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "ptae.annot", annotList_), parent_);
       useTable = estAnnotForEdit_;
     } else {
-      estAnnotForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "ptae.annot", annotList_), parent_);
+      estAnnotForMerge_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "ptae.annot", annotList_), parent_);
       useTable = estAnnotForMerge_;
     }
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);

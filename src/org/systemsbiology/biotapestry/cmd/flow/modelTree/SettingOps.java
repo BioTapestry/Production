@@ -36,7 +36,6 @@ import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NetOverlayController;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -270,8 +269,12 @@ public class SettingOps extends AbstractControlFlow {
           break;   
         case STARTUP_VIEW:         
           UndoSupport support = uFac_.provideUndoSupport("undo.makeStartupView", dacx_);
-          UiUtil.fixMePrintout("WAIT! What about a group node as startup???");
-          DatabaseChange dc = dacx_.getGenomeSource().setStartupView(new StartupView(popupModel_.getID(), null, null, null,null));
+          NavTree navTree = dacx_.getGenomeSource().getModelHierarchy(); 
+          NavTree.KidSuperType type = (navTree.isGroupNode(popupNode_)) ? NavTree.KidSuperType.GROUP : NavTree.KidSuperType.MODEL;
+          String modelID = (type == NavTree.KidSuperType.MODEL) ? popupModel_.getID() : null;
+          String grpNodeID =  (type == NavTree.KidSuperType.MODEL) ? null: navTree.getGroupNodeID(popupNode_);
+          StartupView sView = new StartupView(modelID, null, null, null, null, type, grpNodeID);
+          DatabaseChange dc = dacx_.getGenomeSource().setStartupView(sView);
           DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
           support.addEdit(dcc);
           support.finish();

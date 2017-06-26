@@ -1693,12 +1693,13 @@ public class TimeCourseData implements Cloneable {
   ** Get a set of the genes that are expressed at a certain time and region.
   */
   
-  public void getExpressedGenes(String region, int hour, ExpressionEntry.Source exprSource, Set<String> expressed) {
+  public void getExpressedGenes(String region, int hour, 
+                                ExpressionEntry.Source exprSource, Set<String> expressed, double weak) {
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
     Iterator<TimeCourseGene> trgit = genes_.iterator();
     while (trgit.hasNext()) {
       TimeCourseGene trg = trgit.next();
-      int expression = trg.getExpressionLevelForSource(region, hour, exprSource, varLev);
+      int expression = trg.getExpressionLevelForSource(region, hour, exprSource, varLev, weak);
       if ((expression == ExpressionEntry.EXPRESSED) ||
           (expression == ExpressionEntry.WEAK_EXPRESSION)) {
         expressed.add(trg.getName());
@@ -1969,7 +1970,7 @@ public class TimeCourseData implements Cloneable {
     } else if (hasGeneTemplate()) {
        ind.up();    
        Iterator<GeneTemplateEntry> tempit = getGeneTemplate();
-       TimeCourseGene tg = new TimeCourseGene(dacx_, "___Gene-For-BT-Template__", tempit, true);
+       TimeCourseGene tg = new TimeCourseGene("___Gene-For-BT-Template__", tempit, true);
        tg.writeXMLForTemplate(out, ind);
        ind.down();
     }

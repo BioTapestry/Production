@@ -28,7 +28,6 @@ import java.util.HashMap;
 
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -49,7 +48,6 @@ public class DependencyAnalyzer {
   //////////////////////////////////////////////////////////////////////////// 
   
   private PerturbationData pd_;
-  private DataAccessContext dacx_;
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -62,8 +60,7 @@ public class DependencyAnalyzer {
   ** Constructor
   */
 
-  public DependencyAnalyzer(DataAccessContext dacx, PerturbationData pd) {
-    dacx_ = dacx;
+  public DependencyAnalyzer(PerturbationData pd) {
     pd_ = pd;
   }
 
@@ -298,7 +295,7 @@ public class DependencyAnalyzer {
   ** Get the counts of references of the perturbation source definition
   */
  
-  public Map<String, Integer> getAllSrcDefReferenceCounts() {
+  public Map<String, Integer> getAllSrcDefReferenceCounts(TimeCourseData tcd) {
         
     HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
@@ -318,7 +315,6 @@ public class DependencyAnalyzer {
     // Count the perturbed time course references too!
     //
     
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
@@ -632,7 +628,7 @@ public class DependencyAnalyzer {
   ** Get the counts of references for all perturbation types
   */
  
-  public Map<String, Integer> getAllPertPropReferenceCounts() {
+  public Map<String, Integer> getAllPertPropReferenceCounts(TimeCourseData tcd) {
   
     HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
@@ -652,8 +648,7 @@ public class DependencyAnalyzer {
     //
     // Count the perturbed time course references too!
     //
-    
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+      
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> tcit = psd.keySet().iterator();
     while (tcit.hasNext()) {
@@ -786,7 +781,7 @@ public class DependencyAnalyzer {
   ** Get the keys of objects referencing the perturb properties for a merge
   */
  
-  public Dependencies getPertPropMergeSet(Set<String> ppIDs, String commonKey) {
+  public Dependencies getPertPropMergeSet(Set<String> ppIDs, String commonKey, TimeCourseData tcd) {
       
     HashSet<String> pPUses = new HashSet<String>();
     
@@ -799,8 +794,7 @@ public class DependencyAnalyzer {
         pPUses.add(psdKey);
       }
     }
-    
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+       
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pPUses);
 
     return (new Dependencies(Dependencies.DepType.MERGE_PERT_PROPS, commonKey, new HashSet<String>(ppIDs), null, null, pPUses, null, null, null, psmd));
@@ -826,7 +820,7 @@ public class DependencyAnalyzer {
   ** Get the keys of data points and pertSources referencing the perturbation type
   */
  
-  public Dependencies getPertTypeReferenceSets(String pertTypeID) {
+  public Dependencies getPertTypeReferenceSets(String pertTypeID, TimeCourseData tcd) {
     
     HashSet<String> pSUses = new HashSet<String>();
     
@@ -871,8 +865,7 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+    HashSet<String> tcdUses = new HashSet<String>();    
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
@@ -969,7 +962,7 @@ public class DependencyAnalyzer {
   ** Get the keys of elements referencing the source definitions
   */
  
-  public Dependencies getSourceDefReferenceSets(String sourceDefID) {
+  public Dependencies getSourceDefReferenceSets(String sourceDefID, TimeCourseData tcd) {
 
     HashSet<String> pSInfoUses = new HashSet<String>();
     
@@ -1002,8 +995,7 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+    HashSet<String> tcdUses = new HashSet<String>();
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Set<String> forKey = psd.get(sourceDefID);
     if (forKey != null) {
@@ -1046,7 +1038,7 @@ public class DependencyAnalyzer {
   ** Get the merge dependencies for pert source definitions
   */
  
-  public Dependencies getSourceDefMergeSet(Set<String> sdIDs, String commonKey) {
+  public Dependencies getSourceDefMergeSet(Set<String> sdIDs, String commonKey, TimeCourseData tcd) {
     
     HashSet<String> sdUsed = new HashSet<String>();    
     Iterator<String> psit = pd_.getExperimentKeys();
@@ -1063,8 +1055,7 @@ public class DependencyAnalyzer {
         }
       }
     }
-    
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+   
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(sdIDs);
  
     return (new Dependencies(Dependencies.DepType.MERGE_SOURCE_DEFS, commonKey, new HashSet<String>(sdIDs), null, sdUsed, null, null, null, null, psmd));
@@ -1075,7 +1066,7 @@ public class DependencyAnalyzer {
   ** Get the keys of sourcw defs referencing the source name for a merge
   */
  
-  public Dependencies getSourceNameMergeSet(Set<String> srcIDs, String commonKey) {
+  public Dependencies getSourceNameMergeSet(Set<String> srcIDs, String commonKey, TimeCourseData tcd) {
     HashSet<String> pSUses = new HashSet<String>();
     
     Iterator<String> sdit = pd_.getSourceDefKeys();
@@ -1089,8 +1080,7 @@ public class DependencyAnalyzer {
         pSUses.add(chk.getID());     
       }
     }
-    
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+   
     Map<String, Set<PertSources>> psmd = tcd.getPertSourceMergeDependencies(pSUses);
 
     return (new Dependencies(Dependencies.DepType.MERGE_SOURCE_NAMES, commonKey, new HashSet<String>(srcIDs), null, null, pSUses, null, null, null, psmd));
@@ -1101,7 +1091,7 @@ public class DependencyAnalyzer {
   ** Get the keys of elements referencing the source name
   */
  
-  public Dependencies getSourceNameReferenceSets(String sourceNameID) {
+  public Dependencies getSourceNameReferenceSets(String sourceNameID, TimeCourseData tcd) {
 
     HashSet<String> pSUses = new HashSet<String>();
     
@@ -1148,8 +1138,7 @@ public class DependencyAnalyzer {
     // Deal with perturbed time course references too!
     //
     
-    HashSet<String> tcdUses = new HashSet<String>();   
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
+    HashSet<String> tcdUses = new HashSet<String>();
     Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
     Iterator<String> psuit = pSUses.iterator();
     while (psuit.hasNext()) {
@@ -1168,8 +1157,8 @@ public class DependencyAnalyzer {
   ** Get the keys of data points referencing the target
   */
  
-  public int getSourceNameReferenceCount(String srcID) {
-    Dependencies dep = getSourceNameReferenceSets(srcID);
+  public int getSourceNameReferenceCount(String srcID, TimeCourseData tcd) {
+    Dependencies dep = getSourceNameReferenceSets(srcID, tcd);
     return (dep.dataPoints.size() + dep.experiments.size() + dep.pertSources.size() + dep.timeCourseRefs.size());
   } 
   
@@ -1178,7 +1167,7 @@ public class DependencyAnalyzer {
   ** Get the count of all source name refs.
   */
  
-  public Map<String, Integer> getAllSourceNameReferenceCounts(boolean primaryOnly) {
+  public Map<String, Integer> getAllSourceNameReferenceCounts(boolean primaryOnly, TimeCourseData tcd) {
 
     HashMap<String, Integer> retval = new HashMap<String, Integer>();   
     
@@ -1204,7 +1193,6 @@ public class DependencyAnalyzer {
       // Count the perturbed time course references too!
       //
 
-      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();    
       Map<String, Set<String>> psd = tcd.getPertSourceDependencies();
       Iterator<String> tcit = psd.keySet().iterator();
       while (tcit.hasNext()) {
@@ -1246,96 +1234,93 @@ public class DependencyAnalyzer {
   ** Do merging of dependencies
   */
  
-  public boolean mergeDependencies(Dependencies refs, DataAccessContext dacx, UndoSupport support) {
+  public boolean mergeDependencies(Dependencies refs, TimeCourseData tcd, UndoSupport support) {
     if (refs.type == Dependencies.DepType.MERGE_TARGETS) {   
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointTargetRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
     } else if (refs.type == Dependencies.DepType.MERGE_CONTROLS) {   
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointControlRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }  
     } else if (refs.type == Dependencies.DepType.MERGE_SOURCE_NAMES) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
-        TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(tcca[j]));
         }     
       }          
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergePertSourceNameRefs(refs.pertSources, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
 
     } else if (refs.type == Dependencies.DepType.MERGE_INVEST) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeInvestigatorRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
     } else if (refs.type == Dependencies.DepType.MERGE_MEASURE_SCALES) {
       if ((refs.measureProps != null) && (refs.measureProps.size() > 0)) {
         PertDataChange pdc = pd_.mergeMeasureScaleRefs(refs.measureProps, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }   
     } else if (refs.type == Dependencies.DepType.MERGE_MEASURE_PROPS) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeMeasurePropRefs(refs.dataPoints, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }       
     } else if (refs.type == Dependencies.DepType.MERGE_PERT_PROPS) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
-        TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(tcca[j]));
         }     
       }       
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergePertPropRefs(refs.pertSources, refs.useKey);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }   
     } else if (refs.type == Dependencies.DepType.MERGE_SOURCE_DEFS) {
       // gotta come first:
       if ((refs.timeCourseMergeRefs != null) && (refs.timeCourseMergeRefs.size() > 0)) {
-        TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         TimeCourseChange[] tcca = tcd.dropPertSourceMergeIssues(refs.timeCourseMergeRefs);
         for (int j = 0; j < tcca.length; j++) {
-          support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
+          support.addEdit(new TimeCourseChangeCmd(tcca[j]));
         }     
       }
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeSourceDefRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
      
     } else if (refs.type == Dependencies.DepType.MERGE_EXPERIMENTS) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeExperimentRefs(refs.dataPoints, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }      
     } else if (refs.type == Dependencies.DepType.MERGE_ANNOT) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.mergeDataPointAnnotRefs(refs.dataPoints, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }       
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.mergeSourceDefAnnotRefs(refs.pertSources, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }       
       if ((refs.targets != null) && (refs.targets.size() > 0)) {
         PertDataChange pdc = pd_.mergeTargetAnnotRefs(refs.targets, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }       
       
     } else if (refs.type == Dependencies.DepType.MERGE_EXPR_COND) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.mergeExperimentCondRefs(refs.experiments, refs.useKey, refs.abandonKeys);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }     
     } else {
       throw new IllegalArgumentException();
@@ -1349,7 +1334,7 @@ public class DependencyAnalyzer {
   ** Kill off dependencies
   */ 
   
-  public boolean killOffDependencies(Dependencies refs, DataAccessContext dacx, UndoSupport support) { 
+  public boolean killOffDependencies(Dependencies refs, TimeCourseData tcd, UndoSupport support) { 
     
     if (refs.type == Dependencies.DepType.DESTROY) {
       
@@ -1357,31 +1342,30 @@ public class DependencyAnalyzer {
       // Gotta happen early, as undo prep needs valid refs:
       //
       if ((refs.timeCourseRefs != null) && (refs.timeCourseRefs.size() > 0)) {
-        TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
         Iterator<String> tcrit = refs.timeCourseRefs.iterator();
         while (tcrit.hasNext()) {
           String key = tcrit.next();
           TimeCourseChange[] tcca = tcd.dropPertSourceDependencies(key);
           for (int j = 0; j < tcca.length; j++) {
-            support.addEdit(new TimeCourseChangeCmd(dacx, tcca[j]));
+            support.addEdit(new TimeCourseChangeCmd(tcca[j]));
           }
         }        
       }
       
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.deleteDataPoints(refs.dataPoints);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
 
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.deleteExperiments(refs.experiments);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }      
 
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange[] pdc = pd_.deletePertSourceDefs(refs.pertSources);
         for (int j = 0; j < pdc.length; j++) {
-          support.addEdit(new PertDataChangeCmd(dacx, pdc[j]));
+          support.addEdit(new PertDataChangeCmd(pdc[j]));
         }
       }
       
@@ -1390,36 +1374,36 @@ public class DependencyAnalyzer {
         while (mpit.hasNext()) {
           String key = mpit.next();
           PertDataChange pdc = pd_.deleteMeasureProp(key);
-          support.addEdit(new PertDataChangeCmd(dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(pdc));
         }        
       } 
          
     } else if (refs.type == Dependencies.DepType.PRUNE_INVEST) {
       if ((refs.experiments != null) && (refs.experiments.size() > 0)) {
         PertDataChange pdc = pd_.dropInvestigator(refs.useKey, refs.experiments);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }       
     } else if (refs.type == Dependencies.DepType.PRUNE_ANNOT) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.dropDataPointAnnotations(refs.useKey, refs.dataPoints);
         if (pdc != null) {
-          support.addEdit(new PertDataChangeCmd(dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(pdc));
         }
       }
       if ((refs.pertSources != null) && (refs.pertSources.size() > 0)) {
         PertDataChange pdc = pd_.dropSourceDefAnnotations(refs.useKey, refs.pertSources);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
       if ((refs.targets != null) && (refs.targets.size() > 0)) {
         PertDataChange pdc = pd_.dropTargetAnnotations(refs.useKey, refs.targets);
-        support.addEdit(new PertDataChangeCmd(dacx, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }     
       
     } else if (refs.type == Dependencies.DepType.PRUNE_CONTROL) {
       if ((refs.dataPoints != null) && (refs.dataPoints.size() > 0)) {
         PertDataChange pdc = pd_.dropDataPointControls(refs.dataPoints);
         if (pdc != null) {
-          support.addEdit(new PertDataChangeCmd(dacx, pdc));
+          support.addEdit(new PertDataChangeCmd(pdc));
         }
       }
     } else {

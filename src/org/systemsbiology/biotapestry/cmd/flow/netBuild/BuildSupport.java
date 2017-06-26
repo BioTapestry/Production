@@ -548,7 +548,7 @@ public class BuildSupport {
       if (rcxI.getCurrentGenomeAsInstance().getGroup(newGroup.getID()) == null) {
         GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           bsd_.support.addEdit(gcc);
         }
       }
@@ -1291,7 +1291,7 @@ public class BuildSupport {
       if (gene.getNumRegions() != 0) {
         GenomeChange gc = root.changeGeneRegions(gene.getID(), emptyRegions);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           bsd_.support.addEdit(gcc);        
         }
       }
@@ -1576,7 +1576,7 @@ public class BuildSupport {
            gc = genome.changeNodeSize(nodeID, padreq.landing);
         }
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
         }
       }
@@ -1598,7 +1598,7 @@ public class BuildSupport {
     Group newGroup = new Group(rcxI.getRMan(), groupKey, region);
     GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     
@@ -1617,7 +1617,7 @@ public class BuildSupport {
     mapped.add(new GroupUsage(region, null));
     TimeCourseChange tcc = tcdm.setTimeCourseGroupMap(groupKey, mapped, true);      
     if (tcc != null) {
-      support.addEdit(new TimeCourseChangeCmd(rcxI, tcc, false));
+      support.addEdit(new TimeCourseChangeCmd(tcc, false));
     }    
 
     return (groupKey);

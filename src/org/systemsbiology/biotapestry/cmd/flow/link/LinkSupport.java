@@ -612,7 +612,7 @@ public class LinkSupport {
           if (childLink != null) {
             GenomeChange undo = gi.changeLinkageTarget(childLink, padNum);
             if (support != null) {
-              support.addEdit(new GenomeChangeCmd(rcx, undo));
+              support.addEdit(new GenomeChangeCmd(undo));
               ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
               support.addEvent(mcev);
             }
@@ -622,7 +622,7 @@ public class LinkSupport {
     } else {
       GenomeChange undo = rcx.getCurrentGenome().changeLinkageTarget(link, padNum);
       if (support != null) {
-        support.addEdit(new GenomeChangeCmd(rcx, undo));                
+        support.addEdit(new GenomeChangeCmd(undo));                
         ModelChangeEvent mcev = new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);
       }
@@ -723,7 +723,7 @@ public class LinkSupport {
             if (childLink != null) {
               GenomeChange undo = gi.changeLinkageSource(childLink, padNum);
               if (support != null) {
-                support.addEdit(new GenomeChangeCmd(rcxG, undo));
+                support.addEdit(new GenomeChangeCmd(undo));
                 ModelChangeEvent mcev = new ModelChangeEvent(rcxG.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
                 support.addEvent(mcev);
               }
@@ -733,7 +733,7 @@ public class LinkSupport {
       } else {
         GenomeChange undo = rcxG.getCurrentGenome().changeLinkageSource(nextLink, padNum);
         if (support != null) {
-          support.addEdit(new GenomeChangeCmd(rcxG, undo));                
+          support.addEdit(new GenomeChangeCmd(undo));                
           ModelChangeEvent mcev = new ModelChangeEvent(rcxG.getGenomeSource().getID(), rcxG.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
           support.addEvent(mcev);
         }

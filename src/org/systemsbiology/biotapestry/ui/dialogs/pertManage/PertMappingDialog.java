@@ -24,7 +24,7 @@ import java.util.List;
 import java.text.MessageFormat;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -57,12 +57,12 @@ public class PertMappingDialog extends BTStashResultsDialog {
    ** Constructor 
    */
   
-  public PertMappingDialog(UIComponentSource uics, DataAccessContext dacx, String nodeName, List currEntries, List currSources) {
-    super(uics, dacx, "", new Dimension(700, 500), 1);
+  public PertMappingDialog(UIComponentSource uics, PerturbationData pd, String nodeName, List currEntries, List currSources) {
+    super(uics, "", new Dimension(700, 500), 1);
     String format = rMan_.getString("pertMapping.title");
     String desc = MessageFormat.format(format, new Object[]{nodeName});
     setTitle(desc);   
-    pmp_ = new PertMappingPanel(uics, dacx, nodeName, currEntries, currSources, false, false);
+    pmp_ = new PertMappingPanel(uics, pd, nodeName, currEntries, currSources, false, false);
     addTable(pmp_, 6);
     finishConstruction();   
   }

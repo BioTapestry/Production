@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2006 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,8 @@
 
 package org.systemsbiology.biotapestry.ui;
 
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
+
 /***************************************************************************
 **
 ** Info needed to undo a display options change
@@ -27,5 +29,8 @@ package org.systemsbiology.biotapestry.ui;
   
 public class DisplayOptionsChange {
   public DisplayOptions oldOpts;
-  public DisplayOptions newOpts;   
+  public DisplayOptions newOpts;  
+  public PertDisplayOptions oldPertOpts;
+  public PertDisplayOptions newPertOpts;  
+  
 }

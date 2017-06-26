@@ -50,7 +50,6 @@ import javax.swing.ListCellRenderer;
 import javax.swing.ListSelectionModel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -91,7 +90,7 @@ public class PertManageHelper  {
   private GridBagConstraints gbc_;
   private ImageIcon jump_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
+  private TimeCourseData tcd_;
     
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -104,10 +103,10 @@ public class PertManageHelper  {
   ** Constructor 
   */ 
   
-  public PertManageHelper(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, ResourceManager rMan, 
+  public PertManageHelper(UIComponentSource uics, JFrame parent, PerturbationData pd, TimeCourseData tcd, ResourceManager rMan, 
                           GridBagConstraints gbc, PendingEditTracker pet) {
     uics_ = uics;
-    dacx_ = dacx;
+    tcd_ = tcd;
     parent_ = parent;
     pd_ = pd;
     rMan_ = rMan;
@@ -142,7 +141,7 @@ public class PertManageHelper  {
     int lastCopyNum = 0;
     while (true) {
       String origName = baseName;
-      String testName = UiUtil.createCopyName(dacx_.getRMan(), origName, lastCopyNum++);
+      String testName = UiUtil.createCopyName(uics_.getRMan(), origName, lastCopyNum++);
       if (!DataUtil.containsKey(existingNames, testName)) {
         return (testName);
       }
@@ -377,8 +376,7 @@ public class PertManageHelper  {
       return (null);
     } else {
       ArrayList<String> regList = new ArrayList<String>();
-      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
-      Set<String> surviving = tcd.getRegions();
+      Set<String> surviving = tcd_.getRegions();
       Iterator<String> rit = frozenRegRes.getRegions();
       while (rit.hasNext()) {
         String region = rit.next();
@@ -687,8 +685,8 @@ public class PertManageHelper  {
     
     private static final long serialVersionUID = 1L;
  
-    public NameWithHiddenIDAndRefCountModel(UIComponentSource uics, DataAccessContext dacx, String mainColName) {
-      super(uics, dacx, NUM_COL_);
+    public NameWithHiddenIDAndRefCountModel(UIComponentSource uics, String mainColName) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {mainColName,
                                "pertHelper.refCount"};
       colClasses_ = new Class[] {String.class,
@@ -796,8 +794,8 @@ public class PertManageHelper  {
     private TimeAxisDefinition tad_;
     private boolean namedStages_;
         
-    public TimeComparator(DataAccessContext dacx) {
-      tad_ = dacx.getExpDataSrc().getTimeAxisDefinition();
+    public TimeComparator(TimeAxisDefinition tad) {
+      tad_ = tad;
       namedStages_ = tad_.haveNamedStages();
     }
       

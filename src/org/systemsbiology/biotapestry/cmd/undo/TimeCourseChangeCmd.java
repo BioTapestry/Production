@@ -54,8 +54,8 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TimeCourseChangeCmd(DataAccessContext dacx, TimeCourseChange restore, boolean doEvent) {
-    super(dacx);
+  public TimeCourseChangeCmd(TimeCourseChange restore, boolean doEvent) {
+    super();
     restore_ = restore;
     doEvent_ = doEvent;
   }
@@ -65,8 +65,8 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public TimeCourseChangeCmd(DataAccessContext dacx, TimeCourseChange restore) {
-    this(dacx, restore, false);
+  public TimeCourseChangeCmd(TimeCourseChange restore) {
+    this(restore, false);
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -140,10 +140,10 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
   ** Wrap changes in command array
   */ 
   
-  public static TimeCourseChangeCmd[] wrapChanges(DataAccessContext dacx, TimeCourseChange[] restores) {
+  public static TimeCourseChangeCmd[] wrapChanges(TimeCourseChange[] restores) {
     TimeCourseChangeCmd[] retval = new TimeCourseChangeCmd[restores.length];
     for (int i = 0; i < retval.length; i++) {
-      retval[i] = new TimeCourseChangeCmd(dacx, restores[i]);
+      retval[i] = new TimeCourseChangeCmd(restores[i]);
     }
     return (retval);
   }

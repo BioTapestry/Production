@@ -873,15 +873,13 @@ public class CommonView implements ModelChangeListener, TreeNodeChangeListener, 
     // Even the "Headless" commonView has lots of virtual controls that stand in for the Swing versions:
     //
 
-    UiUtil.fixMePrintout("3/9/17: Somewhere we need to fix zoom buttons to match state when we switch tabs");
-    
     DynamicDataAccessContext ddacx = new DynamicDataAccessContext(appState_);
     
     new SUPanel(appState_, uics_, cSrc_, tSrc_, hBld_, ddacx);
     appState_.setGroupPanel(new GroupPanel(uics_, cSrc_));
     cSrc_.setGroupPanelCmds(new GroupPanelCommands(hBld_));
 
-    VirtualZoomControls vzc = new VirtualZoomControls(uics_, cSrc_);
+    VirtualZoomControls vzc = new VirtualZoomControls(uics_, ddacx_, cSrc_);
     uics_.setVirtualZoom(vzc);
     uics_.setZoomCommandSupport(new ZoomCommandSupport(vzc, uics_, tSrc_, -1));
  
@@ -1561,7 +1559,6 @@ public class CommonView implements ModelChangeListener, TreeNodeChangeListener, 
       uics_.getContentPane().revalidate();
     // Next case: addition of tab, so we need to re-add  
     } else if (redo.newPerTab != null) {
-      System.out.println("gonna add tab");
       pert_.put(Integer.valueOf(redo.newChangeIndex), redo.newPerTab);
       if (tabPanel_.getTabCount() == 0) {
         PerTab cpt = pert_.get(pert_.keySet().iterator().next());

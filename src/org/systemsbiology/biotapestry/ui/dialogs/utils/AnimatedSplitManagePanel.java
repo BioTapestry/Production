@@ -34,13 +34,14 @@ import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.util.AnimatedSplitPane;
 import org.systemsbiology.biotapestry.util.AnimatedSplitPaneLayoutManager;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.util.UndoFactory;
 
 /****************************************************************************
 **
@@ -77,7 +78,8 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   private String[] editStack_;
   protected boolean editInProgress_;
   protected UIComponentSource uics_;
-  protected DataAccessContext dacx_;
+  protected FontManager fMgr_;
+  protected TimeAxisDefinition tad_;
   
   private static final long serialVersionUID = 1L;
 
@@ -92,16 +94,17 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   ** Constructor 
   */ 
   
-  public AnimatedSplitManagePanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PendingEditTracker pet, String key) {
+  public AnimatedSplitManagePanel(UIComponentSource uics, FontManager fMgr, TimeAxisDefinition tad, JFrame parent, PendingEditTracker pet, String key) {
     uics_ = uics;
-    dacx_ = dacx;
+    tad_ = tad;
+    fMgr_ = fMgr;
     pet_ = pet;
     myKey_ = key;
     parent_ = parent;
     currEditDepth_ = 0;
     editStack_ = null;
     setLayout(new GridLayout(1, 1));
-    rMan_ = dacx_.getRMan();
+    rMan_ = uics_.getRMan();
        
     topPanel_ = new AnimatedSplitPaneLayoutManager.PanelForSplit();
     topPanel_.setLayout(new GridBagLayout());
@@ -439,7 +442,7 @@ public abstract class AnimatedSplitManagePanel extends JPanel implements Pending
   */ 
   
   protected void finishConstruction() {
-    asp_ = new AnimatedSplitPane(uics_, dacx_, topPanel_, editPanel_, this);
+    asp_ = new AnimatedSplitPane(uics_, fMgr_, topPanel_, editPanel_, this);
     add(asp_);
     return;
   }

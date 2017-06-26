@@ -90,6 +90,9 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
 
   private HashMap<String, TabData> tabData_;
   private DataAccessContext dacx_;
+  private TimeCourseData tcData_;
+  private TimeCourseDataMaps tcdm_; 
+  private TimeAxisDefinition tad_; 
   private UIComponentSource uics_;
   private UndoFactory uFac_;
   private boolean advanced_;
@@ -123,12 +126,18 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     uFac_ = uFac;
     advanced_ = false;
         
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     setSize(850, 750);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
-    GridBagConstraints gbc = new GridBagConstraints();    
+    GridBagConstraints gbc = new GridBagConstraints();  
+    tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();   
+    String display = tad_.unitDisplayString();   
+    tcData_ = dacx_.getExpDataSrc().getTimeCourseData();
+    tcData_ = dacx_.getExpDataSrc().getTimeCourseData();
+    tcdm_ = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+    
        
     confidenceEnum_ = buildConfidenceEnum(); 
     expressEnum_ = buildExpressionEnum(); 
@@ -147,7 +156,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       int index = 0;
       while (midit.hasNext()) {
         TimeCourseDataMaps.TCMapping tcm = midit.next();
-        TabData tdat = buildATab(tcm.name, false);
+        TabData tdat = buildATab(tcm.name, false, display);
         tabData_.put(tcm.name, tdat);
         if (tdatf_ == null) {
           tdatf_ = tdat;
@@ -169,7 +178,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       });
     } else {
       String mid = (String)mappedIDs.get(0);
-      TabData tdat = buildATab(mid, true);
+      TabData tdat = buildATab(mid, true, display);
       tabData_.put(mid, tdat);
       tdatf_ = tdat;
       UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
@@ -191,7 +200,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       }
     });    
    
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBoxWithExtra(cp, 10, 1, true, buttonAdv_, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -242,8 +251,8 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   ** Build a tab for one species
   */ 
   
-  private TabData buildATab(String mappedID, boolean doForTable) {       
-    ResourceManager rMan = dacx_.getRMan();    
+  private TabData buildATab(String mappedID, boolean doForTable, String display) {       
+    ResourceManager rMan = uics_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
 
     TabData tdat = new TabData();
@@ -255,12 +264,14 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     tdat.panel = new JPanel();
     tdat.panel.setLayout(new GridBagLayout());
     
-    JPanel tcGeneControls = buildEntryControls(tdat, mappedID, doForTable, rMan, gbc);   
+    
+    JPanel tcGeneControls = buildEntryControls(tdat, mappedID, doForTable, rMan, gbc, tcData_);   
    
     UiUtil.gbcSet(gbc, 0, 0, 10, 1, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
     tdat.panel.add(tcGeneControls, gbc);  
-              
-    tdat.est = new EditableTable(uics_, dacx_, new TimeCourseTableModel(uics_, dacx_, tdat), uics_.getTopFrame());
+        
+   
+    tdat.est = new EditableTable(uics_, new TimeCourseTableModel(uics_, display, tdat), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.singleSelectOnly = true;
@@ -305,18 +316,18 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   */ 
   
   private JPanel buildEntryControls(TabData tdat, String mappedID, boolean doForTable, 
-                                    ResourceManager rMan, GridBagConstraints gbc) {       
+                                    ResourceManager rMan, GridBagConstraints gbc, TimeCourseData tcd) {       
  
     JPanel tcGeneControls = new JPanel();
     tcGeneControls.setLayout(new GridBagLayout()); 
 
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+   
     tdat.gene = tcd.getTimeCourseData(mappedID);
     
     if (tdat.gene == null) {
       tdat.isNew = true;
       Iterator<GeneTemplateEntry> template = tcd.getGeneTemplate();
-      tdat.gene = new TimeCourseGene(dacx_, mappedID, template);
+      tdat.gene = new TimeCourseGene(mappedID, template);
     } else {
       tdat.isNew = false;
     }
@@ -403,7 +414,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       String newName = tdat.nameField.getText().trim();
       if (!newName.equals(currName)) {
         if (newName.equals("")) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tcentry.nameBlank"), 
                                         rMan.getString("tcentry.nameBlankTitle"),
@@ -411,7 +422,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
           return (false);
         }        
         if (!tcd.nameIsUnique(newName)) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tcentry.nameNotUnique"), 
                                         rMan.getString("tcentry.nameNotUniqueTitle"),
@@ -440,7 +451,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
               }
             }
             if (haveDefault) {
-              ResourceManager rMan = dacx_.getRMan();
+              ResourceManager rMan = uics_.getRMan();
               String desc = MessageFormat.format(rMan.getString("dataTables.disconnecting"), 
                                                  new Object[] {currName, newName});
               JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
@@ -452,7 +463,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
         tdat.gene.setName(newName);        
         TimeCourseChange[] tcc = tcdm.changeTimeCourseMapsToName(currName, newName);
         for (int i = 0; i < tcc.length; i++) {
-          support.addEdit(new TimeCourseChangeCmd(dacx_, tcc[i]));
+          support.addEdit(new TimeCourseChangeCmd(tcc[i]));
         }
       }
     }
@@ -596,11 +607,10 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       }
     }
   
-    TimeCourseTableModel(UIComponentSource uics, DataAccessContext dacx, TabData td) {
-      super(uics, dacx, NUM_COL_);
+    TimeCourseTableModel(UIComponentSource uics, String displayUnits, TabData td) {
+      super(uics, NUM_COL_);
       tdat_ = td;
-      String displayUnits = dacx_.getExpDataSrc().getTimeAxisDefinition().unitDisplayString();
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics.getRMan();
       String timeColumnHeading = MessageFormat.format(rMan.getString("tcentry.timeColFormat"), new Object[] {displayUnits});
       sst_ = new StratSourceTracker(columns_[VALUE], columns_[SOURCE], columns_[START_STRAT], columns_[END_STRAT]);
 
@@ -832,7 +842,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   
   private void toggleAdvanced() {
     advanced_ = !advanced_;
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String text = rMan.getString((advanced_) ? "dialogs.collapse" : "dialogs.expand");
     buttonAdv_.setText(text);
     Iterator tdit = tabData_.values().iterator();
@@ -859,7 +869,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       ExpressionEntry entry = eeit.next();
       TimeCourseTableModel.TableRow tr = tctm.new TableRow();    
       Integer timeIndex = new Integer(entry.getTime());
-      tr.time = TimeAxisDefinition.getTimeDisplay(dacx_, timeIndex, false, false);        
+      tr.time = TimeAxisDefinition.getTimeDisplay(tad_, timeIndex, false, false);        
       tr.region = entry.getRegion();
       
       int expr = entry.getExpressionForSource(ExpressionEntry.Source.NO_SOURCE_SPECIFIED);
@@ -937,8 +947,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   */
   
   private boolean applyProperties() {
-    TimeCourseData tcData = dacx_.getExpDataSrc().getTimeCourseData();
-    TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
+
     Iterator<TabData> tdit = tabData_.values().iterator();
     while (tdit.hasNext()) {
       TabData tdat = tdit.next();
@@ -956,11 +965,11 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
    
       UndoSupport support = uFac_.provideUndoSupport("undo.tcentry", dacx_);
       if (tdat.isNew) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, tcData.addTimeCourseGene(tdat.gene)));
+        support.addEdit(new TimeCourseChangeCmd(tcData_.addTimeCourseGene(tdat.gene)));
       }
-      TimeCourseChange tcc = tcData.startGeneUndoTransaction(tdat.gene.getName());
+      TimeCourseChange tcc = tcData_.startGeneUndoTransaction(tdat.gene.getName());
       
-      boolean ok = applyGeneData(tcData, tcdm, tdat, support);
+      boolean ok = applyGeneData(tcData_, tcdm_, tdat, support);
       // Only time this is false is for single-shot panels, i.e. no partial
       // undo commits should occur.
       if (!ok) {
@@ -971,8 +980,8 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
       }
       
       applyTableValues(tdat);
-      tcc = tcData.finishGeneUndoTransaction(tdat.gene.getName(), tcc);
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+      tcc = tcData_.finishGeneUndoTransaction(tdat.gene.getName(), tcc);
+      support.addEdit(new TimeCourseChangeCmd(tcc));
      
       //
       // If maps to channels are going to be left dangling by the loss of a source
@@ -983,11 +992,11 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
         Iterator<ExpressionEntry.Source> gcit = tdat.goodbyeChannels_.iterator();
         while (gcit.hasNext()) {
           ExpressionEntry.Source channelObj = gcit.next();
-          TimeCourseChange[] tccm = tcdm.dropMapsToEntrySourceChannel(tdat.gene.getName(), channelObj);
+          TimeCourseChange[] tccm = tcdm_.dropMapsToEntrySourceChannel(tdat.gene.getName(), channelObj);
           for (int i = 0; i < tccm.length; i++) {
-            support.addEdit(new TimeCourseChangeCmd(dacx_, tccm[i]));
+            support.addEdit(new TimeCourseChangeCmd(tccm[i]));
           }
-          UiUtil.fixMePrintout("do something here!!!");
+          UiUtil.fixMePrintout("WORKSHEET do something here!!!");
           // public ModelBuilder.Undo handleSourceChannelDeletion(String tcNodeName, int channel);         
         }   
       }
@@ -1025,7 +1034,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
         return (false);
       }
       if ((tr.activity.value < 0.0) || (tr.activity.value > 1.0)) {
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                       rMan.getString("tcentry.badActivityValue"), 
                                       rMan.getString("tcentry.badActivityValueTitle"),
@@ -1060,7 +1069,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     }
 
     if (haveVar && haveFixed) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcentry.mixed"),
                                     rMan.getString("tcentry.mixedTitle"),
                                     JOptionPane.WARNING_MESSAGE);
@@ -1108,18 +1117,17 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     Set<ExpressionEntry.Source> newsOpts = TimeCourseGene.getSourceOptions(newExp);
     boolean maternalExistsNew = ExpressionEntry.hasMaternalChannel(newsOpts);
     boolean zygoticExistsNew = ExpressionEntry.hasZygoticChannel(newsOpts);
-    TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
     if ((maternalExists || zygoticExists) && !(maternalExistsNew || zygoticExistsNew)) {
-      if (tcdm.haveMapsToEntrySourceChannel(tdat.gene.getName(), ExpressionEntry.Source.MATERNAL_SOURCE)) {
+      if (tcdm_.haveMapsToEntrySourceChannel(tdat.gene.getName(), ExpressionEntry.Source.MATERNAL_SOURCE)) {
         tdat.goodbyeChannels_.add(ExpressionEntry.Source.MATERNAL_SOURCE);
       }
-      if (tcdm.haveMapsToEntrySourceChannel(tdat.gene.getName(), ExpressionEntry.Source.ZYGOTIC_SOURCE)) {
+      if (tcdm_.haveMapsToEntrySourceChannel(tdat.gene.getName(), ExpressionEntry.Source.ZYGOTIC_SOURCE)) {
         tdat.goodbyeChannels_.add(ExpressionEntry.Source.ZYGOTIC_SOURCE);
       }      
     }
     
     if (!tdat.goodbyeChannels_.isEmpty()) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       int ok = 
         JOptionPane.showConfirmDialog(uics_.getTopFrame(), rMan.getString("tcentry.channelMapLoss"),
                                       rMan.getString("tcentry.channelMapLossTitle"),
@@ -1231,7 +1239,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     }
   
     if (badNews) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcentry.badStrategySource"),
                                     rMan.getString("tcentry.badStrategySourceTitle"),
                                     JOptionPane.ERROR_MESSAGE);
@@ -1251,7 +1259,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
     while (eeit.hasNext()) {
       ExpressionEntry entry = eeit.next();
       if (TimeCourseGene.strategyProblems(entry, exprSource, newExp.iterator(), lastEntryStates)) {
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcentry.badStrategy"),
                                       rMan.getString("tcentry.badStrategyTitle"),
                                       JOptionPane.ERROR_MESSAGE);
@@ -1341,7 +1349,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   
   private ArrayList<EnumChoiceContent<ExpressionEntry.Source>> buildSourceEnum() { 
     ArrayList<EnumChoiceContent<ExpressionEntry.Source>> retval = new ArrayList<EnumChoiceContent<ExpressionEntry.Source>>();
-    ResourceManager rMan = dacx_.getRMan(); 
+    ResourceManager rMan = uics_.getRMan(); 
     StringBuffer buf = new StringBuffer();
     ExpressionEntry.Source[] vals = ExpressionEntry.Source.values();
     for (int i = 0; i < vals.length; i++) {    
@@ -1362,7 +1370,7 @@ public class TimeCourseEntryDialog extends JDialog implements DialogSupport.Dial
   
   private ArrayList<EnumCell> buildStrategyEnum() { 
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
-    ResourceManager rMan = dacx_.getRMan(); 
+    ResourceManager rMan = uics_.getRMan(); 
     StringBuffer buf = new StringBuffer();
     int numItems = ExpressionEntry.NUM_STRATEGIES;
     for (int i = 0; i < numItems; i++) {

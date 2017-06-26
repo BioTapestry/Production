@@ -400,6 +400,7 @@ public class MainCommands implements SelectionChangeListener,
     }
     uics_.getPathControls().handlePathButtons();
     uics_.getNetOverlayController().checkForChanges(dacx);
+    uics_.getVirtualZoom().zoomStateChanged(false);
     return;
   }  
   

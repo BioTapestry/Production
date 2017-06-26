@@ -32,6 +32,7 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
@@ -40,10 +41,12 @@ import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UndoFactory;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
@@ -76,6 +79,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   private ReadOnlyTable rtudf_;
   private ReadOnlyTable rtmt_;
   private PerturbationData pd_;
+  private TimeCourseData tcd_;
   private PertSimpleNameEditPanel udfep_;
   private PertMeasureScaleAddOrEditPanel mtep_;
   private String pendingKey_;
@@ -83,6 +87,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
   private UndoFactory uFac_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -97,21 +102,24 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   ** Constructor 
   */ 
   
-  public PertMiscSetupManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
-                                  PerturbationData pd, PendingEditTracker pet, 
+  public PertMiscSetupManagePanel(UIComponentSource uics, FontManager fMgr, TimeAxisDefinition tad, 
+                                  DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
+                                  PerturbationData pd, TimeCourseData tcd, PendingEditTracker pet, 
                                   PertFilterExpressionJumpTarget pfet) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, fMgr, tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
     uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    dacx_ = dacx;
+    pmh_ = new PertManageHelper(uics_, pmw, pd, tcd, rMan_, gbc_, pet_);
  
     
     ArrayList<ReadOnlyTable> allTabs = new ArrayList<ReadOnlyTable>();
-    rtudf_ = new ReadOnlyTable(uics_, dacx_, new ReadOnlyTable.NameWithHiddenIDModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());
+    rtudf_ = new ReadOnlyTable(uics_, new ReadOnlyTable.NameWithHiddenIDModel(uics_), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtudf_);
         
-    rtmt_ = new ReadOnlyTable(uics_, dacx_, new MeasureScaleModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());
+    rtmt_ = new ReadOnlyTable(uics_, new MeasureScaleModel(uics_), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtmt_);
     
     //
@@ -138,10 +146,10 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     topPanel_.add(mtPanel, gbc_);  
     
  
-    udfep_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pmsmp.userField", this, UDF_KEY);
+    udfep_ = new PertSimpleNameEditPanel(uics_, parent_, this, "pmsmp.userField", this, UDF_KEY);
     addEditPanel(udfep_, UDF_KEY);
        
-    mtep_ = new PertMeasureScaleAddOrEditPanel(uics_, dacx_, parent_, pd_, this, MEAS_SCALE_KEY);
+    mtep_ = new PertMeasureScaleAddOrEditPanel(uics_, parent_, pd_, tcd_, this, MEAS_SCALE_KEY);
     addEditPanel(mtep_, MEAS_SCALE_KEY);
  
     finishConstruction();
@@ -199,15 +207,15 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   public void editIsComplete(String key, int what) {
     if (key.equals(UDF_KEY)) {
       if (joinKeys_ == null) {
-        editUserField(key, what);
+        editUserField(key, what, dacx_);
       } else {
         throw new IllegalStateException();
       }
     } else if (key.equals(MEAS_SCALE_KEY)) {
       if (joinKeys_ == null) {
-        editMeasureScale(key, what);
+        editMeasureScale(key, what, dacx_);
       } else {
-        joinMeasureScales(key, what);
+        joinMeasureScales(key, what, dacx_);
       }  
     } else {
       throw new IllegalArgumentException();
@@ -512,7 +520,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
       }
       UndoSupport support = uFac_.provideUndoSupport("undo.deleteUserDataField", dacx_);
       PertDataChange pdc = pd_.deleteUserFieldName(selKey);
-      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+      support.addEdit(new PertDataChangeCmd(pdc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
@@ -535,10 +543,10 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
         return;
       }      
       UndoSupport support = uFac_.provideUndoSupport("undo.deleteMeasScale", dacx_);
-      da.killOffDependencies(refs, dacx_, support);
+      da.killOffDependencies(refs, tcd_, support);
       PertDataChange pdc = pd_.deleteMeasureScale(selKey);
-      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
-      dacx_.getDisplayOptsSource().modifyForPertDataChange(support, dacx_);
+      support.addEdit(new PertDataChangeCmd(pdc));
+      pd_.modifyForPertDataChange(support);
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
@@ -561,7 +569,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   ** Join measurement scales
   */ 
   
-  private void joinMeasureScales(String key, int what) {
+  private void joinMeasureScales(String key, int what, DataAccessContext dacx) {
     MeasureDictionary md = pd_.getMeasureDictionary();
     String[] stds = md.getStandardScaleKeys();
     String chkStd = null;
@@ -623,12 +631,12 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     }
  
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergeMeasureScales", dacx_);   
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeMeasureScales", dacx);   
     DependencyAnalyzer.Dependencies refs = da.getMeasureScaleMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
-    da.mergeDependencies(refs, dacx_, support);
+    da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeMeasureScales(joinKeys_, pendingKey_, revisedScale);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
-    dacx_.getDisplayOptsSource().modifyForPertDataChange(support, dacx_);
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
+    pd_.modifyForPertDataChange(support);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -647,15 +655,15 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   ** 
   */
   
-  private void editUserField(String key, int what) {
+  private void editUserField(String key, int what, DataAccessContext dacx) {
     String name = udfep_.getResult();
     UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createUserFieldName" 
-                                                                         : "undo.editUserFieldName", dacx_);      
+                                                                         : "undo.editUserFieldName", dacx);      
     if (pendingKey_ == null) {
       pendingKey_ = Integer.toString(pd_.getUserFieldCount());
     } 
     PertDataChange pdc = pd_.setUserFieldName(pendingKey_, name);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -673,7 +681,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
   ** 
   */
   
-  private void editMeasureScale(String key, int what) {
+  private void editMeasureScale(String key, int what, DataAccessContext dacx) {
     MeasureScale revisedScale = mtep_.getResult();
     if (pendingKey_ != null) {
       MeasureScale origScale = pd_.getMeasureDictionary().getMeasureScale(pendingKey_);
@@ -715,10 +723,10 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     }
  
     UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createMeasureScale" 
-                                                                         : "undo.editMeasureScale", dacx_);    
+                                                                         : "undo.editMeasureScale", dacx);    
     PertDataChange pdc = pd_.setMeasureScale(revisedScale);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));
-    dacx_.getDisplayOptsSource().modifyForPertDataChange(support, dacx_);
+    support.addEdit(new PertDataChangeCmd(pdc));
+    pd_.modifyForPertDataChange(support);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -772,8 +780,8 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     
     private static final long serialVersionUID = 1L;
    
-    MeasureScaleModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    MeasureScaleModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"pertMeaSc.type",
                                 "pertMeaSc.unchanged",
                                 "pertMeaSc.convertType",
@@ -843,7 +851,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
       Double unch = ms.getUnchanged();
       unchanged = (unch == null) ? "" : unch.toString();  
       MeasureScale.Conversion conv = ms.getConvToFold();
-      convertType = (conv == null) ? "" : conv.getDisplayString(dacx_);
+      convertType = (conv == null) ? "" : conv.getDisplayString(uics_);
       BoundedDoubMinMax illegal = ms.getIllegalRange();
       illegalRange = (illegal == null) ? "" : illegal.toString();
     }

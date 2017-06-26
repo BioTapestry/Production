@@ -29,7 +29,6 @@ import java.io.IOException;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -159,9 +158,9 @@ class TimeSpan {
   **
   */
   
-   String getSpanAsString(DataAccessContext dacx) { 
+   String getSpanAsString(TimeAxisDefinition tad) { 
     // E.g. "23-28 h"
-    return (spanToString(dacx, new MinMax(minTime_, maxTime_)));
+    return (spanToString(tad, new MinMax(minTime_, maxTime_)));
   }
   
   /***************************************************************************
@@ -385,7 +384,7 @@ class TimeSpan {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, SpanTimeProfile spt, DataAccessContext dacx) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, SpanTimeProfile spt, TimeAxisDefinition tad) {
     ind.indent();
     qtp.paragraph(false);
     //
@@ -401,9 +400,9 @@ class TimeSpan {
         Iterator<Batch> bftit = getBatchesForTime(batchTime.intValue());
         if (bftit.hasNext()) {
           out.print("(");
-          writeDetailedHTML(bftit, out, ind, qtp, batchTime);
+          writeDetailedHTML(bftit, out, ind, qtp, batchTime, tad);
           out.print(" [");
-          String tdisp = TimeAxisDefinition.getTimeDisplay(dacx, batchTime, true, true);
+          String tdisp = TimeAxisDefinition.getTimeDisplay(tad, batchTime, true, true);
           tdisp = tdisp.replaceAll(" ", "&nbsp;");
           out.print(tdisp);
           out.print("])");
@@ -412,10 +411,10 @@ class TimeSpan {
         }   
       }
       Iterator<Batch> bit = getBatchesForTime(Batch.NO_TIME);
-      writeDetailedHTML(bit, out, ind, qtp, null);
+      writeDetailedHTML(bit, out, ind, qtp, null, tad);
     } else {
       Iterator<Batch> bit = getBatches();
-      writeDetailedHTML(bit, out, ind, qtp, null);
+      writeDetailedHTML(bit, out, ind, qtp, null, tad);
     }   
     out.println("</p>");
     return;
@@ -428,10 +427,11 @@ class TimeSpan {
   **
   */
   
-  private void writeDetailedHTML(Iterator<Batch> bit, PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime) {
+  private void writeDetailedHTML(Iterator<Batch> bit, PrintWriter out, Indenter ind,
+                                 QpcrTablePublisher qtp, Integer batchTime, TimeAxisDefinition tad) {
     while (bit.hasNext()) {
       Batch b = bit.next();
-      b.writeHTML(out, ind, qtp, batchTime);
+      b.writeHTML(out, ind, qtp, batchTime, tad);
       if (bit.hasNext()) {
         out.print("/");
         qtp.breakSpace();
@@ -484,7 +484,7 @@ class TimeSpan {
   **
   */
   
-   static TimeSpan buildFromXML(DataAccessContext dacx, String elemName, 
+   static TimeSpan buildFromXML(TimeAxisDefinition tad, String elemName, 
                                 Attributes attrs) throws IOException {
     if (!elemName.equals("timeSpan")) {
       return (null);
@@ -512,7 +512,7 @@ class TimeSpan {
     }
     
     if (legacySpan != null) {
-      return (new TimeSpan(dacx, legacySpan));
+      return (new TimeSpan(tad, legacySpan));
     } else if (minValStr != null) {
       try {
         int minVal = Integer.parseInt(minValStr);
@@ -520,7 +520,7 @@ class TimeSpan {
         if (maxValStr != null) {
           maxVal = Integer.parseInt(maxValStr);
         }
-        if (!spanIsOk(dacx, minVal, maxVal)) {
+        if (!spanIsOk(tad, minVal, maxVal)) {
           throw new IOException();
         } 
         return (new TimeSpan(minVal, maxVal));
@@ -551,9 +551,8 @@ class TimeSpan {
   **
   */
   
-   static String spanToString(DataAccessContext dacx, MinMax bounds) {
+   static String spanToString(TimeAxisDefinition tad, MinMax bounds) {
     // E.g. "23-28 h"
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String displayUnitAbbrev = tad.unitDisplayAbbrev();
     
     String minStr;
@@ -624,14 +623,14 @@ class TimeSpan {
   ** Constructor (Legacy IO only)
   */
 
-  private TimeSpan(DataAccessContext dacx, String legacySpan) throws IOException {
+  private TimeSpan(TimeAxisDefinition tad, String legacySpan) throws IOException {
     try {
       minTime_ = QPCRData.getMinimum(legacySpan); 
       maxTime_ = QPCRData.getMaximum(legacySpan);
     } catch (IllegalArgumentException ex) {
       throw new IOException();
     }
-    if (!spanIsOk(dacx, minTime_, maxTime_)) {
+    if (!spanIsOk(tad, minTime_, maxTime_)) {
       throw new IOException();
     }    
     batches_ = new ArrayList<Batch>();
@@ -650,8 +649,7 @@ class TimeSpan {
   ** Checks span validity
   */
 
-  private static boolean spanIsOk(DataAccessContext dacx, int min, int max) {
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+  private static boolean spanIsOk(TimeAxisDefinition tad, int min, int max) {
     if (!tad.spanIsOk(min, max)) {      
       return (false);
     }

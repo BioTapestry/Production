@@ -306,7 +306,7 @@ public class EditCisRegModule extends AbstractControlFlow {
 
       GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(geneID_, newRegs);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
   
@@ -344,7 +344,7 @@ public class EditCisRegModule extends AbstractControlFlow {
           List<DBGeneRegion> empty = new ArrayList<DBGeneRegion>();
           gc = dacx_.getDBGenome().changeGeneRegions(geneID_, empty);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
           }
         }

@@ -33,7 +33,9 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
@@ -41,8 +43,10 @@ import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -77,6 +81,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   private ReadOnlyTable rtds_;
   private ReadOnlyTable rtdt_;
   private PerturbationData pd_;
+  private TimeCourseData tcd_;
   private String pendingKey_;
   private String dupKey_;
   private PertSimpleNameEditPanel psp_;
@@ -85,6 +90,9 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
   private UndoFactory uFac_;
+  private PerturbationDataMaps pdms_;
+  private DBGenome dbGenome_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -99,19 +107,23 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** Constructor 
   */ 
   
-  public PertSrcsAndTargsManagePanel(UIComponentSource uics, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
-                                     PerturbationData pd, 
+  public PertSrcsAndTargsManagePanel(UIComponentSource uics, FontManager fMgr, TimeAxisDefinition tad, DataAccessContext dacx, PerturbationsManagementWindow pmw, 
+                                     PerturbationData pd, TimeCourseData tcd, PerturbationDataMaps pdms, DBGenome dbGenome,
                                      PendingEditTracker pet, PertFilterExpressionJumpTarget pfet, UndoFactory uFac) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, fMgr, tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
     pfet_ = pfet;
     uFac_ = uFac;
-    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    pdms_ = pdms;
+    dacx_ = dacx;
+    dbGenome_ = dbGenome;
+    pmh_ = new PertManageHelper(uics_, pmw, pd_, tcd_, rMan_, gbc_, pet_);
 
     ArrayList<ReadOnlyTable> allTabs = new ArrayList<ReadOnlyTable>();
-    rtds_ = new ReadOnlyTable(uics_, dacx_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, dacx_, "pstm.sourceName"), new ReadOnlyTable.EmptySelector());
+    rtds_ = new ReadOnlyTable(uics_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, "pstm.sourceName"), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtds_);
-    rtdt_ = new ReadOnlyTable(uics_, dacx_, new AnnotatedTargModel(uics_, dacx_), new ReadOnlyTable.EmptySelector());
+    rtdt_ = new ReadOnlyTable(uics_,new AnnotatedTargModel(uics_), new ReadOnlyTable.EmptySelector());
     allTabs.add(rtdt_);
     
     //
@@ -146,10 +158,10 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     // Edit panels:
     //
          
-    psp_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pertSrcTargEdit.sourceName", this, SRC_KEY);
+    psp_ = new PertSimpleNameEditPanel(uics_, parent_, this, "pertSrcTargEdit.sourceName", this, SRC_KEY);
     addEditPanel(psp_, SRC_KEY);
     
-    ptp_ = new PertTargetAddOrEditPanel(uics_, dacx_, parent_, pd_, this, this, TRG_KEY);
+    ptp_ = new PertTargetAddOrEditPanel(uics_, parent_, pd_, tcd_, this, this, TRG_KEY);
     addEditPanel(ptp_, TRG_KEY);
  
     finishConstruction();
@@ -202,19 +214,18 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
        return (false);
      }
      ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
-     PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-     pdmsl.add(pdms);
+     pdmsl.add(pdms_);
      
      
      if (whoAmI.equals(SRC_KEY)) {
        String currName = pd_.getSourceName(key);
        if (!DataUtil.keysEqual(currName, name)) {
-         return (pdms.dataSourceOnlyInverseIsDefault(key, pd_.getSourceNames()));
+         return (pdms_.dataSourceOnlyInverseIsDefault(dbGenome_, key, pd_.getSourceNames()));
        }        
      } else if (whoAmI.equals(TRG_KEY)) {
        String currName = pd_.getTarget(key);     
        if (!DataUtil.keysEqual(currName, name)) {
-         return (pdms.dataEntryOnlyInverseIsDefault(key, pd_.getEntryNames()));
+         return (pdms_.dataEntryOnlyInverseIsDefault(dbGenome_, key, pd_.getEntryNames()));
        }
      } else {
        throw new IllegalArgumentException();
@@ -231,15 +242,15 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   public void editIsComplete(String key, int what) {
     if (key.equals(SRC_KEY)) {
       if (joinKeys_ == null) {
-        editASource(key, what);
+        editASource(key, what, dacx_);
       } else {
-        joinSources(key, what);
+        joinSources(key, what, dacx_);
       }
     } else if (key.equals(TRG_KEY)) {
       if (joinKeys_ == null) {
-        editATarget(key, what);
+        editATarget(key, what, dacx_);
       } else {
-        joinTargets(key, what);
+        joinTargets(key, what, dacx_);
       }
     } else {
       throw new IllegalArgumentException();
@@ -354,7 +365,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     if (key.equals(SRC_KEY)) {
       joinKeys_ = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtds_.getModel()).getSelectedKeys(rtds_.selectedRows);
       DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-      Map<String, Integer> refCounts = da.getAllSourceNameReferenceCounts(true);
+      Map<String, Integer> refCounts = da.getAllSourceNameReferenceCounts(true, tcd_);
       pendingKey_ = pmh_.getMostUsedKey(refCounts, joinKeys_); 
       TreeSet<String> nameOptions = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
       int numk = joinKeys_.size();
@@ -433,7 +444,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     rtds_.rowElements.clear();
     Vector<TrueObjChoiceContent> sno = pd_.getSourceNameOptions();
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map<String, Integer> sdrefs = da.getAllSourceNameReferenceCounts(false);
+    Map<String, Integer> sdrefs = da.getAllSourceNameReferenceCounts(false, tcd_);
     Integer noCount = new Integer(0);
     Iterator<TrueObjChoiceContent> snit = sno.iterator();  
     while (snit.hasNext()) {
@@ -527,12 +538,12 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   protected void doADelete(String key) {
     if (key.equals(SRC_KEY)) {
       String deleteKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtds_.getModel()).getSelectedKey(rtds_.selectedRows);
-      if (deleteASourceName(deleteKey)) {       
+      if (deleteASourceName(deleteKey, dacx_)) {       
         pet_.itemDeleted(SRC_KEY);
       }
     } else if (key.equals(TRG_KEY)) {
       String deleteKey = ((AnnotatedTargModel)rtdt_.getModel()).getSelectedKey(rtdt_.selectedRows);
-      if (deleteATarget(deleteKey)) {       
+      if (deleteATarget(deleteKey, dacx_)) {       
         pet_.itemDeleted(TRG_KEY);
       }
     } else {
@@ -552,19 +563,19 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** Handle delete operations 
   */ 
   
-  private boolean deleteATarget(String key) {    
+  private boolean deleteATarget(String key, DataAccessContext dacx) {    
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     DependencyAnalyzer.Dependencies refs = da.getTargetReferenceSet(key);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }
        
-    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertTarget", dacx_);  
-    da.killOffDependencies(refs, dacx_, support);
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertTarget", dacx);  
+    da.killOffDependencies(refs, tcd_, support);
     ArrayList<PerturbationDataMaps> pdatMaps = new ArrayList<PerturbationDataMaps>();
-    pdatMaps.add(dacx_.getDataMapSrc().getPerturbationDataMaps());
+    pdatMaps.add(pdms_);
     PertDataChange[] pdc = pd_.deleteTargetName(key, pdatMaps);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -577,19 +588,19 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** Handle delete operations 
   */ 
   
-  private boolean deleteASourceName(String key) {
+  private boolean deleteASourceName(String key, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    DependencyAnalyzer.Dependencies refs = da.getSourceNameReferenceSets(key);
+    DependencyAnalyzer.Dependencies refs = da.getSourceNameReferenceSets(key, tcd_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }
       
-    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertSourceName", dacx_);
-    da.killOffDependencies(refs, dacx_, support);
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertSourceName", dacx);
+    da.killOffDependencies(refs, tcd_, support);
     ArrayList<PerturbationDataMaps> pdms = new ArrayList<PerturbationDataMaps>();
-    pdms.add(dacx_.getDataMapSrc().getPerturbationDataMaps());
+    pdms.add(pdms_);
     PertDataChange[] pdc = pd_.deleteSourceName(key, pdms);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -603,17 +614,16 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** 
   */
   
-  private void editATarget(String key, int what) {
+  private void editATarget(String key, int what, DataAccessContext dacx) {
     String name = ptp_.getTargetName();
     int mode = ptp_.getMode();
     String action;
     boolean dupMap = false;
     ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
-    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-    pdmsl.add(pdms);
+    pdmsl.add(pdms_);
     
     if (mode == PertTargetAddOrEditPanel.DUP_MODE) {
-      if (pdms.haveTargetNameMapTo(dupKey_)) {
+      if (pdms_.haveTargetNameMapTo(dupKey_)) {
         int doit = JOptionPane.showConfirmDialog(parent_, rMan_.getString("pstmp.wantToDupTrgMap"),
                                                  rMan_.getString("pstmp.wantToDupTrgMapTitle"),
                                                  JOptionPane.YES_NO_OPTION);
@@ -628,15 +638,15 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
       }
     }
     
-    UndoSupport support = uFac_.provideUndoSupport(action, dacx_);      
+    UndoSupport support = uFac_.provideUndoSupport(action, dacx);      
   
     List annots = ptp_.getTargetAnnots();
-    PertDataChange[] pdc = pd_.setTargetName(pendingKey_, name, annots, pdmsl);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    PertDataChange[] pdc = pd_.setTargetName(pendingKey_, name, annots, pdmsl, dbGenome_);
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     
     if (dupMap) {
-      PertDataChange[] pdctnm = pdms.duplicateTargetNameMap(dupKey_, pendingKey_);
-      support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdctnm));
+      PertDataChange[] pdctnm = pdms_.duplicateTargetNameMap(dupKey_, pendingKey_);
+      support.addEdits(PertDataChangeCmd.wrapChanges(pdctnm));
       dupKey_ = null;
     }
  
@@ -657,18 +667,17 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** 
   */
   
-  private void editASource(String key, int what) {
+  private void editASource(String key, int what, DataAccessContext dacx) {
     String name = psp_.getResult();
     int mode = psp_.getMode();
     String action;
     boolean dupMap = false;
     ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
-    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-    pdmsl.add(pdms);
+    pdmsl.add(pdms_);
     
     
     if (mode == PertSimpleNameEditPanel.DUP_MODE) {
-      if (pdms.haveSourceNameMapTo(dupKey_)) {
+      if (pdms_.haveSourceNameMapTo(dupKey_)) {
         int doit = JOptionPane.showConfirmDialog(parent_, rMan_.getString("pstmp.wantToDupSrcMap"),
                                                  rMan_.getString("pstmp.wantToDupSrcMapTitle"),
                                                  JOptionPane.YES_NO_OPTION);
@@ -685,13 +694,13 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
       throw new IllegalStateException();
     }
     
-    UndoSupport support = uFac_.provideUndoSupport(action, dacx_);
-    PertDataChange[] pdc = pd_.setSourceName(pendingKey_, name, pdmsl);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    UndoSupport support = uFac_.provideUndoSupport(action, dacx);
+    PertDataChange[] pdc = pd_.setSourceName(pendingKey_, name, pdmsl, dbGenome_);
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
    
     if (dupMap) {
-      PertDataChange[] pdcsnm = pdms.duplicateSourceNameMap(dupKey_, pendingKey_);
-      support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdcsnm));
+      PertDataChange[] pdcsnm = pdms_.duplicateSourceNameMap(dupKey_, pendingKey_);
+      support.addEdits(PertDataChangeCmd.wrapChanges(pdcsnm));
       dupKey_ = null;
     }
           
@@ -711,19 +720,18 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** Join targets
   */ 
   
-  private void joinTargets(String key, int what) {
+  private void joinTargets(String key, int what, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     String name = ptp_.getTargetName();
     List annots = ptp_.getTargetAnnots();
     ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
-    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-    pdmsl.add(pdms);
+    pdmsl.add(pdms_);
        
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertTargets", dacx_);   
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertTargets", dacx);   
     DependencyAnalyzer.Dependencies refs = da.getTargetMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
-    da.mergeDependencies(refs, dacx_, support);
-    PertDataChange[] pdc = pd_.mergeTargetNames(joinKeys_, pendingKey_, name, annots, pdmsl);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    da.mergeDependencies(refs, tcd_, support);
+    PertDataChange[] pdc = pd_.mergeTargetNames(joinKeys_, pendingKey_, name, annots, pdmsl, dbGenome_);
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -741,21 +749,21 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
   ** Handle join operations 
   */ 
   
-  private boolean joinSources(String key, int what) {
+  private boolean joinSources(String key, int what, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     String name = psp_.getResult();
     ArrayList<PerturbationDataMaps> pdmsl = new ArrayList<PerturbationDataMaps>();
-    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-    pdmsl.add(pdms);
+   
+    pdmsl.add(pdms_);
     
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertSourceNames", dacx_);   
-    DependencyAnalyzer.Dependencies refs = da.getSourceNameMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertSourceNames", dacx);   
+    DependencyAnalyzer.Dependencies refs = da.getSourceNameMergeSet(new HashSet<String>(joinKeys_), pendingKey_, tcd_);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }     
-    da.mergeDependencies(refs, dacx_, support);
-    PertDataChange[] pdc = pd_.mergeSourceNames(joinKeys_, pendingKey_, name, pdmsl);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    da.mergeDependencies(refs, tcd_, support);
+    PertDataChange[] pdc = pd_.mergeSourceNames(joinKeys_, pendingKey_, name, pdmsl, dbGenome_);
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -816,8 +824,8 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     
     private static final long serialVersionUID = 1L;
    
-    AnnotatedTargModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    AnnotatedTargModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"pertSrc.targName",
                                 "pertSrc.annots",
                                 "pertSrc.refCounts"};

@@ -964,7 +964,7 @@ public class AddNode extends AbstractControlFlow {
       }    
       
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
       
@@ -1021,7 +1021,7 @@ public class AddNode extends AbstractControlFlow {
         }
         
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
         }
         support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rcxR_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));    
@@ -1055,7 +1055,7 @@ public class AddNode extends AbstractControlFlow {
         gc = rootVfg.addNode(ansu_.getNewNode());
       }    
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
   

@@ -241,8 +241,7 @@ public class BTState {
     
     tabOrder_.add(currTab_);
     
-    UiUtil.fixMePrintout("This circles back to this instance to mess things up");
-    dom_ = new DisplayOptionsManager(ddacx);
+    dom_ = new DisplayOptionsManager();
     cSrc_ = new CmdSource(this, uics_);
     rSrc_ = new RememberSource(this);
     pafs_ = new PathAndFileSource(this);
@@ -517,7 +516,6 @@ public class BTState {
   
   void changeTabRedoX(TabChange redo) {
     if (redo.didTabChange) {
-      System.out.println("did tab change " + redo.changeTabPostIndex);
       setCurrentTabIndexX(redo.changeTabPostIndex);
     } else if (redo.oldDB != null) {
       tabOrder_.remove(redo.oldDbId);
@@ -535,8 +533,7 @@ public class BTState {
         dbNow.setIndex(onindx[1].intValue());
       }
     } else if (redo.newDB != null) {
-      System.out.println("redo.newDB ctr " + redo.newDB);
-      perTab_.put(currTab_, redo.newBTPerTab);
+      perTab_.put(redo.newDbId, redo.newBTPerTab);
       mBase_.restoreDB(redo.newDB);
       tabOrder_.add(redo.newChangeIndex, redo.newDbId);
       currTab_ = tabOrder_.get(redo.newCurrIndexPost);   
@@ -904,6 +901,7 @@ public class BTState {
   
   boolean getAmPulling() {
     UiUtil.fixMePrintout("Should this be per tab??");
+    UiUtil.fixMePrintout("DANGER! Note that with pulldown dialog up, can still launch another pulldown window!");
     return (amPulling_);  
   }   
 
@@ -1762,22 +1760,17 @@ public class BTState {
      }
      perTab_.get(currTab_).genomeKey_ = key;
      //
-     // Gotta keep the DataAccessContext in sync!
+     // If dacx is static, gotta keep it in sync!
      //
-         //
-    // If dacx is static, gotta keep it in sync!
-    //
-    if (dacx instanceof StaticDataAccessContext) {
-      ((StaticDataAccessContext)dacx).setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
-      ((StaticDataAccessContext)dacx).setLayout((key == null) ? null : dacx.getLayoutSource().getLayoutForGenomeKey(key));
-    }
+     if (dacx instanceof StaticDataAccessContext) {
+       ((StaticDataAccessContext)dacx).setGenome((key == null) ? null : dacx.getGenomeSource().getGenome(key));
+       ((StaticDataAccessContext)dacx).setLayout((key == null) ? null : dacx.getLayoutSource().getLayoutForGenomeKey(key));
+     }
     
      perTab_.get(currTab_).textMgr_.setMessageSource(perTab_.get(currTab_).genomeKey_, TextBoxManager.MODEL_MESSAGE, true);
      if (updateModules) {
        noc.setForNewGenome(perTab_.get(currTab_).genomeKey_, support, odc, dacx);
      }
-       System.out.println("Used to set genome here on rcx_");
-     // This makes no sense in the current set-up? A dynamic DACX tracks current genome automatically, from genomeKey_ = key. You CANNOT set it! 
      perTab_.get(currTab_).rcx_.setGenome((perTab_.get(currTab_).genomeKey_ == null) ? null : perTab_.get(currTab_).rcx_.getGenomeSource().getGenome(key));
 
      return; 
@@ -1808,9 +1801,7 @@ public class BTState {
   
   public void setGraphLayout(String key) {
     perTab_.get(currTab_).layout_ = key;
-    System.out.println("Set layout here on rcx_");  
     perTab_.get(currTab_).rcx_.setLayout(((perTab_.get(currTab_).layout_ == null) ? null : perTab_.get(currTab_).rcx_.getLayoutSource().getLayout(perTab_.get(currTab_).layout_)));
-    //zoomer_.setGraphLayout(key); now handled through rcx_ state change above!
     return;
   }
   

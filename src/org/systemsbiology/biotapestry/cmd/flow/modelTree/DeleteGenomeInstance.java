@@ -31,6 +31,7 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
@@ -223,9 +224,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       //
       
       UiUtil.fixMePrintout("WHat about deleting group nodes? Image manager decrement???");
-      UiUtil.fixMePrintout("If model is deleted, need to delete references to in in group node navigation");
-      
-      
+            
       GenomeInstance rootOne = 
         (popupModelAncestor_ instanceof GenomeInstance) ? (GenomeInstance)popupModelAncestor_ : null;
 
@@ -249,9 +248,9 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       UserTreePathController utpc = uics_.getPathController();
 
       nt.setSkipFlag(NavTree.Skips.SKIP_FINISH); // We handle selection change, so don't issue tree change events...     
-      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(ec));
       support.addEdit(new UserTreePathControllerChangeCmd(dacx_, utpc.recordStateForUndo(true)));
       
       //
@@ -266,7 +265,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       if (nt.isGroupNode(popupNode_)) {
         Set<String> icmis = nt.getImmediateChildModelIDs(popupNode_, false);
         for (String icmi : icmis) {
-          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, icmi, false, support);
+          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, icmi, false, support);
         }        
       } else {  
         if (rootOne == null) {
@@ -284,11 +283,11 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
             }
             GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(giid);
             if (gi.getVfgParent() == null) {
-              deadOnes.addAll(DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, gi.getID(), false, support));
+              deadOnes.addAll(DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, gi.getID(), false, support));
             }
           }
         } else {
-          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, rootOne.getID(), myKidsOnly_, support);
+          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, rootOne.getID(), myKidsOnly_, support);
         }
       }
       
@@ -326,11 +325,11 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
       ec.selected = nt.mapAPath(ec.selected, ntc, false);
       support.addEdit(new UserTreePathControllerChangeCmd(dacx_, utpc.recordStateForUndo(false)));
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(ec));
 
     //  ModelChangeEvent mcev = new ModelChangeEvent(proxy_.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE, true);
     //  evList.add(mcev);    
@@ -349,7 +348,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
   ** Handles deleting a Genome Instance
   */ 
     
-  public static Set<String> deleteGenomeInstance(UIComponentSource uics, DataAccessContext dacx, 
+  public static Set<String> deleteGenomeInstance(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, 
                                                  String genomeRootKey, boolean justKids, UndoSupport support) {
 
     //
@@ -471,7 +470,11 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
         support.addEdit(new DatabaseChangeCmd(dacx4g, dc));
         sView = null;
       }
-      List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(id);
+      NavTree.GroupNodeMapEntry gnme = 
+        new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), id, null, null, null);
+      List<NavTree.GroupNodeMapEntry> gnmeli = new ArrayList<NavTree.GroupNodeMapEntry>();
+      gnmeli.add(gnme);
+      List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(gnmeli);
       for (NavTreeChange ntc : ntcs) {
         NavTreeChangeCmd cmd = new NavTreeChangeCmd(dacx4g, ntc);
         support.addEdit(cmd);
@@ -492,6 +495,15 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
             support.addEdit(new ImageChangeCmd(dacx, ic));
           }
         }
+      }
+      NavTree.GroupNodeMapEntry gnme = 
+        new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), null, id, null, null);
+      List<NavTree.GroupNodeMapEntry> gnmeli = new ArrayList<NavTree.GroupNodeMapEntry>();
+      gnmeli.add(gnme);
+      List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(gnmeli);
+      for (NavTreeChange ntc : ntcs) {
+        NavTreeChangeCmd cmd = new NavTreeChangeCmd(dacx, ntc);
+        support.addEdit(cmd);
       }
     }     
  
@@ -605,7 +617,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       while (dpit.hasNext()) {
         String id = dpit.next();
         TimeCourseChange[] tcc = tcdm.dropGroupMapsForProxy(id);
-        support.addEdits(TimeCourseChangeCmd.wrapChanges(dacx, tcc));
+        support.addEdits(TimeCourseChangeCmd.wrapChanges(tcc));
       }
     }
     TemporalInputRangeData tird = dacx.getTemporalRangeSrc().getTemporalInputRangeData();

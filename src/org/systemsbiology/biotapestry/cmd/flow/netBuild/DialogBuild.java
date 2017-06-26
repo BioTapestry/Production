@@ -27,6 +27,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
@@ -312,7 +313,7 @@ public class DialogBuild extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepLaunchDialog() {  
  
-     bip_ = new BuildInstructionProcessor(uics_, dacx_, uFac_);
+     bip_ = new BuildInstructionProcessor(uics_, dacx_, tSrc_, uFac_);
      List<BuildInstruction> instruct = bip_.getInstructions(dacx_);
       
      BuildNetworkDialogFactory.BuildArgs ba = new BuildNetworkDialogFactory.BuildArgs(dacx_.getCurrentGenome(), parent, working, instruct);
@@ -398,7 +399,7 @@ public class DialogBuild extends AbstractControlFlow {
       Point2D cc = dacx_.getWorkspaceSource().getWorkspace().getCanvasCenter();
       Dimension csz = dacx_.getWorkspaceSource().getWorkspace().getCanvasSize();
       
-      BuildRunner runner = new BuildRunner(uics_, dacx_, rcxR_, uFac_, crq.buildCmds, crq.workingRegions,
+      BuildRunner runner = new BuildRunner(uics_, dacx_, rcxR_, tSrc_, uFac_, crq.buildCmds, crq.workingRegions,
                                            cc, csz, crq.keepLayout, dacx_.getLayoutOptMgr().getLayoutOptions(), 
                                            crq.globalDelete, support, specLayout, params);
       BackgroundWorkerClient bwc = 
@@ -457,6 +458,7 @@ public class DialogBuild extends AbstractControlFlow {
   private static class BuildRunner extends BackgroundWorker {
     private UIComponentSource uics_;
     private UndoFactory uFac_;
+    private TabSource tSrc_;
     
     private String myGenomeID_;
     private StaticDataAccessContext rcxR_;
@@ -471,7 +473,7 @@ public class DialogBuild extends AbstractControlFlow {
     SpecialtyLayout specLayout_;
     SpecialtyLayoutEngineParams params_;
     
-    public BuildRunner(UIComponentSource uics, StaticDataAccessContext rcxT, StaticDataAccessContext rcxR, UndoFactory uFac,
+    public BuildRunner(UIComponentSource uics, StaticDataAccessContext rcxT, StaticDataAccessContext rcxR, TabSource tSrc, UndoFactory uFac,
                        List<BuildInstruction> buildCmds, List<InstanceInstructionSet.RegionInfo> workingRegions, Point2D center, 
                        Dimension size, boolean keepLayout, 
                        LayoutOptions options, boolean globalDelete,
@@ -481,6 +483,7 @@ public class DialogBuild extends AbstractControlFlow {
       super(new LinkRouter.RoutingResult());
       uics_ = uics;
       uFac_ = uFac;
+      tSrc_ = tSrc;
       myGenomeID_ = rcxT.getCurrentGenomeID();
       rcxR_ = rcxR;
       myBuildCmds_ = buildCmds;
@@ -496,7 +499,7 @@ public class DialogBuild extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, rcxR_, uFac_);
+      BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, rcxR_, tSrc_, uFac_);
       BuildInstructionProcessor.PIData pid = new BuildInstructionProcessor.PIData(myGenomeID_, myBuildCmds_, myRegions_,
                                                                                   myCenter_, mySize_,  myKeepLayout_, false, myOptions_, 
                                                                                   support_, this, myGlobalDelete_, specLayout_, params_);

@@ -398,7 +398,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       while (iit.hasNext()) {
         String id = iit.next();      
         GenomeChange gc = genome.changeNodeType(id, newType);
-        support.addEdit(new GenomeChangeCmd(dacx, gc));
+        support.addEdit(new GenomeChangeCmd(gc));
   
         //
         // All linkages inbound and outbound may need landing and
@@ -407,7 +407,7 @@ public class ChangeNodeType extends AbstractControlFlow {
       
         GenomeChange[] gca = genome.resolvePadChanges(id, lim);
         for (int i = 0; i < gca.length; i++) {
-          support.addEdit(new GenomeChangeCmd(dacx, gca[i]));
+          support.addEdit(new GenomeChangeCmd(gca[i]));
         }
       }
       return (true);

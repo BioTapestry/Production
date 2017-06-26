@@ -103,7 +103,7 @@ public class ExportBuildInstr extends AbstractSimpleExport {
   protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "none";
     es.fileErrTitle = "none";
-    (new BuildInstructionProcessor(es.getUICS(), es.getDACX(), es.getUFac())).exportInstructions(es.out, es.getDACX());        
+    (new BuildInstructionProcessor(es.getUICS(), es.getDACX(), es.getTSrc(), es.getUFac())).exportInstructions(es.out, es.getDACX());        
     return (true);
   } 
 }

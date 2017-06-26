@@ -91,7 +91,7 @@ public class RegionNameChangeChoicesPanel extends JPanel implements DialogSuppor
     oldName_ = oldName;
     userCancelled_ = false;
     GridBagConstraints gbc = new GridBagConstraints();
-    ds_ = new DialogSupport(this, uics_, dacx_, gbc);
+    ds_ = new DialogSupport(this, uics_, gbc);
     
     setBorder(new EmptyBorder(20, 20, 20, 20));
     setLayout(new GridBagLayout());

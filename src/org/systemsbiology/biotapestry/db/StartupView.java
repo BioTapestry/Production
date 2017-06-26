@@ -25,6 +25,7 @@ import java.io.PrintWriter;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -58,7 +59,8 @@ public class StartupView implements Cloneable {
   
   private String modelId_;
   private String nodeId_;
-  private String nodeType_;
+  private NavTree.KidSuperType nodeType_;
+  private String regionID_;
   private String ovrKey_;
   private TaggedSet modKeys_;
   private TaggedSet revKeys_;  
@@ -79,6 +81,7 @@ public class StartupView implements Cloneable {
     nodeId_ = null;
     nodeType_ = null;
     ovrKey_ = null;
+    regionID_ = null;
     modKeys_ = new TaggedSet();
     revKeys_ = new TaggedSet();
   }
@@ -89,16 +92,18 @@ public class StartupView implements Cloneable {
   ** Constructor
   */
   
-  public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String nodeType) {
-	  this(key,ovrKey,modKeys,revKeys,nodeType,null);
+  public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String regionID, NavTree.KidSuperType nodeType) {
+	  this(key, ovrKey, modKeys, revKeys, regionID, nodeType, null);
   }   
   
   
- public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String nodeType, String nodeId) { 
+ public StartupView(String key, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, String regionID,
+                    NavTree.KidSuperType nodeType, String nodeId) { 
 	  modelId_ = key;
 	  nodeId_ = nodeId;
 	  nodeType_ = nodeType;
     ovrKey_ = ovrKey;
+    regionID_ = regionID;
     modKeys_ = (modKeys == null) ? new TaggedSet() : modKeys;
     revKeys_ = (revKeys == null) ? new TaggedSet() : revKeys;    
   }      
@@ -144,21 +149,29 @@ public class StartupView implements Cloneable {
     }
     StartupView otherSV = (StartupView)other;
 
-    if(this.nodeType_ == null) {
-    	if(otherSV.nodeType_ != null) {
+    if (this.nodeType_ == null) {
+    	if (otherSV.nodeType_ != null) {
     		return (false);
     	}
-    } else if(!(this.nodeType_.equals(otherSV.nodeType_))) {
+    } else if (!this.nodeType_.equals(otherSV.nodeType_)) {
     	return (false);
     }
 
+    if (this.regionID_ == null) {
+      if (otherSV.regionID_ != null) {
+        return (false);
+      }
+    } else if (!this.regionID_.equals(otherSV.regionID_)) {
+      return (false);
+    }  
+    
     if (this.nodeId_ == null) {
         if (otherSV.nodeId_ != null) {
           return (false);
         }
-      } else if (!this.nodeId_.equals(otherSV.nodeId_)) {
-        return (false);
-      }    
+    } else if (!this.nodeId_.equals(otherSV.nodeId_)) {
+      return (false);
+    }    
     
     if (this.modelId_ == null) {
       if (otherSV.modelId_ != null) {
@@ -167,7 +180,6 @@ public class StartupView implements Cloneable {
     } else if (!this.modelId_.equals(otherSV.modelId_)) {
       return (false);
     }
-    
 
     if (this.ovrKey_ == null) {
       if (otherSV.ovrKey_ != null) {
@@ -241,13 +253,32 @@ public class StartupView implements Cloneable {
   public TaggedSet getRevealedModules() {
     return (revKeys_);
   } 
-    
-  public String getNodeType() {
+   
+  /***************************************************************************
+  **
+  ** Get node type
+  */
+   
+  public NavTree.KidSuperType getNodeType() {
 	  return (nodeType_);
   }
   
+  /***************************************************************************
+  **
+  ** Get nodeID for group nodes
+  */
+   
   public String getNodeId() {
 	  return (nodeId_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get regionID
+  */
+   
+  public String getRegionId() {
+    return (regionID_);
   }
   
   /***************************************************************************
@@ -303,8 +334,6 @@ public class StartupView implements Cloneable {
     return (modKeys_.set.isEmpty());
   }  
   
-
-  
   /***************************************************************************
   **
   ** Add the module keys.  Use for I/O; elements will be added to the given set
@@ -337,20 +366,38 @@ public class StartupView implements Cloneable {
 
     ind.indent();     
     out.print("<startupView");
-    if (modelId_ == null) {
+    if ((modelId_ == null) && (nodeId_ == null)) {
       out.println("/>");
       return;
     }
-    out.print(" model=\"");
-    out.print(modelId_);
+    if (modelId_ != null) {
+      out.print(" model=\"");
+      out.print(modelId_);
+    } else if (nodeId_ != null) {
+      out.print(" node=\"");
+      out.print(nodeId_);
+    }
+    
     if (ovrKey_ != null) {
       out.print("\" ovrKey=\"");
       out.print(ovrKey_);
-    }       
+    }  
+    
+    if (regionID_ != null) {
+      out.print("\" region=\"");
+      out.print(regionID_);
+    }
+    
+    if (nodeType_ != null) {
+      out.print("\" nodeType=\"");
+      out.print(nodeType_.getTag());
+    }
+
     if ((modKeys_ == null) || modKeys_.set.isEmpty()) {
       out.println("\" />");          
       return;
-    }    
+    }
+    
     out.println("\" >");    
     ind.up(); 
     
@@ -417,10 +464,17 @@ public class StartupView implements Cloneable {
     
     private StartupView buildFromXML(String elemName, Attributes attrs) throws IOException {  
       String modelID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "model", false);
-      String nodeID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "nodeID", false);
-      String nodeType = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "type", false);
-      String ovrKey = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "ovrKey", false);      
-      return (new StartupView((modelID != null ? modelID : nodeID), ovrKey, null, null, nodeType,nodeID));
+      String nodeID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "node", false);
+      String nodeType = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "nodeType", false);
+      String ovrKey = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "ovrKey", false); 
+      String regionID = AttributeExtractor.extractAttribute(elemName, attrs, "startupView", "region", false);
+      NavTree.KidSuperType kst = null;
+      if ((nodeType != null) && (nodeType.equals(NavTree.KidSuperType.GROUP.getTag()))) {
+        kst = NavTree.KidSuperType.GROUP;   
+      } else {
+        kst = NavTree.KidSuperType.MODEL;
+      }
+      return (new StartupView(modelID, ovrKey, null, null, regionID, kst, nodeID));
     }
   }
   

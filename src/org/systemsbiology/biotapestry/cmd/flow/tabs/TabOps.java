@@ -848,11 +848,10 @@ public class TabOps extends AbstractControlFlow {
     // The database created here is NOT sharing data:
     //
     TabChange tc0 = tSrc.addATab(forLoad, id, tabNum); // Database creation occurring in here (unless from IO).    
-    UiUtil.fixMePrintout("adding X tabs for load as new tabs is creating a pile of these undos (that crash).");
     
     support.addEdit(new TabChangeCmd(dacx, tc0));
     tSrc.setCurrentTabIndex(tc0.newChangeIndex);
-    UiUtil.fixMePrintout("UGH FIX FIX");
+    // FIX ME: This is not really what we would like to be doing:
     String tabID = tSrc.getDbIdForIndex(tSrc.getCurrentTabIndex());
     Database newDB = mb.getDB(tabID);
     DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState());

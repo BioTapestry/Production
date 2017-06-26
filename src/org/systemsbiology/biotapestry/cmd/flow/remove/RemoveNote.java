@@ -149,7 +149,7 @@ public class RemoveNote extends AbstractControlFlow {
       String noteID = intersect_.getObjectID();
       GenomeChange gc = dacx_.getCurrentGenome().removeNote(noteID);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);        
       }
       support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));

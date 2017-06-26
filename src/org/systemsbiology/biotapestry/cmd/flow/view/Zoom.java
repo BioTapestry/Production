@@ -207,7 +207,6 @@ public class Zoom extends AbstractControlFlow {
  
   @Override
   public boolean externallyEnabled() {
-    UiUtil.fixMePrintout("Need to handle group node");
     return ((action_ == ZoomAction.ZOOM_CURRENT_MOD) ||
             (action_ == ZoomAction.ZOOM_IN) ||
             (action_ == ZoomAction.ZOOM_OUT));

@@ -255,9 +255,9 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
       nt.setSkipFlag(NavTree.Skips.SKIP_FINISH); // We stay in the same place, so don't issue tree change events...     
       
-      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(ec));
 
       //
       // Create the proxy, add it to the database
@@ -322,10 +322,10 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, false);
       ec.selected = nt.mapAPath(ec.selected, nac.ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));
+      support.addEdit(new ExpansionChangeCmd(ec));
 
       // FIX ME??? Use events instead of direct calls.
       dacx_.getGenomeSource().clearAllDynamicProxyCaches();

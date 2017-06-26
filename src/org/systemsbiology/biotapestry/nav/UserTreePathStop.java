@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -51,6 +51,8 @@ public class UserTreePathStop implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
 
   private String genomeID_;
+  private NavTree.KidSuperType nodeType_;
+  private String nodeID_;
   private String ovrKey_;
   private TaggedSet modKeys_;
   private TaggedSet revKeys_;
@@ -69,6 +71,8 @@ public class UserTreePathStop implements Cloneable {
   public UserTreePathStop(UserTreePathStop other) {  
     this.genomeID_ = other.genomeID_;
     this.ovrKey_ = other.ovrKey_;
+    this.nodeType_ = other.nodeType_;
+    this.nodeID_ = other.nodeID_;
     this.modKeys_ = new TaggedSet(other.modKeys_);
     this.revKeys_ = new TaggedSet(other.revKeys_);    
   }  
@@ -78,9 +82,12 @@ public class UserTreePathStop implements Cloneable {
   ** Constructor
   */
 
-  public UserTreePathStop(String genomeID, String ovrKey, TaggedSet modKeys, TaggedSet revKeys) {  
+  public UserTreePathStop(String genomeID, String ovrKey, TaggedSet modKeys, TaggedSet revKeys, 
+                          NavTree.KidSuperType nodeType, String nodeID) {  
     genomeID_ = genomeID;
     ovrKey_ = ovrKey;
+    nodeType_ = nodeType;
+    nodeID_ = nodeID;
     modKeys_ = (modKeys == null) ? new TaggedSet() : new TaggedSet(modKeys); 
     revKeys_ = (revKeys == null) ? new TaggedSet() : new TaggedSet(revKeys); 
     
@@ -131,15 +138,35 @@ public class UserTreePathStop implements Cloneable {
       return (false);
     }
     UserTreePathStop otherPS = (UserTreePathStop)other;
-
-    if (!this.genomeID_.equals(otherPS.genomeID_)) {
+   
+    if (!this.nodeType_.equals(otherPS.nodeType_)) {
       return (false);
-    }
+    } 
+      
+    if (this.genomeID_ == null) {
+      if (otherPS.genomeID_ != null) {
+        return (false);
+      }
+    } else if (!this.genomeID_.equals(otherPS.genomeID_)) {
+      return (false);
+    }  
     
     if (this.ovrKey_ == null) {
-      return (otherPS.ovrKey_ == null); 
-    }
-   
+      if (otherPS.ovrKey_ != null) {
+        return (false);
+      }
+    } else if (!this.ovrKey_.equals(otherPS.ovrKey_)) {
+      return (false);
+    }  
+    
+    if (this.nodeID_ == null) {
+      if (otherPS.nodeID_ != null) {
+        return (false);
+      }
+    } else if (!this.nodeID_.equals(otherPS.nodeID_)) {
+      return (false);
+    } 
+
     if (!this.modKeys_.equals(otherPS.modKeys_)) {
       return (false);
     }
@@ -147,6 +174,26 @@ public class UserTreePathStop implements Cloneable {
     return (this.revKeys_.equals(otherPS.revKeys_));
   }  
   
+  /***************************************************************************
+  **
+  ** Get the node type
+  **
+  */
+  
+  public NavTree.KidSuperType getNodeType() {
+    return (nodeType_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get the node ID
+  **
+  */
+  
+  public String getNodeID() {
+    return (nodeID_);
+  }
+
   /***************************************************************************
   **
   ** Get the genome ID
@@ -164,6 +211,9 @@ public class UserTreePathStop implements Cloneable {
   */
   
   public void setGenomeID(String id) {
+    if (nodeType_ == NavTree.KidSuperType.GROUP) {
+      throw new IllegalStateException();
+    }
     genomeID_ = id;
     return;
   }
@@ -239,8 +289,18 @@ public class UserTreePathStop implements Cloneable {
   public void writeXML(PrintWriter out, Indenter ind) {
 
     ind.indent();     
-    out.print("<pathStop id=\""); 
-    out.print(genomeID_);
+    out.print("<pathStop "); 
+    
+    if (genomeID_ != null) {
+      out.print("id=\"");
+      out.print(genomeID_);
+    } else if (nodeID_ != null) {
+      out.print("\" nodeID=\"");
+      out.print(nodeID_);
+    }
+    out.print("\" nodeType=\"");
+    out.print(nodeType_.getTag());
+     
     if (ovrKey_ != null) {
       out.print("\" ovrKey=\"");
       out.print(ovrKey_);
@@ -314,9 +374,23 @@ public class UserTreePathStop implements Cloneable {
     }
 
     private UserTreePathStop buildFromXML(String elemName, Attributes attrs) throws IOException {  
-      String genomeID = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "id", true);
-      String ovrKey = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "ovrKey", false);      
-      return (new UserTreePathStop(genomeID, ovrKey, null, null));
+      String genomeID = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "id", false);
+      String nodeID = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "nodeID", false);
+      String ovrKey = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "ovrKey", false);
+      String nodeType = AttributeExtractor.extractAttribute(elemName, attrs, "pathStop", "nodeType", false);
+      NavTree.KidSuperType kst = null;
+      if ((nodeType != null) && (nodeType.equals(NavTree.KidSuperType.GROUP.getTag()))) {
+        kst = NavTree.KidSuperType.GROUP;
+        if ((nodeID == null) || (genomeID != null)) {
+          throw new IOException();
+        }
+      } else {
+        kst = NavTree.KidSuperType.MODEL;
+        if ((nodeID != null) || (genomeID == null)) {
+          throw new IOException();
+        }
+      }
+      return (new UserTreePathStop(genomeID, ovrKey, null, null, kst, nodeID));
     }
   }
   

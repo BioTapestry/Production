@@ -363,12 +363,12 @@ public class TimeCourse extends AbstractControlFlow {
       // If we have no data keys (including default), we need to force custom
       // map generation:
       //
-      
+        
       List<TimeCourseDataMaps.TCMapping> keys = tcdm.getTimeCourseTCMDataKeysWithDefault(id, dacx_.getGenomeSource());
       boolean waiting = ((keys == null) || keys.isEmpty());
       if (waiting) {
         while (waiting) {                               
-          TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, dacx_, node.getName(), id);
+          TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, tcd, tcdm, node.getName(), id);
           tcmd.setVisible(true);
           if (!tcmd.haveResult()) {
             return (false);

@@ -321,7 +321,7 @@ public class EditModelProps extends AbstractControlFlow {
   
           UiUtil.fixMePrintout("Model name not changing in tree!!!");
           DynSingleModelPropDialog dsmpd = 
-            new DynSingleModelPropDialog(uics_, dacx_, dip, parentProx, childList, nav, popupNode_, uFac_);
+            new DynSingleModelPropDialog(uics_, tSrc_, dacx_, dip, parentProx, childList, nav, popupNode_, uFac_);
           dsmpd.setVisible(true);
           break;     
         case GROUP_NODE:

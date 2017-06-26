@@ -843,7 +843,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public Set<String> requiredGeneParameters(Gene gene) {  
-    SbmlSupport sbmls = new SbmlSupport(dacx_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_.getSimParamSource());
     return (sbmls.requiredGeneParameters(gene, this));
   } 
   
@@ -853,7 +853,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public Set<String> requiredNonGeneParameters(Node node) {  
-    SbmlSupport sbmls = new SbmlSupport(dacx_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_.getSimParamSource());
     return (sbmls.requiredNonGeneParameters(node, this));
   }
   
@@ -937,7 +937,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public void writeSBML(PrintWriter out, Indenter ind) {
-    SbmlSupport sbmls = new SbmlSupport(dacx_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_.getSimParamSource());
     StringBuffer buf = new StringBuffer();
     Indenter bufIndent = new Indenter(buf, ind.getIndent());
     bufIndent.setCurrLevel(ind.getCurrLevel());
@@ -953,7 +953,7 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
   */
   
   public void writeSBML(StringBuffer buf, Indenter ind) {
-    SbmlSupport sbmls = new SbmlSupport(dacx_);
+    SbmlSupport sbmls = new SbmlSupport(dacx_.getSimParamSource());
     sbmls.writeSBML(buf, ind, this);
     return;
   }

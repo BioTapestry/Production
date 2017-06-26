@@ -21,6 +21,8 @@ package org.systemsbiology.biotapestry.cmd.flow.userPath;
 
 import javax.swing.JOptionPane;
 
+import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
@@ -43,6 +45,7 @@ public class PathStop extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////  
   
   private boolean doAdd_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -55,7 +58,8 @@ public class PathStop extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathStop(boolean doAdd) {
+  public PathStop(boolean doAdd, BTState appState) {
+    appState_ = appState;
     name =  (doAdd) ? "command.TreePathAddStop" : "command.TreePathDeleteStop";
     desc = (doAdd) ? "command.TreePathAddStop" : "command.TreePathDeleteStop";
     icon = (doAdd) ? "TreePathAddStop24.gif" : "TreePathDeleteStop24.gif";
@@ -92,6 +96,7 @@ public class PathStop extends AbstractControlFlow {
     while (true) {
       if (last == null) {
         StepState ans = new StepState(doAdd_, cfh);
+        ans.setAppState(appState_);
         next = ans.stepToProcess();    
       } else {
         throw new IllegalStateException();
@@ -111,6 +116,7 @@ public class PathStop extends AbstractControlFlow {
   public static class StepState extends AbstractStepState {
     
     private boolean doAdd;
+    private DynamicDataAccessContext ddacx_;
     
     /***************************************************************************
     **
@@ -132,6 +138,17 @@ public class PathStop extends AbstractControlFlow {
       super(cfh);
       this.doAdd = doAdd;
       nextStep_ = "stepToProcess";
+    }
+    
+    /***************************************************************************
+    **
+    ** We have to use appState for the moment...
+    */ 
+    
+    public void setAppState(BTState appState) {
+      // We ignore the static context we are being handed, and use what we are provided here!
+      ddacx_ = new DynamicDataAccessContext(appState);
+      return;
     }
  
     /***************************************************************************
@@ -163,7 +180,7 @@ public class PathStop extends AbstractControlFlow {
       }
       String addToPathKey = scd.getChosenPath();
       String insertMode = scd.getInsertionMode();
-      uics_.getPathController().addAStop(addToPathKey, insertMode, dacx_, uFac_);
+      uics_.getPathController().addAStop(addToPathKey, insertMode, ddacx_, uFac_);
       uics_.getPathControls().handlePathButtons();
       return;
     }
@@ -185,7 +202,7 @@ public class PathStop extends AbstractControlFlow {
           return;
         }
       }
-      uics_.getPathController().deleteCurrentStop(dacx_, uFac_);
+      uics_.getPathController().deleteCurrentStop(ddacx_, uFac_);
       uics_.getPathControls().handlePathButtons();   
       return;
     }

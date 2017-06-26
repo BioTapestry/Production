@@ -285,7 +285,7 @@ public class RemoveLinkage extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = gi.removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);        
         }
         if (removeProperties) {
@@ -312,7 +312,7 @@ public class RemoveLinkage extends AbstractControlFlow {
     if (isRoot) {  
       GenomeChange gc = rcx.getCurrentGenome().removeLinkage(deadID);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);        
       }
       Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
@@ -382,7 +382,7 @@ public class RemoveLinkage extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = gi.removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);        
         }
       }
@@ -409,7 +409,7 @@ public class RemoveLinkage extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = rcx.getCurrentGenome().removeLinkage(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);        
         }
       }

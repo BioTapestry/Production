@@ -38,6 +38,7 @@ import javax.swing.border.EmptyBorder;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.timeCourse.GroupUsage;
@@ -93,7 +94,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     dacx_ = dacx;
     uics_ = uics;
     
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     setSize(500, 400);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -103,7 +104,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     tcd_ = dacx_.getExpDataSrc().getTimeCourseData();
     tcdm_ = dacx_.getDataMapSrc().getTimeCourseDataMaps();
     regions_ = buildRegionEnum(tcd_);
-    models_ = buildModelEnum();
+    models_ = buildModelEnum(dacx_.getGenomeSource());
     
     //
     // Build the values table.
@@ -120,7 +121,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(lab, gbc);
     
-    est_ = new EditableTable(uics_, dacx_, new TimeCourseRegionMappingTableModel(uics_, dacx_, uFac), uics_.getTopFrame());
+    est_ = new EditableTable(uics_,new TimeCourseRegionMappingTableModel(uics_, uFac), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -133,7 +134,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     UiUtil.gbcSet(gbc, 0, 1, 1, 6, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(tablePan, gbc);
  
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 7, 1, true, false);
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -213,8 +214,8 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     
     private UndoFactory tuFac_;
      
-    TimeCourseRegionMappingTableModel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
-      super(uics, dacx, NUM_COL_);
+    TimeCourseRegionMappingTableModel(UIComponentSource uics, UndoFactory uFac) {
+      super(uics, NUM_COL_);
       tuFac_ = uFac;
       colNames_ = new String[] {"tcrmap.region",
                                 "tcrmap.model"};
@@ -267,7 +268,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
       for (int i = 0; i < rowCount_; i++) {
         GroupUsage gu = (GroupUsage)vals.get(i);
         if ((gu.mappedGroup == null) || (gu.mappedGroup.trim().equals(""))) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("tcrmap.blankGroup"),
                                         rMan.getString("tcrmap.blankGroupTitle"),
                                         JOptionPane.ERROR_MESSAGE);          
@@ -281,7 +282,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
     
       UndoSupport support = tuFac_.provideUndoSupport("undo.tcrmd", dacx_);
       TimeCourseChange tcc = tcdm_.setTimeCourseGroupMap(groupID_, vals, true);
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));  
+      support.addEdit(new TimeCourseChangeCmd(tcc));  
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();      
       return (true);
@@ -385,13 +386,13 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
   ** 
   */
   
-  private ArrayList<EnumCell> buildModelEnum() {
+  private ArrayList<EnumCell> buildModelEnum(GenomeSource gs) {
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String modelFormat = rMan.getString("tcrmd.modelFormat");
     String allModels = rMan.getString("tcrmd.allModels");
     Object[] modelName = new Object[1];
-    Iterator<DynamicInstanceProxy> dpit = dacx_.getGenomeSource().getDynamicProxyIterator();
+    Iterator<DynamicInstanceProxy> dpit = gs.getDynamicProxyIterator();
     retval.add(new EnumCell(allModels, null, 0, 0));
     int count = 1;
     while (dpit.hasNext()) {

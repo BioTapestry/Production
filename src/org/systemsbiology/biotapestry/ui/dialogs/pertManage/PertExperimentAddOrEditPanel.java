@@ -44,13 +44,13 @@ import javax.swing.JTextField;
 import javax.swing.text.JTextComponent;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.ConditionDictionary;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
 import org.systemsbiology.biotapestry.util.EnumCell;
@@ -108,12 +108,12 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertExperimentAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd,
-                                      PendingEditTracker pet, String myKey, 
+  public PertExperimentAddOrEditPanel(UIComponentSource uics, JFrame parent, PerturbationData pd,
+                                      TimeCourseData tcd, PendingEditTracker pet, String myKey, 
                                       int legacyModes) {
-    super(uics, dacx, parent, pet, myKey, 2);
+    super(uics, parent, pet, myKey, 2);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics, dacx, parent, pd, rMan_, gbc_, pet_);   
+    pmh_ = new PertManageHelper(uics, parent, pd, tcd, rMan_, gbc_, pet_);   
     pertSrcList_ = new ArrayList<EnumCell>();
     investList_ = new ArrayList<EnumCell>();
     
@@ -411,7 +411,7 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
         
     if ((currKey_ == null) || (mode_ == DUP_MODE)) {  // true for dup mode too
       String nextKey = pd_.getNextDataKey();
-      expResult_ = new Experiment(dacx_, nextKey, srcs, timeVal, invResult, expCoKey);
+      expResult_ = new Experiment(nextKey, srcs, timeVal, invResult, expCoKey);
       if ((mode_ == DUP_MODE) && (maxLegVal != Experiment.NO_TIME)) {
         expResult_.setLegacyMaxTime(maxLegVal);
       }      
@@ -445,10 +445,10 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
     
     final EditableTable useSrcTable;
     if (!forMerge) {
-      estSrcForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), parent_);
+      estSrcForEdit_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "peaep.perturb", pertSrcList_), parent_);
       useSrcTable = estSrcForEdit_;
     } else {
-      estSrcForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), parent_);
+      estSrcForMerge_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "peaep.perturb", pertSrcList_), parent_);
       useSrcTable = estSrcForMerge_;
     }
 
@@ -474,10 +474,10 @@ public class PertExperimentAddOrEditPanel extends AnimatedSplitEditPanel {
        
     final EditableTable useInvTable;
     if (!forMerge) {
-      estInvForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.invest", investList_), parent_);
+      estInvForEdit_ = new EditableTable(uics_,new EditableTable.OneEnumTableModel(uics_, "peaep.invest", investList_), parent_);
       useInvTable = estInvForEdit_;
     } else {
-      estInvForMerge_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.invest", investList_), parent_);
+      estInvForMerge_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "peaep.invest", investList_), parent_);
       useInvTable = estInvForMerge_;
     }   
     etp = new EditableTable.TableParams();

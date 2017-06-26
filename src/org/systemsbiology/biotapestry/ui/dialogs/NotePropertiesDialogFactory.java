@@ -331,7 +331,7 @@ public class NotePropertiesDialogFactory extends DialogFactory {
       // Build the color panel.
       //
   
-      colorWidget_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "ntprops.color", true, false);
+      colorWidget_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, null, true, "ntprops.color", true, false);
       UiUtil.gbcSet(gbc, 0, 0, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
       retval.add(colorWidget_, gbc);     
         

@@ -153,7 +153,7 @@ public class AddCommands {
     }
     GenomeChange gc = genome.addLinkWithExistingLabel(newLinkage);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     if (ist != null) {
@@ -235,7 +235,7 @@ public class AddCommands {
     
     GenomeChange gc = genome.addLinkWithExistingLabel(newLinkage);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     if (ist != null) {

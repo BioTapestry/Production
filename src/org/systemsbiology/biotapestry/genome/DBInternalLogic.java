@@ -30,6 +30,7 @@ import java.util.Iterator;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.SimParamSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -259,11 +260,11 @@ public class DBInternalLogic implements Cloneable {
   ** Get a simulation parameter.  If we do not have a local value, just use the
   ** default.
   */
-  public String getSimulationParam(DataAccessContext dacx, String name, int nodeType) {
+  public String getSimulationParam(SimParamSource sps, String name, int nodeType) {
     String retval = params_.get(name);
     if (retval == null) {
       String root = SbmlSupport.extractRootIdFromParam(name);
-      retval = dacx.getSimParamSource().getSimulationDefaultValue(root, nodeType, funcType_);
+      retval = sps.getSimulationDefaultValue(root, nodeType, funcType_);
     }
     return (retval);
   }

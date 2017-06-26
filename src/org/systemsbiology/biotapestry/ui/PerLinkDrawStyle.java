@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,12 +25,12 @@ import java.util.Map;
 import java.util.Vector;
 
 import org.systemsbiology.biotapestry.db.ColorResolver;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.xml.sax.Attributes;
@@ -240,10 +240,10 @@ public class PerLinkDrawStyle implements Cloneable {
   ** Return possible extent values
   */
   
-  public static Vector<ChoiceContent> getExtentChoices(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getExtentChoices(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_EXTENTS_; i++) {
-      retval.add(extentForCombo(dacx, i));    
+      retval.add(extentForCombo(hams, i));    
     }
     return (retval);
   }
@@ -253,8 +253,8 @@ public class PerLinkDrawStyle implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent extentForCombo(DataAccessContext dacx, int extent) {
-    return (new ChoiceContent(dacx.getRMan().getString("perLinkDrawStyle." + mapExtent(extent)), extent));
+  public static ChoiceContent extentForCombo(HandlerAndManagerSource hams, int extent) {
+    return (new ChoiceContent(hams.getRMan().getString("perLinkDrawStyle." + mapExtent(extent)), extent));
   }  
 
   ////////////////////////////////////////////////////////////////////////////

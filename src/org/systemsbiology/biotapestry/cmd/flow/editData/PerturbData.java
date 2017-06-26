@@ -33,6 +33,7 @@ import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
@@ -42,7 +43,6 @@ import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.pertManage.PertMappingDialog;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -144,7 +144,6 @@ public class PerturbData extends AbstractControlFlow {
       case DELETE_PERT_MAP:
         String baseID = GenomeItemInstance.getBaseID(inter.getObjectID());      
         PerturbationDataMaps pdms = rcx.getDataMapSrc().getPerturbationDataMaps(); 
-        UiUtil.fixMePrintout("Crash here NPE tCell tab amd ecto tab of threeTabsMOdel.btp: click on gene");
         return (pdms.haveCustomMapForNode(baseID)); 
       default:
         throw new IllegalStateException();
@@ -286,13 +285,14 @@ public class PerturbData extends AbstractControlFlow {
       id = GenomeItemInstance.getBaseID(id);
       PerturbationData pd = dacx_.getExpDataSrc().getPertData();
       PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+      DBGenome dbgenome = dacx_.getGenomeSource().getRootDBGenome();
 
       //
       // If we have no data keys (including default), we need to force custom
       // map generation:
       //
 
-      List<String> keys = pdms.getDataEntryKeysWithDefault(id, pd);
+      List<String> keys = pdms.getDataEntryKeysWithDefault(dbgenome, id, pd);
       if (keys.isEmpty()) {
         while (keys.isEmpty()) {       
           if (!doItGuts(pdms, node, id)) {
@@ -330,20 +330,21 @@ public class PerturbData extends AbstractControlFlow {
       id = GenomeItemInstance.getBaseID(id);
       PerturbationData pd = dacx_.getExpDataSrc().getPertData();
       PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
+      DBGenome dbgenome = dacx_.getGenomeSource().getRootDBGenome();
       
       if (pd != null) {
         UndoSupport support = uFac_.provideUndoSupport("undo.deleteQPCRDat", dacx_);
-        List<String> mapped = pdms.getDataEntryKeysWithDefault(id, pd);
+        List<String> mapped = pdms.getDataEntryKeysWithDefault(dbgenome, id, pd);
         mapped = (mapped == null) ? new ArrayList<String>() : new ArrayList<String>(mapped);
         Iterator<String> mit = mapped.iterator();
         while (mit.hasNext()) {
           String entryID = mit.next();
           PertDataChange[] changes = pdms.dropDanglingMapsForEntry(entryID);
-          support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, changes));       
+          support.addEdits(PertDataChangeCmd.wrapChanges(changes));       
           PertFilter targFilter = new PertFilter(PertFilter.Cat.TARGET, PertFilter.Match.STR_EQUALS, entryID);
           PertFilterExpression pfe = new PertFilterExpression(targFilter);
           PertDataChange dc = pd.dropPertDataForFilter(pfe);
-          support.addEdit(new PertDataChangeCmd(dacx_, dc));
+          support.addEdit(new PertDataChangeCmd(dc));
         }
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
         support.finish();
@@ -367,11 +368,11 @@ public class PerturbData extends AbstractControlFlow {
         UndoSupport support = uFac_.provideUndoSupport("undo.deleteQPCRM", dacx_);          
         PertDataChange chg1 = pdms.dropDataEntryKeys(id);
         if (chg1 != null) {
-          support.addEdit(new PertDataChangeCmd(dacx_, chg1, false));
+          support.addEdit(new PertDataChangeCmd(chg1, false));
         }
         PertDataChange chg2 = pdms.dropDataSourceKeys(id);
         if (chg2 != null) {
-          support.addEdit(new PertDataChangeCmd(dacx_, chg2, false));
+          support.addEdit(new PertDataChangeCmd(chg2, false));
         }
         if ((chg1 != null) || (chg1 != null)) {
           support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
@@ -402,21 +403,22 @@ public class PerturbData extends AbstractControlFlow {
     private boolean doItGuts(PerturbationDataMaps pdms, Node node, String id) {
       List<String> entries = pdms.getCustomDataEntryKeys(id);
       List<String> srcEntries = pdms.getCustomDataSourceKeys(id);
-
-      PertMappingDialog qmd = new PertMappingDialog(uics_, dacx_, node.getName(), entries, srcEntries);
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+      
+      PertMappingDialog qmd = new PertMappingDialog(uics_, pd, node.getName(), entries, srcEntries);
       qmd.setVisible(true);
       if (qmd.haveResult()) {     
         UndoSupport support = uFac_.provideUndoSupport("undo.qmd", dacx_);
         // FIXME A List of Objects; underlying code needs a parameterized type
         List eList = qmd.getEntryList();
         PertDataChange pdc = pdms.setEntryMap(id, eList);
-        PertDataChangeCmd pdcc = new PertDataChangeCmd(dacx_, pdc);
+        PertDataChangeCmd pdcc = new PertDataChangeCmd(pdc);
         support.addEdit(pdcc);
 
         // FIXME A List of Objects; underlying code needs a parameterized type
         List sList = qmd.getSourceList();
         pdc = pdms.setSourceMap(id, sList);
-        pdcc = new PertDataChangeCmd(dacx_, pdc);
+        pdcc = new PertDataChangeCmd(pdc);
         support.addEdit(pdcc);
         GeneralChangeEvent gcev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
         support.addEvent(gcev);

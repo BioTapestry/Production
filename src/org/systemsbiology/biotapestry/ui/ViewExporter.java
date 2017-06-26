@@ -443,7 +443,6 @@ private void exportGroupsInDrawLayer(VisitableObjectCache sourceCache,
       //
       AffineTransform saveTrans = g2.getTransform();
       AffineTransform useTrans = (ovrTra == null) ? null : ovrTra.buildTransform();   
-      System.out.println("Use trans = " + useTrans);
       zts_.installTransform(g2, useTrans);
             
       if (doRect) {

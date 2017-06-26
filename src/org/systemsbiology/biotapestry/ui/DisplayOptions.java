@@ -23,31 +23,28 @@ import java.awt.Color;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.Vector;
 
-import org.xml.sax.Attributes;
-
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
+import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
-import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
-import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
+import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
+import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.NameValuePair;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
-import org.systemsbiology.biotapestry.genome.Linkage;
-import org.systemsbiology.biotapestry.util.ChoiceContent;
-import org.systemsbiology.biotapestry.util.Indenter;
+
+import org.xml.sax.Attributes;
 
 /****************************************************************************
 **
@@ -168,7 +165,6 @@ public class DisplayOptions implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private DataAccessContext dacx_;
   private int renderBusBranches_;  
   private int renderEvidence_;  
   private int repressionFootExtraSize_; 
@@ -179,13 +175,9 @@ public class DisplayOptions implements Cloneable {
   private double weakExpressionLevel_;
   private boolean displayExpressionTableTree_;
   private TreeMap<Integer, CustomEvidenceDrawStyle> customEvidence_;
-  private ArrayList<MinMax> timeSpanCols_;
-  private MinMax nullPertDefaultSpan_;
-  private HashMap<String, String> pertMeasureColors_;
-  private String currentScaleTag_;
-  private boolean breakOutInvestigators_;
   private float[] inactiveHSV_;
   private double inactiveBright_;
+  private PertDisplayOptions legacyPDO_;
   private Color inactiveCol_;
     
   ////////////////////////////////////////////////////////////////////////////
@@ -199,8 +191,7 @@ public class DisplayOptions implements Cloneable {
   ** Constructor
   */
 
-  public DisplayOptions(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public DisplayOptions() {
     renderBusBranches_ = NO_BUS_BRANCHES;
     renderEvidence_ = EVIDENCE_WITH_DIAMONDS;
     repressionFootExtraSize_ = 0;    
@@ -211,12 +202,7 @@ public class DisplayOptions implements Cloneable {
     weakExpressionLevel_ = DEFAULT_WEAK_EXPRESSION_LEVEL_;
     displayExpressionTableTree_ = true;
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
-    timeSpanCols_ = new ArrayList<MinMax>();
-    breakOutInvestigators_ = false;
-    nullPertDefaultSpan_ = null;
-    MeasureDictionary md = dacx_.getExpDataSrc().getPertData().getMeasureDictionary();
-    currentScaleTag_ = md.getStandardScaleKeys()[MeasureDictionary.DEFAULT_INDEX];
-    pertMeasureColors_ = new HashMap<String, String>();
+    legacyPDO_ = null;
     inactiveBright_ = DEFAULT_INACTIVE_BRIGHT_;
   }
 
@@ -225,14 +211,13 @@ public class DisplayOptions implements Cloneable {
   ** Constructor for XML
   */
 
-  public DisplayOptions(DataAccessContext dacx, String branches, String evidence, String footSize, 
+  public DisplayOptions(String branches, String evidence, String footSize, 
                         String firstZoom, String navZoom, 
                         String nodeActivity, String linkActivity, 
                         String weakLevel, String dispTreeStr,
                         String pertDefMin, String pertDefMax, 
                         String scaleTag, String breakOutStr, String inactiveBright) throws IOException {
     
-    dacx_ = dacx;
     try {
       renderBusBranches_ = (branches == null) ? NO_BUS_BRANCHES : mapBranchTag(branches); 
       renderEvidence_ = (evidence == null) ? EVIDENCE_WITH_DIAMONDS : mapEvidenceTag(evidence);
@@ -283,22 +268,15 @@ public class DisplayOptions implements Cloneable {
     }
 
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
-    timeSpanCols_ = new ArrayList<MinMax>();
-    pertMeasureColors_ = new HashMap<String, String>();
     
-    nullPertDefaultSpan_ = null;
-    if ((pertDefMin != null) && (pertDefMax != null)) {
-      try {
-        int minTime = Integer.parseInt(pertDefMin);
-        int maxTime = Integer.parseInt(pertDefMax);
-        nullPertDefaultSpan_ = new MinMax(minTime, maxTime);
-      } catch (NumberFormatException ex) {
-        throw new IOException();
-      }
+    //
+    // Legacy Perturbation-specific options:
+    //
+    
+    if ((pertDefMin != null) || (pertDefMax != null) || (scaleTag != null) || (breakOutStr != null)) {  
+      legacyPDO_ = new PertDisplayOptions(null, pertDefMin, pertDefMax, scaleTag, breakOutStr);
     }
     
-    breakOutInvestigators_ = (breakOutStr != null) ? Boolean.valueOf(breakOutStr).booleanValue() : false;
-    currentScaleTag_ = scaleTag; 
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -306,192 +284,6 @@ public class DisplayOptions implements Cloneable {
   // PUBLIC METHODS
   //
   //////////////////////////////////////////////////////////////////////////// 
-
-  /***************************************************************************
-  **
-  ** Break out investigators in perturbation display
-  */
-  
-  public boolean breakOutInvestigators() {    
-    return (breakOutInvestigators_);
-  }
-  
-  /***************************************************************************
-  **
-  ** Set whether to break out investigators in perturbation display
-  */
-  
-  public void setBreakOutInvestigatorMode(boolean investMode) {
-    breakOutInvestigators_ = investMode;
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the measurement display colors
-  */
-  
-  public Map<String, String> getMeasurementDisplayColors() {
-    if (pertMeasureColors_.isEmpty()) {
-      HashMap<String, String> defMap = new HashMap<String, String>();
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-    UiUtil.fixMePrintout("Seeing null ptr here trying to look at experimental data on non-shared tab");
-       UiUtil.fixMePrintout("appState_.getDB()  fixed the problem, but we are not doing that anymore!");
-      MeasureDictionary md = dacx_.getExpDataSrc().getPertData().getMeasureDictionary();
-      Iterator<String> mkit = md.getKeys();
-      while (mkit.hasNext()) {
-        String mkey = mkit.next();
-        defMap.put(mkey, "black"); 
-      }
-      return (defMap);
-    } else {
-      return (pertMeasureColors_);
-    }
-  }
-  
-  /***************************************************************************
-  **
-  ** Answer if we are stale following a perturbation data change
-  */
-  
-  public Map<String, String> haveInconsistentMeasurementDisplayColors() {
-    if (pertMeasureColors_.isEmpty()) {
-      return (null);
-    }
-    UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-    MeasureDictionary md = dacx_.getMetabase().getSharedPertData().getMeasureDictionary();
-    HashSet<String> currKeys = new HashSet<String>();
-    Iterator<String> mkit = md.getKeys();
-    while (mkit.hasNext()) {
-      currKeys.add(mkit.next()); 
-    }
-    if (currKeys.equals(pertMeasureColors_.keySet())) {
-      return (null);
-    }
-    //
-    // We are out of whack!  Return the fix!
-    //
-    
-    HashMap<String, String> retval = new HashMap<String, String>();
-    mkit = md.getKeys();
-    while (mkit.hasNext()) {
-      String key = mkit.next();
-      String color = pertMeasureColors_.get(key);
-      if (color == null) {
-        color = "black";
-      }
-      retval.put(key, color);
-    }
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Answer if we are stale following a perturbation data change
-  */
-  
-  public String haveInconsistentScaleTag() {
-    if (currentScaleTag_ == null) {
-      return (null);
-    }
-    UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-    MeasureDictionary md = dacx_.getMetabase().getSharedPertData().getMeasureDictionary();
-    Iterator<String> mkit = md.getScaleKeys();
-    while (mkit.hasNext()) {
-      String key = mkit.next();
-      if (key.equals(currentScaleTag_)) {
-        return (null);
-      }
-    }
-    return (md.getStandardScaleKeys()[MeasureDictionary.DEFAULT_INDEX]);
-  }
-  
-  /***************************************************************************
-  **
-  ** Set the measurement display colors
-  */
-  
-  public void setMeasurementDisplayColors(Map<String, String> colors) {
-    pertMeasureColors_.clear();
-    pertMeasureColors_.putAll(colors);
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Add a measurement display color (for IO)
-  */
-  
-  public void addMeasurementDisplayColor(NameValuePair colorPair) {
-    pertMeasureColors_.put(colorPair.getName(), colorPair.getValue());
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** Get the perturbation data measurement display scale key
-  */
-  
-  public String getPerturbDataDisplayScaleKey() {
-    if (currentScaleTag_ == null) {
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-      UiUtil.fixMePrintout("Seeing null ptr here trying to look at experimental data on non-shared tab");
-       UiUtil.fixMePrintout("appState_.getDB() fixed the problem, but we are now using dacx");
-      MeasureDictionary md = dacx_.getExpDataSrc().getPertData().getMeasureDictionary();
-      return (md.getStandardScaleKeys()[MeasureDictionary.DEFAULT_INDEX]);
-    } else {
-      return (currentScaleTag_);
-    }
-  }
-  
-  /***************************************************************************
-  **
-  ** Set the perturbation data measurement display scale key
-  */
-  
-  public void setPerturbDataDisplayScaleKey(String scaleKey) {
-    currentScaleTag_ = scaleKey;
-    return;
-  }
- 
-  /***************************************************************************
-  **
-  ** Get the null perturbation default span.
-  */
-  
-  public MinMax getNullPertDefaultSpan() {
-    if (nullPertDefaultSpan_ == null) {
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-      return ((tad.isInitialized()) ? tad.getDefaultTimeSpan() : null);
-    } else {
-      return (nullPertDefaultSpan_);
-    }
-  }
- 
-  /***************************************************************************
-  **
-  ** Set the null perturbation default span.
-  */
-  
-  public void setNullDefaultSpan(MinMax defaultSpan) {
-    nullPertDefaultSpan_ = (defaultSpan == null) ? null : (MinMax)defaultSpan.clone();
-    return;
-  }
- 
-  /***************************************************************************
-  **
-  ** Drop column definitions and other data-specific options
-  **
-  */
-  
-  public void dropDataBasedOptions() {
-    pertMeasureColors_.clear();
-    timeSpanCols_.clear();
-    nullPertDefaultSpan_ = null;
-    currentScaleTag_ = null;
-    return;
-  }
  
   /***************************************************************************
   **
@@ -828,12 +620,20 @@ public class DisplayOptions implements Cloneable {
   
   /***************************************************************************
   **
+  ** For legacy IO repair
+  */
+  
+  public PertDisplayOptions getLegacyPDO() {
+    return (legacyPDO_);
+  }
+
+  /***************************************************************************
+  **
   ** Set the column headings
   */
   
   public void setColumns(ArrayList<MinMax> columns) {
-    timeSpanCols_.clear();
-    timeSpanCols_.addAll(columns);
+    legacyPDO_.setColumns(columns);
     return;
   }
 
@@ -843,37 +643,21 @@ public class DisplayOptions implements Cloneable {
   */
   
   public void addColumn(MinMax col) {
-    timeSpanCols_.add(col);
+    legacyPDO_.addColumn(col);
     return;
   }
   
   /***************************************************************************
   **
-  ** Get the column headings iterator
+  ** Add a measurement display color (for IO)
   */
   
-  public Iterator<MinMax> getColumnIterator() {
-    return (timeSpanCols_.iterator());
-  }  
+  public void addMeasurementDisplayColor(NameValuePair colorPair) {
+    legacyPDO_.addMeasurementDisplayColor(colorPair);
+    return;
+  }
   
-  /***************************************************************************
-  **
-  ** Answer if we have column headings
-  */
   
-  public boolean hasColumns() {
-    return (timeSpanCols_.size() > 0);
-  } 
-  
-  /***************************************************************************
-  **
-  ** Answer if we have a default time span
-  */
-  
-  public boolean hasDefaultTimeSpan() {
-    return (nullPertDefaultSpan_ != null);
-  } 
- 
   /***************************************************************************
   **
   ** Clone
@@ -891,15 +675,8 @@ public class DisplayOptions implements Cloneable {
         retval.customEvidence_.put(level, ceds);
       }
       
-      retval.timeSpanCols_ = new ArrayList<MinMax>();
-      Iterator<MinMax> cit = this.timeSpanCols_.iterator();
-      while (cit.hasNext()) {
-        MinMax mm = cit.next();
-        retval.timeSpanCols_.add(mm.clone());
-      } 
+      // We do not clone the legacy PDO data. That is just for legacy IO.
       
-      retval.nullPertDefaultSpan_ = (this.nullPertDefaultSpan_ == null) ? null : (MinMax)this.nullPertDefaultSpan_.clone();  
-      retval.pertMeasureColors_ = new HashMap<String, String>(this.pertMeasureColors_);
       return (retval);
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
@@ -966,76 +743,19 @@ public class DisplayOptions implements Cloneable {
       out.print("showTree=\"false\" ");
     }
        
-    if (breakOutInvestigators_) {
-      out.print("breakInvest=\"true\" ");
-    }
-    
-    if (currentScaleTag_ != null) {
-      out.print("scale=\"");
-      out.print(currentScaleTag_);
-      out.print("\" ");
-    }
-    
-    if (nullPertDefaultSpan_ != null) {
-      out.print("pdMin=\"");
-      out.print(nullPertDefaultSpan_.min);
-      out.print("\" pdMax=\"");
-      out.print(nullPertDefaultSpan_.max);
-      out.print("\" ");
-    }
-    
-    if ((renderEvidence_ == EVIDENCE_IS_CUSTOM) || hasColumns() || !pertMeasureColors_.isEmpty()) {
+    if (renderEvidence_ == EVIDENCE_IS_CUSTOM) {
       out.println(">");
       ind.up();    
-      if (hasColumns()) {
-        ind.indent();
-        out.println("<colRanges>");
-        Iterator<MinMax> cit = timeSpanCols_.iterator();
-        ind.up();    
-        while (cit.hasNext()) {
-          MinMax tc = cit.next();
-          ind.indent();
-          out.print("<colRange min=\"");
-          out.print(tc.min);
-          if (tc.min != tc.max) {
-            out.print("\" max=\"");
-            out.print(tc.max);
-          }
-          out.println("\" />");
-        }
-        ind.down().indent(); 
-        out.println("</colRanges>");
+      ind.indent();
+      out.println("<customEvidence>");
+      ind.up();    
+      Iterator<CustomEvidenceDrawStyle> ceit = customEvidence_.values().iterator();
+      while (ceit.hasNext()) {
+        CustomEvidenceDrawStyle ceds = ceit.next();
+        ceds.writeXML(out, ind);
       }
-      if (renderEvidence_ == EVIDENCE_IS_CUSTOM) {
-        ind.indent();
-        out.println("<customEvidence>");
-        ind.up();    
-        Iterator<CustomEvidenceDrawStyle> ceit = customEvidence_.values().iterator();
-        while (ceit.hasNext()) {
-          CustomEvidenceDrawStyle ceds = ceit.next();
-          ceds.writeXML(out, ind);
-        }
-        ind.down().indent(); 
-        out.println("</customEvidence>");
-      }
-      if (!pertMeasureColors_.isEmpty()) {
-        ind.indent();
-        out.println("<pertColors>");
-        TreeSet<String> sorted = new TreeSet<String>(pertMeasureColors_.keySet());
-        Iterator<String> pcit = sorted.iterator();
-        ind.up();    
-        while (pcit.hasNext()) {
-          String key = pcit.next();
-          ind.indent();
-          out.print("<pertColor key=\"");
-          out.print(key);
-          out.print("\" color=\"");
-          out.print(pertMeasureColors_.get(key));
-          out.println("\" />");
-        }
-        ind.down().indent(); 
-        out.println("</pertColors>");
-      }
+      ind.down().indent(); 
+      out.println("</customEvidence>");
       ind.down().indent();
       out.println("</displayOptions>");
     } else {
@@ -1134,10 +854,10 @@ public class DisplayOptions implements Cloneable {
   ** Useful for JComboBoxes
   */
 
-  public static Vector<ChoiceContent> branchOptions(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> branchOptions(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_BUS_BRANCH_OPTIONS_; i++) {
-      retval.add(mapBranchOptions(dacx, i));
+      retval.add(mapBranchOptions(hams, i));
     }
     return (retval);
   }
@@ -1147,8 +867,8 @@ public class DisplayOptions implements Cloneable {
   ** Useful for JComboBoxes
   */
 
-  public static ChoiceContent mapBranchOptions(DataAccessContext dacx, int val) {
-    return (new ChoiceContent(dacx.getRMan().getString("displayOptions." + mapBranches(val)), val));
+  public static ChoiceContent mapBranchOptions(HandlerAndManagerSource hams, int val) {
+    return (new ChoiceContent(hams.getRMan().getString("displayOptions." + mapBranches(val)), val));
   }
   
   /***************************************************************************
@@ -1156,10 +876,10 @@ public class DisplayOptions implements Cloneable {
   ** Useful for JComboBoxes
   */
 
-  public static Vector<ChoiceContent> evidenceOptions(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> evidenceOptions(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_EVIDENCE_OPTIONS_; i++) {
-      retval.add(mapEvidenceOptions(dacx, i));
+      retval.add(mapEvidenceOptions(hams, i));
     }
     return (retval);
   }
@@ -1169,8 +889,8 @@ public class DisplayOptions implements Cloneable {
   ** Useful for JComboBoxes
   */
 
-  public static ChoiceContent mapEvidenceOptions(DataAccessContext dacx, int val) {
-    return (new ChoiceContent(dacx.getRMan().getString("displayOptions." + mapEvidence(val)), val));
+  public static ChoiceContent mapEvidenceOptions(HandlerAndManagerSource hams, int val) {
+    return (new ChoiceContent(hams.getRMan().getString("displayOptions." + mapEvidence(val)), val));
   }
   
   /***************************************************************************
@@ -1178,10 +898,10 @@ public class DisplayOptions implements Cloneable {
   ** Return possible first zoom values
   */
   
-  public static Vector<EnumChoiceContent<FirstZoom>> getFirstZoomChoices(DataAccessContext dacx) {
+  public static Vector<EnumChoiceContent<FirstZoom>> getFirstZoomChoices(HandlerAndManagerSource hams) {
     Vector<EnumChoiceContent<FirstZoom>> retval = new Vector<EnumChoiceContent<FirstZoom>>();
     for (FirstZoom z : FirstZoom.values()) {
-      retval.add(firstZoomForCombo(dacx, z));    
+      retval.add(firstZoomForCombo(hams, z));    
     }
     return (retval);
   }
@@ -1191,8 +911,8 @@ public class DisplayOptions implements Cloneable {
   ** Get a combo box element
   */
   
-  public static EnumChoiceContent<FirstZoom> firstZoomForCombo(DataAccessContext dacx, FirstZoom firstZoomType) {
-    return (new EnumChoiceContent<FirstZoom>(dacx.getRMan().getString("displayOptions." + firstZoomType.getTag()), firstZoomType));
+  public static EnumChoiceContent<FirstZoom> firstZoomForCombo(HandlerAndManagerSource hams, FirstZoom firstZoomType) {
+    return (new EnumChoiceContent<FirstZoom>(hams.getRMan().getString("displayOptions." + firstZoomType.getTag()), firstZoomType));
   }   
   
   /***************************************************************************
@@ -1200,10 +920,10 @@ public class DisplayOptions implements Cloneable {
   ** Return possible Nav zoom values
   */
   
-  public static Vector<EnumChoiceContent<NavZoom>> getNavZoomChoices(DataAccessContext dacx) {
+  public static Vector<EnumChoiceContent<NavZoom>> getNavZoomChoices(HandlerAndManagerSource hams) {
     Vector<EnumChoiceContent<NavZoom>> retval = new Vector<EnumChoiceContent<NavZoom>>();
     for (NavZoom z : NavZoom.values()) {
-      retval.add(navZoomForCombo(dacx, z));    
+      retval.add(navZoomForCombo(hams, z));    
     }
     return (retval);
   }
@@ -1213,8 +933,8 @@ public class DisplayOptions implements Cloneable {
   ** Get a combo box element
   */
   
-  public static EnumChoiceContent<NavZoom> navZoomForCombo(DataAccessContext dacx, NavZoom navZoomType) {
-    return (new EnumChoiceContent<NavZoom>(dacx.getRMan().getString("displayOptions." + navZoomType.getTag()), navZoomType));
+  public static EnumChoiceContent<NavZoom> navZoomForCombo(HandlerAndManagerSource hams, NavZoom navZoomType) {
+    return (new EnumChoiceContent<NavZoom>(hams.getRMan().getString("displayOptions." + navZoomType.getTag()), navZoomType));
   }  
  
   /***************************************************************************
@@ -1261,10 +981,10 @@ public class DisplayOptions implements Cloneable {
   ** Return possible node activity
   */
   
-  public static Vector<ChoiceContent> getNodeActivityChoices(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getNodeActivityChoices(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_NODE_ACTIVITY_OPTIONS_; i++) {
-      retval.add(nodeActivityForCombo(dacx, i));    
+      retval.add(nodeActivityForCombo(hams, i));    
     }
     return (retval);
   }
@@ -1274,8 +994,8 @@ public class DisplayOptions implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent nodeActivityForCombo(DataAccessContext dacx, int nodeActivity) {
-    return (new ChoiceContent(dacx.getRMan().getString("displayOptions." + mapNodeActivity(nodeActivity)), nodeActivity));
+  public static ChoiceContent nodeActivityForCombo(HandlerAndManagerSource hams, int nodeActivity) {
+    return (new ChoiceContent(hams.getRMan().getString("displayOptions." + mapNodeActivity(nodeActivity)), nodeActivity));
   }
   
   /***************************************************************************
@@ -1322,10 +1042,10 @@ public class DisplayOptions implements Cloneable {
   ** Return possible link activity
   */
   
-  public static Vector<ChoiceContent> getLinkActivityChoices(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getLinkActivityChoices(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_LINK_ACTIVITY_OPTIONS_; i++) {
-      retval.add(linkActivityForCombo(dacx, i));    
+      retval.add(linkActivityForCombo(hams, i));    
     }
     return (retval);
   }
@@ -1335,8 +1055,8 @@ public class DisplayOptions implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent linkActivityForCombo(DataAccessContext dacx, int linkActivity) {
-    return (new ChoiceContent(dacx.getRMan().getString("displayOptions." + mapLinkActivity(linkActivity)), linkActivity));
+  public static ChoiceContent linkActivityForCombo(HandlerAndManagerSource hams, int linkActivity) {
+    return (new ChoiceContent(hams.getRMan().getString("displayOptions." + mapLinkActivity(linkActivity)), linkActivity));
   }        
   
 /***************************************************************************
@@ -1396,7 +1116,7 @@ public class DisplayOptions implements Cloneable {
       String scaleTag = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "scale", false);
       String breakOutStr = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "breakInvest", false);
  
-      return (new DisplayOptions(dacx_, branchStr, evidenceStr, footStr, firstZoom, 
+      return (new DisplayOptions(branchStr, evidenceStr, footStr, firstZoom, 
                                  navZoom, nodeActivity, linkActivity, weakLevel, 
                                  showTreeStr, pertDefMin, pertDefMax, scaleTag, breakOutStr, inactiveBright));
     }

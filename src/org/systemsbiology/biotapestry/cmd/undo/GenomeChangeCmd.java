@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -54,8 +53,8 @@ public class GenomeChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GenomeChangeCmd(DataAccessContext dacx, GenomeChange restore) {
-    this(dacx, restore, false);
+  public GenomeChangeCmd(GenomeChange restore) {
+    this(restore, false);
   }
 
   /***************************************************************************
@@ -63,8 +62,8 @@ public class GenomeChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public GenomeChangeCmd(DataAccessContext dacx, GenomeChange restore, boolean doEvent) {
-    super(dacx);
+  public GenomeChangeCmd(GenomeChange restore, boolean doEvent) {
+    super();
     restore_ = restore;
     doEvent_ = doEvent;
   }  

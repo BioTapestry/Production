@@ -47,8 +47,10 @@ import javax.swing.border.EmptyBorder;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.SimParamSource;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBInternalLogic;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
@@ -83,8 +85,10 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private SimParamSource sps_;
   
   private DBNode node_;
+  private DBGenome dbGenome_;
   
   private static final long serialVersionUID = 1L;
   
@@ -107,8 +111,10 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     if (!dacx.currentGenomeIsRootDBGenome()) {
       throw new IllegalArgumentException();
     }
-    node_ = (DBNode)dacx_.getCurrentGenomeAsDBGenome().getNode(nodeID);     
-    ResourceManager rMan = dacx_.getRMan();
+    dbGenome_ = dacx_.getCurrentGenomeAsDBGenome();
+    node_ = (DBNode)dbGenome_.getNode(nodeID);
+    sps_ = dacx_.getSimParamSource();
+    ResourceManager rMan = uics_.getRMan();
     String format = rMan.getString("simProp.title");
     String desc = MessageFormat.format(format, new Object[] {node_.getName()});    
     setTitle(desc);    
@@ -132,7 +138,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     UiUtil.gbcSet(gbc, 0, 0, 1, 6, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     cp.add(jtp, gbc);
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 6, 1, true, false);   
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -223,8 +229,8 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
       }
     }
   
-    ParameterTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    ParameterTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"simProp.param",
                                 "simProp.value",
                                 "simProp.required"};
@@ -290,12 +296,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   */
   
   private void displayProperties() {
-    Node node = dacx_.getCurrentGenome().getNode(nodeID_);
-    if (!(node instanceof DBNode)) {
-      return;
-    }
-    
-    DBInternalLogic dbil = ((DBNode)node).getInternalLogic();
+    DBInternalLogic dbil = node_.getInternalLogic();
     int ft = dbil.getFunctionType();
     Object choose = comboChoices_.get(new Integer(ft)); 
     combo_.setSelectedItem(choose);
@@ -312,15 +313,11 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   */
   
   private boolean applyProperties() {
-    Node node = dacx_.getCurrentGenome().getNode(nodeID_);
-    if (!(node instanceof DBNode)) {
-      return (true);
-    }
-    
+  
     UndoSupport support = uFac_.provideUndoSupport("undo.spd", dacx_);    
-    GenomeChange change = dacx_.getDBGenome().startNodeUndoTransaction(nodeID_);
+    GenomeChange change = dbGenome_.startNodeUndoTransaction(nodeID_);
        
-    DBInternalLogic dbil = ((DBNode)node).getInternalLogic();
+    DBInternalLogic dbil = node_.getInternalLogic();
     ComboBoxEntry cbe = (ComboBoxEntry)combo_.getSelectedItem();
     dbil.setFunctionType(cbe.actionKey);
 
@@ -328,8 +325,8 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     List vals = ptm.getValuesFromTable();
     applyParameters(vals);
     
-    change = dacx_.getDBGenome().finishNodeUndoTransaction(nodeID_, change);
-    support.addEdit(new GenomeChangeCmd(dacx_, change));
+    change = dbGenome_.finishNodeUndoTransaction(nodeID_, change);
+    support.addEdit(new GenomeChangeCmd(change));
     
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();
@@ -344,7 +341,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   
   private JPanel buildLogicPanel() {
     JPanel logicPanel = new JPanel();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     comboChoices_ = new HashMap<Integer, ComboBoxEntry>();
     
     logicPanel.setLayout(new GridBagLayout());
@@ -407,7 +404,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     paramPanel.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
     
-    est_ = new EditableTable(uics_, dacx_, new ParameterTableModel(uics_, dacx_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new ParameterTableModel(uics_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.buttons = EditableTable.NO_BUTTONS;
     etp.singleSelectOnly = true;
@@ -432,9 +429,9 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
   
     Set<String> needed;
     if (node_.getNodeType() == Node.GENE) {
-      needed = dacx_.getDBGenome().requiredGeneParameters((DBGene)node_);
+      needed = dbGenome_.requiredGeneParameters((DBGene)node_);
     } else {
-      needed = dacx_.getDBGenome().requiredNonGeneParameters(node_);
+      needed = dbGenome_.requiredNonGeneParameters(node_);
     }
     
     Set<String> baseNeeded = new HashSet<String>();
@@ -460,7 +457,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
       String key = kit.next();
       ParameterTableModel.TableRow tr = ptm.new TableRow();    
       tr.param = key;
-      tr.origVal = new Double(logic.getSimulationParam(dacx_, key, node_.getNodeType()));
+      tr.origVal = new Double(logic.getSimulationParam(sps_, key, node_.getNodeType()));
       tr.value = new ProtoDouble(tr.origVal.doubleValue());
       tr.required = Boolean.toString(baseNeeded.contains(key));
       retval.add(tr);

@@ -64,9 +64,12 @@ public abstract class DataAccessContext {
     frcStack_ = new ArrayList<FontRenderContext>();
     ghostedStack_ = new ArrayList<Boolean>();
     baseFrc_ = frc;
+    //
+    // Hacky workaround. Early DACX instantiations before BTState is up and
+    // running will have null FRCs:
+    //
     if (frc == null) {
       baseFrc_ = new FontRenderContext(new AffineTransform(), true, true);
-      System.out.println("FIXME");
     }
   }
 
@@ -150,10 +153,7 @@ public abstract class DataAccessContext {
   }
   
   public FontRenderContext getFrc() {
-    if (baseFrc_ == null) {
-      System.out.println("getfrc " + baseFrc_ + " " + frcStack_.size());
-    }
-     if (frcStack_.isEmpty()) {
+    if (frcStack_.isEmpty()) {
       return (baseFrc_);
     } else {
       return (frcStack_.get(frcStack_.size() - 1));

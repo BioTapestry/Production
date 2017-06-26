@@ -190,7 +190,7 @@ public class NetOverlayCreationDialogFactory extends DialogFactory {
     */
     
     private String uniqueNewName(Set<String> existingNames) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String uniqueBase = rMan.getString("noverlay.defaultBaseName");
       int count = 1;
       while (true) {

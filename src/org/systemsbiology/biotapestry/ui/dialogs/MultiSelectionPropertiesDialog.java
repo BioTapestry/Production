@@ -146,7 +146,7 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
     // Build the button panel:
     //
 
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, rownum, 11, true, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties(geneCp_, nodeCp_, linkCp_);

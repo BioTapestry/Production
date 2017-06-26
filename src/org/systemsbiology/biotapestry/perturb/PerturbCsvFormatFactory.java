@@ -53,6 +53,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.pertManage.NewbieReportingDialo
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.CSVParser;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UndoFactory;
@@ -230,8 +231,8 @@ public class PerturbCsvFormatFactory {
   // PRIVATE INSTANCE MEMBERS
   //
   ////////////////////////////////////////////////////////////////////////////
-;
-  private DataAccessContext dacx_;
+
+ // private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private HashMap<String, Map<String, AbstractParam>> newParamsInFile_;
   private HashMap<String, Map<String, String>> paramNameToPdKeyMap_;
@@ -254,10 +255,9 @@ public class PerturbCsvFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public PerturbCsvFormatFactory(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, boolean useDate, boolean useTime, 
+  public PerturbCsvFormatFactory(UIComponentSource uics, UndoFactory uFac, boolean useDate, boolean useTime, 
                                  boolean useBatch, boolean useInvest, boolean useCondition) {
     uics_ = uics;
-    dacx_ = dacx;
     uFac_ = uFac;
     newParamsInFile_ = new HashMap<String, Map<String, AbstractParam>>();
     paramNameToPdKeyMap_ = new HashMap<String, Map<String, String>>();
@@ -279,8 +279,7 @@ public class PerturbCsvFormatFactory {
   ** Get the Perturb Data
   */
 
-  public boolean parsePerturbCSV(File infile) throws IOException {
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
+  public boolean parsePerturbCSV(File infile, PerturbationData pd, HandlerAndManagerSource hams, DataAccessContext dacx) throws IOException {
     List<List<String>> blockList = fileToLineBlocks(infile);
     //
     // Separate IO Errors from data errors:
@@ -293,15 +292,15 @@ public class PerturbCsvFormatFactory {
     while (blit.hasNext()) {
       List<String> block = blit.next();
       if ((blockNum % 2) == 0) {
-        csvState = new CSVState(dacx_, false, setNumber++, paramNameToPdKeyMap_, 
+        csvState = new CSVState(false, setNumber++, paramNameToPdKeyMap_, 
                                 useDate_, useTime_, useBatch_, useInvest_, useCondition_);
         csvList.add(csvState);
         blockNum = 0;
       }
-      processLineBlock(block, blockNum++, csvState, pd);
+      processLineBlock(block, blockNum++, csvState, pd, hams);
     }
     
-    TaggedTAD ttad = handleTimeDefinition();
+    TaggedTAD ttad = handleTimeDefinition(dacx.getExpDataSrc().getTimeAxisDefinition(), dacx);
     if (!ttad.keepGoing) {
       return (false);
     }
@@ -318,7 +317,7 @@ public class PerturbCsvFormatFactory {
    
     if (haveNP || haveN) {
       findNewbieNeighbors(pd, allNewbies, newbieClosest);
-      NewbieReportingDialog nrd = new NewbieReportingDialog(uics_, dacx_, uics_.getTopFrame(), allNewbies, newbieClosest);
+      NewbieReportingDialog nrd = new NewbieReportingDialog(uics_, uics_.getTopFrame(), allNewbies, newbieClosest);
       nrd.setVisible(true);
       if (!nrd.keepGoing()) {
         return (false);
@@ -326,7 +325,7 @@ public class PerturbCsvFormatFactory {
     }
     
     if (!batchDups.isEmpty()) {
-      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, dacx_, uics_.getTopFrame(), batchDups, "batchDup.CSVDialog", "batchDup.CSVTable");
+      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, uics_.getTopFrame(), batchDups, "batchDup.CSVDialog", "batchDup.CSVTable");
       bdrd.setVisible(true);
       if (!bdrd.keepGoing()) {
         return (false);
@@ -341,17 +340,19 @@ public class PerturbCsvFormatFactory {
     // The time for per-checks is done.  Start installing stuff in the DB:
     //
     
-    UndoSupport support = uFac_.provideUndoSupport("undo.pertCsv", dacx_);
+    TimeAxisDefinition fromDACX = null;
+    UndoSupport support = uFac_.provideUndoSupport("undo.pertCsv", dacx);
     if (ttad.tad != null) {
-      DatabaseChange dc = dacx_.getExpDataSrc().setTimeAxisDefinition(ttad.tad);
+      DatabaseChange dc = dacx.getExpDataSrc().setTimeAxisDefinition(ttad.tad);
+      fromDACX = ttad.tad;
       if (dc != null) {
-        DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
+        DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx, dc);
         support.addEdit(dcc);
       }
     }
     
     paramsToDatabase(pd, support);    
-    extractMeasurements(csvList, pd, support);
+    extractMeasurements(csvList, pd, support, fromDACX);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();
     return (true);
@@ -362,9 +363,8 @@ public class PerturbCsvFormatFactory {
   ** Handle time definition
   */
 
-  private TaggedTAD handleTimeDefinition() throws IOException {
+  private TaggedTAD handleTimeDefinition(TimeAxisDefinition tad, DataAccessContext dacx) throws IOException {
   
-    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     //
     // If not intialized, do so now via dialog or info from the file:
     //
@@ -373,7 +373,7 @@ public class PerturbCsvFormatFactory {
     if (!tad.isInitialized()) {
       Map<String, AbstractParam> newTS = newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
       if ((newTS == null) || (newTS.size() != 1)) {
-        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics_, dacx_, uFac_);
+        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics_, dacx, uFac_);
         if (!keepGoing) {
           return (new TaggedTAD(null, false));
         }
@@ -389,7 +389,7 @@ public class PerturbCsvFormatFactory {
         if (TimeAxisDefinition.wantsCustomUnits(units)) {
           throw new IOException(buildNoLineErrorMessage("csvInput.customTimeNotSupported", timeVal));   
         }  
-        newtad = new TimeAxisDefinition(dacx_);
+        newtad = new TimeAxisDefinition(uics_.getRMan());
         newtad.setDefinition(units, null, null, false, null);           
       }
     } else {
@@ -645,8 +645,8 @@ public class PerturbCsvFormatFactory {
           Set<String> matches = matchingExperiments(csv, pd, pendingTAD, true);
           int numMatch = matches.size();
           if (numMatch != 1) {  // no match or multi-match
-            int time = processTime(csv, pendingTAD);
-            String times = Experiment.getTimeDisplayString(dacx_, new MinMax(time, time), true, true);
+            int time = processTime(csv, pendingTAD, null);
+            String times = Experiment.getTimeDisplayString(pendingTAD, new MinMax(time, time), true, true);
             String invests = DataUtil.getMultiDisplayString(csv.getInvestigators());
             ArrayList<String> tokStrs = new ArrayList<String>();
             List<CSVData.ExperimentTokens> srcs = csv.getSources();
@@ -681,7 +681,7 @@ public class PerturbCsvFormatFactory {
                   if (vals == null) {
                     continue;
                   }
-                  String dispKey = pd.getExperiment(expKey).getDisplayString(pd);
+                  String dispKey = pd.getExperiment(expKey).getDisplayString(pd, pendingTAD);
                   SortedMap<String, SortedMap<String, BatchCollision>> forExp = batchDups.get(dispKey);
                   if (forExp == null) {
                     forExp = new TreeMap<String, SortedMap<String, BatchCollision>>();
@@ -746,7 +746,7 @@ public class PerturbCsvFormatFactory {
       }
       if (minKey != null) {
         Experiment exp = pd.getExperiment(minKey);
-        closest.put(tag, exp.getDisplayString(pd));
+        closest.put(tag, exp.getDisplayString(pd, pendingTAD));
       } 
     }
     return;
@@ -809,7 +809,7 @@ public class PerturbCsvFormatFactory {
   private Set<String> matchingExperiments(CSVData csv, PerturbationData pd, TimeAxisDefinition pendingTAD, boolean withInvests) {  
  
     HashSet<String> retval = new HashSet<String>();
-    int time = processTime(csv, pendingTAD);
+    int time = processTime(csv, pendingTAD, null);
     TreeSet<String> csvInv = (withInvests) ? new TreeSet<String>(DataUtil.normalizeList(csv.getInvestigators())) : null;
     TreeSet<String> csvPs = new TreeSet<String>();
     List<CSVData.ExperimentTokens> srcs = csv.getSources();
@@ -898,7 +898,8 @@ public class PerturbCsvFormatFactory {
   ** Export the measurement
   */
   
-  private void extractMeasurements(List<CSVState> cssList, PerturbationData pd, UndoSupport support) throws IOException {
+  private void extractMeasurements(List<CSVState> cssList, PerturbationData pd, 
+                                   UndoSupport support, TimeAxisDefinition fromDACX) throws IOException {
     
     long timeStamp = System.currentTimeMillis();
     Iterator<CSVState> cssit = cssList.iterator();
@@ -914,32 +915,32 @@ public class PerturbCsvFormatFactory {
           String invest = invests.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.provideInvestigator(invest);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
           }
           investIDs.add(kdac.key);
         }
 
         List<CSVData.ExperimentTokens> srcs = csv.getSources();
         int numSrcs = srcs.size();
-        PertSources pss = new PertSources(dacx_);
+        PertSources pss = new PertSources(pd);
         for (int i = 0; i < numSrcs; i++) {
           CSVData.ExperimentTokens etok = srcs.get(i);
           PerturbationData.KeyAndDataChange kdac = pd.providePertSrcName(etok.base);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
           }
           String pertKey = csvs.getPDKey(CSVState.PERT_TYPE_PARAM_, etok.expType);
           kdac = pd.providePertSrc(kdac.key, pertKey, null, PertSource.NO_PROXY, new ArrayList<String>(), true);
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
           }
           pss.addSourceID(kdac.key);
         }
-        int time = processTime(csv, null);
+        int time = processTime(csv, null, fromDACX);
         String condKey = csvs.getPDKey(CSVState.CONDITION_PARAM_, csv.getCondition());
         PerturbationData.KeyAndDataChange kdac = pd.provideExperiment(pss, time, Experiment.NO_TIME, investIDs, condKey);
         if (kdac.undoInfo != null) {
-          support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+          support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
         }
         String psiKey = kdac.key;
         Set<String> targets = csv.getTargets();
@@ -949,7 +950,7 @@ public class PerturbCsvFormatFactory {
           kdac = pd.provideTarget(csv.getOriginalTargetName(targetKey));
           String targKey = kdac.key;
           if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+            support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
           }
           List<CSVData.DataPoint> meas = csv.getMeasurements(targetKey);
           int numM = meas.size();
@@ -969,14 +970,14 @@ public class PerturbCsvFormatFactory {
             if ((dp.control != null) && !dp.control.trim().equals("")) {
               kdac = pd.provideExpControl(dp.control);
               if (kdac.undoInfo != null) {
-                support.addEdit(new PertDataChangeCmd(dacx_, kdac.undoInfo));        
+                support.addEdit(new PertDataChangeCmd(kdac.undoInfo));        
               }
               pdp.setControl(kdac.key);
             }
          
             pdp.setIsSig(convertSigInput(dp.isValid));
             PertDataChange pdc = pd.setDataPoint(pdp);      
-            support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+            support.addEdit(new PertDataChangeCmd(pdc));
             
             //
             // Annotations
@@ -991,7 +992,7 @@ public class PerturbCsvFormatFactory {
                 keyList.add(aToKey.get(tag));
               }           
               pdc = pd.setFootnotesForDataPoint(pdp.getID(), keyList);
-              support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+              support.addEdit(new PertDataChangeCmd(pdc));
             }
            
             //
@@ -1015,7 +1016,7 @@ public class PerturbCsvFormatFactory {
             }
             pdc = pd.setUserFieldValues(pdp.getID(), (allEmpty) ? null : userV);
             if (pdc != null) {
-              support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+              support.addEdit(new PertDataChangeCmd(pdc));
             }
           }
         }
@@ -1046,7 +1047,7 @@ public class PerturbCsvFormatFactory {
         MeasureScale newScale = new MeasureScale(nextID, sp.name, sp.conv, sp.illegal, sp.unchanged);
         PertDataChange pdc = pd.setMeasureScale(newScale);
         sToKey.put(skey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
     }
     
@@ -1062,7 +1063,7 @@ public class PerturbCsvFormatFactory {
         MeasureProps mProps = new MeasureProps(nextID, mp.name, scKey, mp.negThresh, mp.posThresh);
         PertDataChange pdc = pd.setMeasureProp(mProps);
         mToKey.put(mkey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
 
@@ -1077,7 +1078,7 @@ public class PerturbCsvFormatFactory {
         PertProperties pProps = new PertProperties(nextID, ppp.name, ppp.abbrev, ppp.linkRelation);
         PertDataChange pdc = pd.setPerturbationProp(pProps);
         pToKey.put(pkey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
     
@@ -1092,7 +1093,7 @@ public class PerturbCsvFormatFactory {
         ExperimentConditions eCond = new ExperimentConditions(nextID, condName);
         PertDataChange pdc = pd.setExperimentConditions(eCond);
         eToKey.put(ekey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
 
@@ -1107,7 +1108,7 @@ public class PerturbCsvFormatFactory {
         ExperimentControl ctrl = new ExperimentControl(nextID, ctrlName);
         PertDataChange pdc = pd.setExperimentControl(ctrl);
         tToKey.put(tkey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
 
@@ -1121,7 +1122,7 @@ public class PerturbCsvFormatFactory {
         String nextID = Integer.toString(pd.getUserFieldCount());
         PertDataChange pdc = pd.setUserFieldName(nextID, fieldName);
         uToKey.put(fkey, nextID);
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
 
@@ -1134,7 +1135,7 @@ public class PerturbCsvFormatFactory {
         AnnotParam aparm = (AnnotParam)annots.get(akey);
         PertDataChange pdc = pd.addAnnotation(aparm.num, aparm.message);
         aToKey.put(akey, pdc.annotKey);  // kinda bogus!
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));   
+        support.addEdit(new PertDataChangeCmd(pdc));   
       }
     }
     return;
@@ -1173,7 +1174,7 @@ public class PerturbCsvFormatFactory {
       Iterator<CSVData> csvit = csvs.getValues().iterator();
       while (csvit.hasNext()) {
         CSVData csv = csvit.next();
-        if (processTime(csv, pendingTAD) == Integer.MIN_VALUE) {
+        if (processTime(csv, pendingTAD, null) == Integer.MIN_VALUE) {
           return (true);
         }
         Set<String> targets = csv.getTargets();
@@ -1187,7 +1188,7 @@ public class PerturbCsvFormatFactory {
             BoundedDoubMinMax illegal = csvs.getIllegalBounds(dpt.measurement);
             if (!CSVData.isValidMeasurement(dpt.value, illegal)) {
               retval = true;
-              ResourceManager rMan = dacx_.getRMan();
+              ResourceManager rMan = uics_.getRMan();
               String desc = MessageFormat.format(rMan.getString("qpcrcsv.badMeasurement"), 
                                                  new Object[] {dpt.value});            
               int result = JOptionPane.showOptionDialog(uics_.getTopFrame(), desc,
@@ -1215,11 +1216,11 @@ public class PerturbCsvFormatFactory {
   ** Extract time.  Integer.MIN_VALUE if time is bad 
   */
 
-  private int processTime(CSVData csv, TimeAxisDefinition pendingTAD) {
-    TimeAxisDefinition tad = (pendingTAD != null) ? pendingTAD : dacx_.getExpDataSrc().getTimeAxisDefinition();
+  private int processTime(CSVData csv, TimeAxisDefinition pendingTAD, TimeAxisDefinition fromDACX) {
+    TimeAxisDefinition tad = (pendingTAD != null) ? pendingTAD : fromDACX;
     Integer parsed = tad.timeStringParse(csv.getTime());
     if ((parsed == null) || (parsed.intValue() < 0)) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String desc = MessageFormat.format(rMan.getString("qpcrcsv.badTimeValue"), 
                                          new Object[] {csv.getTime()});      
       JOptionPane.showMessageDialog(uics_.getTopFrame(), desc,
@@ -1271,7 +1272,7 @@ public class PerturbCsvFormatFactory {
   ** Get the perturb data as a list of csvDatas
   */
 
-  private void processLineBlock(List<String> lines, int blockNum, CSVState csvState, PerturbationData pd) throws IOException {
+  private void processLineBlock(List<String> lines, int blockNum, CSVState csvState, PerturbationData pd, HandlerAndManagerSource hams) throws IOException {
     
     CSVParser csvp = new CSVParser(true);
    
@@ -1282,15 +1283,15 @@ public class PerturbCsvFormatFactory {
       List<String> argList = csvp.processCSVLine(line);
       if (blockNum == 0) {
         if (rowNum == 0) {
-          csvState.startTheBlock(argList);          
+          csvState.startTheBlock(argList, hams);          
         } else {
-          csvState.parseParameter(argList, newParamsInFile_);
+          csvState.parseParameter(argList, newParamsInFile_, hams);
         }
       } else if (blockNum == 1) {
         if (rowNum == 0) {
-          csvState.gatherHeadings(argList, pd, newParamsInFile_);
+          csvState.gatherHeadings(argList, pd, newParamsInFile_, hams);
         } else {
-          csvState.readDataLine(argList, rowNum);
+          csvState.readDataLine(argList, rowNum, hams, pd);
         }
       }
       rowNum++;
@@ -1304,7 +1305,7 @@ public class PerturbCsvFormatFactory {
   */
 
   String buildNoLineErrorMessage(String rStr, String tok) {
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String errStr = rMan.getString(rStr);
     String formStr = rMan.getString("csvInput.errFormatNoLine");
     return (MessageFormat.format(formStr, new Object[] {errStr, tok}));      
@@ -1391,14 +1392,12 @@ public class PerturbCsvFormatFactory {
     private boolean useBatch_;
     private boolean useInvest_;
     private boolean useCondition_;
-    private DataAccessContext dacx_;
     
-    CSVState(DataAccessContext dacx, boolean legacy, int setNumber, 
+    CSVState(boolean legacy, int setNumber, 
              Map<String, Map<String, String>> nameToPdKey, 
              boolean useDate, boolean useTime,
              boolean useBatch, boolean useInvest, 
              boolean useCondition) {
-      dacx_ = dacx;
       setNumber_ = setNumber;
       investigators_ = new ArrayList<String>();
       date_ = null;
@@ -1426,29 +1425,29 @@ public class PerturbCsvFormatFactory {
     ** read a line of data
     */  
 
-    void readDataLine(List<String> argList, int rowNum) throws IOException { 
+    void readDataLine(List<String> argList, int rowNum, HandlerAndManagerSource hams, PerturbationData pd) throws IOException { 
       int batchCol = argToColMap_.get(BATCH_ID_UC).intValue();
       int pertCol = argToColMap_.get(PERT_AGENT_UC).intValue();
       int timeCol = argToColMap_.get(TIME_UC).intValue();
       int numArgs = argList.size();
       if ((numArgs <= batchCol) || (numArgs <= pertCol) || (numArgs <= timeCol)) {
-        throw new IOException(buildTokenErrorMessage("csvInput.badRow", rowNum, Integer.toString(numArgs)));
+        throw new IOException(buildTokenErrorMessage("csvInput.badRow", rowNum, Integer.toString(numArgs), hams));
       }
       
       String time = argList.get(timeCol);
       String batch = argList.get(batchCol);
-      List<CSVData.ExperimentTokens> etoks = experimentParse(argList.get(pertCol), rowNum);
-      String condition = conditionParse(argList, rowNum);
+      List<CSVData.ExperimentTokens> etoks = experimentParse(argList.get(pertCol), rowNum, hams);
+      String condition = conditionParse(argList, rowNum, hams, pd);
       String fullBatchID = CSVData.buildBatchKey(date_, investigators_, batch, time, condition, 
                                                  useDate_, useTime_, useBatch_, useInvest_, useCondition_);   
       String keyForLine = CSVData.buildRowKey(etoks, date_, investigators_, time, condition, fullBatchID);
   
       CSVData csvMatch = csvMap_.get(keyForLine);
       if (csvMatch == null) {       
-        csvMatch = new CSVData(dacx_, etoks, date_, investigators_, time, condition, fullBatchID);
+        csvMatch = new CSVData(pd, etoks, date_, investigators_, time, condition, fullBatchID);
         csvMap_.put(keyForLine, csvMatch);
       }
-      CSVData.DataPoint dp = buildMeasurement(argList, rowNum);
+      CSVData.DataPoint dp = buildMeasurement(argList, rowNum, hams);
       csvMatch.addDataPoint(dp);
       return;
     }
@@ -1469,14 +1468,14 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    void augmentParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {  
-      augmentScaleParameters(pd, newParamsInFile);
-      augmentMeasureParameters(pd, newParamsInFile);
-      augmentPertPropParameters(pd, newParamsInFile);
-      augmentConditionParameters(pd, newParamsInFile);
-      augmentAnnotParameters(pd, newParamsInFile);
-      augmentControlParameters(pd, newParamsInFile);
-      augmentUserFieldParameters(pd, newParamsInFile);
+    void augmentParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {  
+      augmentScaleParameters(pd, newParamsInFile, hams);
+      augmentMeasureParameters(pd, newParamsInFile, hams);
+      augmentPertPropParameters(pd, newParamsInFile, hams);
+      augmentConditionParameters(pd, newParamsInFile, hams);
+      augmentAnnotParameters(pd, newParamsInFile, hams);
+      augmentControlParameters(pd, newParamsInFile, hams);
+      augmentUserFieldParameters(pd, newParamsInFile, hams);
       return;
     }
         
@@ -1486,7 +1485,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentScaleParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentScaleParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
        
       MeasureDictionary md = pd.getMeasureDictionary();
         
@@ -1513,7 +1512,7 @@ public class PerturbCsvFormatFactory {
         MeasureScaleParam nameMatch = (MeasureScaleParam)scales.get(scaleName);
         if (nameMatch != null) {
           if (!nameMatch.equals(msp)) {
-            throw new IOException(buildParamErrorMessage("csvInput.measureScaleInconsistent", nameMatch.name));
+            throw new IOException(buildParamErrorMessage("csvInput.measureScaleInconsistent", nameMatch.name, hams));
           } else {
             scToKey.put(scaleName, scale.getID());
             newScales.remove(scaleName);
@@ -1532,7 +1531,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentMeasureParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentMeasureParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
  
       MeasureDictionary md = pd.getMeasureDictionary();
         
@@ -1558,7 +1557,7 @@ public class PerturbCsvFormatFactory {
         MeasureParam nameMatch = (MeasureParam)mPropMap.get(propName);
         if (nameMatch != null) {
           if (!nameMatch.equals(mp)) {
-            throw new IOException(buildParamErrorMessage("csvInput.measureParamInconsistent", nameMatch.name));
+            throw new IOException(buildParamErrorMessage("csvInput.measureParamInconsistent", nameMatch.name, hams));
           } else {
             mpToKey.put(propName, mProps.getID());
             newProps.remove(propName);
@@ -1577,7 +1576,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentPertPropParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentPertPropParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
       
       PertDictionary pDict = pd.getPertDictionary();
       
@@ -1603,7 +1602,7 @@ public class PerturbCsvFormatFactory {
         PertPropParam nameMatch = (PertPropParam)pertTypes.get(propName);
         if (nameMatch != null) {
           if (!nameMatch.equals(ppp)) {
-            throw new IOException(buildParamErrorMessage("csvInput.pertPropInconsistent", nameMatch.name));
+            throw new IOException(buildParamErrorMessage("csvInput.pertPropInconsistent", nameMatch.name, hams));
           } else {
             pToKey.put(propName, pProps.getID());
             newPerts.remove(propName);
@@ -1622,7 +1621,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentConditionParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentConditionParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
       
       ConditionDictionary cDict = pd.getConditionDictionary();
       
@@ -1647,7 +1646,7 @@ public class PerturbCsvFormatFactory {
         String nameMatch = ((StringParam)condTypes.get(condName)).val;
         if (nameMatch != null) {
           if (!DataUtil.keysEqual(nameMatch, condName)) {
-            throw new IOException(buildParamErrorMessage("csvInput.conditionInconsistent", nameMatch));
+            throw new IOException(buildParamErrorMessage("csvInput.conditionInconsistent", nameMatch, hams));
           } else {
             eToKey.put(condName, eCond.getID());
             newCond.remove(condName);
@@ -1666,7 +1665,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentAnnotParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentAnnotParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
       
       PertAnnotations pa = pd.getPertAnnotations();
       
@@ -1699,7 +1698,7 @@ public class PerturbCsvFormatFactory {
         AnnotParam nameMatch = (AnnotParam)annotMap.get(annotNum);
         if (nameMatch != null) {
           if (!nameMatch.equals(dbAnnot)) {
-            throw new IOException(buildParamErrorMessage("csvInput.annotInconsistent", nameMatch.num));
+            throw new IOException(buildParamErrorMessage("csvInput.annotInconsistent", nameMatch.num, hams));
           } else {
             aToKey.put(annotNum, tagToKey.get(key));
             newAnnot.remove(annotNum);
@@ -1718,7 +1717,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentControlParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentControlParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
       
       ConditionDictionary cDict = pd.getConditionDictionary();
       
@@ -1742,7 +1741,7 @@ public class PerturbCsvFormatFactory {
         String nameMatch = ((StringParam)ctrlMap.get(ctrlName)).val;
         if (nameMatch != null) {
           if (!DataUtil.normKey(nameMatch).equals(ctrlName)) {
-            throw new IOException(buildParamErrorMessage("csvInput.controlInconsistent", nameMatch));
+            throw new IOException(buildParamErrorMessage("csvInput.controlInconsistent", nameMatch, hams));
           } else {
             ctToKey.put(ctrlName, ectrl.getID());
             newCtrl.remove(ctrlName);
@@ -1761,7 +1760,7 @@ public class PerturbCsvFormatFactory {
     ** if we are not matching existing stuff
     */  
 
-    private void augmentUserFieldParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException { 
+    private void augmentUserFieldParameters(PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException { 
           
       Map<String, String> ufToKey = nameToPdKey_.get(USER_FIELD_PARAM_UC_);
       if (ufToKey == null) {
@@ -1786,7 +1785,7 @@ public class PerturbCsvFormatFactory {
         String nameMatch = ((StringParam)ufMap.get(ufnNorm)).val;
         if (nameMatch != null) {
           if (!DataUtil.normKey(nameMatch).equals(ufnNorm)) {
-            throw new IOException(buildParamErrorMessage("csvInput.userFieldInconsistent", nameMatch));
+            throw new IOException(buildParamErrorMessage("csvInput.userFieldInconsistent", nameMatch, hams));
           } else {
             ufToKey.put(ufnNorm, Integer.toString(i));
             newUF.remove(ufnNorm);
@@ -1805,8 +1804,8 @@ public class PerturbCsvFormatFactory {
     ** Error handling
     */
       
-    String buildTokenErrorMessage(String rStr, int rowNum, String tok) {
-      ResourceManager rMan = dacx_.getRMan();
+    String buildTokenErrorMessage(String rStr, int rowNum, String tok, HandlerAndManagerSource hams) {
+      ResourceManager rMan = hams.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.tokErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), 
@@ -1819,8 +1818,8 @@ public class PerturbCsvFormatFactory {
     ** Error handling
     */
       
-    String buildParamErrorMessage(String rStr, String tok) {
-      ResourceManager rMan = dacx_.getRMan();
+    String buildParamErrorMessage(String rStr, String tok, HandlerAndManagerSource hams) {
+      ResourceManager rMan = hams.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.paramErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), tok}));      
@@ -1831,8 +1830,8 @@ public class PerturbCsvFormatFactory {
     ** Error handling
     */
     
-    String buildHeadingErrorMessage(String rStr, String tok) {
-      ResourceManager rMan = dacx_.getRMan();
+    String buildHeadingErrorMessage(String rStr, String tok, HandlerAndManagerSource hams) {
+      ResourceManager rMan = hams.getRMan();
       String errStr = rMan.getString(rStr);
       String formStr = rMan.getString("csvInput.headingErrFormat");
       return (MessageFormat.format(formStr, new Object[] {errStr, new Integer(setNumber_), tok}));      
@@ -1843,26 +1842,26 @@ public class PerturbCsvFormatFactory {
     ** Add a measurement from a line of csv perturb data
     */
 
-    private CSVData.DataPoint buildMeasurement(List<String> args, int rowNum) throws IOException {
+    private CSVData.DataPoint buildMeasurement(List<String> args, int rowNum, HandlerAndManagerSource hams) throws IOException {
       int numArgs = args.size();
 
       int targCol = argToColMap_.get(MEAS_GENE_UC).intValue();
       String target = args.get(targCol);
       if ((target == null) || target.trim().equals("")) {
-        throw new IOException(buildTokenErrorMessage("csvInput.badTarget", rowNum, target));
+        throw new IOException(buildTokenErrorMessage("csvInput.badTarget", rowNum, target, hams));
       }
 
       String meaKey = (legacy_) ? DEL_DEL_CT_UC : MEASUREMENT_UC;
       int valCol = argToColMap_.get(meaKey).intValue();
       String value = args.get(valCol);
       if ((value == null) || value.trim().equals("")) {
-        throw new IOException(buildTokenErrorMessage("csvInput.badMeasurement", rowNum, value));
+        throw new IOException(buildTokenErrorMessage("csvInput.badMeasurement", rowNum, value, hams));
       }
 
       int isValCol = argToColMap_.get(FORCE_UC).intValue();
       String isValid = (numArgs >= (isValCol + 1)) ? args.get(isValCol) : null;
       if (!sigCSVInputOK(isValid)) {
-        throw new IOException(buildTokenErrorMessage("csvInput.badSignificance", rowNum, isValid));      
+        throw new IOException(buildTokenErrorMessage("csvInput.badSignificance", rowNum, isValid, hams));      
       }    
       if (isValid != null) {
         isValid = isValid.trim();
@@ -1888,7 +1887,7 @@ public class PerturbCsvFormatFactory {
           if (control != null) {
             control = control.trim();
             if (!controls.keySet().contains(DataUtil.normKey(control))) {
-              throw new IOException(buildTokenErrorMessage("csvInput.badControl", rowNum, control));
+              throw new IOException(buildTokenErrorMessage("csvInput.badControl", rowNum, control, hams));
             }
           }
         }
@@ -1907,7 +1906,7 @@ public class PerturbCsvFormatFactory {
           if (measurement != null) {
             measurement = measurement.trim();
             if (!measurements.keySet().contains(DataUtil.normKey(measurement))) {
-              throw new IOException(buildTokenErrorMessage("csvInput.badMeasureType", rowNum, measurement));
+              throw new IOException(buildTokenErrorMessage("csvInput.badMeasureType", rowNum, measurement, hams));
             }
           }
         } else {
@@ -1935,7 +1934,7 @@ public class PerturbCsvFormatFactory {
             String tok = strTok.nextToken();
             annotList.add(tok);
             if (!annots.keySet().contains(DataUtil.normKey(tok))) {
-              throw new IOException(buildTokenErrorMessage("csvInput.badAnnotType", rowNum, tok));
+              throw new IOException(buildTokenErrorMessage("csvInput.badAnnotType", rowNum, tok, hams));
             }
           }
         }
@@ -1980,11 +1979,11 @@ public class PerturbCsvFormatFactory {
     ** Gather headings
     */  
 
-    void gatherHeadings(List<String> argList, PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
-      extractDate();
-      augmentParameters(pd, newParamsInFile);
+    void gatherHeadings(List<String> argList, PerturbationData pd, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {
+      extractDate(hams);
+      augmentParameters(pd, newParamsInFile, hams);
       buildVocabulary();
-      parseHeadingRow(argList, pd);
+      parseHeadingRow(argList, pd, hams);
       return;
     }
     
@@ -1993,13 +1992,13 @@ public class PerturbCsvFormatFactory {
     ** Start processing the block
     */  
 
-    void startTheBlock(List<String> argList) throws IOException {
+    void startTheBlock(List<String> argList, HandlerAndManagerSource hams) throws IOException {
       if (argList.size() < 1) {
-        throw new IOException(buildParamErrorMessage("csvInput.badBlockStart", ""));
+        throw new IOException(buildParamErrorMessage("csvInput.badBlockStart", "", hams));
       }
       String firstInvest = argList.get(0);
       if ((firstInvest == null) || (firstInvest.trim().equals(""))) {
-        throw new IOException(buildParamErrorMessage("csvInput.badInvestigator", firstInvest));
+        throw new IOException(buildParamErrorMessage("csvInput.badInvestigator", firstInvest, hams));
       }
       int numInvest = argList.size();
       for (int i = 0; i < numInvest; i++) {
@@ -2016,14 +2015,14 @@ public class PerturbCsvFormatFactory {
     ** get the date out
     */  
 
-    void extractDate() throws IOException { 
+    void extractDate(HandlerAndManagerSource hams) throws IOException { 
       Map<String, AbstractParam> dates = paramMap_.get(DATE_PARAM_UC_);
       if ((dates == null) || (dates.size() != 1)) {
-        throw new IOException(buildParamErrorMessage("csvInput.badDateDef", ""));
+        throw new IOException(buildParamErrorMessage("csvInput.badDateDef", "", hams));
       }
       date_ = ((StringParam)dates.values().iterator().next()).val;
       if ((date_ == null) || (date_.trim().equals(""))) {
-        throw new IOException(buildParamErrorMessage("csvInput.badDate", date_));
+        throw new IOException(buildParamErrorMessage("csvInput.badDate", date_, hams));
       }
       return;
     }
@@ -2046,7 +2045,7 @@ public class PerturbCsvFormatFactory {
     ** Break apart the experiment type string.
     */  
 
-    private List<CSVData.ExperimentTokens> experimentParse(String value, int rowNum) throws IOException {
+    private List<CSVData.ExperimentTokens> experimentParse(String value, int rowNum, HandlerAndManagerSource hams) throws IOException {
 
       //
       // Extract out the experiment type:
@@ -2069,7 +2068,7 @@ public class PerturbCsvFormatFactory {
         }
       }
       if (retval.isEmpty()) {
-        throw new IOException(buildTokenErrorMessage("csvInput.pertPropMismatch", rowNum, value));  
+        throw new IOException(buildTokenErrorMessage("csvInput.pertPropMismatch", rowNum, value, hams));  
       }
       return (retval);    
     } 
@@ -2079,7 +2078,7 @@ public class PerturbCsvFormatFactory {
     ** Figure out the condition
     */  
 
-    private String conditionParse(List<String> args, int rowNum) throws IOException {
+    private String conditionParse(List<String> args, int rowNum, HandlerAndManagerSource hams, PerturbationData pd) throws IOException {
       int numArgs = args.size();
       String condition;  
       Map<String, AbstractParam> conditions = paramMap_.get(CONDITION_PARAM_UC_);
@@ -2090,14 +2089,14 @@ public class PerturbCsvFormatFactory {
           if (condition != null) {
             condition = condition.trim();
             if (!conditions.keySet().contains(DataUtil.normKey(condition))) {
-              throw new IOException(buildTokenErrorMessage("csvInput.badCondition", rowNum, condition));
+              throw new IOException(buildTokenErrorMessage("csvInput.badCondition", rowNum, condition, hams));
             }
           }
         } else {
           condition = conditions.keySet().iterator().next();
         }
       } else {    
-        ConditionDictionary cDict = dacx_.getExpDataSrc().getPertData().getConditionDictionary();
+        ConditionDictionary cDict = pd.getConditionDictionary();
         condition = cDict.getExprConditions(cDict.getStandardConditionKey()).getDescription();
       }
       return (condition);
@@ -2108,7 +2107,7 @@ public class PerturbCsvFormatFactory {
     ** Figure out the ordering of the heading row
     */  
 
-    private void parseHeadingRow(List<String> argList, PerturbationData pd) throws IOException {
+    private void parseHeadingRow(List<String> argList, PerturbationData pd, HandlerAndManagerSource hams) throws IOException {
       HashSet<String> remaining = new HashSet<String>(vocabulary_);
       HashSet<String> stillRequired = new HashSet<String>(required_);
 
@@ -2132,10 +2131,10 @@ public class PerturbCsvFormatFactory {
         String arg = argList.get(i).trim();
         String normArg = DataUtil.normKey(arg);
         if (!vocabulary_.contains(normArg)) {
-          throw new IOException(buildHeadingErrorMessage("csvInput.badHeading", normArg));
+          throw new IOException(buildHeadingErrorMessage("csvInput.badHeading", normArg, hams));
         }
         if (!remaining.contains(normArg)) {
-          throw new IOException(buildHeadingErrorMessage("csvInput.duplicateHeading", normArg));
+          throw new IOException(buildHeadingErrorMessage("csvInput.duplicateHeading", normArg, hams));
         }
         remaining.remove(normArg);
         stillRequired.remove(normArg);
@@ -2148,7 +2147,7 @@ public class PerturbCsvFormatFactory {
       }
       if (!stillRequired.isEmpty()) {
         String stillR = stillRequired.iterator().next();
-        throw new IOException(buildHeadingErrorMessage("csvInput.missingRequiredHeading", stillR));
+        throw new IOException(buildHeadingErrorMessage("csvInput.missingRequiredHeading", stillR, hams));
       }
       return;
     }
@@ -2248,7 +2247,7 @@ public class PerturbCsvFormatFactory {
     ** Parse a parameter line
     */  
 
-    private void parseParameter(List<String> argList, Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+    private void parseParameter(List<String> argList, Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {
       Map<String, AbstractParam> parms = null;
       ArrayList<String> buildList = new ArrayList<String>();
       String normArg = null;
@@ -2258,7 +2257,7 @@ public class PerturbCsvFormatFactory {
         if (i == 0) {
           normArg = DataUtil.normKey(arg);
           if (!paramVocab_.contains(normArg)) {
-            throw new IOException(buildParamErrorMessage("csvInput.badParameterName", arg));
+            throw new IOException(buildParamErrorMessage("csvInput.badParameterName", arg, hams));
           }
           parms = paramMap_.get(normArg);
           if (parms == null) {
@@ -2269,7 +2268,7 @@ public class PerturbCsvFormatFactory {
           buildList.add(arg);
         }
       }
-      buildParameter(normArg, buildList, parms, newParamsInFile);
+      buildParameter(normArg, buildList, parms, newParamsInFile, hams);
       return;
     }
 
@@ -2279,32 +2278,33 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildParameter(String normArg, List<String> buildList, Map<String, AbstractParam> parms, 
-                                Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+                                Map<String, Map<String, AbstractParam>> newParamsInFile, 
+                                HandlerAndManagerSource hams) throws IOException {
       if (buildList.isEmpty()) {
-        throw new IOException(buildParamErrorMessage("csvInput.invalidParameterDefinition", normArg));
+        throw new IOException(buildParamErrorMessage("csvInput.invalidParameterDefinition", normArg, hams));
       }
       String key = DataUtil.normKey(buildList.get(0));
       
       if (normArg.equals(MEASURE_TYPE_PARAM_UC_)) {
-        buildMeasureParameter(key, buildList, parms, newParamsInFile);
+        buildMeasureParameter(key, buildList, parms, newParamsInFile, hams);
       } else if (normArg.equals(SCALE_PARAM_UC_)) {
-        buildScaleParameter(key, buildList, parms, newParamsInFile);
+        buildScaleParameter(key, buildList, parms, newParamsInFile, hams);
       } else if (normArg.equals(ANNOT_PARAM_UC_)) {
-        buildAnnotParameter(key, buildList, parms, newParamsInFile);
+        buildAnnotParameter(key, buildList, parms, newParamsInFile, hams);
       } else if (normArg.equals(CONTROL_PARAM_UC_)) {
-        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, CONTROL_PARAM_UC_);
+        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, CONTROL_PARAM_UC_, hams);
       } else if (normArg.equals(CONDITION_PARAM_UC_)) {
-        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, CONDITION_PARAM_UC_);
+        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, CONDITION_PARAM_UC_, hams);
       } else if (normArg.equals(PERT_TYPE_PARAM_UC_)) {
-        buildPertTypeParameter(key, buildList, parms, newParamsInFile);
+        buildPertTypeParameter(key, buildList, parms, newParamsInFile, hams);
       } else if (normArg.equals(USER_FIELD_PARAM_UC_)) {
-        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, USER_FIELD_PARAM_UC_);
+        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, USER_FIELD_PARAM_UC_, hams);
       } else if (normArg.equals(TIME_SCALE_PARAM_UC_)) {
-        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, TIME_SCALE_PARAM_UC_);  
+        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, TIME_SCALE_PARAM_UC_, hams);  
       } else if (normArg.equals(DATE_PARAM_UC_)) {
-        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, DATE_PARAM_UC_);  
+        buildSimpleNameParameter(key, buildList, parms, newParamsInFile, DATE_PARAM_UC_, hams);  
       } else {
-        throw new IOException(buildParamErrorMessage("csvInput.badParameterDef", normArg));
+        throw new IOException(buildParamErrorMessage("csvInput.badParameterDef", normArg, hams));
       }
     }
   
@@ -2314,13 +2314,13 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildMeasureParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
-                                       Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+                                       Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {
       if ((buildList.size() != 4) || (parms.get(key) != null)) {
-        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
+        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key, hams));
       }
       String newMeasureName = buildList.get(0);
       MeasureParam toAdd = new MeasureParam(newMeasureName, buildList.get(1), 
-                                            buildList.get(2), buildList.get(3), this);        
+                                            buildList.get(2), buildList.get(3), this, hams);        
       Map<String, AbstractParam> newMeas = newParamsInFile.get(MEASURE_TYPE_PARAM_UC_);
       MeasureParam alreadySeen;
       if (newMeas == null) {
@@ -2332,7 +2332,7 @@ public class PerturbCsvFormatFactory {
       }
       if (alreadySeen != null) {
         if (!alreadySeen.equals(toAdd)) {
-          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
+          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key, hams));
         }
       } else {
         newMeas.put(key, toAdd);
@@ -2347,12 +2347,12 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildPertTypeParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
-                                        Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {  
+                                        Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {  
       if ((buildList.size() != 3) || (parms.get(key) != null)) {
-        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
+        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key, hams));
       }
       String newPertPropName = buildList.get(0);
-      PertPropParam toAdd = new PertPropParam(newPertPropName, buildList.get(1), buildList.get(2), this);
+      PertPropParam toAdd = new PertPropParam(newPertPropName, buildList.get(1), buildList.get(2), this, hams);
       Map<String, AbstractParam> newPP = newParamsInFile.get(PERT_TYPE_PARAM_UC_);
       PertPropParam alreadySeen;
       if (newPP == null) {
@@ -2364,7 +2364,7 @@ public class PerturbCsvFormatFactory {
       }
       if (alreadySeen != null) {
         if (!alreadySeen.equals(toAdd)) {
-          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
+          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key, hams));
         }
       } else {
         newPP.put(key, toAdd);
@@ -2379,12 +2379,12 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildSimpleNameParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
-                                          Map<String, Map<String, AbstractParam>> newParamsInFile, String pKey) throws IOException {  
+                                          Map<String, Map<String, AbstractParam>> newParamsInFile, String pKey, HandlerAndManagerSource hams) throws IOException {  
           
       pKey = DataUtil.normKey(pKey);
       
       if ((buildList.size() != 1) || (parms.get(key) != null)) {
-        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
+        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key, hams));
       }      
       String newSimpleName = buildList.get(0);
       Map<String, AbstractParam> newCP = newParamsInFile.get(pKey);
@@ -2398,7 +2398,7 @@ public class PerturbCsvFormatFactory {
       }
       if (alreadySeen != null) {
         if (!DataUtil.normKey(alreadySeen).equals(key)) {
-          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
+          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key, hams));
         }
       } else {
         newCP.put(key, new StringParam(newSimpleName));
@@ -2413,10 +2413,10 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildScaleParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
-                                     Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+                                     Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {
       int blSize = buildList.size();
       if ((blSize > 8) || (parms.get(key) != null)) {
-        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
+        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key, hams));
       }
       String newScaleName = buildList.get(0);
       String unchangedStr = (blSize > 1) ? buildList.get(1) : null;
@@ -2429,7 +2429,7 @@ public class PerturbCsvFormatFactory {
   
       MeasureScaleParam toAdd = new MeasureScaleParam(newScaleName, convToFoldTypeTag, convToFoldFacStr, 
                                                       minIllegalStr, minIncludeStr, maxIllegalStr, 
-                                                      maxIncludeStr, unchangedStr, this);
+                                                      maxIncludeStr, unchangedStr, this, hams);
       Map<String, AbstractParam> newScales = newParamsInFile.get(SCALE_PARAM_UC_);
       MeasureScaleParam alreadySeen;
       if (newScales == null) {
@@ -2441,7 +2441,7 @@ public class PerturbCsvFormatFactory {
       }
       if (alreadySeen != null) {
         if (!alreadySeen.equals(toAdd)) {
-          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
+          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key, hams));
         }
       } else {
         newScales.put(key, toAdd);
@@ -2456,9 +2456,9 @@ public class PerturbCsvFormatFactory {
     */  
 
     private void buildAnnotParameter(String key, List<String> buildList, Map<String, AbstractParam> parms, 
-                                     Map<String, Map<String, AbstractParam>> newParamsInFile) throws IOException {
+                                     Map<String, Map<String, AbstractParam>> newParamsInFile, HandlerAndManagerSource hams) throws IOException {
       if ((buildList.size() != 2) || (parms.get(key) != null)) {
-        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key));
+        throw new IOException(buildParamErrorMessage("csvInput.incorrectParamArgs", key, hams));
       }
       String newAnnotTag = buildList.get(0);
       AnnotParam toAdd = new AnnotParam(newAnnotTag, buildList.get(1));
@@ -2473,7 +2473,7 @@ public class PerturbCsvFormatFactory {
       }
       if (alreadySeen != null) {
         if (!alreadySeen.equals(toAdd)) {
-          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key));
+          throw new IOException(buildParamErrorMessage("csvInput.inconsistentParamArgs", key, hams));
         }
       } else {
         newAnnots.put(key, toAdd);
@@ -2554,14 +2554,14 @@ public class PerturbCsvFormatFactory {
     Double negThresh;
     Double posThresh;
     
-    MeasureParam(String name, String scaleName, String negThresh, String posThresh, CSVState csvState) throws IOException {
+    MeasureParam(String name, String scaleName, String negThresh, String posThresh, CSVState csvState, HandlerAndManagerSource hams) throws IOException {
       this.name = name;
       this.scaleName = scaleName;
       try {
         this.negThresh = new Double(negThresh);
         this.posThresh = new Double(posThresh);        
       } catch (NumberFormatException nfex) {
-        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
       }
     }
     
@@ -2627,7 +2627,7 @@ public class PerturbCsvFormatFactory {
     MeasureScaleParam(String name, String convToFoldTypeTag, String convToFoldFacStr, 
                       String minIllegalStr, String minIncludeStr, 
                       String maxIllegalStr, String maxIncludeStr, 
-                      String unchangedStr, CSVState csvState) throws IOException {
+                      String unchangedStr, CSVState csvState, HandlerAndManagerSource hams) throws IOException {
       
       Double convToFoldFac;
       Integer convToFoldType;
@@ -2643,7 +2643,7 @@ public class PerturbCsvFormatFactory {
         maxIllegal = (maxIllegalStr == null) ? null : new Double(maxIllegalStr);
         this.unchanged = ((unchangedStr == null) || unchangedStr.trim().equals("")) ? null : new Double(unchangedStr);
       } catch (NumberFormatException nfex) {
-        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
       }
       minInclude = ((minIncludeStr == null) || minIncludeStr.trim().equals("")) ? true : Boolean.valueOf(minIncludeStr).booleanValue();
       maxInclude = ((maxIncludeStr == null) || maxIncludeStr.trim().equals("")) ? true : Boolean.valueOf(maxIncludeStr).booleanValue();
@@ -2652,13 +2652,13 @@ public class PerturbCsvFormatFactory {
                             ? null
                             : new Integer(MeasureScale.Conversion.mapTagToType(convToFoldTypeTag));
       } catch (IllegalArgumentException iaex) {
-        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
       }
       
       
       if ((minIllegal != null) || (maxIllegal != null)) {
         if ((minIllegal == null) || (maxIllegal == null)) {
-          throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+          throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
         }
         this.illegal = new BoundedDoubMinMax(minIllegal.doubleValue(), maxIllegal.doubleValue(), minInclude, maxInclude);
       } else {
@@ -2670,7 +2670,7 @@ public class PerturbCsvFormatFactory {
       } else {
         if (convToFoldType.intValue() == MeasureScale.Conversion.FACTOR_IS_EXPONENT_BASE) {
           if (convToFoldFac == null) {
-            throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+            throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
           }
         }
         this.conv = new MeasureScale.Conversion(convToFoldType.intValue(), convToFoldFac);
@@ -2738,7 +2738,7 @@ public class PerturbCsvFormatFactory {
     String abbrev;
     PertDictionary.PertLinkRelation linkRelation;
     
-    PertPropParam(String name, String abbrev, String pertLinkTag, CSVState csvState) throws IOException {
+    PertPropParam(String name, String abbrev, String pertLinkTag, CSVState csvState, HandlerAndManagerSource hams) throws IOException {
       this.name = name;
       if (abbrev == null) {
         this.abbrev = null;
@@ -2750,7 +2750,7 @@ public class PerturbCsvFormatFactory {
       try {
         this.linkRelation = PertDictionary.PertLinkRelation.fromTag(pertLinkTag);
       } catch (IllegalArgumentException iaex) {
-        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name));
+        throw new IOException(csvState.buildParamErrorMessage("csvInput.incorrectParamArgs", name, hams));
       }
     }
     

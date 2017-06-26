@@ -148,7 +148,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     uFac_ = uFac;
     advanced_ = false;    
         
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     setSize(900, 500);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -228,7 +228,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     });    
     
 
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBoxWithExtra(cp, 8, 1, true, buttonAdv_, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -293,7 +293,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   */ 
   
   private TabData buildATab(String mappedID, boolean doForTable) {       
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     
     TabData tdat = new TabData();
@@ -314,7 +314,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     // Here is the table:
     //
     
-    tdat.est = new EditableTable(uics_, dacx_, new TemporalInputTableModel(uics_, dacx_), uics_.getTopFrame());
+    tdat.est = new EditableTable(uics_, new TemporalInputTableModel(uics_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -346,7 +346,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     JPanel tiRangeControls = new JPanel();
     tiRangeControls.setLayout(new GridBagLayout()); 
 
-    tdat.range = dacx_.getTemporalRangeSrc().getTemporalInputRangeData().getRange(mappedID);
+    tdat.range = tirData_.getRange(mappedID);
     if (tdat.range == null) {
       tdat.range = new TemporalRange(mappedID, null, false);
       tdat.isNew = true;
@@ -415,7 +415,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       String newName = tdat.nameField.getText().trim();
       if (!newName.equals(currName)) {
         if (newName.equals("")) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tientry.nameBlank"), 
                                         rMan.getString("tientry.nameBlankTitle"),
@@ -423,7 +423,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
           return (false);
         }
         if (!tird.nameIsUnique(newName)) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                         rMan.getString("tientry.nameNotUnique"), 
                                         rMan.getString("tientry.nameNotUniqueTitle"),
@@ -452,7 +452,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
               }
             }
             if (haveDefault) {
-              ResourceManager rMan = dacx_.getRMan();
+              ResourceManager rMan = uics_.getRMan();
               String desc = MessageFormat.format(rMan.getString("dataTables.disconnecting"), 
                                                  new Object[] {currName, newName});
               JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 
@@ -561,8 +561,8 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       }
     }
    
-    TemporalInputTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    TemporalInputTableModel(UIComponentSource uics) {
+      super(uics,NUM_COL_);
       colNames_ = new String[] {"tientry.input",
                                 "tientry.sign",
                                 "tientry.region",
@@ -663,7 +663,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   
   private void toggleAdvanced() {
     advanced_ = !advanced_;
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String text = rMan.getString((advanced_) ? "dialogs.collapse" : "dialogs.expand");
     buttonAdv_.setText(text);
     Iterator<TabData> tdit = tabData_.values().iterator();
@@ -739,7 +739,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     Set<String> regions = tirData_.getAllRegions();
     Iterator<String> rit = regions.iterator();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String allRegions = rMan.getString("tientry.allRegions");
     retval.add(new EnumCell(allRegions, null, 0, 0));
     int count = 1;
@@ -758,7 +758,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
    
   private List<EnumCell> buildInputList() {
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String inputFormat = rMan.getString("tientry.inputFormat");    
     //
     // We provide all current mapping values.
@@ -782,7 +782,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   */
    
   private List<EnumCell> buildSignList() {    
-    ResourceManager rMan = dacx_.getRMan();     
+    ResourceManager rMan = uics_.getRMan();     
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     String promote = rMan.getString("ticreate.promote");
     retval.add(new EnumCell(promote, Integer.toString(RegionAndRange.PROMOTER), RegionAndRange.PROMOTER, 0));
@@ -799,7 +799,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   */
    
   private List<EnumCell> buildStrategyList() {   
-    ResourceManager rMan = dacx_.getRMan(); 
+    ResourceManager rMan = uics_.getRMan(); 
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     StringBuffer buf = new StringBuffer();
     int numItems = RegionAndRange.NUM_STRATEGIES;
@@ -940,7 +940,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       return (true);
     }
 
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     int size = vals.size();
     for (int i = 0; i < size; i++) {
       TemporalInputTableModel.TableRow tr = (TemporalInputTableModel.TableRow)vals.get(i);
@@ -1005,7 +1005,7 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
       if (!DataUtil.keysEqual(pertName, origPert)) {
         Set<String> nodes = tirData_.getTemporalInputSourceKeyInverse(origPert);
         if (!nodes.isEmpty()) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           String desc = MessageFormat.format(rMan.getString("dataTables.disconnectingRow"), 
                                              new Object[] {origPert, pertName});
           JOptionPane.showMessageDialog(uics_.getTopFrame(), desc, 

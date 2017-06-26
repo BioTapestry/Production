@@ -39,6 +39,7 @@ import org.systemsbiology.biotapestry.perturb.NameMapper;
 import org.systemsbiology.biotapestry.perturb.PertAnnotations;
 import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertDictionary;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
@@ -121,6 +122,7 @@ public class FactoryWhiteboard extends FactoryUtilWhiteboard {
   
   public CustomEvidenceDrawStyle evidenceDrawSty;
   public DisplayOptions displayOptions;
+  public PertDisplayOptions pertDisplayOptions;
   public MinMax column;
   public NameValuePair pertColorPair;
   

@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
@@ -462,7 +462,7 @@ class Perturbation {
   boolean writeHTML(PrintWriter out, Indenter ind, String geneTag, 
                     int numRows, List<MinMax> timeCols, QpcrTablePublisher qtp, 
                     SortedMap<String, Map<MinMax, TimeSpan>> gbi, 
-                    boolean breakOutInvest, List<String> srcNames, DataAccessContext dacx) {
+                    boolean breakOutInvest, List<String> srcNames, TimeAxisDefinition tad) {
      
     if (!matchesForHTML(srcNames)) {
       return (false);
@@ -528,7 +528,7 @@ class Perturbation {
       while (gbiit.hasNext()) {
         String invest = gbiit.next();
         Map<MinMax, TimeSpan> byInv = gbi.get(invest);
-        writeOutTimeSpans(out, ind, qtp, timeCols, new ArrayList<TimeSpan>(byInv.values()), timeProfs, dacx);
+        writeOutTimeSpans(out, ind, qtp, timeCols, new ArrayList<TimeSpan>(byInv.values()), timeProfs, tad);
         if (invest.equals("WJRL_HACKASTIC_KLUDGE")) {
           writeOutInvestigators(out, ind, qtp, null, 0);
         } else {
@@ -540,7 +540,7 @@ class Perturbation {
       }
     } else {
       // Crank through time spans, output results if needed:
-      writeOutTimeSpans(out, ind, qtp, timeCols, timeSpans_, timeProfs, dacx);  
+      writeOutTimeSpans(out, ind, qtp, timeCols, timeSpans_, timeProfs, tad);  
 
       // Output the investigators column:
       Iterator<String> iit = getInvestigators();
@@ -561,7 +561,7 @@ class Perturbation {
   
   void writeOutTimeSpans(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, 
                          List<MinMax> timeCols, List<TimeSpan> timeSpans, 
-                         Map<MinMax, TimeSpan.SpanTimeProfile> timeProfs, DataAccessContext dacx) {  
+                         Map<MinMax, TimeSpan.SpanTimeProfile> timeProfs, TimeAxisDefinition tad) {  
     // Crank through time spans, output results if needed:
     Iterator<MinMax> tcit= timeCols.iterator();
     while (tcit.hasNext()) {
@@ -576,7 +576,7 @@ class Perturbation {
         MinMax mms = time.getMinMaxSpan();
         if (mms.equals(tcol)) {
           TimeSpan.SpanTimeProfile stp = timeProfs.get(mms);
-          time.writeHTML(out, ind, qtp, stp, dacx);
+          time.writeHTML(out, ind, qtp, stp, tad);
           haveMatch = true;
           break;
         }

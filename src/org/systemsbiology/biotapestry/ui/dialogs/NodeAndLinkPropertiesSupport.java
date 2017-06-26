@@ -1190,7 +1190,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         haveSomeNewText = true;
         GenomeChange gc = useGenome.changeNodeDescription(nodeID, freeText);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
         }
       }
@@ -1264,7 +1264,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     if (haveNewURLs) {
       GenomeChange gc = genome.changeNodeURLs(nodeID, new ArrayList<String>(urls));
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         return (true);
       }
@@ -1319,7 +1319,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
         haveSomeNewText = true;
         GenomeChange gc = useGenome.changeLinkageDescription(linkID, freeText);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
         }
       }
@@ -1391,7 +1391,7 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     if (haveNewURLs) {
       GenomeChange gc = genome.changeLinkageURLs(linkID, new ArrayList<String>(urls));
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         return (true);
       }

@@ -20,6 +20,7 @@
 package org.systemsbiology.biotapestry.ui.dialogs;
 
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -29,6 +30,7 @@ import java.awt.event.ItemListener;
 import java.awt.image.BufferedImage;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -40,7 +42,9 @@ import javax.swing.JComboBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTable;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.tree.TreeNode;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
@@ -50,6 +54,7 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.TreeNodeChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -58,9 +63,11 @@ import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.ui.ModelImagePanel;
+import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ImageHighlighter;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -83,8 +90,12 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   private ReadOnlyTable est_;
   private UIComponentSource uics_;
+  private TimeAxisDefinition tad_;
+  private GenomeSource gs_;
   private DataAccessContext dacx_;
+  private StaticDataAccessContext rcxR_;
   private UndoFactory uFac_;
+  private List<Color> colOrder_;
   private Map<Color, NavTree.GroupNodeMapEntry> currMap_;
   private HashMap<String, NavTree.GroupNodeMapEntry> fixMap_;
   private ColorMapTableModel.TableRow selectedEntry_;
@@ -100,11 +111,9 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   private boolean installing_;
   private TreeNode treeNode_;
   private NavTree nt_;
-  
-  
+  private String pathFormat_;
+  private String pathNone_; 
   private ModelImagePanel myPanel_;
- // private BufferedImage myMap_;
-// private BufferedImage myImg_;
 
   private static final long serialVersionUID = 1L;
   
@@ -127,12 +136,18 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     dacx_ = dacx;
     uFac_ = uFac;
     mapImg_ = mapImg;
+    rcxR_ = new StaticDataAccessContext(dacx).getContextForRoot();
+    tad_ = dacx.getExpDataSrc().getTimeAxisDefinition();
+    String displayUnits = tad_.unitDisplayString();
+    gs_ = dacx.getGenomeSource();
     nt_ = nt;
     treeNode_ = treeNode;
     currMap_ = new HashMap<Color, NavTree.GroupNodeMapEntry>();
     fixMap_ = new HashMap<String, NavTree.GroupNodeMapEntry>();
     if ((currMap == null) || currMap.isEmpty()) {
       Set<Color> cols = ImageHighlighter.collectColors(mapImg);
+      cols.remove(Color.WHITE);
+      colOrder_ = colorSorter(cols);
       for (Color col : cols) {
         currMap_.put(col, new NavTree.GroupNodeMapEntry(col));     
       }     
@@ -142,6 +157,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         NavTree.GroupNodeMapEntry gnmeCl = gnme.clone();
         currMap_.put(key, gnmeCl);     
       }
+      colOrder_ = colorSorter(currMap_.keySet());
     }
     
     setSize(850, 750);
@@ -150,22 +166,24 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     
     modTocc_ = buildModelChoices();
     regTocc_ = buildRegionChoices(null, null, null);
     timTocc_ = buildTimeChoices(null);
      
-    JPanel tpan = buildATable(dacx_.getRMan());
+    JPanel tpan = buildATable(uics_.getRMan(), displayUnits);
     int row = ds.addTable(cp, tpan, 6, 0, 10);  
-    
-    pathLabel_ = new JLabel("Full model path here--------------------------------------------");  
+       
+    pathFormat_ = uics_.getRMan().getString("grpColMapEdit.selPath");
+    String none = uics_.getRMan().getString("grpColMapEdit.selPathNone");
+    pathNone_ = MessageFormat.format(pathFormat_, new Object[] {none});  
+     
+    pathLabel_ = new JLabel(pathNone_);  
     row = ds.addWidgetFullRow(cp, pathLabel_, true, row, 10);
  
-    JPanel epan = buildEntryPanel(dacx_.getRMan(), gbc);
+    JPanel epan = buildEntryPanel(uics_.getRMan(), gbc);
     row = ds.addTable(cp, epan, 4, row, 10);
-    
-//   row = ds.addTallWidgetFullRow(cp, epan, false, true, 4, row, 10);
     
     ds.buildAndInstallButtonBox(cp, row, 10, false, true); 
     setLocationRelativeTo(uics_.getTopFrame());
@@ -189,8 +207,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   */
  
   public void okAction() {
-//    stopTheEditing(false);
-    if (applyProperties()) {
+    if (applyProperties(dacx_)) {
       setVisible(false);
       dispose();
     }
@@ -204,7 +221,6 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   */
   
   public void closeAction() {
-//    stopTheEditing(true);
     setVisible(false);
     dispose();
     return;
@@ -215,29 +231,32 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   ** Build the table
   */ 
   
-  private JPanel buildATable(ResourceManager rMan) {   
+  private JPanel buildATable(ResourceManager rMan, String displayUnits) {   
 
     //
     // Build the tables:
     //
- 
-    est_ = new ReadOnlyTable(uics_, dacx_, new ColorMapTableModel(uics_, dacx_), new Selector());   
+
+    est_ = new ReadOnlyTable(uics_, new ColorMapTableModel(uics_, displayUnits), new Selector());   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
     tp.tableIsUnselectable = false;
     tp.buttons = ReadOnlyTable.NO_BUTTONS;
     tp.multiTableSelectionSyncing = null;
-    tp.tableTitle = rMan.getString("Hello Worls");
+    tp.tableTitle = rMan.getString("grpColMapEdit.assignColorToTarget");
     tp.titleFont = null;
     
     ArrayList<ReadOnlyTable.ColumnWidths> colWidths = new ArrayList<ReadOnlyTable.ColumnWidths>();   
-    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.COLOR, 100, 200, Integer.MAX_VALUE));
-    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.TARGET_MODEL, 100, 150, Integer.MAX_VALUE));
-    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.REGION, 200, 200, Integer.MAX_VALUE));
-    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.TIME, 200, 200, Integer.MAX_VALUE));     
+    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.COLOR, 100, 150, Integer.MAX_VALUE));
+    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.TARGET_MODEL, 100, 200, Integer.MAX_VALUE));
+    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.REGION, 100, 200, Integer.MAX_VALUE));
+    colWidths.add(new ReadOnlyTable.ColumnWidths(ColorMapTableModel.TIME, 50, 50, Integer.MAX_VALUE));     
     tp.colWidths = colWidths;
     tp.canMultiSelect = false;
-    JPanel tabPan = est_.buildReadOnlyTable(tp); 
+    JPanel tabPan = est_.buildReadOnlyTable(tp);
+    DefaultTableCellRenderer dtcr = (DefaultTableCellRenderer)est_.getTable().getDefaultRenderer(DisplayColor.class);
+    est_.getTable().setDefaultRenderer(DisplayColor.class, new ColorBlockRenderer(dtcr, uics_));
+
     return (tabPan);
   }
   
@@ -252,13 +271,13 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     modelChoices_.addItemListener(new ItemListener() {
       public void itemStateChanged(ItemEvent ev) {
         try {
-          updateTimeAndRegions();
           setTheModel();
         } catch (Exception ex) {
           uics_.getExceptionHandler().displayException(ex);
         }
       }
     });
+    modelChoices_.setEnabled(false);
     
     regionChoices_ = new JComboBox(regTocc_);
     regionChoices_.addItemListener(new ItemListener() {
@@ -270,6 +289,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         }
       }
     });
+    regionChoices_.setEnabled(false);
     
     timeChoices_ = new JComboBox(timTocc_);
     timeChoices_.addItemListener(new ItemListener() {
@@ -281,7 +301,8 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         }
         return;
       }
-    });   
+    });
+    timeChoices_.setEnabled(false);
 
     JPanel ctrlPanel = new JPanel();
     ctrlPanel.setLayout(new GridBagLayout()); 
@@ -332,8 +353,6 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  
-  
   /***************************************************************************
   **
   ** Handle selections
@@ -370,9 +389,11 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     
     private final static int HIDDEN_CAND_ID = 0;
     private final static int NUM_HIDDEN_    = 1;
-
+    
+    private static final long serialVersionUID = 1L;
+    
     class TableRow {
-      String color;
+      DisplayColor color;
       String targetModel;
       String region;
       String time;
@@ -382,7 +403,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
       }
      
       TableRow(int i) {
-        color = (String)columns_[COLOR].get(i); 
+        color = (DisplayColor)columns_[COLOR].get(i); 
         targetModel = (String)columns_[TARGET_MODEL].get(i);
         region = (String)columns_[REGION].get(i);
         time = (String)columns_[TIME].get(i);
@@ -408,12 +429,19 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
       }   
     }
   
-    ColorMapTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
-      String displayUnits = dacx_.getExpDataSrc().getTimeAxisDefinition().unitDisplayString();
-      ResourceManager rMan = dacx_.getRMan();
+    ColorMapTableModel(UIComponentSource uics, String displayUnits) {
+      super(uics, NUM_COL_);
+
+      ;
+      ResourceManager rMan = uics_.getRMan();
       String timeColumnHeading = MessageFormat.format(rMan.getString("colMapEntry.timeColFormat"), new Object[] {displayUnits});
 
+      colClasses_ = new Class[] {
+          DisplayColor.class,
+          String.class,
+          String.class,
+          String.class};
+      
       colNames_ = new String[] {"colMapEntry.color",
                                 "colMapEntry.model",
                                 "colMapEntry.region", 
@@ -449,30 +477,44 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
 
   /***************************************************************************
   **
-  ** Update Time And Regions for JCombos
+  ** Update the path display
   */
   
-  private void updateTimeAndRegions() {  
+  private void updatePathDisplay() {
+    ModelOrProxy choice = (ModelOrProxy)((TrueObjChoiceContent)modelChoices_.getSelectedItem()).val;
+    String pathToShow = (choice == null) ? pathNone_ :MessageFormat.format(pathFormat_, new Object[] {choice.displayPath});
+    pathLabel_.setText(pathToShow);
+    pathLabel_.invalidate();
+    pathLabel_.revalidate();
+    return;
+  }
  
-    installing_ = true;
+  /***************************************************************************
+  **
+  ** Update Time And Regions for JCombos based on current model selection. Assumes
+  ** installing_ is set to true. This is not touching the table entries.
+  */
+  
+  private void updateTimeAndRegionsCombos() {
+    if (!installing_) {
+      throw new IllegalStateException();
+    }
+ 
     ModelOrProxy choice = (ModelOrProxy)((TrueObjChoiceContent)modelChoices_.getSelectedItem()).val; 
-    String pathToShow;
-    GenomeSource gs = dacx_.getGenomeSource();
+  
     if (choice == null) {
-      pathToShow = "";
       timTocc_ = buildTimeChoices(null);
       regTocc_ = buildRegionChoices(null, null, null);
     } else if (choice.proxyID != null) {       
-      DynamicInstanceProxy dip = gs.getDynamicProxy(choice.proxyID);
+      DynamicInstanceProxy dip = gs_.getDynamicProxy(choice.proxyID);
       timeChoices_.setEnabled(!dip.isSingle());
       Iterator<Group> grit = dip.getGroupIterator();
       regTocc_ = buildRegionChoices(grit, dip.getAnInstance(), dip);
       regionChoices_.setEnabled(true);
-      timTocc_ = buildTimeChoices(dip);  
-      pathToShow = choice.displayPath;
+      timTocc_ = buildTimeChoices(dip);
     } else {
       timeChoices_.setEnabled(false);
-      Genome model = gs.getGenome(choice.modelID);
+      Genome model = gs_.getGenome(choice.modelID);
       if (model instanceof GenomeInstance) {
         regionChoices_.setEnabled(true);
         GenomeInstance gi = (GenomeInstance)model;
@@ -484,32 +526,27 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         regTocc_ = buildRegionChoices(null, null, null);
       }
       timTocc_ = buildTimeChoices(null);
-      pathToShow = choice.displayPath;
     }
-    pathLabel_.setText(pathToShow);
-    pathLabel_.invalidate();
-    pathLabel_.revalidate();
 
     UiUtil.replaceComboItems(regionChoices_, regTocc_);
     UiUtil.replaceComboItems(timeChoices_, timTocc_);
-    installing_ = false;
     return;
   }
 
   /***************************************************************************
   **
-  ** Set the time
+  ** Set the time from the JCombo setting
   */
   
   private void setTheTime() {  
-  
     if (installing_) {
       return;
     }
     installing_ = true;
-    Integer choice = (Integer)((TrueObjChoiceContent)timeChoices_.getSelectedItem()).val;
+    TrueObjChoiceContent tocc = (TrueObjChoiceContent)timeChoices_.getSelectedItem();
+    Integer choice = (Integer)tocc.val;
     ColorMapTableModel ecdtm = (ColorMapTableModel)est_.getModel();
-    selectedEntry_.time = choice.toString();
+    selectedEntry_.time = (tocc.val == null) ? "" : tocc.name;
     // This is the same object as in the currMap_:
     NavTree.GroupNodeMapEntry gnme = fixMap_.get(selectedEntry_.hiddenCandID);
     gnme.proxyTime = choice;
@@ -521,7 +558,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   /***************************************************************************
   **
-  ** Set the region
+  ** Set the region from the JCombo setting
   */
   
   private void setTheRegion() {   
@@ -534,7 +571,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     // This is the same object as in the currMap_:
     NavTree.GroupNodeMapEntry gnme = fixMap_.get(selectedEntry_.hiddenCandID);
     gnme.regionID = groupID;
-    selectedEntry_.region = getRegionNameForEntry(gnme, dacx_.getGenomeSource());  
+    selectedEntry_.region = getRegionNameForEntry(gnme, gs_);  
     selectedEntry_.replaceCols(selectedRow_.intValue());
     ecdtm.fireTableRowsUpdated(selectedRow_.intValue(), selectedRow_.intValue());
     installing_ = false;
@@ -543,17 +580,18 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   /***************************************************************************
   **
-  ** Set the Model. Note that setting the model will null out the region and
-  ** time guys as well.
+  ** Set the model, from the JCombo. Note that setting the model will null out the region and
+  ** time guys as well, and update the JCombos.
   */
   
   private void setTheModel() {  
-  
     if (installing_) {
       return;
     }
     installing_ = true;
-    GenomeSource gs = dacx_.getGenomeSource();
+    updateTimeAndRegionsCombos();
+    updatePathDisplay();
+    
     NavTree.GroupNodeMapEntry gnme = fixMap_.get(selectedEntry_.hiddenCandID);
     ColorMapTableModel ecdtm = (ColorMapTableModel)est_.getModel();
     ModelOrProxy choice = (ModelOrProxy)((TrueObjChoiceContent)modelChoices_.getSelectedItem()).val;
@@ -563,21 +601,21 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         installing_ = false;
         return;
       } 
-      selectedEntry_.targetModel = "None";
+      selectedEntry_.targetModel = "";
       // Model changed? Toss everything else...
-      selectedEntry_.region = "N/A";
-      selectedEntry_.time = "N/A";
+      selectedEntry_.region = "";
+      selectedEntry_.time = "";
       gnme.modelID = null;
       gnme.proxyID = null;
       gnme.regionID = null;
-      gnme.proxyTime = null; 
+      gnme.proxyTime = null;
     } else if (choice.proxyID != null) {
       // NO CHANGE? Do nothing.....
       if (choice.proxyID.equals(gnme.proxyID)) {
         installing_ = false;
         return;
       }      
-      DynamicInstanceProxy dip = gs.getDynamicProxy(choice.proxyID);
+      DynamicInstanceProxy dip = gs_.getDynamicProxy(choice.proxyID);
       if (dip.isSingle()) {
         List<String> newNodes = dip.getProxiedKeys();
         if (newNodes.size() != 1) {
@@ -589,24 +627,26 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         selectedEntry_.targetModel = dip.getName();
       }
       // Model changed? Toss everything else...
-      selectedEntry_.region = "N/A";
-      selectedEntry_.time = "N/A";
+      gnme.modelID = null;
       gnme.proxyID = choice.proxyID;
       gnme.regionID = null;
       gnme.proxyTime = null;
+      selectedEntry_.region = getRegionNameForEntry(gnme, gs_);
+      selectedEntry_.time = (timTocc_.get(0).val == null) ? "" : timTocc_.get(0).name;
     } else if (choice.modelID != null) {
       if (choice.modelID.equals(gnme.modelID)) {
         installing_ = false;
         return;
       } 
-      Genome gen = gs.getGenome(choice.modelID);
+      Genome gen = gs_.getGenome(choice.modelID);
       selectedEntry_.targetModel = gen.getName();
       // Model changed? Toss everything else...
-      selectedEntry_.region = "N/A";
-      selectedEntry_.time = "N/A";
+      selectedEntry_.time = "";
+      gnme.proxyID = null;
       gnme.modelID = choice.modelID;
       gnme.regionID = null;
-      gnme.proxyTime = null; 
+      gnme.proxyTime = null;
+      selectedEntry_.region = getRegionNameForEntry(gnme, gs_);
     }
     selectedEntry_.replaceCols(selectedRow_.intValue());
     ecdtm.fireTableRowsUpdated(selectedRow_.intValue(), selectedRow_.intValue());
@@ -616,19 +656,133 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
 
   /***************************************************************************
   **
-  ** Pass the selection to the search panel
+  ** Pass the table selection to the search panel
   */
   
   private void goAndSelect() {
+  
+    //
+    // If we have no selection, we need to provide a basic disabled state:
+    //
+    
+    NavTree.GroupNodeMapEntry gnme = (selectedEntry_ == null) ? null : fixMap_.get(selectedEntry_.hiddenCandID);
+ 
     if (selectedEntry_ == null) {
-      System.out.println("Empty selections!");
+      myPanel_.setImage(mapImg_);
+    } else {
+      BufferedImage bim = ImageHighlighter.buildMaskedImageBandW(mapImg_, mapImg_, gnme.color.getRed(), gnme.color.getGreen(), gnme.color.getBlue(), 0.6F);
+      myPanel_.setImage(bim);
+    }
+
+    installing_ = true;
+    
+    //
+    // Get the model installed:
+    //
+    
+    installModelFromEntry(gnme);
+
+    //
+    // With model installed, we can update the path display and change the contents of the 
+    // Time and region combos:
+    //
+    
+    updatePathDisplay();
+    updateTimeAndRegionsCombos();
+
+    //
+    // With time and region changed to match model, we can now set them to the correct vals:
+    //
+    
+    installRegionFromEntry(gnme);
+    installTimeFromEntry(gnme);
+    
+    //
+    // Finally, set the enabled/disabled state:
+    //
+    
+    setComboEnables(gnme);
+    
+    installing_ = false;
+    
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Set enabed/disabled state of combo boxes
+  ** 
+  */
+  
+  private void setComboEnables(NavTree.GroupNodeMapEntry gnme) {
+    
+    //
+    // If nothing in the table is selected, everybody is disabled:
+    //
+    
+    if (selectedEntry_ == null) {
+      modelChoices_.setEnabled(false);
+      regionChoices_.setEnabled(false);
+      timeChoices_.setEnabled(false);
       return;
     }
     
-    NavTree.GroupNodeMapEntry gnme = fixMap_.get(selectedEntry_.hiddenCandID);
+    //
+    // If something is selected, model is always available:
+    //
+       
+    modelChoices_.setEnabled(true);
  
-    BufferedImage bim = ImageHighlighter.buildMaskedImageBandW(mapImg_, mapImg_, gnme.color.getRed(), gnme.color.getGreen(), gnme.color.getBlue(), 0.6F);
-    myPanel_.setImage(bim);
+    //
+    // If no model (or proxy) is chosen, other combos are disabled:
+    //
+    
+    if ((gnme.modelID == null) && (gnme.proxyID == null)) {    
+      regionChoices_.setEnabled(false);
+      timeChoices_.setEnabled(false);
+      return;
+    }
+    
+    //
+    // If we have a full genome, region and time are both as well
+    //
+    
+    if (gnme.modelID != null) {
+      Genome gen = gs_.getGenome(gnme.modelID);
+      if (gen instanceof DBGenome) {
+        regionChoices_.setEnabled(false);
+        timeChoices_.setEnabled(false);
+        return;
+      }
+    }
+    
+    //
+    // No DBGenome, we have regions. If we have an hourly proxy, we enable time
+    //
+    
+    regionChoices_.setEnabled(true);
+ 
+    if (gnme.proxyID != null) {
+      DynamicInstanceProxy dip = gs_.getDynamicProxy(gnme.proxyID);
+      timeChoices_.setEnabled(!dip.isSingle());
+    } else {
+      timeChoices_.setEnabled(false);
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Set model choice based on MapEntry. Assumes installing_ is true.
+  ** 
+  */
+  
+  private void installModelFromEntry(NavTree.GroupNodeMapEntry gnme) {
+    
+    if (gnme == null) {
+      modelChoices_.setSelectedIndex(0);
+      return;
+    }
 
     for (TrueObjChoiceContent tocc : modTocc_) {
       ModelOrProxy mop = (ModelOrProxy)tocc.val;
@@ -643,6 +797,22 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         break;
       }
     }
+    return;
+  }
+  
+  
+  /***************************************************************************
+  **
+  ** Set region choice based on MapEntry. Assumes installing_ is true.
+  ** 
+  */
+  
+  private void installRegionFromEntry(NavTree.GroupNodeMapEntry gnme) {
+    
+    if (gnme == null) {
+      regionChoices_.setSelectedIndex(0);
+      return;
+    }   
     
     for (TrueObjChoiceContent tocc : regTocc_) {
       if (tocc.val == null) { 
@@ -655,7 +825,23 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         break;
       }
     }
+    return;
+  }
+  
+  
+  /***************************************************************************
+  **
+  ** Set model choice based on MapEntry. Assumes installing_ is true.
+  ** 
+  */
+  
+  private void installTimeFromEntry(NavTree.GroupNodeMapEntry gnme) {
     
+    if (gnme == null) {
+      timeChoices_.setSelectedIndex(0);
+      return;
+    }  
+      
     for (TrueObjChoiceContent tocc : timTocc_) {
       if (tocc.val == null) { 
         if (gnme.proxyTime == null) {
@@ -669,8 +855,8 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     }
     return;
   }
-
   
+
   /***************************************************************************
   **
   ** Apply the current data values to our UI components
@@ -679,7 +865,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   private void displayProperties() {
     installing_ = true;
-    List<ColorMapTableModel.TableRow> entries = buildTableRows(currMap_, fixMap_);
+    List<ColorMapTableModel.TableRow> entries = buildTableRows(colOrder_, currMap_, fixMap_);
     est_.rowElements = entries;   
     est_.getModel().extractValues(entries);
     myPanel_.setImage(mapImg_);
@@ -692,26 +878,22 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   ** Build table rows
   */ 
   
-  private List<ColorMapTableModel.TableRow> buildTableRows(Map<Color, NavTree.GroupNodeMapEntry> modMap, Map<String, NavTree.GroupNodeMapEntry> fixMap) {
+  private List<ColorMapTableModel.TableRow> buildTableRows(List<Color> colOrder, Map<Color, NavTree.GroupNodeMapEntry> modMap, Map<String, NavTree.GroupNodeMapEntry> fixMap) {
     ColorMapTableModel tctm = (ColorMapTableModel)est_.getModel();
     ArrayList<ColorMapTableModel.TableRow> retval = new ArrayList<ColorMapTableModel.TableRow>();
     
     int count = 0;
-    Iterator<Color> eeit = modMap.keySet().iterator();
-    while (eeit.hasNext()) {
-      Color key = eeit.next();
+    for (Color key: colOrder) {
       NavTree.GroupNodeMapEntry entry = modMap.get(key); 
       ColorMapTableModel.TableRow tr = tctm.new TableRow();  
       
-      tr.color = key.toString();
+      tr.color = new DisplayColor(key, uics_.getRMan());
       tr.region = "";
       tr.time = "";
       tr.targetModel = "";
-      GenomeSource gs = dacx_.getGenomeSource();
 
       if (entry.proxyID != null) {  
-              UiUtil.fixMePrintout("Null ptr here trying to set image map for MTGNNNONOtesMoreSubPreDupPoDupOK.btp");
-        DynamicInstanceProxy dip = gs.getDynamicProxy(entry.proxyID);
+        DynamicInstanceProxy dip = gs_.getDynamicProxy(entry.proxyID);
         if (dip.isSingle()) {
           List<String> newNodes = dip.getProxiedKeys();
           if (newNodes.size() != 1) {
@@ -719,18 +901,16 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
           }
           String key1 = newNodes.iterator().next();
           tr.targetModel = dip.getProxiedInstanceName(key1);
-          UiUtil.fixMePrintout("Nah use rMan for this");
-          tr.time = "ALL";
+          tr.time = "";
         } else {
           tr.targetModel = dip.getName();
-          tr.time = entry.proxyTime.toString();
+          tr.time = timeValToString(tad_, entry.proxyTime.intValue(), uics_.getRMan());
         }
       } else if (entry.modelID != null) {
-        Genome gen = gs.getGenome(entry.modelID);
+        Genome gen = gs_.getGenome(entry.modelID);
         tr.targetModel = gen.getName();
       }
-      UiUtil.fixMePrintout("Nah use rMan for this");
-      tr.region = getRegionNameForEntry(entry, gs);
+      tr.region = getRegionNameForEntry(entry, gs_);
       tr.hiddenCandID = Integer.toString(count++);
       fixMap.put(tr.hiddenCandID, entry);     
       retval.add(tr);
@@ -740,7 +920,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   /***************************************************************************
   **
-  ** Apply our UI values to the time course data
+  ** Get the region name for the map entry to use in the table
   ** 
   */
   
@@ -755,16 +935,15 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
         gi = (GenomeInstance)gen;
       }
     }
-    UiUtil.fixMePrintout("Nah use rMan for this!");
+    ResourceManager rMan = uics_.getRMan();
     String retval;
     if (gi == null) {
-      retval = "N/A"; 
+      retval = ""; 
     } else if (entry.regionID == null) {
-      retval = "All regions"; 
+      retval = rMan.getString("colMapEntry.allRegions");
     } else {
       Group grp = gi.getGroup(entry.regionID);
-      System.out.println(entry.regionID + " " + grp);
-      retval = (grp == null) ? "NO group for " + entry.regionID : grp.getInheritedDisplayName(gi);
+      retval = grp.getInheritedDisplayName(gi);
     }
     return (retval); 
   }
@@ -772,13 +951,13 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   /***************************************************************************
   **
-  ** Apply our UI values to the time course data
+  ** Apply our UI values to the map 
   ** 
   */
   
-  private boolean applyProperties() {
+  private boolean applyProperties(DataAccessContext dacx) {
     
-    UndoSupport support = uFac_.provideUndoSupport("undo.setGroupNavMap", dacx_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.setGroupNavMap", dacx);
     
     Map<Color, NavTree.GroupNodeMapEntry> newMap = new HashMap<Color, NavTree.GroupNodeMapEntry>();
     Iterator<NavTree.GroupNodeMapEntry> trit = fixMap_.values().iterator();
@@ -788,26 +967,12 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     }
     
     NavTreeChange ntc = nt_.installGroupModelMap(treeNode_, newMap);
-    support.addEdit(new NavTreeChangeCmd(dacx_, ntc));
+    support.addEdit(new NavTreeChangeCmd(dacx, ntc));
     NavTree.NodeID nodeKey = new NavTree.NodeID(nt_.getGroupNodeID(treeNode_));
     support.addEvent(new TreeNodeChangeEvent(nodeKey, TreeNodeChangeEvent.Change.GROUP_NODE_CHANGE));
     support.finish();
     return (true);
   }
-  
-
-  /***************************************************************************
-  **
-  ** Apply table values
-  */
-   
-  private void applyTableValues() {        
-  
-
-    return;
-  }
-  
-
   
   /***************************************************************************
   **
@@ -817,22 +982,21 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   
   private Vector<TrueObjChoiceContent> buildModelChoices() { 
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>(); 
-    retval.add(new TrueObjChoiceContent(dacx_.getRMan().getString("grpColMatEdit.noDest"), null));
-    GenomeSource gs = dacx_.getGenomeSource();
-    NavTree navTree = gs.getModelHierarchy();   
-    List<String> pol = navTree.getFullTreePreorderListing(new StaticDataAccessContext(dacx_).getContextForRoot());
+    retval.add(new TrueObjChoiceContent(uics_.getRMan().getString("grpColMatEdit.noDest"), null));
+    NavTree navTree = gs_.getModelHierarchy();   
+    List<String> pol = navTree.getFullTreePreorderListing(rcxR_);
     Iterator<String> it = pol.iterator();
     int count = 0;
     while (it.hasNext()) {
       String id = it.next();
-      Genome gen = gs.getGenome(id);
+      Genome gen = gs_.getGenome(id);
       String modID = null;
       String proxID = null;
       List<String> names = gen.getNamesToRoot();
       if (gen instanceof DynamicGenomeInstance) {
         DynamicGenomeInstance dgi = (DynamicGenomeInstance)gen;
         proxID = dgi.getProxyID();        
-        DynamicInstanceProxy dprox = gs.getDynamicProxy(proxID);
+        DynamicInstanceProxy dprox = gs_.getDynamicProxy(proxID);
         if (!dprox.isSingle()) {
           names.set(names.size() - 1, dprox.getName());
         }
@@ -854,21 +1018,36 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   private Vector<TrueObjChoiceContent> buildRegionChoices(Iterator<Group> grit, GenomeInstance gi, DynamicInstanceProxy dip) { 
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
     if (grit == null) {
-      retval.add(new TrueObjChoiceContent(dacx_.getRMan().getString("grpColMatEdit.noRegions"), null));
+      retval.add(new TrueObjChoiceContent(uics_.getRMan().getString("grpColMatEdit.noRegions"), null));
     } else {
-      retval.add(new TrueObjChoiceContent(dacx_.getRMan().getString("grpColMatEdit.noRegionSelected"), null));
+      retval.add(new TrueObjChoiceContent(uics_.getRMan().getString("grpColMatEdit.allRegions"), null));
       while (grit.hasNext()) {
         Group grp = grit.next();
         if (((dip == null) && grp.isASubset(gi)) || ((dip != null) && grp.isASubset(dip))) {
           continue;
         }
-        System.out.println(grp.getInheritedDisplayName(gi));
         retval.add(new TrueObjChoiceContent(grp.getInheritedDisplayName(gi), grp.getID()));
       }
     }
     return (retval);
   }
   
+  /***************************************************************************
+   **
+   ** Build time string
+   */
+   
+   public static String timeValToString(TimeAxisDefinition tad, int val, ResourceManager rMan) { 
+
+     boolean namedStages = tad.haveNamedStages();
+     String displayUnits = tad.unitDisplayString();       
+     String formatKey = (tad.unitsAreASuffix()) ? "grpColMatEdit.nameFormat" : "grpColMatEdit.nameFormatPrefix";
+     String format = rMan.getString(formatKey);
+     String stageName = (namedStages) ? tad.getNamedStageForIndex(val).name : Integer.toString(val);
+     String dispName = MessageFormat.format(format, new Object[] {stageName, displayUnits});
+     return (dispName);
+   }  
+
   /***************************************************************************
   **
   ** Build Times
@@ -877,26 +1056,38 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   private Vector<TrueObjChoiceContent> buildTimeChoices(DynamicInstanceProxy dip) { 
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>(); 
     if ((dip == null) || dip.isSingle()) {
-      retval.add(new TrueObjChoiceContent(dacx_.getRMan().getString("grpColMatEdit.noTimes"), null));
-      
+      retval.add(new TrueObjChoiceContent(uics_.getRMan().getString("grpColMatEdit.noTimes"), null));    
     } else {
-      UiUtil.fixMePrintout("USe this: format for named stages");
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
-      boolean namedStages = tad.haveNamedStages();
-      String displayUnits = tad.unitDisplayString();       
-      String formatKey = (tad.unitsAreASuffix()) ? "grpColMatEdit.nameFormat" : "grpColMatEdit.nameFormatPrefix";
-      String format = dacx_.getRMan().getString(formatKey);
       int min = dip.getMinimumTime();
       int max = dip.getMaximumTime();
       for (int i = min; i <= max; i++) {
-        String stageName = (namedStages) ? tad.getNamedStageForIndex(i).name : Integer.toString(i);
-        String dispName = MessageFormat.format(format, new Object[] {stageName, displayUnits});
+        String dispName = timeValToString(tad_, i, uics_.getRMan());
         retval.add(new TrueObjChoiceContent(dispName, Integer.valueOf(i)));
       }
     }
     return (retval);
   }
 
+  /***************************************************************************
+  **
+  ** Provide a sorted list of the colors
+  */
+  
+  private List<Color> colorSorter(Set<Color> cols) {
+    int count = 0;
+    ArrayList<NamedColor> preRetval = new ArrayList<NamedColor>();
+    for (Color col : cols) {
+      String nameAndKey = Integer.toString(count++);
+      NamedColor nc = new NamedColor(nameAndKey, col, nameAndKey);
+      preRetval.add(nc); 
+    }
+    Collections.sort(preRetval);
+    ArrayList<Color> retval = new ArrayList<Color>();
+    for (NamedColor ncol : preRetval) {
+      retval.add(ncol.getColor());
+    }
+    return (retval);
+  }
   
   /***************************************************************************
   **
@@ -973,6 +1164,8 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
   */  
   
   public static class FixedMinPanel extends JPanel {
+    
+    private static final long serialVersionUID = 1L;
   
     /***************************************************************************
     **
@@ -988,6 +1181,7 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     ** Fixed minimum
     */
     
+    @Override
     public Dimension getMinimumSize() {
       return (new Dimension(200, 200));
     }
@@ -996,10 +1190,66 @@ public class GroupColorMapDialog extends JDialog implements DialogSupport.Dialog
     **
     ** Fixed minimum
     */
-    
+
+    @Override
     public Dimension getPreferredSize() {
       return (new Dimension(600, 400));
+    } 
+  }
+  
+  /***************************************************************************
+  **
+  ** Used for the data table renderer
+  */
+  
+  public static class DisplayColor extends Color {
+    
+    private static final long serialVersionUID = 1L;
+    private String format_;
+    
+    DisplayColor(Color col, ResourceManager rMan) {
+      super(col.getRed(), col.getGreen(), col.getBlue());
+      format_ = rMan.getString("colMapEntry.colorDisplayFormat");
+    }
+  
+    @Override
+    public String toString() {
+      return (MessageFormat.format(format_, new Object[] {Integer.toString(getRed()),
+                                                          Integer.toString(getGreen()),
+                                                          Integer.toString(getBlue())}));
+    }
+  }
+  
+  /***************************************************************************
+  **
+  ** Used for the data table renderer
+  */
+  
+  public static class ColorBlockRenderer extends DefaultTableCellRenderer {
+  
+    private DefaultTableCellRenderer defaultRenderer_;
+    private HandlerAndManagerSource hams_;
+    private static final long serialVersionUID = 1L;
+           
+    public ColorBlockRenderer(DefaultTableCellRenderer defaultRenderer, HandlerAndManagerSource hams) {
+      defaultRenderer_ = defaultRenderer;
+      hams_ = hams;
     }
     
+    @Override
+    public Component getTableCellRendererComponent(JTable table, Object value, 
+                                                   boolean isSelected, boolean hasFocus, 
+                                                   int row, int column) {
+      try {
+        Component aComp = defaultRenderer_.getTableCellRendererComponent(table, value, isSelected, 
+                                                                         hasFocus, row, column);
+        
+        aComp.setBackground((DisplayColor)value);
+        return (aComp);
+      } catch (Exception ex) {
+        hams_.getExceptionHandler().displayException(ex);
+      }      
+      return (null);    
+    }
   }
 }

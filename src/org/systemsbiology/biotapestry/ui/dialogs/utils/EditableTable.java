@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -57,7 +57,6 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.ComboBoxEditor;
 import org.systemsbiology.biotapestry.util.ComboBoxEditorTracker;
 import org.systemsbiology.biotapestry.util.ComboFinishedTracker;
@@ -131,7 +130,6 @@ public class EditableTable {
   private boolean cancelEditOnDisable_;
   private EditButtonHandler ebh_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
  
   
   ////////////////////////////////////////////////////////////////////////////
@@ -141,9 +139,8 @@ public class EditableTable {
   ////////////////////////////////////////////////////////////////////////////   
   
   
-  public EditableTable(UIComponentSource uics, DataAccessContext dacx, TableModel atm, JFrame parent) {
+  public EditableTable(UIComponentSource uics, TableModel atm, JFrame parent) {
     uics_ = uics;
-    dacx_ = dacx;
     estm_ = atm;
     parent_ = parent;
   }
@@ -420,7 +417,7 @@ public class EditableTable {
  
   private void createButtons(TableParams etp) { 
     
-    ResourceManager rMan = dacx_.getRMan(); 
+    ResourceManager rMan = uics_.getRMan(); 
     if (etp.buttons != NO_BUTTONS) {
       if ((etp.buttons & ADD_BUTTON) != 0x00) {
         String aTag = rMan.getString("dialogs.addEntry");
@@ -971,11 +968,9 @@ public class EditableTable {
     protected int collapseCount_;
     protected boolean isCollapsed_;
     protected UIComponentSource uics_;
-    protected DataAccessContext dacx_;
 
-    protected TableModel(UIComponentSource uics, DataAccessContext dacx, int colNum) {
+    protected TableModel(UIComponentSource uics, int colNum) {
       uics_ = uics;
-      dacx_ = dacx;
       columns_ = new ArrayList[colNum];
       for (int i = 0; i < columns_.length; i++) {
         columns_[i] = new ArrayList();
@@ -1146,7 +1141,7 @@ public class EditableTable {
           throw new IllegalArgumentException();
         }
         if ((colUseDirect_ == null) || !colUseDirect_[c]) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           return (rMan.getString(colNames_[c]));
         } else {
           return (colNames_[c]);
@@ -1157,6 +1152,7 @@ public class EditableTable {
       return (null);
     }
 
+    @Override
     public Class<?> getColumnClass(int c) {
       try {
         if (c >= colClasses_.length) {
@@ -1483,8 +1479,8 @@ public class EditableTable {
       }
     }
  
-    public OneValueModel(UIComponentSource uics, DataAccessContext dacx, String title, boolean edit) {
-      super(uics, dacx, NUM_COL_);
+    public OneValueModel(UIComponentSource uics, String title, boolean edit) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {String.class};
       canEdit_ = new boolean[] {edit};
@@ -1545,8 +1541,8 @@ public class EditableTable {
       }
     }
  
-    public TaggedValueModel(UIComponentSource uics, DataAccessContext dacx, String title, boolean editable) {
-      super(uics, dacx, NUM_COL_);
+    public TaggedValueModel(UIComponentSource uics, String title, boolean editable) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {String.class};
       canEdit_ = new boolean[] {editable};
@@ -1607,8 +1603,8 @@ public class EditableTable {
       }
     }
   
-    public OneEnumTableModel(UIComponentSource uics, DataAccessContext dacx, String title, List currEnums) {
-      super(uics, dacx, NUM_COL_);
+    public OneEnumTableModel(UIComponentSource uics, String title, List currEnums) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {title};
       colClasses_ = new Class[] {EnumCell.class};
       canEdit_ = new boolean[] {true};

@@ -59,6 +59,7 @@ import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 
 import org.xml.sax.Attributes;
@@ -77,7 +78,23 @@ public class NavTree extends DefaultTreeModel {
   //
   //////////////////////////////////////////////////////////////////////////// 
 
-  public enum Skips {NO_FLAG, SKIP_EVENT, SKIP_FINISH};
+  public enum Skips {NO_FLAG, SKIP_EVENT, SKIP_FINISH}
+  
+  public enum KidSuperType {
+    MODEL("modelNode"),
+    GROUP("groupNode"),
+    ;
+    
+    private String tag_;
+    
+    KidSuperType(String tag) {
+      this.tag_ = tag;  
+    }
+
+    public String getTag() {
+      return (tag_);      
+    } 
+  }
   
   public enum Kids {
     HIDDEN_ROOT("hidden"),
@@ -424,7 +441,7 @@ public class NavTree extends DefaultTreeModel {
     
     GroupNodeEntry oldGne = oldNnc.getGroupEntry();
     if (oldGne != null) {
-      GroupNodeEntry ngne = new GroupNodeEntry(null, null, null, null);
+      GroupNodeEntry ngne = new GroupNodeEntry(null, null);
       contents.addGroupEntry(ngne);
       Map<Color, GroupNodeMapEntry> ogmm = oldGne.getModelMap();
       if (ogmm != null) {
@@ -474,6 +491,47 @@ public class NavTree extends DefaultTreeModel {
  
     return (superRetval);
   }
+  
+  /***************************************************************************
+  **
+  ** Messing with dynamic proxy properties can delete/change GroupNodeMaps. Return
+  ** a list of map entries (for each group node) for a proxy so caller can figure out what needs to
+  ** stay and what needs to go:
+  */ 
+  
+  public Map<String, List<NavTree.GroupNodeMapEntry>> getGroupNavMapProxyReferences(String proxyID) {
+    
+    Map<String, List<NavTree.GroupNodeMapEntry>> retval = new HashMap<String, List<NavTree.GroupNodeMapEntry>>();
+    DefaultMutableTreeNode dmtnRoot = (DefaultMutableTreeNode)this.getRoot();    
+    Enumeration e = dmtnRoot.preorderEnumeration();
+    while (e.hasMoreElements()) {
+      DefaultMutableTreeNode next = (DefaultMutableTreeNode)e.nextElement();
+      NavNodeContents nnc = (NavNodeContents)next.getUserObject();
+      if (nnc.type == Kids.GROUP_NODE) {
+        GroupNodeEntry gne = nnc.getGroupEntry();
+        if (gne != null) {
+          Map<Color, GroupNodeMapEntry> ogmm = gne.getModelMap();
+          if (ogmm != null) {
+            Iterator<Color> cit = ogmm.keySet().iterator();
+            while (cit.hasNext()) {
+              Color colKey = cit.next();
+              GroupNodeMapEntry gnme = ogmm.get(colKey);
+              if (proxyID.equals(gnme.proxyID)) {
+                List<NavTree.GroupNodeMapEntry> listForNode = retval.get(nnc.nodeID);
+                if (listForNode == null) {
+                  listForNode = new ArrayList<NavTree.GroupNodeMapEntry>();
+                  retval.put(nnc.nodeID, listForNode);
+                }
+                listForNode.add(gnme);
+              }
+            }
+          }
+        }
+      }
+
+    }
+    return (retval);
+  }
 
   /***************************************************************************
   **
@@ -481,7 +539,7 @@ public class NavTree extends DefaultTreeModel {
   ** click maps. Same with regions, times, as well!
   */ 
   
-  public List<NavTreeChange> dropGroupNodeModelReferences(String modelKey) {
+  public List<NavTreeChange> dropGroupNodeModelReferences(List<NavTree.GroupNodeMapEntry> gottaGoes) {
     
     ArrayList<NavTreeChange> retval = new ArrayList<NavTreeChange>();
     DefaultMutableTreeNode dmtnRoot = (DefaultMutableTreeNode)this.getRoot();    
@@ -493,19 +551,28 @@ public class NavTree extends DefaultTreeModel {
         GroupNodeEntry oldGne = nnc.getGroupEntry();
         if (oldGne != null) {
           boolean needNew = false;
-          GroupNodeEntry newGne = new GroupNodeEntry(oldGne.imageID,oldGne.mapImageID, oldGne.modelID, oldGne.proxyID);
+          GroupNodeEntry newGne = oldGne.clone();
           Map<Color, GroupNodeMapEntry> ogmm = oldGne.getModelMap();
           if (ogmm != null) {
             Iterator<Color> cit = ogmm.keySet().iterator();
             while (cit.hasNext()) {
               Color colKey = cit.next();
               GroupNodeMapEntry gnme = ogmm.get(colKey);
-              GroupNodeMapEntry gnmeRepl = gnme.clone();
-              if (modelKey.equals(gnme.modelID)) {
-                gnmeRepl.modelID = null;
-                needNew = true;
+              //
+              // If any of our fields in the argument match, we need to null that field out 
+              // in the entry and replace the entry:
+              //
+              
+              for (NavTree.GroupNodeMapEntry gottaGo : gottaGoes) {
+                GroupNodeMapEntry newGnme = gnme.nullOutMatches(gottaGo);
+                if (newGnme == null) {
+                  newGnme = gnme.clone();
+                } else {
+                  needNew = true;
+                }
+                gnme = newGnme;
               }
-              newGne.addMapEntry(gnmeRepl);
+              newGne.addMapEntry(gnme);
             }    
           }
           if (needNew) {
@@ -788,7 +855,6 @@ public class NavTree extends DefaultTreeModel {
       // If we allow more than one, this needs to be fixed!
       throw new IllegalStateException();
     }
-    nnc.setModelMap(modMap);
     retval.oldContents = new NavNodeContents(nnc);
     nnc.setModelMap(modMap);
     retval.newContents = new NavNodeContents(nnc);
@@ -1924,7 +1990,7 @@ public class NavTree extends DefaultTreeModel {
         grpEntries_ = new ArrayList<GroupNodeEntry>();
       }
       if (grpEntries_.isEmpty()) {
-        grpEntries_.add(new GroupNodeEntry(null, null, null, null));
+        grpEntries_.add(new GroupNodeEntry(null, null));
       }
       
       // If we allow more than one, this needs to be fixed!
@@ -2163,22 +2229,16 @@ public class NavTree extends DefaultTreeModel {
   public static class GroupNodeEntry implements Cloneable {
     String imageID;
     String mapImageID;
-    String modelID;
-    String proxyID;
     HashMap<Color, GroupNodeMapEntry> grpMapEntries;
     
-    public GroupNodeEntry(String imageID, String mapImageID, String modelID, String proxyID) {
+    public GroupNodeEntry(String imageID, String mapImageID) {
       this.imageID = imageID;
       this.mapImageID = mapImageID;
-      this.modelID = modelID;
-      this.proxyID = proxyID;
     }
     
     public GroupNodeEntry(GroupNodeEntry other) {
       this.imageID = other.imageID;
       this.mapImageID = other.mapImageID;
-      this.modelID = other.modelID;
-      this.proxyID = other.proxyID;
       if (other.grpMapEntries != null) {
         this.grpMapEntries = new HashMap<Color, GroupNodeMapEntry>();
         for (Color col : other.grpMapEntries.keySet()) {
@@ -2202,15 +2262,12 @@ public class NavTree extends DefaultTreeModel {
     @Override
     public int hashCode() {
       return (((imageID != null) ? imageID.hashCode() : 0) + 
-              ((mapImageID != null) ? mapImageID.hashCode() : 0) + 
-              ((modelID != null) ? modelID.hashCode() : 0) + 
-              ((proxyID != null) ? proxyID.hashCode() : 0));
+              ((mapImageID != null) ? mapImageID.hashCode() : 0));
     }
       
     @Override
     public String toString() {
-      // FOR DEBUG return (super.toString() + " " + name + " " + id + " " + proxyID);
-      return (imageID);
+      return ("GroupNodeEntry :" + imageID + " " + mapImageID);
     }
     
     @Override
@@ -2237,20 +2294,6 @@ public class NavTree extends DefaultTreeModel {
           return (false);
         }
       } else if (!this.mapImageID.equals(otherNNC.mapImageID)) {
-        return (false);
-      }
-      if (this.modelID == null) {
-        if (otherNNC.modelID != null) {
-          return (false);
-        }
-      } else if (!this.modelID.equals(otherNNC.modelID)) {
-        return (false);
-      }
-      if (this.proxyID == null) {
-        if (otherNNC.proxyID != null) {
-          return (false);
-        }
-      } else if (!this.proxyID.equals(otherNNC.proxyID)) {
         return (false);
       }
       if ((this.grpMapEntries == null) || this.grpMapEntries.isEmpty()) {
@@ -2281,16 +2324,6 @@ public class NavTree extends DefaultTreeModel {
         out.print(mapImageID);
         out.print("\"");
       }   
-      if (modelID != null) {
-        out.print(" modelID=\"");
-        out.print(modelID);
-        out.print("\"");
-      }
-      if (proxyID != null) {
-        out.print(" proxyID=\"");
-        out.print(proxyID);
-        out.print("\"");
-      }
       
      if (grpMapEntries != null) {
         out.println(" >");
@@ -2365,10 +2398,83 @@ public class NavTree extends DefaultTreeModel {
       this.proxyTime = other.proxyTime;
       this.regionID = other.regionID;
     }    
+    
+    public GroupNodeMapEntry nullOutMatches(GroupNodeMapEntry match) {
+      // We do not match on color. Currently we do not allow cross-tab mapping, so 
+      // that is also ignored.
+      GroupNodeMapEntry retval = this.clone();
+      //
+      // If we match modelID and region, we just ditch the region. If we just match the model ID,
+      // and region is null, we drop the model ID and region ID:
+      //
+      if (match.modelID != null) {
+        if ((match.proxyID != null) || (match.proxyTime != null)) {
+          throw new IllegalArgumentException();
+        }
+        if (match.modelID.equals(this.modelID)) {
+          if (match.regionID != null) {
+            if (match.regionID.equals(this.regionID)) {
+              retval.regionID = null;
+              return (retval);
+            } else {
+              return (null); // Some other region is doomed, not ours
+            }
+          }
+          retval.modelID = null;
+          retval.regionID = null;
+          return (retval);
+        }
+      }
+      //
+      // If we match proxyID and region, we just ditch the region. If we match the proxyID and
+      // the hour, we ditch the hour. If region and hour are null, a proxyID match means 
+      // we drop the proxy ID:
+      //
+      if (match.proxyID != null) {
+        if (match.modelID != null) {
+          throw new IllegalArgumentException();
+        }
+        if (match.proxyID.equals(this.proxyID)) { 
+          if (match.regionID != null) {
+            UiUtil.fixMePrintout("WTF??");
+            if (match.proxyTime != null) {
+              throw new IllegalArgumentException();
+            }
+            if (match.regionID.equals(this.regionID)) {
+              retval.regionID = null;
+              return (retval);
+            } else {
+              return (null); // Some other region is doomed, not ours
+            }
+          } else if (match.proxyTime != null) {
+            if (match.regionID != null) {
+              throw new IllegalArgumentException();
+            }
+            // If we actually match proxy time, we have a rare case of a dynamic proxy
+            // time bound being reduced. With no correct time to go to, we toss the whole
+            // nav link instead of going to the incorrect time:
+            //
+            UiUtil.fixMePrintout("Use negative proxy times to signal non-surviving times??");
+            if (match.proxyTime.equals(this.proxyTime)) {
+              retval.proxyID = null;
+              retval.proxyTime = null;
+              return (retval);
+            } else {
+              return (null); // Some other time is doomed, not ours
+            }
+          }
+          retval.proxyID = null;
+          retval.proxyTime = null;
+          retval.regionID = null;
+          return (retval);
+        } 
+      }
+      return (null);
+    }
    
     @Override
     public int hashCode() {
-      return (color.hashCode() + 
+      return (((color != null) ? color.hashCode() : 0) + 
               ((proxyTime != null) ? proxyTime.hashCode() : 0) + 
               ((tabID != null) ? tabID.hashCode() : 0) + 
               ((modelID != null) ? modelID.hashCode() : 0) + 
@@ -2378,7 +2484,7 @@ public class NavTree extends DefaultTreeModel {
       
     @Override
     public String toString() {
-      return (color.toString() + " " + modelID + " " + proxyID + " " + proxyTime  + " " + regionID + " " + tabID);
+      return (color + " " + modelID + " " + proxyID + " " + proxyTime  + " " + regionID + " " + tabID);
     }
     
     public String idTag() {
@@ -2632,7 +2738,7 @@ public class NavTree extends DefaultTreeModel {
     Rectangle allBounds = uics_.getZoomCommandSupport().allModelsBounds();
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     return (new XPlatModelTree(root, dacx.getDisplayOptsSource().getDisplayOptions(), allBounds, 
-                               ((tad == null || !tad.isInitialized()) ? null : new XPlatTimeAxisDefinition(tad, dacx))));
+                               ((tad == null || !tad.isInitialized()) ? null : new XPlatTimeAxisDefinition(tad, dacx.getRMan()))));
   }
 
   /***************************************************************************
@@ -2739,16 +2845,20 @@ public class NavTree extends DefaultTreeModel {
   
   public void undoImageChange(ImageChange undo) {
     ImageManager mgr = uics_.getImageMgr();
-    String useKey = "";
+    String useKey = null;
+    boolean transfer = false;
     mgr.changeUndo(undo);
     if (undo.countOnlyKey != null) {
       useKey = (undo.newCount > undo.oldCount) ? null : undo.countOnlyKey;
+      transfer = true;
     } else if (undo.newKey != null) {
       useKey = null;
+      transfer = true;
     } else if (undo.oldKey != null) {
       useKey = undo.oldKey;
+      transfer = true;
     }
-    if (!useKey.equals("")) {
+    if (transfer) {
       TreeNode tn = nodeForNodeID(undo.groupNodeKey);
       DefaultMutableTreeNode dmtn = (DefaultMutableTreeNode)tn;
       NavNodeContents nnc = (NavNodeContents)dmtn.getUserObject();
@@ -2787,18 +2897,19 @@ public class NavTree extends DefaultTreeModel {
   public void redoImageChange(ImageChange redo) {
     ImageManager mgr = uics_.getImageMgr();
     mgr.changeRedo(redo);
-    String useKey = "";
+    String useKey = null;
+    boolean transfer = false;
     if (redo.countOnlyKey != null) {
       useKey = (redo.oldCount > redo.newCount) ? null : redo.countOnlyKey;
-      return;
+      transfer = true;
     } else if (redo.newKey != null) {
       useKey =  redo.newKey;
-      return;
+      transfer = true;
     } else if (redo.oldKey != null) {
       useKey = null;
-      return;
+      transfer = true;
     }
-    if (!useKey.equals("")) {
+    if (transfer) {
       TreeNode tn = nodeForNodeID(redo.groupNodeKey);
       DefaultMutableTreeNode dmtn = (DefaultMutableTreeNode)tn;
       NavNodeContents nnc = (NavNodeContents)dmtn.getUserObject();
@@ -3029,9 +3140,7 @@ public class NavTree extends DefaultTreeModel {
     private GroupNodeEntry buildFromXML(String elemName, Attributes attrs) throws IOException {    
       String imageID = AttributeExtractor.extractAttribute(elemName, attrs, "grpNodeEntry", "imageID", false);
       String mapImageID = AttributeExtractor.extractAttribute(elemName, attrs, "grpNodeEntry", "mapImageID", false);
-      String modelID = AttributeExtractor.extractAttribute(elemName, attrs, "grpNodeEntry", "modelID", false);
-      String proxyID = AttributeExtractor.extractAttribute(elemName, attrs, "grpNodeEntry", "proxyID", false);
-      return (new GroupNodeEntry(imageID, mapImageID, modelID, proxyID));
+      return (new GroupNodeEntry(imageID, mapImageID));
     }
   }
   
@@ -3087,12 +3196,12 @@ public class NavTree extends DefaultTreeModel {
         throw new IOException();
       }
       Color mapCol = new Color(red, green, blue);
-      if ((modelID == null) && (proxyID == null)) {
+      if ((modelID != null) && (proxyID != null)) { // Can't be both..
         throw new IOException();
       }
-      if ((proxyID == null) && (proxyObj != null)) {
-        throw new IOException();
-      }
+   //   if ((proxyID == null) && (proxyObj != null)) {
+  //      throw new IOException();
+  //    }
 
       return (new GroupNodeMapEntry(mapCol, tabID, modelID, proxyID, proxyObj, regID));
     }

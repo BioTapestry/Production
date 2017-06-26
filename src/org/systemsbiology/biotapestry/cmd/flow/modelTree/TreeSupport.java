@@ -28,7 +28,6 @@ import javax.swing.tree.TreePath;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.nav.NavTree;
 
 /****************************************************************************
@@ -66,9 +65,8 @@ public class TreeSupport {
   ** Calculate expansion changes
   */
   
-  public ExpansionChange buildExpansionChange(boolean forUndo, DataAccessContext dacx) {
-    VirtualModelTree vmTree = uics_.getTree();
-    NavTree nt = dacx.getGenomeSource().getModelHierarchy();      
+  public ExpansionChange buildExpansionChange(boolean forUndo, NavTree nt) {
+    VirtualModelTree vmTree = uics_.getTree();    
     List<TreePath> nonleafPaths = nt.getAllPathsToNonLeaves();
     Iterator<TreePath> nlpit = nonleafPaths.iterator();
     ExpansionChange ec = new ExpansionChange();

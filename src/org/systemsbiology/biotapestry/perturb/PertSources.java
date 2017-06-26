@@ -58,7 +58,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ////////////////////////////////////////////////////////////////////////////
 
   private ArrayList<String> sources_;
-  private DataAccessContext dacx_;
+  private PerturbationData pd_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -71,8 +71,8 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   ** Constructor
   */
 
-  public PertSources(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public PertSources(PerturbationData pd) {
+    pd_ = pd;
     sources_ = new ArrayList<String>();
   }
   
@@ -162,9 +162,8 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   */  
   
   public int compareTo(PertSources other) {
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    String me = this.getDisplayString(pd, NO_FOOTS);
-    String him = other.getDisplayString(pd, NO_FOOTS);
+    String me = this.getDisplayString(pd_, NO_FOOTS);
+    String him = other.getDisplayString(pd_, NO_FOOTS);
     return (me.compareTo(him));
   }
 

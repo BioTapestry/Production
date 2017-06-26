@@ -201,7 +201,7 @@ public class SingleModelPropDialog extends JDialog {
     GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().setProperties(dacx_.getCurrentGenome().getName(),  
                                                                 longName, 
                                                                 descripField_.getText());
-    GenomeChangeCmd cmd = new GenomeChangeCmd(dacx_, gc);
+    GenomeChangeCmd cmd = new GenomeChangeCmd(gc);
     support.addEdit(cmd);
     
     if (!longName.trim().equals("")) {

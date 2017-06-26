@@ -39,12 +39,12 @@ import javax.swing.JButton;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertProperties;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
@@ -78,6 +78,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
   private ArrayList<EnumCell> annotList_;
   private JButton proxJump_;
   private HashSet allMerge_;
+  private TimeCourseData tcd_;
   
   private static final long serialVersionUID = 1L;
  
@@ -92,10 +93,12 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertSourceDefAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(uics, dacx, parent, pet, myKey, 4);
+  public PertSourceDefAddOrEditPanel(UIComponentSource uics, JFrame parent, 
+                                     PerturbationData pd, TimeCourseData tcd, PendingEditTracker pet, String myKey) { 
+    super(uics, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    pmh_ = new PertManageHelper(uics_, parent, pd, tcd, rMan_, gbc_, pet_);
 
     //
     // Source name:
@@ -160,7 +163,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
 
     JLabel proxSLab = new JLabel(rMan_.getString("psdae.proxySign"));
     proxyLab_ = new JLabel(rMan_.getString("psdae.proxyFor"));
-    Vector<ObjChoiceContent> proxs = new Vector<ObjChoiceContent>(PertSource.getProxySignValues(dacx_));
+    Vector<ObjChoiceContent> proxs = new Vector<ObjChoiceContent>(PertSource.getProxySignValues(uics_));
     proxySignField_ = new JComboBox(proxs);
     proxySignField_.addItemListener(new ItemListener() {
       public void itemStateChanged(ItemEvent ev) {
@@ -206,7 +209,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     //
 
     annotList_ = new ArrayList<EnumCell>();
-    estAnnot_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "psdae.annot", annotList_), parent_);
+    estAnnot_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "psdae.annot", annotList_), parent_);
     EditableTable.TableParams etp = pmh_.tableParamsForAnnot(annotList_);
     JPanel annotTablePan = estAnnot_.buildEditableTable(etp);
     JPanel annotTableWithButton = pmh_.addEditButton(annotTablePan, "psdae.annotEdit", true, new ActionListener() {
@@ -294,7 +297,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     mode_ = MERGE_MODE;
     allMerge_ = new HashSet(joinKeys);
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
-    Map refCounts = da.getAllSrcDefReferenceCounts();
+    Map refCounts = da.getAllSrcDefReferenceCounts(tcd_);
     currKey_ = pmh_.getMostUsedKey(refCounts, joinKeys);
     displayProperties();
     return (currKey_);
@@ -490,7 +493,7 @@ public class PertSourceDefAddOrEditPanel extends AnimatedSplitEditPanel {
     
     String proxSign = ps.getProxySign();
     boolean haveAProx = !proxSign.equals(PertSource.mapProxySignIndex(PertSource.NO_PROXY_INDEX));
-    ObjChoiceContent occP = PertSource.getProxySignValue(dacx_, proxSign);
+    ObjChoiceContent occP = PertSource.getProxySignValue(uics_, proxSign);
     proxySignField_.setSelectedItem(occP);
     proxyName_.setEnabled(haveAProx);
     proxyLab_.setEnabled(haveAProx);

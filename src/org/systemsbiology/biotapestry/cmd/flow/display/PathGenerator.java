@@ -46,6 +46,7 @@ import org.systemsbiology.biotapestry.db.FreestandingSourceBundle;
 import org.systemsbiology.biotapestry.db.LocalGenomeSource;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 import org.systemsbiology.biotapestry.db.LocalWorkspaceSource;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.db.Workspace;
 import org.systemsbiology.biotapestry.genome.AbstractGenome;
 import org.systemsbiology.biotapestry.genome.DBGenome;
@@ -529,11 +530,13 @@ public class PathGenerator extends AbstractControlFlow {
     */
      
     private String generateLinkTip(String linkID) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
+      DBGenome dbGenome = dacx_.getGenomeSource().getRootDBGenome();
       Linkage link = targetGenome_.getLinkage(linkID);  // This could be ANY link through a bus segment
       PerturbationData pd = dacx_.getExpDataSrc().getPertData();
       PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
-      String tip = pd.getToolTip(GenomeItemInstance.getBaseID(link.getSource()), GenomeItemInstance.getBaseID(link.getTarget()), null, pdms);
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+      String tip = pd.getToolTip(dbGenome, GenomeItemInstance.getBaseID(link.getSource()), GenomeItemInstance.getBaseID(link.getTarget()), null, pdms, tad);
       if ((tip == null) || tip.trim().equals("")) {
         return (rMan.getString("pathpanel.noqpcr"));
       }

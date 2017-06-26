@@ -140,7 +140,7 @@ public class Align extends AbstractControlFlow {
         doCentering = true;
         ignoreOverlays = true;
       } else {
-        LayoutCenteringDialog dialog = new LayoutCenteringDialog(uics_, dacx_, emptyRoot, trackOverlays);
+        LayoutCenteringDialog dialog = new LayoutCenteringDialog(uics_, emptyRoot, trackOverlays);
         dialog.setVisible(true);
         if (!dialog.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));

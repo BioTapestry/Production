@@ -45,6 +45,7 @@ import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputChange;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData.HoldForBuild;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputMappingDialog;
@@ -541,17 +542,28 @@ public class TemporalInput extends AbstractControlFlow {
       } else {
         tird = new TemporalInputRangeData(dacx_);
         tird.buildMapsFromTCDMaps(dacx_);
-      } 
+      }
+      
+      List<HoldForBuild> hfbs = tird.prepForBuildFromTCD(dacx_);
+      if (hfbs == null) {
+        ResourceManager rMan = dacx_.getRMan();
+        JOptionPane.showMessageDialog(uics_.getTopFrame(), 
+                                      rMan.getString("tirdDerive.oneToManyMessage"), 
+                                      rMan.getString("tirdDerive.oneToManyMessageTitle"),
+                                      JOptionPane.ERROR_MESSAGE);
+        return (false); 
+      }
       dc = dacx_.getTemporalRangeSrc().startTemporalInputUndoTransaction();
       dacx_.getTemporalRangeSrc().setTemporalInputRangeData(tird);    
-      tird.buildFromTCD(dacx_);   
+      tird.buildFromTCD(dacx_, hfbs);   
       dc = dacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
       support.addEdit(new DatabaseChangeCmd(dacx_, dc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();
-      // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
-      UiUtil.fixMePrintout("Gotta send out event so CommonView knows to refresh current loaded model!");
+      //
+      // There was previously a question here about needing to clear proxy caches and
+      // refresh the current model. The above GeneralChangeEvent handles this.
+      //
       return (true);    
     }
     
@@ -568,9 +580,10 @@ public class TemporalInput extends AbstractControlFlow {
       support.addEdit(new DatabaseChangeCmd(dacx_, dc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();
-      // FIX ME??? Use events instead of direct calls.
-      dacx_.getGenomeSource().clearAllDynamicProxyCaches();
-      UiUtil.fixMePrintout("Gotta send out event so CommonView knows to refresh current loaded model!");
+      //
+      // There was previously a question here about needing to clear proxy caches and
+      // refresh the current model. The above GeneralChangeEvent handles this.
+      //
       return (true);    
     }
   }

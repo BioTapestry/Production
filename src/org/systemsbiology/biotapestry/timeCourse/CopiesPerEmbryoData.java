@@ -34,6 +34,7 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -521,7 +522,7 @@ public class CopiesPerEmbryoData implements Cloneable {
   ** Get an HTML expression table suitable for display.
   */
   
-  public String getCountTable(String targetName, DataAccessContext dacx) {
+  public String getCountTable(String targetName, TimeAxisDefinition tad) {
     StringWriter sw = new StringWriter();
     PrintWriter out = new PrintWriter(sw);
     
@@ -530,7 +531,7 @@ public class CopiesPerEmbryoData implements Cloneable {
       CopiesPerEmbryoGene trg = trgit.next();
       String name = trg.getName();
       if (DataUtil.keysEqual(name, targetName)) {
-        trg.getCountTable(out, dacx);
+        trg.getCountTable(out, tad);
       }
     }
     return (sw.toString());

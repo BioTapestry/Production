@@ -84,7 +84,7 @@ public class PickNodesForLayoutDialog extends BTStashResultsDialog implements Li
   */ 
   
   public PickNodesForLayoutDialog(UIComponentSource uics, LayoutDataSource lds, DataAccessContext dacx) {
-    super(uics, dacx, "pnfl.title", new Dimension(600, 500), 1);
+    super(uics, "pnfl.title", new Dimension(600, 500), 1);
     selected_ = new ArrayList<ObjChoiceContent>();
     nodedLds_ = null;
     masterLds_ = lds;

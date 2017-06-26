@@ -39,8 +39,6 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -348,12 +346,11 @@ class NullPerturb implements Cloneable {
   ** Set the note.  Used for legacy input
   */
   
-   void setNote(String note, QPCRData qpcr, TabPinnedDynamicDataAccessContext dacx) throws IOException {
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+   void setNote(String note, QPCRData qpcr, TimeAxisDefinition tad) throws IOException {
     if (tad.getUnits() != TimeAxisDefinition.LEGACY_UNITS) {
       throw new IOException();
     }
-    convertNoteToTargets(note, targets_, qpcr.getLegacyNullPerturbationsDefaultTimeSpan(dacx), dacx);
+    convertNoteToTargets(note, targets_, qpcr.getLegacyNullPerturbationsDefaultTimeSpan(tad));
     return;
   }
 
@@ -442,13 +439,12 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   String buildTargetDisplayString(NullTimeSpan defaultSpan, DataAccessContext dacx) {
+   String buildTargetDisplayString(NullTimeSpan defaultSpan, TimeAxisDefinition tad) {
 
     //
     // Group targets into common span sets:
     //
     
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String units = tad.unitDisplayAbbrev();
     boolean isSuffix = tad.unitsAreASuffix();
        
@@ -493,7 +489,7 @@ class NullPerturb implements Cloneable {
           spanSet.add(new NullTimeSpan(defaultSpan));
         }
         boolean showSpans = (!spanSet.equals(defaultSet));
-        buf.append(nt.displayString(showSpans, units, isSuffix));
+        buf.append(nt.displayString(showSpans, units, isSuffix, tad));
       }
     }
     
@@ -525,7 +521,7 @@ class NullPerturb implements Cloneable {
             }
           } 
           boolean showSpans = !tmit.hasNext() && !tftit.hasNext();
-          buf.append(nt.displayString(showSpans, units, isSuffix));
+          buf.append(nt.displayString(showSpans, units, isSuffix, tad));
           if (showSpans) {
             buf.append("]");
           }
@@ -553,9 +549,8 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   String buildInvestDisplayString(DataAccessContext dacx) {
+   String buildInvestDisplayString(ResourceManager rMan) {
      
-    ResourceManager rMan = dacx.getRMan();
     String etAl = rMan.getString("qpcrData.andOthers");
     int numInv = investigators_.size();
     if (numInv == 1) {  
@@ -684,7 +679,8 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, NullTimeSpan defaultSpan, DataAccessContext dacx) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, 
+                  ResourceManager rMan, NullTimeSpan defaultSpan, TimeAxisDefinition tad) {
     ind.indent();    
     out.println("<tr valign=\"top\" >");    
     ind.up().indent();    
@@ -702,11 +698,10 @@ class NullPerturb implements Cloneable {
     ind.up().indent();
     qtp.paragraph(false);
     out.print("<i>");
-    out.print(buildTargetDisplayString(defaultSpan, dacx));    
+    out.print(buildTargetDisplayString(defaultSpan, tad));    
     out.println("</i>");
-    String inv = buildInvestDisplayString(dacx);
+    String inv = buildInvestDisplayString(rMan);
     if (inv != null) {
-      ResourceManager rMan = dacx.getRMan();
       out.print(" (");
       out.print(rMan.getString("qpcrData.dataOf"));
       out.print(" ");
@@ -756,7 +751,7 @@ class NullPerturb implements Cloneable {
   **
   */
   
-   static NullPerturb buildFromXML(DataAccessContext dacx, String elemName, 
+   static NullPerturb buildFromXML(TimeAxisDefinition tad, String elemName, 
                                    Attributes attrs) throws IOException {
     if (!elemName.equals("nullPerturbation")) {
       return (null);
@@ -783,7 +778,7 @@ class NullPerturb implements Cloneable {
     
     NullPerturb retval = new NullPerturb();
     if (p != null) {
-      retval.convertLegacySource(p, dacx);
+      retval.convertLegacySource(p, tad);
     }
     
     return (retval);
@@ -800,7 +795,7 @@ class NullPerturb implements Cloneable {
   ** Set the targets from a string.  Used for legacy input
   */
   
-  private void convertNoteToTargets(String note, List<NullTarget> targets, NullTimeSpan defaultNull, DataAccessContext dacx) {
+  private void convertNoteToTargets(String note, List<NullTarget> targets, NullTimeSpan defaultNull) {
     
     //
     // Chop up the note string by commas, but keep the time span
@@ -845,11 +840,11 @@ class NullPerturb implements Cloneable {
     // Create Null targets from the tagged lists:
     //
    
-    targets.addAll(convertTimeTaggedList(defaultToks, minTime, dacx));
+    targets.addAll(convertTimeTaggedList(defaultToks, minTime));
     int brakNum = bracketedToks.size();    
     for (int i = 0; i < brakNum; i++) {
       TimeTaggedList bt = bracketedToks.get(i);
-      targets.addAll(convertTimeTaggedList(bt, minTime, dacx));
+      targets.addAll(convertTimeTaggedList(bt, minTime));
     }    
     return;
   }
@@ -859,16 +854,16 @@ class NullPerturb implements Cloneable {
   ** Convert time tagged list to NullTargets
   */
  
-  private List<NullTarget> convertTimeTaggedList(TimeTaggedList ttl, int minTime, DataAccessContext dacx) {
+  private List<NullTarget> convertTimeTaggedList(TimeTaggedList ttl, int minTime) {
     ArrayList<NullTarget> retval = new ArrayList<NullTarget>();
-    List<NullTimeSpan> spans = parseTimeTag(ttl.isDefault, ttl.taggedToken, minTime, dacx);
+    List<NullTimeSpan> spans = parseTimeTag(ttl.isDefault, ttl.taggedToken, minTime);
     int size = ttl.tokens.size();
     for (int i = 0; i < size; i++) {
       String token = ttl.tokens.get(i);
       String[] chopped = chopOutTimeSpan(token);
       List<NullTimeSpan> useSpans;
       if (chopped.length == 2) {
-        useSpans = parseTimeTag(false, chopped[1], minTime, dacx);
+        useSpans = parseTimeTag(false, chopped[1], minTime);
       } else {
         useSpans = spans;
       }
@@ -993,7 +988,7 @@ class NullPerturb implements Cloneable {
   ** Parse time tag
   */
 
-  private List<NullTimeSpan> parseTimeTag(boolean isDefault, String tag, int minTime, DataAccessContext dacx) {
+  private List<NullTimeSpan> parseTimeTag(boolean isDefault, String tag, int minTime) {
     if (isDefault) {
       return (null);
     }
@@ -1017,13 +1012,13 @@ class NullPerturb implements Cloneable {
         throw new IllegalStateException();
       }
       if (isList || isSingle) {
-        retval.add(new NullTimeSpan(dacx, val));
+        retval.add(new NullTimeSpan(val));
       } else if (toUpper) {
-        retval.add(new NullTimeSpan(dacx, minTime, val));
+        retval.add(new NullTimeSpan(minTime, val));
       } else if (isPair) {
-        retval.add(new NullTimeSpan(dacx, val));
+        retval.add(new NullTimeSpan(val));
       } else if (first != Integer.MIN_VALUE) {
-        retval.add(new NullTimeSpan(dacx, first, val));
+        retval.add(new NullTimeSpan(first, val));
         first = Integer.MIN_VALUE;
       } else {
         first = val;
@@ -1090,8 +1085,7 @@ class NullPerturb implements Cloneable {
   ** Set the source from a string.  Used for legacy input
   */
   
-  private void convertLegacySource(String legacy, DataAccessContext dacx) throws IOException {
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+  private void convertLegacySource(String legacy, TimeAxisDefinition tad) throws IOException {
     if (tad.getUnits() != TimeAxisDefinition.LEGACY_UNITS) {
       throw new IOException();
     }

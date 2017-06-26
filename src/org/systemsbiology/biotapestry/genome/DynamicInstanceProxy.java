@@ -38,6 +38,10 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
+import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
 import org.systemsbiology.biotapestry.db.GenomeSource;
@@ -47,10 +51,14 @@ import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.nav.ImageChange;
 import org.systemsbiology.biotapestry.nav.ImageManager;
+import org.systemsbiology.biotapestry.nav.NavTree;
+import org.systemsbiology.biotapestry.nav.NavTreeChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathChange;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.TaggedSet;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
 **
@@ -724,7 +732,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   **
   */
   
-  public ChangeBundle changeProperties(ImageManager mgr, UserTreePathController utpc, 
+  public ChangeBundle changeProperties(ImageManager mgr, TabSource tSrc, UserTreePathController utpc, 
                                        String name, boolean perTime, 
                                        int min, int max, boolean isForDiff, String simKey) {
     
@@ -741,6 +749,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     retval.proxyChange.oldForSimDiff = forSimDiff_;
     retval.proxyChange.oldSimKey = simKey_;
     
+    retval.navMapChanges = dropGroupNavMapTimeRefs(tSrc, perTime, min, max);
     retval.imageChanges = doImageChangesForPropertyChange(mgr, perTime, min, max);
     retval.pathChanges = doPathChangesForPropertyChange(utpc, perTime, min, max);
     retval.dc = doStartupViewChangesForPropertyChange(perTime, min, max);
@@ -791,7 +800,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           }
           String onlyImage = imageKeys_.get(onlyKey);
           imageKeys_.clear();
-          imageKeys_.put(new Integer(newMin), onlyImage);
+          imageKeys_.put(Integer.valueOf(newMin), onlyImage);
         }
       }
       return (new ImageChange[0]);
@@ -807,11 +816,11 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       //
       HashSet<Integer> oldTimes = new HashSet<Integer>();
       for (int i = min_; i <= max_; i++) {
-        oldTimes.add(new Integer(i));
+        oldTimes.add(Integer.valueOf(i));
       }
       HashSet<Integer> newTimes = new HashSet<Integer>();
       for (int i = newMin; i <= newMax; i++) {
-        newTimes.add(new Integer(i));
+        newTimes.add(Integer.valueOf(i));
       }      
       
       HashSet<Integer> lostKeys = new HashSet<Integer>(oldTimes);
@@ -880,11 +889,11 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         //
         HashSet<Integer> oldTimes = new HashSet<Integer>();
         for (int i = min_; i <= max_; i++) {
-          oldTimes.add(new Integer(i));
+          oldTimes.add(Integer.valueOf(i));
         }
         HashSet<Integer> newTimes = new HashSet<Integer>();
         for (int i = newMin; i <= newMax; i++) {
-          newTimes.add(new Integer(i));
+          newTimes.add(Integer.valueOf(i));
         }      
 
         HashSet<Integer> lostKeys = new HashSet<Integer>(oldTimes);
@@ -899,6 +908,80 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       }
     }
     return (retval.toArray(new UserTreePathChange[retval.size()]));
+  }
+
+  /***************************************************************************
+  **
+  ** Drop time refs from group map  
+  ** 
+  */
+  
+  private NavTreeChange[] dropGroupNavMapTimeRefs(TabSource tSrc, boolean newPerTime, int newMin, int newMax) {
+    
+    NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
+    Map<String, List<NavTree.GroupNodeMapEntry>> gneMap = nt.getGroupNavMapProxyReferences(getID());
+    if (gneMap.isEmpty()) {
+      return (null);
+    }
+    
+    HashSet<NavTree.GroupNodeMapEntry> navMapEntries = new HashSet<NavTree.GroupNodeMapEntry>();
+     
+    
+    //
+    // If a group nav map entry switches from slider to single time, we just drop the time. Going the
+    // other way, we cannot know the correct new time, so we have to lose the map entry. If the time
+    // bounds change so that the map time is no longer valid, we drop the map entry.
+    //
+    boolean newIsSingle = !newPerTime;
+    
+    if (isSingle_) {
+      if (newIsSingle) {
+        //
+        // If the proxy stays for a single model, the instance key
+        // is the same, so nothing happens:
+        //
+        return (null);
+      } else {
+        //
+        // If the proxy goes to a multiple model, we drop the map reference. (Alternative would be to set it to
+        // first time point):
+        //
+        NavTree.GroupNodeMapEntry forDel = new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), null, getID(), null, null);
+        navMapEntries.add(forDel);
+      }
+    } else { // (!isSingle_)
+      if (newIsSingle) {
+        //
+        // Going multi to single, we can just drop the specific time:
+        //   
+        for (String nodeID : gneMap.keySet()) {
+          List<NavTree.GroupNodeMapEntry> forNode = gneMap.get(nodeID);
+          for (NavTree.GroupNodeMapEntry entry : forNode) {
+            if ((entry.proxyTime != null) && ((entry.proxyTime.intValue() < newMin) || (entry.proxyTime.intValue() > newMax))) {
+              NavTree.GroupNodeMapEntry forDel = new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), null, getID(), entry.proxyTime, null);
+              navMapEntries.add(forDel);
+            }
+          }
+        }
+      } else { //!newIsSingle
+        //
+        // Going multi to multi, we drop the whole model if a map time is outside our new bounds
+        //
+        for (String nodeID : gneMap.keySet()) {
+          List<NavTree.GroupNodeMapEntry> forNode = gneMap.get(nodeID);
+          for (NavTree.GroupNodeMapEntry entry : forNode) {
+            if ((entry.proxyTime != null) && ((entry.proxyTime.intValue() < newMin) || (entry.proxyTime.intValue() > newMax))) {
+              NavTree.GroupNodeMapEntry forDel = new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), null, getID(), null, null);
+              navMapEntries.add(forDel);
+            }
+          }
+        }
+      }
+    }
+    List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(new ArrayList<NavTree.GroupNodeMapEntry>(navMapEntries));
+    NavTreeChange[] retval = new NavTreeChange[ntcs.size()];
+    ntcs.toArray(retval);
+    return (retval);
   }
 
   /***************************************************************************
@@ -936,7 +1019,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         String oldModelKey = getFirstProxiedKey();
         if (oldModelKey.equals(modelId)) {
           String newMinKey = getKeyForTime(newMin, false);
-          return (gs.setStartupView(new StartupView(newMinKey, null, null, null,null)));
+          return (gs.setStartupView(new StartupView(newMinKey, null, null, null, null, NavTree.KidSuperType.MODEL)));
         }
       }
     } else { // (!isSingle_)
@@ -950,7 +1033,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           String oldModelKey = lkit.next();        
           if (oldModelKey.equals(modelId)) {
             String newKey = getSingleKey(false);
-            return (gs.setStartupView(new StartupView(newKey, null, null, null,null)));
+            return (gs.setStartupView(new StartupView(newKey, null, null, null, null, NavTree.KidSuperType.MODEL)));
           } 
         }
       } else { //!newIsSingle
@@ -960,11 +1043,11 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         //
         HashSet<Integer> oldTimes = new HashSet<Integer>();
         for (int i = min_; i <= max_; i++) {
-          oldTimes.add(new Integer(i));
+          oldTimes.add(Integer.valueOf(i));
         }
         HashSet<Integer> newTimes = new HashSet<Integer>();
         for (int i = newMin; i <= newMax; i++) {
-          newTimes.add(new Integer(i));
+          newTimes.add(Integer.valueOf(i));
         }      
 
         HashSet<Integer> lostKeys = new HashSet<Integer>(oldTimes);
@@ -975,7 +1058,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
           String oldModelKey = getKeyForTime(lostKey.intValue(), true);
           if (oldModelKey.equals(modelId)) {
             String newKey = getKeyForTime(newMin, true);
-            return (gs.setStartupView(new StartupView(newKey, null, null, null,null)));
+            return (gs.setStartupView(new StartupView(newKey, null, null, null, null, NavTree.KidSuperType.MODEL)));
           } 
         }
       }
@@ -992,7 +1075,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   public Integer setGenomeImage(String newKey, String instanceID) {
     Integer retval;
     if (isSingle_) {
-      retval = new Integer(min_);
+      retval = Integer.valueOf(min_);
       if (newKey != null) {
         imageKeys_.put(retval, newKey);
       } else {
@@ -1019,7 +1102,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   public Integer dropGenomeImage(String instanceID) {
     Integer retval;
     if (isSingle_) {
-      retval = new Integer(min_);
+      retval = Integer.valueOf(min_);
       imageKeys_.clear();
     } else {
       DynamicGenomeInstance pi = getProxiedInstance(instanceID);
@@ -1968,11 +2051,11 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
       String format = (tad.unitsAreASuffix()) ? "dgi.titleFormat" : "dgi.titleFormatPrefix";
       String dgiTitle = MessageFormat.format(dacx_.getRMan().getString(format), 
                                              new Object[] {name_, stageName, displayUnits});
-      String imgKey = imageKeys_.get(new Integer(time)); 
+      String imgKey = imageKeys_.get(Integer.valueOf(time)); 
       String simKey = (forSimDiff_) ? simKey_ : null; 
       retval = new DynamicGenomeInstance(dacx_, dgiTitle, key, parent, id_, imgKey, simKey);
       HashSet<Integer> singleton = new HashSet<Integer>();
-      singleton.add(new Integer(time));
+      singleton.add(Integer.valueOf(time));
       retval.setTime(singleton);
     }
     cache_.put(key, retval);
@@ -2080,7 +2163,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
         throw new IOException();
       }
     } else {
-      time = new Integer(min_);
+      time = Integer.valueOf(min_);
     }
     imageKeys_.put(time, imgKey);    
     return;
@@ -2386,7 +2469,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
   public static class ChangeBundle {
     public ProxyChange proxyChange;
     public ImageChange[] imageChanges;
-    public UserTreePathChange[] pathChanges; 
+    public UserTreePathChange[] pathChanges;
+    public NavTreeChange[] navMapChanges;
     public DatabaseChange dc;
   }    
  
@@ -2689,7 +2773,7 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     if (sortedTimes_ == null) {
       sortedTimes_ = new TreeSet<Integer>();
       for (int i = min_; i <= max_; i++) {
-        sortedTimes_.add(new Integer(i));
+        sortedTimes_.add(Integer.valueOf(i));
       }
     }
     return (sortedTimes_);

@@ -29,6 +29,7 @@ import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -125,6 +126,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
     StaticDataAccessContext dacx = new StaticDataAccessContext(new TabPinnedDynamicDataAccessContext(ddacx_, dbID)).getContextForRoot();
     StringBuffer buf = new StringBuffer();
     Genome genome = dacx.getGenomeSource().getGenome(genomeID);
+    DBGenome dbGenome = dacx.getGenomeSource().getRootDBGenome();
     Linkage link = genome.getLinkage(linkID);
     String targID = link.getTarget();
     String sourceID = link.getSource();
@@ -145,7 +147,7 @@ public class PerturbedTimeCourseLinkDisplayPlugIn implements InternalLinkDataDis
     buf.append(rMan.getString("dataWindow.perturbedTimeCourseDataForLink"));
     buf.append("</h1>\n");
     
-    List<String> srcPertKeys = pdms.getDataSourceKeysWithDefault(baseSourceID, pd);
+    List<String> srcPertKeys = pdms.getDataSourceKeysWithDefault(dbGenome, baseSourceID, pd);
       
     boolean gotData = false;
     List<TimeCourseDataMaps.TCMapping> dataKeys = tcdm.getTimeCourseTCMDataKeysWithDefault(baseTargID, dacx.getGenomeSource());

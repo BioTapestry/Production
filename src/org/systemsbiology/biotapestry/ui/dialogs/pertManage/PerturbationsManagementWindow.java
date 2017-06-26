@@ -45,8 +45,13 @@ import javax.swing.event.ChangeListener;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.util.AnimatedSplitPane;
@@ -114,6 +119,8 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     setIconImage(new ImageIcon(ugif).getImage());
     setTitle(dacx_.getRMan().getString("pertManage.title"));
     pd_ = pd;
+    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     
     currPending_ = new HashSet<Integer>();
     setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
@@ -123,27 +130,32 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     int legacyModes = pd_.getExistingLegacyModes();
          
     ResourceManager rMan = dacx_.getRMan();
+    FontManager fMgr = dacx_.getFontManager();
+    UiUtil.fixMePrintout("Hold it how can you share pert data across tabs with this dbgenome here???");
+    DBGenome dbg = dacx_.getGenomeSource().getRootDBGenome();
+    UiUtil.fixMePrintout("This is also tab-specific");
+    PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
     UiUtil.centerBigFrame(this, 1600, 1200, 0.8, 900);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
     int cpRowNum = 0;
   
-    PertDataPointManagePanel pdpm = new PertDataPointManagePanel(uics_, dacx_, this, pd_, this, legacyModes, uFac);
+    PertDataPointManagePanel pdpm = new PertDataPointManagePanel(uics_, dacx_, this, pd_, tcd, tad, this, legacyModes, uFac);
     filterTarget_ = pdpm;
     filterTag_ = pdpm.getTag();
     
     ArrayList<AnimatedSplitManagePanel> panelList = new ArrayList<AnimatedSplitManagePanel>();
     panelList.add(pdpm);
-    panelList.add(new PertExperimentManagePanel(uics_, dacx_, uFac, this, pd_, this, this, legacyModes));
-    panelList.add(new PertSrcDefsManagePanel(uics_, dacx_, this, pd_, this, this, uFac));
-    panelList.add(new PertSrcsAndTargsManagePanel(uics_, dacx_, this, pd_, this, this, uFac));
-    panelList.add(new PertInvestManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
-    panelList.add(new PertPropertiesManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
-    panelList.add(new PertMeasurementManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
-    panelList.add(new PertAnnotManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
-    panelList.add(new PertExpSetupManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
-    panelList.add(new PertMiscSetupManagePanel(uics_, dacx_, uFac, this, pd_, this, this));
+    panelList.add(new PertExperimentManagePanel(uics_, dacx_, fMgr, uFac, this, pd_, tcd, tad, this, this, legacyModes));
+    panelList.add(new PertSrcDefsManagePanel(uics_, fMgr, tad, dacx_, this, pd_, tcd, this, this, uFac));
+    panelList.add(new PertSrcsAndTargsManagePanel(uics_, fMgr, tad, dacx_, this, pd_, tcd, pdms, dbg, this, this, uFac));
+    panelList.add(new PertInvestManagePanel(uics_, dacx_, uFac, this, pd_, tcd, tad, this, this));
+    panelList.add(new PertPropertiesManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));
+    panelList.add(new PertMeasurementManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));
+    panelList.add(new PertAnnotManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));
+    panelList.add(new PertExpSetupManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));
+    panelList.add(new PertMiscSetupManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));
     int numPan = panelList.size();
     tabPane_ = new JTabbedPane();
     managePanels_ = new HashMap<String, AnimatedSplitManagePanel>();

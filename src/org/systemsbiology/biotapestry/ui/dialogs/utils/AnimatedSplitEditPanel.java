@@ -26,7 +26,6 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -66,7 +65,6 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
   
   protected PendingEditTracker pet_;
   protected JFrame parent_;
-  protected DataAccessContext dacx_;
   protected UIComponentSource uics_;
   protected String myKey_;
   protected ResourceManager rMan_;    
@@ -93,9 +91,8 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
   ** Constructor 
   */ 
   
-  public AnimatedSplitEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, 
+  public AnimatedSplitEditPanel(UIComponentSource uics, JFrame parent, 
                                 PendingEditTracker pet, String myKey, int colNum) { 
-    dacx_ = dacx;
     uics_ = uics;
     parent_ = parent;
     pet_ = pet;
@@ -104,10 +101,10 @@ public abstract class AnimatedSplitEditPanel extends JPanel implements DialogSup
     editInProgress_ = false;
     mode_ = NO_MODE;
     
-    rMan_ = dacx_.getRMan();
+    rMan_ = uics_.getRMan();
     setLayout(new GridBagLayout());
     gbc_ = new GridBagConstraints();
-    ds_ = new DialogSupport(this, uics_, dacx_, gbc_);
+    ds_ = new DialogSupport(this, uics_, gbc_);
     rowNum_ = 0;
   }
 

@@ -105,7 +105,7 @@ public class SyncSupport {
         GenomeChange[] changes = gi.syncAllLinkagePads(useGroups);
         int numCh = changes.length;
         for (int i = 0; i < numCh; i++) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, changes[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(changes[i]);
           support.addEdit(gcc); 
         }
         support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
@@ -136,7 +136,7 @@ public class SyncSupport {
       boolean doEvent = false;
       for (int i = 0; i < gca.length; i++) {
         if (gca[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gca[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gca[i]);
           support.addEdit(gcc);
           doEvent = true;
         }              

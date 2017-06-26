@@ -26,7 +26,6 @@ import java.text.MessageFormat;
 import java.util.Vector;
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
@@ -34,6 +33,7 @@ import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
@@ -509,8 +509,8 @@ public class MeasureScale implements Cloneable {
       return (fromFold);
     }
 
-    public String getDisplayString(DataAccessContext dacx) {
-      ResourceManager rMan = dacx.getRMan();
+    public String getDisplayString(HandlerAndManagerSource hams) {
+      ResourceManager rMan = hams.getRMan();
       switch (type) {
         case NO_CONVERSION:
           return (rMan.getString("scaleConvert." + NO_CONVERSION_STR_)); 
@@ -524,16 +524,16 @@ public class MeasureScale implements Cloneable {
       }
     }
 
-    public static Vector<ChoiceContent> getConvertChoices(DataAccessContext dacx) {
+    public static Vector<ChoiceContent> getConvertChoices(HandlerAndManagerSource hams) {
       Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
       for (int i = 0; i < NUM_CONVERT_OPTIONS_; i++) {
-        retval.add(convertTypeForCombo(dacx, i));    
+        retval.add(convertTypeForCombo(hams, i));    
       }
       return (retval);
     }
   
-    public static ChoiceContent convertTypeForCombo(DataAccessContext dacx, int type) {
-      return (new ChoiceContent(dacx.getRMan().getString("scaleConvertOpt." + mapTypeToTag(type)), type));
+    public static ChoiceContent convertTypeForCombo(HandlerAndManagerSource hams, int type) {
+      return (new ChoiceContent(hams.getRMan().getString("scaleConvertOpt." + mapTypeToTag(type)), type));
     }
  
     public static String mapTypeToTag(int value) {
@@ -570,10 +570,10 @@ public class MeasureScale implements Cloneable {
   ////////////////////////////////////////////////////////////////////////////
     
 
-  public static Vector<ChoiceContent> getIllegalChoices(DataAccessContext dacx, boolean forNeg) {
+  public static Vector<ChoiceContent> getIllegalChoices(HandlerAndManagerSource hams, boolean forNeg) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_VAL_OPTIONS_; i++) {
-      retval.add(convertTypeForCombo(dacx, i, forNeg));    
+      retval.add(convertTypeForCombo(hams, i, forNeg));    
     }
     return (retval);
   }
@@ -602,13 +602,13 @@ public class MeasureScale implements Cloneable {
     }
   }
 
-  public static ChoiceContent convertTypeForCombo(DataAccessContext dacx, int type, boolean forNeg) {
+  public static ChoiceContent convertTypeForCombo(HandlerAndManagerSource hams, int type, boolean forNeg) {
     String rs = "illegalBoundOpt." + mapTypeToTag(type);
     String suf = "";
     if (type == INFINITY) {
       suf = (forNeg) ? "neg" : "pos";
     }
-    return (new ChoiceContent(dacx.getRMan().getString(rs + suf), type));
+    return (new ChoiceContent(hams.getRMan().getString(rs + suf), type));
   }
 
   public static String mapTypeToTag(int value) {

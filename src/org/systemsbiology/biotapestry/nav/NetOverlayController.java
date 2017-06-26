@@ -53,6 +53,7 @@ import org.systemsbiology.biotapestry.cmd.undo.NetOverlayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NetOverlayDisplayChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.SelectionChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.LayoutSource;
 import org.systemsbiology.biotapestry.db.StartupView;
 import org.systemsbiology.biotapestry.event.OverlayDisplayChangeEvent;
 import org.systemsbiology.biotapestry.genome.NetModule;
@@ -380,7 +381,7 @@ public class NetOverlayController {
     } else {
       useOvrKey = null;
     } 
-    return (new StartupView(genomeID, useOvrKey, modsForOvr, revsForOvr, null)); 
+    return (new StartupView(genomeID, useOvrKey, modsForOvr, revsForOvr, null, NavTree.KidSuperType.MODEL, null)); 
   } 
   
   /***************************************************************************
@@ -876,7 +877,7 @@ public class NetOverlayController {
     String ovrKey = dacx.getOSO().getCurrentOverlay();
     TaggedSet currMods = new TaggedSet(dacx.getOSO().getCurrentNetModules());
     TaggedSet currRevs = new TaggedSet(dacx.getOSO().getRevealedModules());
-    currRevs = normalizedRevealedModules(dacx, genomeID, ovrKey, currMods, currRevs);    
+    currRevs = normalizedRevealedModules(dacx.getLayoutSource(), genomeID, ovrKey, currMods, currRevs);    
     Iterator<NetworkOverlay> noit = owner.getNetworkOverlayIterator();
     boolean didIt = false;
     while (noit.hasNext()) {
@@ -924,10 +925,10 @@ public class NetOverlayController {
   ** is stocked if the overlay mode is opaque:
   */ 
     
-  public static TaggedSet normalizedRevealedModules(DataAccessContext dacx, String genomeID, String ovrKey, 
+  public static TaggedSet normalizedRevealedModules(LayoutSource ls, String genomeID, String ovrKey, 
                                                     TaggedSet currMods, TaggedSet revealed) {
 
-    Layout lo = dacx.getLayoutSource().getLayoutForGenomeKey(genomeID);
+    Layout lo = ls.getLayoutForGenomeKey(genomeID);
     if (ovrKey == null) {
       return (new TaggedSet());
     }

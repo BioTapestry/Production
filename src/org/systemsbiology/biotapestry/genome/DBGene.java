@@ -35,6 +35,7 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
@@ -383,10 +384,10 @@ public class DBGene extends DBNode implements Gene {
   ** Return possible evidence choices
   */
   
-  public static Vector<ChoiceContent> getEvidenceChoices(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getEvidenceChoices(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_EVIDENCE_LEVELS; i++) {
-      retval.add(evidenceTypeForCombo(dacx, i));    
+      retval.add(evidenceTypeForCombo(hams, i));    
     }
     return (retval);
   }
@@ -396,8 +397,8 @@ public class DBGene extends DBNode implements Gene {
   ** Get a combo box element
   */
   
-  public static ChoiceContent evidenceTypeForCombo(DataAccessContext dacx, int eviLev) {
-    return (new ChoiceContent(dacx.getRMan().getString("nprop." + mapToEvidenceTag(eviLev)), eviLev));
+  public static ChoiceContent evidenceTypeForCombo(HandlerAndManagerSource hams, int eviLev) {
+    return (new ChoiceContent(hams.getRMan().getString("nprop." + mapToEvidenceTag(eviLev)), eviLev));
   }
 
   /***************************************************************************

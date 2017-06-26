@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuildSupport;
@@ -47,6 +48,7 @@ import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.NetModule;
+import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
 import org.systemsbiology.biotapestry.ui.LinkRouter;
@@ -92,6 +94,7 @@ public class BuildInstructionProcessor {
   private PIData pid_;
   private PIHData pihd_;
   private PISIFData pis_;
+  private TabSource tSrc_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -104,10 +107,11 @@ public class BuildInstructionProcessor {
   ** Constructor 
   */ 
   
-  public BuildInstructionProcessor(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+  public BuildInstructionProcessor(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {
     uics_ = uics;
     dacx_ = dacx;
     uFac_ = uFac;
+    tSrc_ = tSrc;
   } 
 
   ////////////////////////////////////////////////////////////////////////////
@@ -2077,7 +2081,7 @@ D D D -> D S D
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, tSrc_, support, uFac_);
       }
     }
     return;
@@ -2115,7 +2119,7 @@ D D D -> D S D
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, tSrc_, support, uFac_);
       }
     }
     return;

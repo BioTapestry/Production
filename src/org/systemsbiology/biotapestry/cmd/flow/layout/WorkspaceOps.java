@@ -21,6 +21,7 @@ package org.systemsbiology.biotapestry.cmd.flow.layout;
 
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.geom.Point2D;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
@@ -198,7 +199,8 @@ public class WorkspaceOps extends AbstractControlFlow {
     private DialogAndInProcessCmd stepDoIt() {  
       switch (myAction_) {
         case RESIZE:
-          ResizeWorkspaceDialog rwd = new ResizeWorkspaceDialog(uics_, dacx_, Workspace.PADDING);
+          boolean emptyNoOverlay = dacx_.getDBGenome().isEmpty() && !dacx_.getFGHO().overlayExists();
+          ResizeWorkspaceDialog rwd = new ResizeWorkspaceDialog(uics_, dacx_.getWorkspaceSource().getWorkspace(), dacx_.getZoomTarget(), emptyNoOverlay, Workspace.PADDING);
           rwd.setVisible(true);
           if (!rwd.haveResult()) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));

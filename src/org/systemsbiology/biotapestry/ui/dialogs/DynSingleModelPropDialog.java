@@ -45,6 +45,7 @@ import javax.swing.tree.TreeNode;
 
 import org.systemsbiology.biotapestry.app.SliderChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.remove.RemoveNode;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
@@ -119,6 +120,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   private StaticDataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private TabSource tSrc_;
   
   private static final long serialVersionUID = 1L;
   
@@ -133,13 +135,14 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
   ** Constructor 
   */ 
   
-  public DynSingleModelPropDialog(UIComponentSource uics, StaticDataAccessContext dacx, DynamicInstanceProxy proxy,
+  public DynSingleModelPropDialog(UIComponentSource uics, TabSource tSrc, StaticDataAccessContext dacx, DynamicInstanceProxy proxy,
                                   DynamicInstanceProxy parentProx, 
                                   List proxyChildren, NavTree nt, TreeNode popupNode, UndoFactory uFac) {     
     super(uics.getTopFrame(), dacx.getRMan().getString("dsmprop.title"), true);
     uics_ = uics;
     dacx_ = dacx;
     uFac_ = uFac;
+    tSrc_ = tSrc;
     proxy_ = proxy;
     parentProx_ = parentProx;
     proxyChildren_ = proxyChildren;
@@ -613,8 +616,18 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     boolean showDiffResult = showDiffBox_.isSelected();
     String simKey = (showDiffResult) ? ((ObjChoiceContent)skeyCombo_.getSelectedItem()).val : null;
  
-    DynamicInstanceProxy.ChangeBundle pc = proxy_.changeProperties(uics_.getImageMgr(), utpctrl, nameResult, isPerTimeResult, 
-                                                                   minResult, maxResult, showDiffResult, simKey);    
+    DynamicInstanceProxy.ChangeBundle pc = proxy_.changeProperties(uics_.getImageMgr(), tSrc_, utpctrl, nameResult, isPerTimeResult, 
+                                                                   minResult, maxResult, showDiffResult, simKey); 
+    
+    if (pc.navMapChanges != null) {
+      for (int i = 0; i < pc.navMapChanges.length; i++) {
+        NavTreeChange ic = pc.navMapChanges[i];
+        if (ic != null) {
+          support.addEdit(new NavTreeChangeCmd(rcx, ic));
+        }
+      }
+    }
+ 
     for (int i = 0; i < pc.imageChanges.length; i++) {
       ImageChange ic = pc.imageChanges[i];
       if (ic != null) {

@@ -63,6 +63,7 @@ import org.systemsbiology.biotapestry.timeCourse.ExpressionEntry;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.Grid;
 import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.InstanceEngine;
@@ -326,8 +327,10 @@ public class SimpleBuilds extends AbstractControlFlow {
         TimeCourseDataMaps tcdm = rcxR.getDataMapSrc().getTimeCourseDataMaps();
         List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(TimeCourseData.SLICE_BY_TIMES, null);
         Map<String, Integer> regAndTimes = tcd.getRegionsWithMinTimes();
+        DisplayOptions dopt = rcxR.getDisplayOptsSource().getDisplayOptions();
+        double weak = dopt.getWeakExpressionLevel();
   
-        DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(uics_, regAndTimes, rcxR);
+        DevelopmentSpecDialog dsd = new DevelopmentSpecDialog(uics_, tcd, regAndTimes);
         dsd.setVisible(true);
         if (!dsd.haveResult()) {
           return (false);
@@ -367,7 +370,7 @@ public class SimpleBuilds extends AbstractControlFlow {
             Group newGroup = new Group(rcxI.getRMan(), regionKey, region);
             GenomeChange gc = gi.addGroupWithExistingLabel(newGroup); 
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
             }
             int groupCount = gi.groupCount();
@@ -386,7 +389,7 @@ public class SimpleBuilds extends AbstractControlFlow {
             Iterator<Integer> tiit = ris.times.iterator();
             while (tiit.hasNext()) {
               int time = tiit.next().intValue();
-              tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers);
+              tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers, weak);
             }
             Iterator<Node> anit = rcxI.getDBGenome().getAllNodeIterator();
             while (anit.hasNext()) {
@@ -486,6 +489,9 @@ public class SimpleBuilds extends AbstractControlFlow {
       // Figure out the regions and times for importing:
       //
   
+      DisplayOptions dopt = rcxR.getDisplayOptsSource().getDisplayOptions();
+      double weak = dopt.getWeakExpressionLevel();
+      
       TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
       List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(sliceMode, null);
       NavTree nt = rcxR.getGenomeSource().getModelHierarchy();
@@ -533,7 +539,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           Iterator<Integer> tiit = ris.times.iterator();
           while (tiit.hasNext()) {
             int time = tiit.next().intValue();
-            tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers);
+            tcd.getExpressedGenes(region, time, ExpressionEntry.Source.ZYGOTIC_SOURCE, regionMembers, weak);
           }
           Set<String> newNodeIDs = processExpressedGenes(rcxR, regionMembers, newNodeTypes, support);
           regions.put(regionKey, newNodeIDs);
@@ -730,7 +736,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           GenomeChange gc = rcxR.getDBGenome().addGeneWithExistingLabel(newGene);
           newNodeTypes.put(nodeID, new Integer(Node.GENE));
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
           }
         }
@@ -743,7 +749,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         targIDs.add(new TimeCourseDataMaps.TCMapping(name));
         TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(nodeID, targIDs, true);      
         if (tcc != null) {
-          support.addEdit(new TimeCourseChangeCmd(rcxR, tcc, false));
+          support.addEdit(new TimeCourseChangeCmd(tcc, false));
         }   
       }
       return (retval);

@@ -25,6 +25,7 @@ import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 
@@ -110,7 +111,9 @@ public class ExportPerturbCSV extends AbstractSimpleExport {
     es.fileErrMsg = "PerturbToCSV.IOError";
     es.fileErrTitle = "PerturbToCSV.IOErrorTitle";
     DataAccessContext dacx = new StaticDataAccessContext(appState_);
-    return (dacx.getExpDataSrc().getPertData().publishAsCSV(es.out));  
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();  
+    return (pd.publishAsCSV(es.out, tad));  
   }
   
 }

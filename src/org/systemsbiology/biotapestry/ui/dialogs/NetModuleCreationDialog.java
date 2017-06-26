@@ -78,7 +78,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   */ 
   
   public NetModuleCreationDialog(UIComponentSource uics, DataAccessContext dacx, Set<String> existingNames, boolean askForAttach, boolean gotNodes) {
-    super(uics, dacx, "nmodule.title", new Dimension(500, 300), 3);
+    super(uics, "nmodule.title", new Dimension(500, 300), 3);
     existingNames_ = existingNames;
     gotNodes_ = gotNodes;
   
@@ -87,7 +87,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
     //
     
     JLabel label = new JLabel(rMan_.getString("nmodule.displayType"));
-    Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(dacx_, gotNodes);
+    Vector<ChoiceContent> choices = NetModuleProperties.getDisplayTypes(uics_, gotNodes);
     typeCombo_ = new JComboBox(choices);
     typeCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
@@ -194,7 +194,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   */
   
   private void setInstructions(ChoiceContent displayType) {
-    String instruct =  NetModuleProperties.mapTypeToInstruction(dacx_, displayType.val);
+    String instruct =  NetModuleProperties.mapTypeToInstruction(uics_, displayType.val);
     addInstructionsLabel_.setText(instruct);
     addNodesBox_.setEnabled((displayType.val != NetModuleProperties.MEMBERS_ONLY) && gotNodes_);
     validate();
@@ -208,7 +208,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
   */
   
   private String uniqueNewName(Set<String> existingNames) {
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     String uniqueBase = rMan.getString("nmodule.defaultBaseName");
     int count = 1;
     while (true) {
@@ -229,7 +229,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
     nameResult_ = nameField_.getText().trim();
 
     if (nameResult_.equals("")) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nmodule.emptyName"), 
                                     rMan.getString("nmodule.emptyNameTitle"),
@@ -239,7 +239,7 @@ public class NetModuleCreationDialog extends BTStashResultsDialog {
 
 
     if (DataUtil.containsKey(existingNames_, nameResult_)) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       JOptionPane.showMessageDialog(uics_.getTopFrame(), 
                                     rMan.getString("nmodule.dupName"), 
                                     rMan.getString("nmodule.dupNameTitle"),

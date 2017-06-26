@@ -264,7 +264,7 @@ public class EditGroupProperties extends AbstractControlFlow {
 	        group.setName(rrq.nameResult);
 	        chng.grNew = new Group(group);
 	        chng.genomeKey = genomeKey;    
-	        support.addEdit(new GenomeChangeCmd(dacx_, chng));
+	        support.addEdit(new GenomeChangeCmd(chng));
 	        // Actually, all child model groups change too. FIX ME?
 	        support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE));
 	        submit = true;
@@ -464,12 +464,12 @@ public class EditGroupProperties extends AbstractControlFlow {
       
       TimeCourseChange[] tcc = tcd.changeRegionName(oldName, newName, tcdml);
       for (int i = 0; i < tcc.length; i++) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, tcc[i])); 
+        support.addEdit(new TimeCourseChangeCmd(tcc[i])); 
       } 
     
       PertDataChange[] pdc = pd.changeRegionNameForRegionRestrictions(oldName, newName);
       if (pdc.length > 0) {
-        support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+        support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
         support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       }
       
@@ -528,7 +528,7 @@ public class EditGroupProperties extends AbstractControlFlow {
         groupMap.add(new GroupUsage(oldName, null));
         TimeCourseChange tcc = tcdm.setTimeCourseGroupMap(groupID, groupMap, true);
         if (tcc != null) {
-          support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));      
+          support.addEdit(new TimeCourseChangeCmd(tcc));      
         }
       }
       return (true);
@@ -565,7 +565,7 @@ public class EditGroupProperties extends AbstractControlFlow {
               testGroup.setName(newName);
               chng.grNew = new Group(testGroup);
               chng.genomeKey = tgi.getID();   
-              support.addEdit(new GenomeChangeCmd(dacx_, chng));
+              support.addEdit(new GenomeChangeCmd(chng));
               // Actually, all child model groups change too. FIX ME?
               support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), chng.genomeKey, ModelChangeEvent.UNSPECIFIED_CHANGE));
             }

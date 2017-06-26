@@ -28,9 +28,11 @@ import java.util.Vector;
 import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
+import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.UserTreePath;
 import org.systemsbiology.biotapestry.nav.UserTreePathController;
 import org.systemsbiology.biotapestry.nav.UserTreePathManager;
@@ -59,6 +61,7 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   private String pathKey_;
   private JLabel addInstructionsLabel_;
   private String lastPathKey_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -74,8 +77,9 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   */ 
   
   public UserTreePathStopCreationDialog(UIComponentSource uics, DataAccessContext dacx) {     
-    super(uics, dacx, "pathStopCreate.title", new Dimension(600, 300), 3);
-    lastPathKey_ = uics_.getPathController().getLastPath();        
+    super(uics, "pathStopCreate.title", new Dimension(600, 300), 3);
+    lastPathKey_ = uics_.getPathController().getLastPath();
+    dacx_ = dacx;
    
     //
     // Build the path selection
@@ -108,9 +112,9 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
     //
     
     label = new JLabel(rMan_.getString("pathStopCreate.insertStop"));
-    Vector<ObjChoiceContent> modeChoices = UserTreePathController.insertionOptions(dacx_);
+    Vector<ObjChoiceContent> modeChoices = UserTreePathController.insertionOptions(uics_);
     modeCombo_ = new JComboBox<ObjChoiceContent>(modeChoices);
-    modeCombo_.setSelectedItem(UserTreePathController.choiceForOption(dacx_, UserTreePathController.INSERT_END));
+    modeCombo_.setSelectedItem(UserTreePathController.choiceForOption(uics_, UserTreePathController.INSERT_END));
     modeCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
@@ -182,7 +186,7 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
       int numStops = path.getStopCount();
       Integer lsObj = uics_.getPathController().getLastStop(ocPath.val);
       int newIndexVal = (lsObj == null) ? numStops : lsObj.intValue() + 2; 
-      String format = dacx_.getRMan().getString("pathStopCreate.insertStopAdvisory");
+      String format = uics_.getRMan().getString("pathStopCreate.insertStopAdvisory");
       instruct = MessageFormat.format(format, new Object[] {new Integer(newIndexVal), new Integer(numStops)});
     } else {
       instruct = "";
@@ -201,14 +205,20 @@ public class UserTreePathStopCreationDialog extends BTStashResultsDialog {
   protected boolean stashForOK() { 
     ObjChoiceContent occ = (ObjChoiceContent)pathCombo_.getSelectedItem();
     UserTreePathManager mgr = uics_.getPathMgr();
-    UserTreePath path = mgr.getPath(occ.val);
-    String genomeID = dacx_.getCurrentGenomeID();
-    String ovrKey = dacx_.getOSO().getCurrentOverlay();
-    TaggedSet mods = dacx_.getOSO().getCurrentNetModules();
-    TaggedSet revs = dacx_.getOSO().getRevealedModules();     
-    UserTreePathStop newStop = new UserTreePathStop(genomeID, ovrKey, mods, revs);
+    UserTreePath path = mgr.getPath(occ.val); 
+    TreePath selPath = uics_.getTree().getTreeSelectionPath();
+    NavTree navTree = dacx_.getGenomeSource().getModelHierarchy(); 
+    String grpNode = navTree.getGroupNodeID(selPath);
+    NavTree.KidSuperType type = (grpNode == null) ? NavTree.KidSuperType.MODEL : NavTree.KidSuperType.GROUP;
+    
+    String genomeID = (type == NavTree.KidSuperType.MODEL) ? dacx_.getCurrentGenomeID() : null;
+    String ovrKey = (type == NavTree.KidSuperType.MODEL) ? dacx_.getOSO().getCurrentOverlay() : null;
+    TaggedSet mods = (type == NavTree.KidSuperType.MODEL) ? dacx_.getOSO().getCurrentNetModules() : null;
+    TaggedSet revs = (type == NavTree.KidSuperType.MODEL) ? dacx_.getOSO().getRevealedModules() : null; 
+    
+    UserTreePathStop newStop = new UserTreePathStop(genomeID, ovrKey, mods, revs, type, grpNode);
     if (path.containsStop(newStop)) {
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       int cont = JOptionPane.showConfirmDialog(uics_.getTopFrame(), 
                                                rMan.getString("pathStopCreate.insertDuplicateStop"), 
                                                rMan.getString("pathStopCreate.insertDuplicateStopTitle"),

@@ -1535,7 +1535,7 @@ public class LayoutLinkSupport {
         if (pres.launch != link.getLaunchPad()) {
           GenomeChange gc = genome.changeLinkageSource(link, pres.launch);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
           }
         }
@@ -1543,7 +1543,7 @@ public class LayoutLinkSupport {
         if (pres.landing != link.getLandingPad()) {      
           GenomeChange gc = genome.changeLinkageTarget(link, pres.landing);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
           }
         }

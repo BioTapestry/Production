@@ -24,6 +24,7 @@ import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
+import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
 
 /***************************************************************************
 ** 
@@ -100,8 +101,8 @@ public class GroupPanelCommands  {
   ** Main entry point
   */
    
-  public void processMouseClick(String modelID, String proxyID, Integer time, StaticDataAccessContext dacx) {
-    currentClickHandler_.handleMouseClick(modelID, proxyID, time, dacx);
+  public void processMouseClick(String modelID, String proxyID, Integer time, String regionID, StaticDataAccessContext dacx) {
+    currentClickHandler_.handleMouseClick(modelID, proxyID, time, regionID, dacx);
     return;
   }
   
@@ -124,11 +125,21 @@ public class GroupPanelCommands  {
     // to an already running flow.
     //
   
-    public void handleMouseClick(String modelID, String proxyID, Integer time, StaticDataAccessContext dacx) {
+    public void handleMouseClick(String modelID, String proxyID, Integer time, String regionID, StaticDataAccessContext dacx) {
       HarnessBuilder.PreHarness ph = hb_.buildHarness(FlowMeister.OtherFlowKey.GROUP_NODE_CLICK);
       SetCurrentModel.StepState agis = (SetCurrentModel.StepState)ph.getCmdState();
-      String genomeID = (proxyID == null) ? modelID : dacx.getGenomeSource().getDynamicProxy(proxyID).getKeyForTime(time.intValue(), true);      
-      agis.setPreload(genomeID, null, null);
+      String genomeID;
+      if (proxyID != null) {
+        DynamicInstanceProxy dip = dacx.getGenomeSource().getDynamicProxy(proxyID);
+        if (dip.isSingle()) {
+          genomeID = dip.getFirstProxiedKey();
+        } else {
+          genomeID = dip.getKeyForTime(time.intValue(), true);
+        }
+      } else {
+        genomeID = modelID; 
+      }
+      agis.setPreloadForGroup(genomeID, regionID);
       hb_.runHarness(ph);
       return;
     }

@@ -34,7 +34,7 @@
     <simulatorPlugIn type="Simulator" class="org.systemsbiology.biotapestry.plugin.examples.SimulatorStubPlugIn" order="1" />
   </simulatorPlugIns>
   <modelBuilderPlugIns>
-    <!-- plug-ins for simulation engines -->  
-    <modelBuilderPlugIn type="ModelBuilder" class="org.systemsbiology.biotapestry.worksheet.ModelBuilderPlugInImpl" order="1" />
+    <!-- plug-ins for model builder engines -->  
+    <!-- <modelBuilderPlugIn type="ModelBuilder" class="org.systemsbiology.biotapestry.worksheet.ModelBuilderPlugInImpl" order="1" /> -->
   </modelBuilderPlugIns>
 </BioTapestryPlugIns>

@@ -46,7 +46,7 @@ import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.FlowMeister;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.settings.DoSettings;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.ui.NamedColor;
 
 /****************************************************************************
@@ -67,7 +67,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   
   private JComboBox colorCombo_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
+  private ColorResolver cRes_;
   private HarnessBuilder hBld_;
   private HashMap<String, String> changedColors_;
   private ColorListRenderer renderer_;
@@ -90,18 +90,18 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   */ 
   
   public ColorSelectionWidget(UIComponentSource uics,
-                              DataAccessContext dacx,
+                              ColorResolver cRes,
                               HarnessBuilder hBld,
                               List<ColorDeletionListener> colorDeletionListeners, 
                               boolean showLabel, String altTag, 
                               boolean showButton, boolean addVarious) {     
    
     uics_ = uics;
-    dacx_= dacx;
+    cRes_ = cRes;
     hBld_ = hBld;
     setLayout(new GridBagLayout());    
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     addVarious_ = addVarious;
     if (addVarious) {
       variousChoice_ = new NamedColor(VARIOUS_TAG, new Color(225, 225, 225), rMan.getString("colorSelector.unchanged"));
@@ -207,7 +207,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
     if (addVarious_ && colorKey.equals(VARIOUS_TAG)) {
       nc= variousChoice_;
     } else {
-      nc = dacx_.getColorResolver().getNamedColor(colorKey);
+      nc = cRes_.getNamedColor(colorKey);
     }
     colorCombo_.setSelectedItem(new ObjChoiceContent(nc.name, nc.key));
     return;
@@ -265,7 +265,7 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
     } else {
       String newColor = changedColors_.get(selected.val); 
       if (newColor != null) {
-        NamedColor nc = dacx_.getColorResolver().getNamedColor(newColor);
+        NamedColor nc = cRes_.getNamedColor(newColor);
         colorCombo_.setSelectedItem(new ObjChoiceContent(nc.name, nc.key));
       }
     }
@@ -279,10 +279,10 @@ public class ColorSelectionWidget extends JPanel implements ColorDeletionListene
   */
   
   private void stockColorLists(Vector<ObjChoiceContent> comboChoices, List<NamedColor> renderList) {
-    Iterator<String> ckit = dacx_.getColorResolver().getColorKeys();
+    Iterator<String> ckit = cRes_.getColorKeys();
     while (ckit.hasNext()) {
       String colorKey = ckit.next();
-      NamedColor nc = dacx_.getColorResolver().getNamedColor(colorKey);
+      NamedColor nc = cRes_.getNamedColor(colorKey);
       renderList.add(new NamedColor(nc));
     }
     

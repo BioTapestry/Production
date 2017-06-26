@@ -27,6 +27,7 @@ import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Node;
@@ -131,9 +132,9 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
     nodeID = GenomeItemInstance.getBaseID(nodeID);
        
     ResourceManager rMan = dacx.getRMan();
-    Genome genome = dacx.getGenomeSource().getRootDBGenome();
-    Node node = genome.getNode(nodeID);
-    String title = node.getDisplayString(genome, false);    
+    DBGenome dbGenome = dacx.getGenomeSource().getRootDBGenome();
+    Node node = dbGenome.getNode(nodeID);
+    String title = node.getDisplayString(dbGenome, false);    
     String useName = ((title == null) || (title.trim().equals(""))) ? "\" \"" : title;
     String format = rMan.getString("dataWindow.copiesPerEmbryoFor");
     buf.append("<center><h1>"); 
@@ -146,7 +147,7 @@ public class CopiesPerEmbryoDisplayPlugIn implements InternalNodeDataDisplayPlug
       Iterator<String> dkit = dataKeys.iterator();
       while (dkit.hasNext()) {
         String key = dkit.next();
-        String tab = cped.getCountTable(key, dacx);
+        String tab = cped.getCountTable(key, dacx.getExpDataSrc().getTimeAxisDefinition());
         if ((tab != null) && (!tab.trim().equals(""))) {
           gotData = true;
           buf.append("<p>");

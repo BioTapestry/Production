@@ -69,8 +69,8 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
 
   private EditableTable est_;
   private TimeAxisDefinition workingCopy_;
-  private DataAccessContext dacx_;
   private UIComponentSource uics_;
+  private DataAccessContext dacx_;
   private UndoFactory uFac_;
   private JComboBox unitCombo_;
   private JTextField customUnitsField_;
@@ -126,11 +126,11 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     //
     
     boolean canChange = true;
+    UiUtil.fixMePrintout("Gotta check all pert data sets");
     PerturbationData pd = dacx.getExpDataSrc().getPertData();    
-    DisplayOptions dopt = dacx.getDisplayOptsSource().getDisplayOptions();
     TimeCourseData tcdat = dacx.getExpDataSrc().getTimeCourseData();
     TemporalInputRangeData tirdat = dacx.getTemporalRangeSrc().getTemporalInputRangeData(); 
-    if (pd.haveData() || dopt.hasColumns() || dopt.hasDefaultTimeSpan() ||
+    if (pd.haveData() || pd.getPertDisplayOptions().hasColumns() || pd.getPertDisplayOptions().hasDefaultTimeSpan() ||
         ((tcdat != null) && tcdat.hasGeneTemplate()) || tirdat.haveData() || dacx.getGenomeSource().modelsHaveTimeBounds()) {
       canChange = false;
     }    
@@ -177,7 +177,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     }
     
     JLabel unitsLabel = new JLabel(rMan.getString("timeAxisDialog.units"));
-    unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(dacx_));
+    unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(uics_.getRMan()));
     unitCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
@@ -228,7 +228,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     // Build the stages table.
     //
     
-    est_ = new EditableTable(uics_, dacx_, new TimeAxisSetupTableModel(uics_, dacx_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new TimeAxisSetupTableModel(uics_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
@@ -238,7 +238,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     UiUtil.gbcSet(gbc, 0, 4, 3, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 12, 3, false, false);
     
     displayProperties();
@@ -340,8 +340,8 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     private final static int ABBREV_  = 1; 
     private final static int NUM_COL_ = 2;   
     
-    TimeAxisSetupTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    TimeAxisSetupTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"timeAxisDialog.stage",
                                 "timeAxisDialog.abbrev"};
       colClasses_ = new Class[] {String.class,
@@ -382,7 +382,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
       // abbreviations, which must be short (<= 3 chars)
       //
       
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       ArrayList<TimeAxisDefinition.NamedStage> seenStages = new ArrayList<TimeAxisDefinition.NamedStage>();
       ArrayList<String> seenNames = new ArrayList<String>();
       ArrayList<String> seenAbbrevs = new ArrayList<String>();      
@@ -463,7 +463,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   private void displayProperties() {
 
     int units = workingCopy_.getUnits();
-    unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(dacx_, workingCopy_.getUnits()));
+    unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(uics_.getRMan(), workingCopy_.getUnits()));
     
     if (workingCopy_.haveCustomUnits()) {
       String customUnits = workingCopy_.getUserUnitName();
@@ -496,7 +496,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     if (!canChange_) {
       return (true);
     }
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     
     //
     // Undo/Redo support
@@ -543,7 +543,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
     // Submit the changes:
     //
      
-    TimeAxisDefinition tad = new TimeAxisDefinition(dacx_);
+    TimeAxisDefinition tad = new TimeAxisDefinition(uics_.getRMan());
     tad.setDefinition(units, customUnits, customUnitAbbrev, isSuffix, stageResults);
     DatabaseChange dc = dacx_.getExpDataSrc().setTimeAxisDefinition(tad);
     if (dc != null) {

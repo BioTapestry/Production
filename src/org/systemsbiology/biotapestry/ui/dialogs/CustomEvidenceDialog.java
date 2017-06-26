@@ -29,10 +29,9 @@ import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.ui.PerLinkDrawStyle;
@@ -56,6 +55,7 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
   private EditableTable est_;
   private SortedMap<Integer, CustomEvidenceDrawStyle> returnMap_;
   private HarnessBuilder hBld_;
+  private ColorResolver cRes_;
   
   private static final long serialVersionUID = 1L;
  
@@ -70,9 +70,10 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public CustomEvidenceDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, SortedMap<Integer, CustomEvidenceDrawStyle> evidenceMap) {
-    super(uics, dacx, "custEvi.title", new Dimension(800, 400), 1);
+  public CustomEvidenceDialog(UIComponentSource uics, ColorResolver cRes, HarnessBuilder hBld, SortedMap<Integer, CustomEvidenceDrawStyle> evidenceMap) {
+    super(uics, "custEvi.title", new Dimension(800, 400), 1);
     hBld_ = hBld;
+    cRes_ = cRes;
     returnMap_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
     Iterator<Integer> ceit = evidenceMap.keySet().iterator();
     while (ceit.hasNext()) {
@@ -81,7 +82,7 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
       returnMap_.put(level, ceds.clone()); 
     }   
  
-    est_ = new EditableTable(uics_, dacx_, new EvidenceCustomDrawTableModel(uics_, dacx_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new EvidenceCustomDrawTableModel(uics_), uics_.getTopFrame());
     est_.setEditButtonHandler(new ButtonHand());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
@@ -160,8 +161,8 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
       }  
     }
  
-    EvidenceCustomDrawTableModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    EvidenceCustomDrawTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"cetable.level",
                                 "cetable.diamond",
                                 "cetable.drawDesc"};
@@ -210,7 +211,7 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
       
       CustomEvidenceDrawStyle ceds = returnMap_.get(tr.level);
       PerLinkDrawStyle oldPlds = (ceds == null) ? null : ceds.getDrawStyle();
-      LinkSpecialPropsDialog lspd = new LinkSpecialPropsDialog(uics_, dacx_, hBld_, oldPlds);
+      LinkSpecialPropsDialog lspd = new LinkSpecialPropsDialog(uics_, cRes_, hBld_, oldPlds);
       lspd.setVisible(true);      
       if (lspd.haveResult()) {        
         PerLinkDrawStyle plds = lspd.getProps();
@@ -220,12 +221,12 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
           returnMap_.put(tr.level, ceds);
         }
         ceds.setDrawStyle(plds);
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         String noSpec = rMan.getString("lptable.noSpecLinkSty");
         if (plds == null) {
           tr.desc = noSpec;        
         } else {
-          tr.desc = plds.getDisplayString(dacx_.getRMan(), dacx_.getColorResolver()); 
+          tr.desc = plds.getDisplayString(uics_.getRMan(), cRes_); 
         }
         tr.replaceCols(sel[0]);
         ecdtm.fireTableDataChanged();
@@ -261,7 +262,7 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
   private List<EvidenceCustomDrawTableModel.TableRow> initTableRows() {
     ArrayList<EvidenceCustomDrawTableModel.TableRow> retval = new ArrayList<EvidenceCustomDrawTableModel.TableRow>();
     EvidenceCustomDrawTableModel ecdtm = (EvidenceCustomDrawTableModel)est_.getModel();  
-    String noSpec = dacx_.getRMan().getString("lptable.noSpecLinkSty");
+    String noSpec = uics_.getRMan().getString("lptable.noSpecLinkSty");
          
     for (int i = Linkage.LEVEL_1; i <= Linkage.MAX_LEVEL; i++) {
       EvidenceCustomDrawTableModel.TableRow tr = ecdtm.new TableRow();
@@ -276,7 +277,7 @@ public class CustomEvidenceDialog extends BTStashResultsDialog {
         if (plds == null) {
           tr.desc = noSpec;        
         } else {
-          tr.desc = plds.getDisplayString(dacx_.getRMan(), dacx_.getColorResolver());
+          tr.desc = plds.getDisplayString(uics_.getRMan(), cRes_);
         }          
       }
       retval.add(tr);

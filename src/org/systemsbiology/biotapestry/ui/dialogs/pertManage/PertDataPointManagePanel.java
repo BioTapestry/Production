@@ -42,6 +42,7 @@ import javax.swing.border.EtchedBorder;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
@@ -50,6 +51,7 @@ import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
@@ -95,6 +97,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
 
   private ReadOnlyTable rtd_;
   private PerturbationData pd_;
+  private TimeAxisDefinition tad_;
   private PertDataPointEditPanel pdpep_;
   private PertDataAnnotAddOrEditPanel pdaep_;
   private PertRegRestrictAddOrEditPanel prraep_;
@@ -111,6 +114,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   private boolean ignoreScaleChange_;
   private JLabel dispLab_;
   private UndoFactory uFac_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -126,18 +130,20 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   */ 
   
   public PertDataPointManagePanel(UIComponentSource uics, DataAccessContext dacx, PerturbationsManagementWindow pmw,
-                                  PerturbationData pd, 
+                                  PerturbationData pd, TimeCourseData tcd, TimeAxisDefinition tad,
                                   PendingEditTracker pet, int legacyModes, UndoFactory uFac) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx.getFontManager(), tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    tad_ = tad;
     uFac_ = uFac;
-    pmh_ = new PertManageHelper(uics, dacx, pmw, pd, rMan_, gbc_, pet_);
+    dacx_ = dacx;
+    pmh_ = new PertManageHelper(uics, pmw, pd, tcd, rMan_, gbc_, pet_);
   
     //
     // Build the filter panel:
     //
     
-    filtPanel_ = new PertFilterPanel(uics, dacx, pd, this);
+    filtPanel_ = new PertFilterPanel(uics, pd_, tad_, this);
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 1, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.CEN, 1.0, 0.0);    
     topPanel_.add(filtPanel_, gbc_);
     
@@ -181,9 +187,9 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     // Build the table:
     //  
     
-    rtd_ = new ReadOnlyTable(uics_, dacx_);
+    rtd_ = new ReadOnlyTable(uics_);
     rtd_.rowElements = new ArrayList();
-    rtd_.lateBinding(new PertDataTableModel(uics_, dacx_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
+    rtd_.lateBinding(new PertDataTableModel(uics_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
     rtd_.setButtonHandler(new ButtonHand(DATA_KEY_));   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
@@ -220,13 +226,13 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     topPanel_.add(display, gbc_);
     topPanel_.countOnlyMe(display);
        
-    pdpep_ = new PertDataPointEditPanel(uics_, dacx_, parent_, pd, this, DATA_KEY_, legacyModes);
+    pdpep_ = new PertDataPointEditPanel(uics_, parent_, pd, tcd, tad_, this, DATA_KEY_, legacyModes);
     addEditPanel(pdpep_, DATA_KEY_);
     
-    pdaep_ = new PertDataAnnotAddOrEditPanel(uics_, dacx_, parent_, pd, this, DATA_ANNOT_KEY);
+    pdaep_ = new PertDataAnnotAddOrEditPanel(uics_, parent_, pd, tcd, this, DATA_ANNOT_KEY);
     addEditPanel(pdaep_, DATA_ANNOT_KEY);
     
-    prraep_ = new PertRegRestrictAddOrEditPanel(uics_, dacx_, parent_, pd, this, REG_RESTRICT_KEY, legacyModes);
+    prraep_ = new PertRegRestrictAddOrEditPanel(uics_,  parent_, pd, tcd, this, REG_RESTRICT_KEY, legacyModes);
     addEditPanel(prraep_, REG_RESTRICT_KEY);
             
     stack_ = new String[2];
@@ -234,7 +240,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
  
     finishConstruction();
     
-    filtPanel_.stockFilterPanel();
+    filtPanel_.stockFilterPanel(tad_, uics_.getRMan());
   }
  
   ////////////////////////////////////////////////////////////////////////////
@@ -280,7 +286,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     }
     
     currentScaleState_ = generateScalingState(scaleTypes);     
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     TrueObjChoiceContent nativeTocc = new TrueObjChoiceContent(rMan.getString("pertManage.nativeScaling"), null);
     scaleTypes.add(0, nativeTocc);
     TrueObjChoiceContent saveScaleComboTocc = (TrueObjChoiceContent)displayScaleCombo_.getSelectedItem();
@@ -363,7 +369,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
         resultKey = pdp.getID();
       }
       PertDataChange pdc = pd_.setDataPoint(pdp);
-      support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+      support.addEdit(new PertDataChangeCmd(pdc));
       boolean allEmpty = true;
       int numV = (userV == null) ? 0 : userV.size();
       for (int i = 0; i < numV; i++) {
@@ -375,17 +381,17 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
       userV = (allEmpty) ? null : new ArrayList(userV);
       pdc = pd_.setUserFieldValues(resultKey, userV);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
       
       pdc = pd_.setFootnotesForDataPoint(resultKey, annotResult);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
       
       pdc = pd_.setRegionRestrictionForDataPoint(resultKey, rrResult);
       if (pdc != null) {
-        support.addEdit(new PertDataChangeCmd(dacx_, pdc));
+        support.addEdit(new PertDataChangeCmd(pdc));
       }
       
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
@@ -447,7 +453,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   */ 
   
   public void haveAChange(boolean mustDie) {
-    filtPanel_.stockFilterPanel();
+    filtPanel_.stockFilterPanel(tad_, uics_.getRMan());
     PertFilterExpression pfe = filtPanel_.buildPertFilterExpr();
     installNewFilter(pfe);
     pdaep_.hotUpdate(mustDie);
@@ -512,7 +518,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     String useKey = ((PertDataTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
     currKey_ = null;
     dupKey_ = useKey;
-    pdpep_.setDataPointForDup(dupKey_);
+    pdpep_.setDataPointForDup(dupKey_, tad_);
     pdpep_.startEditing();
     return;          
   } 
@@ -548,9 +554,9 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     int numPert = pertData.size();
     for (int i = 0; i < numPert; i++) {
       PertDataPoint pdp = (PertDataPoint)pertData.get(i);
-      rtd_.rowElements.add(new PdEntry(pdp, pd_, yesStr, noStr));
+      rtd_.rowElements.add(new PdEntry(pdp, pd_, tad_, yesStr, noStr));
     }
-    filtPanel_.updateFilterRenderers(pertData);
+    filtPanel_.updateFilterRenderers(pertData, tad_, uics_.getRMan());
     
      //
     // Cannot specify the selection (except no selection or row 0) until the 
@@ -573,7 +579,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   protected void doAnAdd(String key) {
     currKey_ = null;
     rtd_.clearSelections(false);
-    pdpep_.setDataPoint(currKey_);
+    pdpep_.setDataPoint(currKey_, tad_);
     pdpep_.startEditing();
     return;
   }
@@ -585,7 +591,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   
   protected void doAnEdit(String key) {
     currKey_ = ((PertDataTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
-    pdpep_.setDataPoint(currKey_);
+    pdpep_.setDataPoint(currKey_, tad_);
     pdpep_.startEditing();
     return;          
   }
@@ -599,7 +605,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     String delKey = ((PertDataTableModel)rtd_.getModel()).getSelectedKey(rtd_.selectedRows);
     UndoSupport support = uFac_.provideUndoSupport("undo.deletePertDataPoint", dacx_);
     PertDataChange pdc = pd_.deleteDataPoint(delKey);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -625,7 +631,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     Vector scaleTypes = md.getConvertibleScaleOptions();
     currentScaleState_ = generateScalingState(scaleTypes);
     ignoreScaleChange_ = true;
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     TrueObjChoiceContent nativeTocc = new TrueObjChoiceContent(rMan.getString("pertManage.nativeScaling"), null);
     scaleTypes.add(0, nativeTocc);
     UiUtil.replaceComboItems(displayScaleCombo_, scaleTypes);
@@ -681,8 +687,8 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     
     private ArrayList hidden_;
     
-    PertDataTableModel(UIComponentSource uics, DataAccessContext dacx, List prsList) {
-      super(uics, dacx, NUM_COL_);
+    PertDataTableModel(UIComponentSource uics, List prsList) {
+      super(uics, NUM_COL_);
       hidden_ = new ArrayList();
       colNames_ = new String[] {"pertData.pert",
                                 "pertData.target",
@@ -699,7 +705,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
                                 "pertData.regRes"};
       comparators_ = new Comparator[] {String.CASE_INSENSITIVE_ORDER,
                                        String.CASE_INSENSITIVE_ORDER,
-                                       new PertManageHelper.TimeComparator(dacx_),
+                                       new PertManageHelper.TimeComparator(tad_),
                                        new PertManageHelper.DoubleStrComparator(),
                                        String.CASE_INSENSITIVE_ORDER,
                                        String.CASE_INSENSITIVE_ORDER,
@@ -778,13 +784,13 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     String regRes;
     String key;
     
-    PdEntry(PertDataPoint pdp, PerturbationData pd, String yesStr, String noStr) {
+    PdEntry(PertDataPoint pdp, PerturbationData pd, TimeAxisDefinition tad, String yesStr, String noStr) {
       key = pdp.getID();
       invest = pdp.getInvestigatorDisplayString(pd);
       if (invest == null) invest = "";
       perts = pdp.getPertDisplayString(pd, PertSources.BRACKET_FOOTS);
       if (perts == null) perts = "";
-      time = pdp.getTimeDisplayString(pd, false, false);
+      time = pdp.getTimeDisplayString(pd, tad, false, false);
       if (time == null) time = "";
       target = pd.getAnnotatedTargetDisplay(pdp.getTargetKey());
       if (target == null) target = "";   

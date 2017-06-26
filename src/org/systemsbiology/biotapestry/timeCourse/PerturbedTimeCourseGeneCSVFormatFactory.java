@@ -92,9 +92,11 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  private DataAccessContext dacx_;
   private UndoFactory uFac_;
-  
+  private TimeCourseData tcd_;
+  private TimeAxisDefinition tad_;
+  private PerturbationData pd_;
+       
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -106,9 +108,11 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
   ** Constructor
   */
 
-  public PerturbedTimeCourseGeneCSVFormatFactory(DataAccessContext dacx, UndoFactory uFac) {
+  public PerturbedTimeCourseGeneCSVFormatFactory(TimeCourseData tcd, TimeAxisDefinition tad, PerturbationData pd, UndoFactory uFac) {
     uFac_ = uFac;
-    dacx_ = dacx;
+    tcd_ = tcd;
+    tad_ = tad;
+    pd_ = pd;     
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -122,12 +126,12 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
   ** Build the whole thing from a csv file.
   */
 
-  public boolean readPerturbedExpressionCSV(File infile) throws IOException, InvalidInputException {
+  public boolean readPerturbedExpressionCSV(File infile, DataAccessContext dacx) throws IOException, InvalidInputException {
     
     HashMap<String, Map<PertSources, GeneEntry>> pertGenes = new HashMap<String, Map<PertSources, GeneEntry>>();
     HashMap<String, Map<PertSources, List<PertEntry>>> pertGeneEntries = new HashMap<String, Map<PertSources, List<PertEntry>>>();
     readCSV(infile, pertGenes, pertGeneEntries);
-    return (applyProperties(pertGenes, pertGeneEntries));
+    return (applyProperties(pertGenes, pertGeneEntries, dacx));
   }
   
   ////////////////////////////////////////////////////////////////////////////
@@ -175,7 +179,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         int tokenCategory = getCategory(tokens.get(0));
         switch (tokenCategory) {
           case GENE_AND_PERT_:
-            GeneEntry ge = new GeneEntry(dacx_, tokens, lineNumber);
+            GeneEntry ge = new GeneEntry(pd_, tokens, lineNumber);
             Map<PertSources, GeneEntry> forGene = pertGenes.get(DataUtil.normKey(ge.targetGene));
             if (forGene == null) {
               forGene = new HashMap<PertSources, GeneEntry>();
@@ -187,7 +191,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
             forGene.put(ge.pss, ge);
             break;
           case PERT_VALUE_:
-            PertEntry pe = new PertEntry(dacx_, tokens, lineNumber);
+            PertEntry pe = new PertEntry(pd_, tad_, tokens, lineNumber);
             Map<PertSources, List<PertEntry>> forGene2 = pertGeneEntries.get(DataUtil.normKey(pe.targetGene));
             if (forGene2 == null) {
               forGene2 = new HashMap<PertSources, List<PertEntry>>();
@@ -238,10 +242,9 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
   */
   
   private boolean applyProperties(Map<String, Map<PertSources, GeneEntry>> pertGenes, 
-                                  Map<String, Map<PertSources, List<PertEntry>>> pertGeneEntries) throws InvalidInputException {
+                                  Map<String, Map<PertSources, List<PertEntry>>> pertGeneEntries, DataAccessContext dacx) throws InvalidInputException {
 
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
-       
+
     //
     // Get the genes built:
     //
@@ -252,7 +255,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
       String targName = pgit.next();   
       Map<PertSources, GeneEntry> forGene = pertGenes.get(targName);
       Iterator<PertSources> fgit = forGene.keySet().iterator();
-      TimeCourseGene tcg = tcd.getTimeCourseData(targName);
+      TimeCourseGene tcg = tcd_.getTimeCourseData(targName);
       if (tcg == null) {
         throw new InvalidInputException(NON_EXISTENT_GENE, forGene.get(fgit.next()).lineNumber);
       }
@@ -261,7 +264,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         GeneEntry ge = forGene.get(pss);
         PerturbedTimeCourseGene ptcg = tcg.getPerturbedState(ge.pss);
         if (ptcg == null) {
-          ptcg = new PerturbedTimeCourseGene(dacx_, ge.pss.clone(), tcd.getGeneTemplate());
+          ptcg = new PerturbedTimeCourseGene(pd_, ge.pss.clone(), tcd_.getGeneTemplate());
         } else {
           ptcg = ptcg.clone();
         }
@@ -270,7 +273,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         ptcg.setConfidence(ge.baseConfidence);
         boolean usingDefCtrl = ptcg.usingDistinctControlExpr();
         if (!usingDefCtrl && ge.defineControl) {
-          ptcg.setForDistinctControlExpr(tcd.getGeneTemplate());
+          ptcg.setForDistinctControlExpr(tcd_.getGeneTemplate());
         } else if (usingDefCtrl && !ge.defineControl) {
           ptcg.dropDistinctControlExpr();
         }      
@@ -300,7 +303,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         builtGenes.put(targName, builtForGene);
       }      
       Iterator<PertSources> fgit = forGene.keySet().iterator();
-      TimeCourseGene tcg = tcd.getTimeCourseData(targName);
+      TimeCourseGene tcg = tcd_.getTimeCourseData(targName);
       if (tcg == null) {
         PertSources pss = fgit.next();
         List<PertEntry> forPert = forGene.get(pss);      
@@ -313,7 +316,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         if (ptcg == null) {
           ptcg = tcg.getPerturbedState(pss);
           if (ptcg == null) {
-            ptcg = new PerturbedTimeCourseGene(dacx_, pss.clone(), tcd.getGeneTemplate());
+            ptcg = new PerturbedTimeCourseGene(pd_, pss.clone(), tcd_.getGeneTemplate());
           } else {
             ptcg = ptcg.clone();
           }
@@ -338,14 +341,14 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
       } 
     }
        
-    UndoSupport support = uFac_.provideUndoSupport("undo.pertExprFromCSV", dacx_);
+    UndoSupport support = uFac_.provideUndoSupport("undo.pertExprFromCSV", dacx);
     Iterator<String> fgit = builtGenes.keySet().iterator();
     boolean doit = false;
     while (fgit.hasNext()) {
       String targName = fgit.next();
-      TimeCourseGene tcg = tcd.getTimeCourseData(targName);
+      TimeCourseGene tcg = tcd_.getTimeCourseData(targName);
       Map<PertSources, PerturbedTimeCourseGene> builtForGene = builtGenes.get(targName);
-      TimeCourseChange tcc = tcd.startGeneUndoTransaction(tcg.getName());
+      TimeCourseChange tcc = tcd_.startGeneUndoTransaction(tcg.getName());
       Iterator<PertSources> bfgit = builtForGene.keySet().iterator();
       boolean doForMe = false;
       while (bfgit.hasNext()) {
@@ -355,8 +358,8 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
         doForMe = true;
       }
       if (doForMe) {
-        tcc = tcd.finishGeneUndoTransaction(tcg.getName(), tcc);
-        support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+        tcc = tcd_.finishGeneUndoTransaction(tcg.getName(), tcc);
+        support.addEdit(new TimeCourseChangeCmd(tcc));
         doit = true;
       }
     }
@@ -486,9 +489,8 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
   ** single perturbations at the moment
   */
 
-  private static List<String> experimentParse(DataAccessContext dacx, String value, int lineNumber) throws InvalidInputException {
+  private static List<String> experimentParse(PerturbationData pd, String value, int lineNumber) throws InvalidInputException {
 
-    PerturbationData pd = dacx.getExpDataSrc().getPertData();
     CSVData.ExperimentTokens exptok = new CSVData.ExperimentTokens(); 
     PertDictionary pDict = pd.getPertDictionary();   
     Iterator<String> pdkit = pDict.getKeys();
@@ -532,7 +534,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
     boolean defineControl;
     int lineNumber;
  
-    public GeneEntry(DataAccessContext dacx, List<String> tokens, int lineNumber) throws InvalidInputException {
+    public GeneEntry(PerturbationData pd, List<String> tokens, int lineNumber) throws InvalidInputException {
       this.lineNumber = lineNumber;
       int tokSize = tokens.size();
       if (tokSize < 7) {
@@ -540,7 +542,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
       }
       // token 0 is the command
       targetGene = tokens.get(1);
-      pss = new PertSources(experimentParse(dacx, tokens.get(2), lineNumber));
+      pss = new PertSources(experimentParse(pd, tokens.get(2), lineNumber));
       try {
         baseConfidence = TimeCourseGene.mapToConfidence(tokens.get(3).trim());
       } catch (IllegalArgumentException iaex) {
@@ -570,7 +572,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
     Integer confidence;
     int lineNumber;
  
-    public PertEntry(DataAccessContext dacx, List<String> tokens, int lineNumber) throws InvalidInputException {
+    public PertEntry(PerturbationData pd, TimeAxisDefinition tad, List<String> tokens, int lineNumber) throws InvalidInputException {
       this.lineNumber = lineNumber;
       int tokSize = tokens.size();    
       if (tokSize < 6) {
@@ -578,10 +580,9 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
       }
       // token 0 is the command
       targetGene = tokens.get(1);
-      pss = new PertSources(experimentParse(dacx, tokens.get(2), lineNumber));
+      pss = new PertSources(experimentParse(pd, tokens.get(2), lineNumber));
       region = tokens.get(3);
       
-      TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
       Integer parsed = tad.timeStringParse(tokens.get(4));
       if ((parsed == null) || (parsed.intValue() < 0)) {
         throw new InvalidInputException(BAD_TIME_DEFINITION, lineNumber);

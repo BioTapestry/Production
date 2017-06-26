@@ -56,7 +56,6 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   private List<String> messages_;
   private boolean keepGoing_;
   private UIComponentSource uics_; 
-  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -71,13 +70,12 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
   ** Constructor 
   */ 
   
-  public MessageTableReportingDialog(UIComponentSource uics, DataAccessContext dacx, List<String> messages, String title, 
+  public MessageTableReportingDialog(UIComponentSource uics, List<String> messages, String title, 
                                      String tableLabel, String colLabel, Dimension dim, boolean showCancel, boolean modal) {
-    super(uics.getTopFrame(), dacx.getRMan().getString(title), modal);
+    super(uics.getTopFrame(), uics.getRMan().getString(title), modal);
     messages_ = messages;
     uics_ = uics;
-    dacx_ = dacx;
-    ResourceManager rMan = dacx.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     setSize(dim.width, dim.height);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -88,7 +86,7 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(uics_, dacx_, new CheckoutTableModel(uics_, dacx_, colLabel), null);   
+    rot_ = new ReadOnlyTable(uics_, new CheckoutTableModel(uics_, colLabel), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = true;
     tp.tableIsUnselectable = true;
@@ -102,10 +100,10 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
     cp.add(tabPan, gbc);
    
     if (showCancel) {
-      DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+      DialogSupport ds = new DialogSupport(this, uics_, gbc);
       ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true);
     } else {
-      DialogSupport ds = new DialogSupport(uics_, dacx_, gbc, this);
+      DialogSupport ds = new DialogSupport(uics_, gbc, this);
       ds.buildAndInstallCloseButtonBox(cp, rowNum, 1, null);
     }
     setLocationRelativeTo(uics_.getTopFrame());
@@ -179,8 +177,8 @@ public class MessageTableReportingDialog extends JDialog implements DialogSuppor
       }
     }
     
-    CheckoutTableModel(UIComponentSource uics, DataAccessContext dacx, String title) {
-      super(uics, dacx, NUM_COL_);
+    CheckoutTableModel(UIComponentSource uics, String title) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {title};
     }
     

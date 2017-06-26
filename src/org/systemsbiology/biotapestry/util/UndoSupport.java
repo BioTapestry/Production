@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import javax.swing.undo.CompoundEdit;
 
 import org.systemsbiology.biotapestry.app.CmdSource;
+import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.BTUndoCmd;
@@ -52,6 +53,7 @@ public class UndoSupport {
   private CmdSource cSrc_;
   private UIComponentSource uics_;
   private TabSource tSrc_;
+  private StaticDataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,11 +71,12 @@ public class UndoSupport {
     tSrc_= tSrc;
     cSrc_ = cSrc;
     uics_ = uics;
+    dacx_ = new StaticDataAccessContext(dacx);
     edit_ = new CompoundEdit();
     pre_ = new CompoundPreEventCmd(dacx);
-    pre_.setAppState(tSrc_, cSrc_, uics_);
-    post_ = new CompoundPostEventCmd2(dacx, dacx.getRMan().getString(presentation));
-    post_.setAppState(tSrc_, cSrc_, uics_);
+    pre_.setAppState(tSrc_, cSrc_, uics_, dacx_);
+    post_ = new CompoundPostEventCmd2(dacx, uics.getRMan().getString(presentation));
+    post_.setAppState(tSrc_, cSrc_, uics_, dacx_);
     preList_ = new ArrayList<ChangeEvent>();
     postList_ = new ArrayList<ChangeEvent>();
     edit_.addEdit(pre_);
@@ -107,7 +110,7 @@ public class UndoSupport {
     if (edit.changesModel()) {
       cSrc_.bumpUndoCount();
     }
-    edit.setAppState(tSrc_, cSrc_, uics_);
+    edit.setAppState(tSrc_, cSrc_, uics_, dacx_);
     edit_.addEdit(edit);
     return;
   }

@@ -30,12 +30,14 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.UndoFactory;
@@ -69,12 +71,14 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   
   private ReadOnlyTable rtdi_;
   private PerturbationData pd_;
+  private TimeCourseData tcd_;
   private String pendingKey_;
   private PertSimpleNameEditPanel pip_;
   private PertManageHelper pmh_;
   private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
   private UndoFactory uFac_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -90,15 +94,17 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   */ 
   
   public PertInvestManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw, 
-                               PerturbationData pd, PendingEditTracker pet,  
+                               PerturbationData pd, TimeCourseData tcd, TimeAxisDefinition tad, PendingEditTracker pet,  
                                PertFilterExpressionJumpTarget pfet) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, dacx.getFontManager(), tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    dacx_ = dacx;
     uFac_ = uFac;
-    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    pmh_ = new PertManageHelper(uics_, pmw, pd, tcd, rMan_, gbc_, pet_);
     pfet_ = pfet;
     
-    rtdi_ = new ReadOnlyTable(uics_, dacx_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, dacx_, "pdim.invName"), new ReadOnlyTable.EmptySelector()); 
+    rtdi_ = new ReadOnlyTable(uics_, new PertManageHelper.NameWithHiddenIDAndRefCountModel(uics_, "pdim.invName"), new ReadOnlyTable.EmptySelector()); 
        
     //
     // Build the investigator  panel:
@@ -117,7 +123,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     // Edit panels:
     //
  
-    pip_ = new PertSimpleNameEditPanel(uics_, dacx_, parent_, this, "pdim.investName", this, INVEST_KEY);
+    pip_ = new PertSimpleNameEditPanel(uics_, parent_, this, "pdim.investName", this, INVEST_KEY);
     addEditPanel(pip_, INVEST_KEY);
     
     finishConstruction();
@@ -179,9 +185,9 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   public void editIsComplete(String key, int what) {
     if (key.equals(INVEST_KEY)) {
       if (joinKeys_ == null) {
-        editAnInvest(key, what);
+        editAnInvest(key, what, dacx_);
       } else {
-        joinInvestigators(key, what);
+        joinInvestigators(key, what, dacx_);
       }
     } else {
       throw new IllegalArgumentException();
@@ -429,7 +435,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   protected void doADelete(String key) {
     if (key.equals(INVEST_KEY)) {
       String deleteKey = ((PertManageHelper.NameWithHiddenIDAndRefCountModel)rtdi_.getModel()).getSelectedKey(rtdi_.selectedRows);
-      if (deleteAnInvestigator(deleteKey)) {       
+      if (deleteAnInvestigator(deleteKey, dacx_)) {       
         pet_.itemDeleted(INVEST_KEY);
       }
     } else {
@@ -449,16 +455,15 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Handle delete operations 
   */ 
   
-  private boolean deleteAnInvestigator(String key) {
+  private boolean deleteAnInvestigator(String key, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     DependencyAnalyzer.Dependencies refs = da.getInvestReferenceSet(key);
     if (!pmh_.warnAndAsk(refs)) {
       return (false);
     }       
-    UndoSupport support = uFac_.provideUndoSupport("undo.deleteInvestigator", dacx_);
-    da.killOffDependencies(refs, dacx_, support);
+    UndoSupport support = uFac_.provideUndoSupport("undo.deleteInvestigator", dacx);
     PertDataChange pdc2 = pd_.deleteInvestigator(key);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc2));
+    support.addEdit(new PertDataChangeCmd(pdc2));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -471,14 +476,14 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** Join investigators
   */ 
   
-  private void joinInvestigators(String key, int what) {
+  private void joinInvestigators(String key, int what, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     String name = pip_.getResult();      
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertTargets", dacx_);   
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergePertTargets", dacx);   
     DependencyAnalyzer.Dependencies refs = da.getInvestigatorMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
-    da.mergeDependencies(refs, dacx_, support);
+    da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeInvestigatorNames(joinKeys_, pendingKey_, name);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -497,15 +502,15 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
   ** 
   */
   
-  public void editAnInvest(String key, int what) { 
+  public void editAnInvest(String key, int what, DataAccessContext dacx) { 
     String name = pip_.getResult();
     UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createInvestigatorName" 
-                                                                         : "undo.editInvestigatorName", dacx_);      
+                                                                         : "undo.editInvestigatorName", dacx);      
     if (pendingKey_ == null) {
       pendingKey_ = pd_.getNextDataKey();
     } 
     PertDataChange pdc = pd_.setInvestigator(pendingKey_, name);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));    
+    support.addEdit(new PertDataChangeCmd(pdc));    
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();

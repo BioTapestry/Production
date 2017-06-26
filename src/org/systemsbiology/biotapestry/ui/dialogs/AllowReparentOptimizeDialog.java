@@ -58,8 +58,8 @@ public class AllowReparentOptimizeDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public AllowReparentOptimizeDialog(UIComponentSource uics, DataAccessContext dacx) {
-    super(uics, dacx, "allowRepOpt.title", new Dimension(400, 200), 1);
+  public AllowReparentOptimizeDialog(UIComponentSource uics) {
+    super(uics, "allowRepOpt.title", new Dimension(400, 200), 1);
     allowReparenting_ = false;
 
     ButtonGroup group = new ButtonGroup();

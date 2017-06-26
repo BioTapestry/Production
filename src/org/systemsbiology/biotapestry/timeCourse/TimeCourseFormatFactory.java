@@ -278,7 +278,7 @@ public class TimeCourseFormatFactory implements ParserClient {
       }
     } else if (geneKey_.equals(elemName)) {
       currPertGene_ = null;
-      TimeCourseGene tgene = TimeCourseGene.buildFromXML(dacx_, elemName, attrs);
+      TimeCourseGene tgene = TimeCourseGene.buildFromXML(elemName, attrs);
       if (tgene != null) {
         if (tgene.isTemplate()) {
           currGeneIsTemplate_ = true;

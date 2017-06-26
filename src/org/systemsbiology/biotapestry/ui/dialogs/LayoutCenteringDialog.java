@@ -30,7 +30,6 @@ import javax.swing.JCheckBox;
 import javax.swing.JRadioButton;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -73,8 +72,8 @@ public class LayoutCenteringDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public LayoutCenteringDialog(UIComponentSource uics, DataAccessContext dacx, boolean emptyRoot, boolean haveOverlays) {
-    super(uics, dacx, "layoutCenterDialog.title", new Dimension(500, 250), 4);
+  public LayoutCenteringDialog(UIComponentSource uics, boolean emptyRoot, boolean haveOverlays) {
+    super(uics, "layoutCenterDialog.title", new Dimension(500, 250), 4);
 
     //
     // If the root is empty, we must be tracking overlays.  The only choice is whether they want to

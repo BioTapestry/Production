@@ -27,6 +27,8 @@ import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.perturb.PerturbationDataMaps;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
@@ -114,8 +116,11 @@ public class ExportPerturb extends AbstractSimpleExport {
   protected boolean runTheExport(ExportState es, TabSource tSrc) {
     es.fileErrMsg = "pertPublish.IOError";
     es.fileErrTitle = "pertPublish.IOErrorTitle";
-    TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(appState_, tSrc.getCurrentTab());
-    PerturbationData pd = tpdacx.getExpDataSrc().getPertData();  
-    return (pd.publish(es.out, tpdacx));  
+    DataAccessContext dacx = new StaticDataAccessContext(appState_);
+    DBGenome dbGenome = dacx.getGenomeSource().getRootDBGenome();
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+    PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();  
+    return (pd.publish(es.out, dbGenome, tad, pdms, dacx.getRMan()));  
   }
 }

@@ -34,6 +34,7 @@ import javax.swing.JPanel;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.BatchCollision;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
@@ -43,10 +44,12 @@ import org.systemsbiology.biotapestry.perturb.Experiment;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.PendingEditTracker;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitManagePanel;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.ReadOnlyTable;
 
@@ -81,6 +84,8 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   private List<String> joinKeys_;
   private PertFilterExpressionJumpTarget pfet_;
   private UndoFactory uFac_;
+  private TimeCourseData tcd_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
  
@@ -95,21 +100,23 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** Constructor 
   */ 
   
-  public PertExperimentManagePanel(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, PerturbationsManagementWindow pmw,
-                                   PerturbationData pd, PendingEditTracker pet, 
+  public PertExperimentManagePanel(UIComponentSource uics, DataAccessContext dacx, FontManager fMgr, UndoFactory uFac, PerturbationsManagementWindow pmw,
+                                   PerturbationData pd, TimeCourseData tcd, TimeAxisDefinition tad, PendingEditTracker pet, 
                                    PertFilterExpressionJumpTarget pfet, int legacyModes) {
-    super(uics, dacx, pmw, pet, MANAGER_KEY);
+    super(uics, fMgr, tad, pmw, pet, MANAGER_KEY);
     pd_ = pd;
+    dacx_ = dacx;
+    tcd_ = tcd;
     uFac_ = uFac;
     pfet_ = pfet;
-    pmh_ = new PertManageHelper(uics_, dacx_, pmw, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, pmw, pd, tcd, rMan_, gbc_, pet_);
 
     //
     // Build the tables:
     //
     
-    rtd_ = new ReadOnlyTable(uics_, dacx_);   
-    rtd_.lateBinding(new PertSourcesTableModel(uics_, dacx_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
+    rtd_ = new ReadOnlyTable(uics_);   
+    rtd_.lateBinding(new PertSourcesTableModel(uics_, rtd_.rowElements), new ReadOnlyTable.EmptySelector());
     rtd_.setButtonHandler(new ButtonHand(SOURCES_KEY));
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
@@ -135,7 +142,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     // Now do the edit panel:
     //
  
-    pssaep_ = new PertExperimentAddOrEditPanel(uics_, dacx_, parent_, pd_, this, SOURCES_KEY, legacyModes); 
+    pssaep_ = new PertExperimentAddOrEditPanel(uics_, parent_, pd_, tcd_, this, SOURCES_KEY, legacyModes); 
     addEditPanel(pssaep_, SOURCES_KEY);
   
     finishConstruction();    
@@ -164,9 +171,9 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   public void editIsComplete(String key, int what) {
     if (key.equals(SOURCES_KEY)) {
       if (joinKeys_ == null) {
-        editAnExperiment(key, what);
+        editAnExperiment(key, what, dacx_);
       } else {
-        joinExperiments(key, what);
+        joinExperiments(key, what, dacx_);
       }
     } else {
       throw new IllegalArgumentException();
@@ -180,17 +187,17 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
-  private void editAnExperiment(String key, int what) {
+  private void editAnExperiment(String key, int what, DataAccessContext dacx) {
     String resultKey = pendingKey_;
     Experiment psi = pssaep_.getResult();
     UndoSupport support = uFac_.provideUndoSupport((pendingKey_ == null) ? "undo.createExperiment" 
-                                                                         : "undo.editExperiment", dacx_);
+                                                                         : "undo.editExperiment", dacx);
     PertDataChange pdc;
     if (pendingKey_ == null) {
       resultKey = psi.getID();
     }
     pdc = pd_.setExperiment(psi); 
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -205,12 +212,12 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** Handle join operations 
   */ 
   
-  private void joinExperiments(String key, int what) {
+  private void joinExperiments(String key, int what, DataAccessContext dacx) {
     Experiment psi = pssaep_.getResult();
     Map<String, Map<String, List<String>>> collisions = pd_.mergeExperimentBatchCollisions(new HashSet<String>(joinKeys_));
-    SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups = pd_.prepBatchCollisions(collisions, psi.getDisplayString(pd_));
+    SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups = pd_.prepBatchCollisions(collisions, psi.getDisplayString(pd_, tad_));
     if (batchDups != null) {
-      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, dacx_, parent_, batchDups, 
+      BatchDupReportDialog bdrd = new BatchDupReportDialog(uics_, parent_, batchDups, 
                                                            "batchDup.MergeDialog", "batchDup.MergeTable");
       bdrd.setVisible(true);
       if (!bdrd.keepGoing()) {
@@ -219,11 +226,11 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     }
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     
-    UndoSupport support = uFac_.provideUndoSupport("undo.mergeExperiments", dacx_);   
+    UndoSupport support = uFac_.provideUndoSupport("undo.mergeExperiments", dacx);   
     DependencyAnalyzer.Dependencies refs = da.getExperimentMergeSet(new HashSet<String>(joinKeys_), pendingKey_);
-    da.mergeDependencies(refs, dacx_, support);  
+    da.mergeDependencies(refs, tcd_, support);  
     PertDataChange[] pdc = pd_.mergeExperiments(joinKeys_, pendingKey_, psi);
-    support.addEdits(PertDataChangeCmd.wrapChanges(dacx_, pdc));
+    support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -408,7 +415,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   */ 
   
   protected void doADelete(String key) {
-    if (deleteExpr(rtd_.selectedRows)) {
+    if (deleteExpr(rtd_.selectedRows, tcd_, dacx_)) {
       pet_.itemDeleted(SOURCES_KEY);
     }
     return;
@@ -448,7 +455,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
         count = noCount;
       }     
       Experiment psi = pd_.getExperiment(key);
-      rtd_.rowElements.add(new PsEntry(psi, count, pd_));
+      rtd_.rowElements.add(new PsEntry(psi, count, pd_, tad_));
     }
    
     //
@@ -465,7 +472,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
   ** 
   */
   
-  private boolean deleteExpr(int[] selectedRows) {
+  private boolean deleteExpr(int[] selectedRows, TimeCourseData tcd, DataAccessContext dacx) {
     DependencyAnalyzer da = pd_.getDependencyAnalyzer();
     String key = ((PertSourcesTableModel)rtd_.getModel()).getSelectedKey(selectedRows);
     DependencyAnalyzer.Dependencies refs = da.getExperimentReferenceSet(key);
@@ -473,10 +480,10 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
       return (false);
     }
 
-    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertSourceInfo", dacx_);
-    da.killOffDependencies(refs, dacx_, support);  
+    UndoSupport support = uFac_.provideUndoSupport("undo.deletePertSourceInfo", dacx);
+    da.killOffDependencies(refs, tcd, support);  
     PertDataChange pdc = pd_.deleteExperiment(key);
-    support.addEdit(new PertDataChangeCmd(dacx_, pdc));  
+    support.addEdit(new PertDataChangeCmd(pdc));  
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -508,8 +515,8 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     private final static int NUM_HIDDEN_     = 1;
  
  
-    PertSourcesTableModel(UIComponentSource uics, DataAccessContext dacx, List prsList) {
-      super(uics, dacx, NUM_COL_);
+    PertSourcesTableModel(UIComponentSource uics, List prsList) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"pertSource.pert",
                                 "pertSource.time",
                                 "pertSource.conditions",
@@ -577,7 +584,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
     String key;
     Integer count;
     
-    PsEntry(Experiment psi, Integer count, PerturbationData pd) {
+    PsEntry(Experiment psi, Integer count, PerturbationData pd, TimeAxisDefinition tad) {
       key = psi.getID();
       invest = psi.getInvestigatorDisplayString(pd);
       if (invest == null) invest = "";
@@ -585,7 +592,7 @@ public class PertExperimentManagePanel extends AnimatedSplitManagePanel {
       if (perts == null) perts = "";
       conds = psi.getCondsDisplayString(pd);
       if (conds == null) conds = "";
-      time = psi.getTimeDisplayString(true, true);
+      time = psi.getTimeDisplayString(tad, true, true);
       if (time == null) time = "";
       this.count = count;
     }

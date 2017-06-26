@@ -212,7 +212,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
       }
     });
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -315,7 +315,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     GridBagConstraints gbc = new GridBagConstraints(); 
     ResourceManager rMan = dacx_.getRMan();
 
-    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld_, false, deletionListeners_);          
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_.getColorResolver(), hBld_, false, deletionListeners_);          
     int rowNum = 0;
     UiUtil.gbcSet(gbc, 0, rowNum++, 8, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     retval.add(sdsPan_, gbc);
@@ -359,7 +359,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     // Per-link property overrides:
     //
     
-    rot_ = new ReadOnlyTable(uics_, dacx_, new PerLinkSpecialDrawTableModel(uics_, dacx_), new Selector());   
+    rot_ = new ReadOnlyTable(uics_, new PerLinkSpecialDrawTableModel(uics_), new Selector());   
     rot_.setButtonHandler(new ButtonHand());
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = true;
@@ -391,7 +391,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
        
-    est_ = new EditableTable(uics_, dacx_, new LinkTableModel(uics_, dacx_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new LinkTableModel(uics_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.NO_BUTTONS;
@@ -499,8 +499,8 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     
     private static final long serialVersionUID = 1L;
   
-    LinkTableModel(UIComponentSource uics, StaticDataAccessContext dacx) {
-      super(uics, dacx, (isForInstance_) ? NUM_INST_COL_ : ((forModules_) ? NUM_MOD_COL_ : NUM_ROOT_COL_));
+    LinkTableModel(UIComponentSource uics) {
+      super(uics, (isForInstance_) ? NUM_INST_COL_ : ((forModules_) ? NUM_MOD_COL_ : NUM_ROOT_COL_));
       if (isForInstance_) {
         colNames_ = new String[] {"lptable.src",
                                   "lptable.targ",
@@ -778,8 +778,8 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     private final static int HIDDEN_LINKID_ = 0;
     private final static int NUM_HIDDEN_    = 1;
    
-    PerLinkSpecialDrawTableModel(UIComponentSource uics, StaticDataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    PerLinkSpecialDrawTableModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"lptable.src",
                                 "lptable.targ",
                                 "lptable.drawDesc"};
@@ -845,7 +845,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
           }
           PerLinkSpecialDrawTableModel pls = (PerLinkSpecialDrawTableModel)rot_.getModel();
           String linkID = pls.getSelectedKey(rot_.selectedRows);
-          LinkSpecialPropsDialog lpsd = new LinkSpecialPropsDialog(uics_, dacx_, hBld_, changedProps_, linkID, deletionListeners_);       
+          LinkSpecialPropsDialog lpsd = new LinkSpecialPropsDialog(uics_, dacx_.getColorResolver(), hBld_, changedProps_, linkID, deletionListeners_);       
           lpsd.setVisible(true);      
           if (lpsd.haveResult()) {
             changedProps_.setDrawStyleForLinkage(linkID, lpsd.getProps());
@@ -1450,7 +1450,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
     if (!(newName.equals(oldName)) || (oldEvidence != newEvidence) || (oldSign != newSign)) {
       GenomeChange gc = genome.replaceLinkageProperties(linkID, newName, newSign, newEvidence);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         retval = true;
       }
@@ -1466,7 +1466,7 @@ public class LinkPropertiesDialog extends JDialog implements ColorDeletionListen
         GenomeInstance gi = (GenomeInstance)genome;
         GenomeChange gc = gi.replaceLinkageInstanceActivity(linkID, newActivity, newLevel);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
           retval = true;
         }          

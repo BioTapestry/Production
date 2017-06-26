@@ -326,9 +326,9 @@ public class AddGenomeInstance extends AbstractControlFlow {
       // are going to use it to restore our tree after we are done.
       //
  
-      ExpansionChange ec = treeSupp_.buildExpansionChange(true, dacx_);
+      ExpansionChange ec = treeSupp_.buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
+      support.addEdit(new ExpansionChangeCmd(ec));      
 
       //
       // Make the change
@@ -412,10 +412,10 @@ public class AddGenomeInstance extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = treeSupp_.buildExpansionChange(false, dacx_);
+      ec = treeSupp_.buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, false);
       ec.selected = nt.mapAPath(ec.selected, nac.ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
+      support.addEdit(new ExpansionChangeCmd(ec));      
 
       support.finish();
       nt.setSkipFlag(NavTree.Skips.NO_FLAG);

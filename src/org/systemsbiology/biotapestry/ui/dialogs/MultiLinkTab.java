@@ -215,13 +215,13 @@ public class MultiLinkTab implements ColorDeletionListener {
     // Draw Style:
     //
            
-    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld_, true, false, true, colorListeners_);          
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_.getColorResolver(), hBld_, true, false, true, colorListeners_);          
     UiUtil.gbcSet(gbc, 0, layoutRownum, 8, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     layoutPanel.add(sdsPan_, gbc);   
     layoutRownum += 8;
     
     JLabel comboLabel = new JLabel(rMan.getString("perLinkSpecial.extent"));
-    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(dacx_);
+    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(uics_);
     extentChoices.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), PerLinkDrawStyle.EXTENT_VARIOUS));
     extentCombo_ = new JComboBox(extentChoices);
     
@@ -432,7 +432,7 @@ public class MultiLinkTab implements ColorDeletionListener {
             double varLevel = (newLiAs.activityState == LinkageInstance.VARIABLE) ? newLiAs.activityLevel.doubleValue() : 0.0;   
             GenomeChange gc = gi.replaceLinkageInstanceActivity(linkID, newLiAs.activityState, varLevel);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
               instanceChange = true;
             }          
@@ -457,7 +457,7 @@ public class MultiLinkTab implements ColorDeletionListener {
             String oldName = link.getName();
             GenomeChange gc = dacx_.getCurrentGenome().replaceLinkageProperties(linkID, oldName, newSign, newEvidence);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
               modelChange = true;
             }

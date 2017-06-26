@@ -140,6 +140,16 @@ public class TabPinnedDynamicDataAccessContext extends DataAccessContext {
     return;
   }
  
+  
+  /***************************************************************************
+  **
+  ** 
+  */
+  
+  public String getTabID() {
+    return (myTab_);
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // STATIC-DAC-ONLY OPERATIONS

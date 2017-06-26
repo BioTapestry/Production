@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2015 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -56,7 +56,6 @@ import javax.swing.table.TableColumn;
 import javax.swing.table.TableColumnModel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -110,7 +109,6 @@ public class ReadOnlyTable {
   private List<ExtraButton> extraButtonProps_;
   private boolean tableSuppressed_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -123,9 +121,8 @@ public class ReadOnlyTable {
   ** Use if model is built first
   */
   
-  public ReadOnlyTable(UIComponentSource uics, DataAccessContext dacx, TableModel atm, SelectionHandler sh) {
+  public ReadOnlyTable(UIComponentSource uics, TableModel atm, SelectionHandler sh) {
     uics_ = uics;
-    dacx_ = dacx;
     rowElements = new ArrayList();
     this.atm_ = atm;
     userSh_ = sh;
@@ -137,9 +134,8 @@ public class ReadOnlyTable {
   ** Use when the Table needs to be built before the model
   */   
 
-  public ReadOnlyTable(UIComponentSource uics, DataAccessContext dacx) {
+  public ReadOnlyTable(UIComponentSource uics) {
     uics_ = uics;
-    dacx_ = dacx;
     rowElements = new ArrayList();
     tableSuppressed_ = false;
   }
@@ -584,7 +580,7 @@ public class ReadOnlyTable {
  
   private void createButtons(TableParams etp) {
   
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     if (etp.buttons != NO_BUTTONS) {
       if ((etp.buttons & ADD_BUTTON) != 0x00) {
         String aTag = rMan.getString("dialogs.addEntry");
@@ -784,13 +780,11 @@ public class ReadOnlyTable {
     protected int rowCount_;
     protected String[] colNames_;
     protected UIComponentSource uics_;
-    protected DataAccessContext dacx_;
     
     private static final long serialVersionUID = 1L;
     
-    protected TableModel(UIComponentSource uics, DataAccessContext dacx, int colNum) {
+    protected TableModel(UIComponentSource uics, int colNum) {
       uics_ = uics;
-      dacx_ = dacx;
       columns_ = new ArrayList[colNum];
       for (int i = 0; i < colNum; i++) {
         columns_[i] = new ArrayList();
@@ -839,7 +833,7 @@ public class ReadOnlyTable {
 
     public String getColumnName(int c) {
       try {
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         if (c >= colNames_.length) {
           throw new IllegalArgumentException();
         }
@@ -1301,8 +1295,8 @@ public class ReadOnlyTable {
     
     private static final long serialVersionUID = 1L;
  
-    public NameWithHiddenIDModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    public NameWithHiddenIDModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"nameTable.name"};
       addHiddenColumns(NUM_HIDDEN_);
     }    

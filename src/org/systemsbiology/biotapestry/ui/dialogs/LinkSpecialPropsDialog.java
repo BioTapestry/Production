@@ -36,7 +36,7 @@ import javax.swing.border.EmptyBorder;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.ui.LinkProperties;
 import org.systemsbiology.biotapestry.ui.PerLinkDrawStyle;
 import org.systemsbiology.biotapestry.ui.SuggestedDrawStyle;
@@ -68,7 +68,7 @@ public class LinkSpecialPropsDialog extends JDialog {
    
   private SuggestedDrawStylePanel sdsPan_;
   private JComboBox extentCombo_;
-  private DataAccessContext dacx_;
+  private ColorResolver cRes_;
   private UIComponentSource uics_;
   
   private static final long serialVersionUID = 1L;
@@ -84,9 +84,9 @@ public class LinkSpecialPropsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public LinkSpecialPropsDialog(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, LinkProperties propsClone, 
+  public LinkSpecialPropsDialog(UIComponentSource uics, ColorResolver cRes, HarnessBuilder hBld, LinkProperties propsClone, 
                                 String linkID, List<ColorDeletionListener> colorDeletionListeners) {
-    this(uics, dacx, hBld, true, propsClone.getColorName(), propsClone.getDrawStyleForLinkage(linkID), colorDeletionListeners);
+    this(uics, cRes, hBld, true, propsClone.getColorName(), propsClone.getDrawStyleForLinkage(linkID), colorDeletionListeners);
   }
   
   /***************************************************************************
@@ -94,8 +94,8 @@ public class LinkSpecialPropsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public LinkSpecialPropsDialog(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, PerLinkDrawStyle oldPlds) {
-    this(uics, dacx, hBld, false, null, oldPlds, null);
+  public LinkSpecialPropsDialog(UIComponentSource uics, ColorResolver cRes, HarnessBuilder hBld, PerLinkDrawStyle oldPlds) {
+    this(uics, cRes, hBld, false, null, oldPlds, null);
   }
   
   /***************************************************************************
@@ -103,16 +103,16 @@ public class LinkSpecialPropsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  private LinkSpecialPropsDialog(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, boolean allowColor, String oldColor, 
+  private LinkSpecialPropsDialog(UIComponentSource uics, ColorResolver cRes, HarnessBuilder hBld, boolean allowColor, String oldColor, 
                                  PerLinkDrawStyle oldPlds, List<ColorDeletionListener> colorDeletionListeners) {     
-    super(uics.getTopFrame(), dacx.getRMan().getString("perLinkSpecial.setSpecial"), true);
+    super(uics.getTopFrame(), uics.getRMan().getString("perLinkSpecial.setSpecial"), true);
     uics_ = uics;
-    dacx_ = dacx;
+    cRes_ = cRes;
     treeColor_ = oldColor;
     oldPlds_ = oldPlds;
     haveResult_ = false;
 
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     setSize(600, 350);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -120,15 +120,15 @@ public class LinkSpecialPropsDialog extends JDialog {
     GridBagConstraints gbc = new GridBagConstraints();
 
     if (allowColor) {
-      sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld, true, colorDeletionListeners); 
+      sdsPan_ = new SuggestedDrawStylePanel(uics_, cRes_, hBld, true, colorDeletionListeners); 
     } else {
-      sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld, true);    
+      sdsPan_ = new SuggestedDrawStylePanel(uics_, cRes_, hBld, true);    
     }
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(sdsPan_, gbc);
     
     JLabel comboLabel = new JLabel(rMan.getString("perLinkSpecial.extent"));
-    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(dacx_);
+    Vector<ChoiceContent> extentChoices = PerLinkDrawStyle.getExtentChoices(uics_);
     extentCombo_ = new JComboBox(extentChoices);
     
     UiUtil.gbcSet(gbc, 0, 10, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
@@ -227,7 +227,7 @@ public class LinkSpecialPropsDialog extends JDialog {
     sdsPan_.displayProperties(oldSds, new SuggestedDrawStyle(treeColor_));
     
     int showExtent = (oldPlds_ == null) ? PerLinkDrawStyle.UNIQUE : oldPlds_.getExtent();
-    extentCombo_.setSelectedItem(PerLinkDrawStyle.extentForCombo(dacx_, showExtent));
+    extentCombo_.setSelectedItem(PerLinkDrawStyle.extentForCombo(uics_, showExtent));
 
     return;
   }

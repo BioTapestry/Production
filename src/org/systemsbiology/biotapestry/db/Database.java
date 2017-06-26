@@ -176,12 +176,11 @@ public class Database implements GenomeSource, LayoutSource,
   */
 
   public void installDataSharing(Metabase.DataSharingPolicy dsp, TabPinnedDynamicDataAccessContext ddacx) {
-    if (dsp == null) {
-      
+    if (dsp == null) {     
       isDataSharing_ = Boolean.valueOf(false);
        // Actually need the dynamic one, since still building the database: 
-      localTimeAxis_ = new TimeAxisDefinition(ddacx);
-      localPertData_ = new PerturbationData(ddacx);
+      localTimeAxis_ = new TimeAxisDefinition(uics_.getRMan());
+      localPertData_ = new PerturbationData();
       localTimeCourse_ = new TimeCourseData(ddacx);
       localCopiesPerEmb_ = new CopiesPerEmbryoData();
       return; 
@@ -189,8 +188,8 @@ public class Database implements GenomeSource, LayoutSource,
     if (!dsp.init) {
       throw new IllegalArgumentException();
     }
-    localTimeAxis_ = (dsp.shareTimeUnits) ? null : new TimeAxisDefinition(ddacx);
-    localPertData_ = (dsp.sharePerts) ? null : new PerturbationData(ddacx);
+    localTimeAxis_ = (dsp.shareTimeUnits) ? null : new TimeAxisDefinition(uics_.getRMan());
+    localPertData_ = (dsp.sharePerts) ? null : new PerturbationData();
     localTimeCourse_ = (dsp.shareTimeCourses) ? null : new TimeCourseData(ddacx);
     localCopiesPerEmb_ = (dsp.sharePerEmbryoCounts) ? null : new CopiesPerEmbryoData();
     isDataSharing_ = Boolean.valueOf(dsp.isSpecifyingSharing());
@@ -387,7 +386,7 @@ public class Database implements GenomeSource, LayoutSource,
     modelData_ = null;
     tcdm_ = new TimeCourseDataMaps(ddacx);
     rangeData_ = new TemporalInputRangeData(ddacx);
-    pdms_ = new PerturbationDataMaps(ddacx);
+    pdms_ = new PerturbationDataMaps();
     
     installDataSharing(null, ddacx);
     
@@ -397,7 +396,7 @@ public class Database implements GenomeSource, LayoutSource,
     // is not frozen for a new model:
     //
 
-    ddacx.getDisplayOptsSource().getDisplayOptions().dropDataBasedOptions();
+    ddacx.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
   
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
@@ -422,7 +421,9 @@ public class Database implements GenomeSource, LayoutSource,
     navTree_.clearOut();
     modelData_ = null;
     tcdm_ = null;
-    pdms_ = null;
+    // Not all input files have perturbation data maps, so this does not
+    // get filled in during I/O. Cannot be set to null.
+    pdms_ = new PerturbationDataMaps();
     rangeData_ = null;
     installDataSharing(null, ddacx);
     
@@ -945,7 +946,7 @@ public class Database implements GenomeSource, LayoutSource,
     PerturbationDataMaps pdms = getPerturbationDataMaps();
     TimeCourseData tcd = getTimeCourseData();
 
-    if (pd.haveDataForNode(nodeID, null, pdms_) && !pdms.haveCustomMapForNode(nodeID)) {
+    if (pd.haveDataForNode(genome_, nodeID, null, pdms_) && !pdms.haveCustomMapForNode(nodeID)) {
       return (true);
     }
     
@@ -1059,7 +1060,7 @@ public class Database implements GenomeSource, LayoutSource,
       TaggedSet revChoice = new TaggedSet();
       String ovrID =  owner.getFirstViewPreference(modChoice, revChoice); // (owner == null ? null : owner.getFirstViewPreference(modChoice, revChoice));
       if (ovrID != null) {
-        StartupView modified = new StartupView(modelID, ovrID, modChoice, revChoice,startupView_.getNodeType());
+        StartupView modified = new StartupView(modelID, ovrID, modChoice, revChoice, null, startupView_.getNodeType());
         return (modified);
       }
     }
@@ -1279,7 +1280,6 @@ public class Database implements GenomeSource, LayoutSource,
   */ 
     
   public NetOverlayOwner getOverlayOwnerWithOwnerKey(String key) {
-    System.out.println("goo " + key + " " + getID() + " " + this.instances_.size());
     NetOverlayOwner fromProx = getDynamicProxy(key);
     if (fromProx != null) {
       return (fromProx);
@@ -1446,7 +1446,15 @@ public class Database implements GenomeSource, LayoutSource,
       key = labels_.getNextLabel();
     } else if (layouts_.get(key) != null) {
       throw new IllegalArgumentException();
-    }    
+    }
+    // For V8, now seeing that layout brought in from IO is not registering with
+    // the label generator. Need to do this, so that system does not hand out a
+    // tag already used by a layout. But we will not throw and error if the label
+    // has been used by e.g. a genome.
+    //
+    UiUtil.fixMePrintout("NO causes old IO fails because e.g. proxy loaded later has same key as prev. layout");
+  //  labels_.addExistingLabel(key);
+ 
     layouts_.put(key, layout);
     return (retval);
   }
@@ -1876,7 +1884,7 @@ public class Database implements GenomeSource, LayoutSource,
     ind.down().indent();
     out.println("</layouts>");
     
-    if ((localPertData_ != null) && localPertData_.haveData()) {
+    if (localPertData_ != null) {
       localPertData_.writeXML(out, ind);
     }
     
@@ -2489,7 +2497,7 @@ public class Database implements GenomeSource, LayoutSource,
   */
 
   public void installLegacyTimeAxisDefinition(DataAccessContext dacx) {
-    localTimeAxis_ = new TimeAxisDefinition(new StaticDataAccessContext(dacx).getContextForRoot()).setToLegacy();
+    localTimeAxis_ = new TimeAxisDefinition(uics_.getRMan()).setToLegacy();
     return;
   }
     

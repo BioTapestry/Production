@@ -29,6 +29,7 @@ import javax.swing.tree.TreeNode;
 import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.NavigationChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabSource;
@@ -39,6 +40,7 @@ import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.cmd.flow.view.Zoom;
 import org.systemsbiology.biotapestry.cmd.undo.NavigationChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
@@ -56,6 +58,7 @@ import org.systemsbiology.biotapestry.ui.SUPanel;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.TaggedSet;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -187,7 +190,8 @@ public class SetCurrentModel extends AbstractControlFlow {
     private TaggedSet modules_;
     private TaggedSet revealedModules_;
     private List<Intersection> linkIntersections_;
-    private DataAccessContext ddacx_;
+    private String regionID_;
+    private DynamicDataAccessContext ddacx_;
     private BTState appState_;
       
     /***************************************************************************
@@ -220,7 +224,7 @@ public class SetCurrentModel extends AbstractControlFlow {
     public void setAppState(BTState appState, DataAccessContext dacx) {
       appState_ = appState;
       // We ignore the static context we are being handed, and use what we are provided here!
-      ddacx_ = dacx;
+      ddacx_ = new DynamicDataAccessContext(appState_);
       if (uics_ == null) {
         BTState.AppSources asrc = appState_.getAppSources();
         uics_ = asrc.uics;
@@ -274,6 +278,20 @@ public class SetCurrentModel extends AbstractControlFlow {
    
     public void setPreload(String modelID, Set<String> nodes, Set<String> links) {
     	this.setPreload(modelID,nodes,links,null);
+      return;
+    }
+    
+    /***************************************************************************
+    **
+    ** for preload
+    */ 
+   
+    public void setPreloadForGroup(String modelID, String regionID) {
+      nodeID_ = null;
+      modelID_ = modelID;
+      nodes_ = null;
+      links_ = null;
+      regionID_ = regionID;
       return;
     }
     
@@ -370,9 +388,8 @@ public class SetCurrentModel extends AbstractControlFlow {
     
     public DialogAndInProcessCmd stepToProcessGroupNode() {
     	
-    	suv_ = new StartupView(modelID_,overlayId_,modules_,revealedModules_,"group",nodeID_);
-    	
-    	installStartupView(uics_, ddacx_, false, suv_);    	
+    	suv_ = new StartupView(null, null, null, null, null, NavTree.KidSuperType.GROUP, nodeID_);
+    	installStartupView(uics_, ddacx_, false, suv_);  
     	
     	return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -517,7 +534,7 @@ public class SetCurrentModel extends AbstractControlFlow {
     ** could be better.
     */
     
-    public static void installStartupView(UIComponentSource uics, DataAccessContext dacx, boolean selectRoot, StartupView sv) {
+    public static void installStartupView(UIComponentSource uics, DynamicDataAccessContext dacx, boolean selectRoot, StartupView sv) {
       TreePath tp;
       int timeVal = -1;
       String modelKey = sv.getModel();
@@ -602,6 +619,11 @@ public class SetCurrentModel extends AbstractControlFlow {
       }
       vmt.setDoNotFlow(false);
       
+      String regID = sv.getRegionId();
+      if (regID != null) {
+        Zoom.zoomToGroup(uics, regID, dacx);
+      }
+        
       return;
     }
     
@@ -611,14 +633,15 @@ public class SetCurrentModel extends AbstractControlFlow {
     */
     
     private DialogAndInProcessCmd stepToProcessModel() {
-    	if (overlayId_ == null) {
+    	if ((overlayId_ == null) && (regionID_ == null)) {
     	  NetOverlayController noc = uics_.getNetOverlayController();
     	  suv_ = noc.getCachedStateForGenome(modelID_, ddacx_);    		
     	} else {
-    		suv_ = new StartupView(modelID_,overlayId_,modules_,revealedModules_,null);
+    		suv_ = new StartupView(modelID_, overlayId_, modules_, revealedModules_, regionID_, NavTree.KidSuperType.MODEL, null);
     	}
 
       installStartupView(uics_, ddacx_, false, suv_);
+ 
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
 
@@ -690,7 +713,7 @@ public class SetCurrentModel extends AbstractControlFlow {
         DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this);
        return (retval);
        }
-      suv_ = new StartupView(modelID_, null, null, null,null);
+      suv_ = new StartupView(modelID_, null, null, null, null, NavTree.KidSuperType.MODEL, null);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this);
       nextStep_ = "stepToFinish";
       return (retval);

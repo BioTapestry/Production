@@ -117,7 +117,7 @@ public class MetabaseFactory implements ParserClient {
     alist.add(qxff_);
     tcff_ = new TimeCourseFormatFactory(false, false, false, true);
     alist.add(tcff_);
-    taf_ = new TimeAxisFactory(sharedBoard_, false);
+    taf_ = new TimeAxisFactory(sharedBoard_, true);
     alist.add(taf_);
     pw_ = new Metabase.PolicyWorker();
     alist.add(pw_);   

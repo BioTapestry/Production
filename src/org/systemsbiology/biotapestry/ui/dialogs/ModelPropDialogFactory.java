@@ -48,6 +48,7 @@ import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness.UserInputs;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.EditModelProps.ModelProperties;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.nav.NavTree;
@@ -225,6 +226,7 @@ public class ModelPropDialogFactory extends DialogFactory {
 		private boolean namedStages_;  
 		
 		private UndoFactory uFac_;
+		private DataAccessContext dacx_;
 		
 		private static final long serialVersionUID = 1L;
 
@@ -243,6 +245,7 @@ public class ModelPropDialogFactory extends DialogFactory {
 			super(cfh, "smprop.title", new Dimension(700,200), 1, new ModelRequest(), true);
 			props_ = props;
 			uFac_ = cfh.getUndoFactory();
+			dacx_ = cfh.getDataAccessContext();
 			
 			if (props.popupModel instanceof DynamicGenomeInstance) {
 				type_ = ModelPropType.DYNAMIC_SINGLE_MODEL;
@@ -252,7 +255,7 @@ public class ModelPropDialogFactory extends DialogFactory {
 				type_ = ModelPropType.SINGLE_INSTANCE;
 			}
 			
-			ResourceManager rMan = dacx_.getRMan();    
+			ResourceManager rMan = uics_.getRMan();    
 			setSize(700, 200);
 			JPanel cp = (JPanel)getContentPane();
 			cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -667,7 +670,7 @@ public class ModelPropDialogFactory extends DialogFactory {
 			GenomeChange gc = dacx_.getCurrentGenomeAsDBGenome().setProperties(dacx_.getCurrentGenome().getName(),  
 					longName, 
 					descripField_.getText());
-			GenomeChangeCmd cmd = new GenomeChangeCmd(dacx_, gc);
+			GenomeChangeCmd cmd = new GenomeChangeCmd(gc);
 			support.addEdit(cmd);
 
 			if (!longName.trim().equals("")) {

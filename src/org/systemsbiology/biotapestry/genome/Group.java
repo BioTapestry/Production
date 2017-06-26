@@ -410,7 +410,7 @@ public class Group implements GenomeItem, Cloneable {
     GenomeInstance gir = gi.getVfgParentRoot();
     gi = (gir == null) ? gi : gir;
     Group rootGroup = gi.getGroup(getBaseID(id_));
-    // Seeing crach here
+    // Seeing crash here
     UiUtil.fixMePrintout("Crash on duping group node");
     return (rootGroup.parentID_ != null);
   }

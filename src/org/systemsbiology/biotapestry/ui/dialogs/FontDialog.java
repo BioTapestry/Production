@@ -269,6 +269,7 @@ public class FontDialog extends JDialog {
   
   private void applyProperties() {
     
+    UiUtil.fixMePrintout("NO! This happens for ALL tabs, not just current!");
     Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
    
     //
@@ -288,7 +289,7 @@ public class FontDialog extends JDialog {
       fontSpecs.add(fs);
     }
     FontChange chg = mgr.setFonts(fontSpecs);
-    FontChangeCmd fcc = new FontChangeCmd(dacx_, chg);
+    FontChangeCmd fcc = new FontChangeCmd(chg);
     support.addEdit(fcc);
     
     // Actually, ALL layouts get changed (FIX ME):

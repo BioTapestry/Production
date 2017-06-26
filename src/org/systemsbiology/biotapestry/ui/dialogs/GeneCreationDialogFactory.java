@@ -194,7 +194,7 @@ public class GeneCreationDialogFactory extends DialogFactory {
       CreateRequest crq = (CreateRequest)request_;           
       crq.nameResult = nameField_.getText().trim();   
       if (crq.nameResult.equals("")) {
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         String message = rMan.getString("addGene.EmptyName");
         String title = rMan.getString("addGene.CreationErrorTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);

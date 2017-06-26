@@ -128,8 +128,11 @@ public class ImageHighlighter {
   */
   
   public static Set<Color> collectColors(BufferedImage img) { 
-   
-    UiUtil.fixMePrintout("Crash here NPE when choosing image configure without image present");
+    
+    if (img == null) {
+      return (new HashSet<Color>());
+    }
+
     int h = img.getHeight();
     int w = img.getWidth();
     

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -1165,6 +1165,7 @@ public class UiUtil {
       hams_ = hams;
     }
     
+    @Override
     public Component getTableCellRendererComponent(JTable table, Object value, 
                                                    boolean isSelected, boolean hasFocus, 
                                                    int row, int column) {
@@ -1186,7 +1187,7 @@ public class UiUtil {
     }
   }
   
-  
+
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE CONSTRUCTORS

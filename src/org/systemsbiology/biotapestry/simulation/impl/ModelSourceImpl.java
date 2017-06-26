@@ -256,8 +256,9 @@ public class ModelSourceImpl implements ModelSource {
   public ModelExpressionEntry getExpressionEntry(String geneName, String region, int time) {
     Set<Integer> trueTimes = tcd_.getInterestingTimes();
     TimeCourseGene tcg = tcd_.getTimeCourseData(geneName);
+    double weak = dacx_.getDisplayOptsSource().getDisplayOptions().getWeakExpressionLevel();
     TimeCourseGene.VariableLevel vl = new TimeCourseGene.VariableLevel();
-    int exLev = tcg.getExpressionLevelForSource(region, time, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, vl);
+    int exLev = tcg.getExpressionLevelForSource(region, time, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, vl, weak);
     if (exLev == ExpressionEntry.NO_REGION) {
       return (null);
     }
@@ -287,7 +288,7 @@ public class ModelSourceImpl implements ModelSource {
     for (String gene : results.keySet()) {
       TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(gene);
       if (tcg == null) {
-        tcg = new TimeCourseGene(dacx_, gene, TimeCourseGene.NORMAL_CONFIDENCE, false, false);
+        tcg = new TimeCourseGene(gene, TimeCourseGene.NORMAL_CONFIDENCE, false, false);
         tcd.addGene(tcg);
       }
       List<ModelExpressionEntry> forGene = results.get(gene);

@@ -35,7 +35,7 @@ import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -68,7 +68,6 @@ public class PertManagePrefaceDialog extends JDialog {
   private boolean haveResult_;
   private PertFilterExpression pertFilterExpr_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
 
@@ -83,13 +82,12 @@ public class PertManagePrefaceDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public PertManagePrefaceDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent) {     
-    super(parent, dacx.getRMan().getString("pertManagePreface.title"), true);
+  public PertManagePrefaceDialog(UIComponentSource uics, PerturbationData pd, TimeAxisDefinition tad, JFrame parent) {     
+    super(parent, uics.getRMan().getString("pertManagePreface.title"), true);
     uics_ = uics;
-    dacx_ = dacx;
     haveResult_ = false;
     
-    ResourceManager rMan = dacx.getRMan();    
+    ResourceManager rMan = uics.getRMan();    
     setSize(600, 350);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -100,10 +98,8 @@ public class PertManagePrefaceDialog extends JDialog {
     int rowNum = 0;
     UiUtil.gbcSet(gbc, 0, rowNum++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 0.0);
     cp.add(mainLabel, gbc);
-     
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
     
-    SortedSet<TrueObjChoiceContent> srcCand = pd.getCandidates(PertFilter.Cat.SOURCE);
+    SortedSet<TrueObjChoiceContent> srcCand = pd.getCandidates(PertFilter.Cat.SOURCE, tad, rMan);
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManagePreface.chooseAll"), null);
     Vector<TrueObjChoiceContent> srcVec = new Vector<TrueObjChoiceContent>();
     srcVec.add(ncstr);
@@ -116,7 +112,7 @@ public class PertManagePrefaceDialog extends JDialog {
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(sourceCombo_, gbc);    
   
-    SortedSet<TrueObjChoiceContent> targCand = pd.getCandidates(PertFilter.Cat.TARGET);
+    SortedSet<TrueObjChoiceContent> targCand = pd.getCandidates(PertFilter.Cat.TARGET, tad, uics_.getRMan());
     Vector<TrueObjChoiceContent> targVec = new Vector<TrueObjChoiceContent>();
     targVec.add(ncstr);
     targVec.addAll(targCand);

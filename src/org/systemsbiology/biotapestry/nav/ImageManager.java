@@ -258,7 +258,7 @@ public class ImageManager {
       if (cacheString.equals(imgString)) {  // Image already in use
         // count is incremented later.  Nothing to do!
         retval.key = key;
-        retval.change = null;
+        retval.change = new ImageChange();
         return (retval);
       }
     }  
@@ -271,7 +271,7 @@ public class ImageManager {
     imageCache_.put(imgKey, timg.img);
     stringCache_.put(imgKey, imgString);
     typeDictionary_.put(imgKey, timg.type);
-    imgCounts_.put(imgKey, new Integer(0));
+    imgCounts_.put(imgKey, Integer.valueOf(0));
     retval.key = imgKey;
     retval.change = new ImageChange();
     retval.change.newImage = imgString;

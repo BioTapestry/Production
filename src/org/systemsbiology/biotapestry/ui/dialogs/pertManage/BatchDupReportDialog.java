@@ -30,7 +30,6 @@ import javax.swing.JFrame;
 import javax.swing.JPanel;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.BatchCollision;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -61,7 +60,6 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   private SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups_;
   private boolean keepGoing_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
 
   
   private static final long serialVersionUID = 1L;
@@ -77,13 +75,12 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
   ** Constructor 
   */ 
   
-  public BatchDupReportDialog(UIComponentSource uics, DataAccessContext dacx, JFrame parent, SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups, String windowTitle, String tableTitle) {
-    super(uics.getTopFrame(), dacx.getRMan().getString(windowTitle), true);
+  public BatchDupReportDialog(UIComponentSource uics, JFrame parent, SortedMap<String, SortedMap<String, SortedMap<String, BatchCollision>>> batchDups, String windowTitle, String tableTitle) {
+    super(uics.getTopFrame(), uics.getRMan().getString(windowTitle), true);
     uics_ = uics;
-    dacx_ = dacx;
     batchDups_ = batchDups;
     keepGoing_ = false;
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     setSize(1000, 650);
     JPanel cp = (JPanel)getContentPane();
     cp.setLayout(new GridBagLayout());
@@ -94,7 +91,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
     // Build the tables:
     //
  
-    rot_ = new ReadOnlyTable(uics, dacx, new BatchDupReportModel(uics_, dacx_), null);   
+    rot_ = new ReadOnlyTable(uics, new BatchDupReportModel(uics_), null);   
     ReadOnlyTable.TableParams tp = new ReadOnlyTable.TableParams();
     tp.disableColumnSort = false;
     tp.tableIsUnselectable = true;
@@ -114,7 +111,7 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
     rowNum += 8;
     cp.add(tabPan, gbc);
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallCenteredButtonBox(cp, rowNum, 1, false, true); 
     setLocationRelativeTo(parent);
     displayProperties(); 
@@ -197,8 +194,8 @@ public class BatchDupReportDialog extends JDialog implements DialogSupportClient
       }
     }
 
-    BatchDupReportModel(UIComponentSource uics, DataAccessContext dacx) {
-      super(uics, dacx, NUM_COL_);
+    BatchDupReportModel(UIComponentSource uics) {
+      super(uics, NUM_COL_);
       colNames_ = new String[] {"batchDupReport.expDesc",
                                 "batchDupReport.target",
                                 "batchDupReport.batchID",

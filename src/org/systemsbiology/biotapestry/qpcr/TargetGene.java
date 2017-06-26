@@ -31,7 +31,7 @@ import java.util.SortedMap;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.Splitter;
@@ -204,7 +204,7 @@ class TargetGene {
   
    int writeHTML(PrintWriter out, Indenter ind, ArrayList<MinMax> timeCols, 
                  QpcrTablePublisher qtp, int rowCount, boolean breakOutInvest, 
-                 List<String> srcNames, Set<String> usedFootnotes, DataAccessContext dacx) {
+                 List<String> srcNames, Set<String> usedFootnotes, TimeAxisDefinition tad) {
     ind.indent();    
     out.println("<tbody>");
     ind.up();
@@ -247,7 +247,7 @@ class TargetGene {
     while (pit.hasNext()) {
       Perturbation p = pit.next();
       SortedMap<String, Map<MinMax, TimeSpan>> gpi = (perInvest != null) ? perInvest.get(count) : null; 
-      if (p.writeHTML(out, ind, geneName, totalCount, timeCols, qtp, gpi, breakOutInvest, srcNames, dacx)) {
+      if (p.writeHTML(out, ind, geneName, totalCount, timeCols, qtp, gpi, breakOutInvest, srcNames, tad)) {
         Set<String> notes = p.getFootnoteNumbers();
         usedFootnotes.addAll(notes);      
         count++;

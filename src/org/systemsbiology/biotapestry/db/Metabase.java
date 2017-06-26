@@ -48,6 +48,7 @@ import org.systemsbiology.biotapestry.parser.NewerVersionIOException;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
@@ -374,7 +375,8 @@ public class Metabase implements ColorResolver {
     // is not frozen for a new model:
     //
 
-    ddacx_.getDisplayOptsSource().getDisplayOptions().dropDataBasedOptions();
+    ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
+    
     iOVersion_ = CURRENT_IO_VERSION_;
     return;
   }  
@@ -415,7 +417,7 @@ public class Metabase implements ColorResolver {
     // is not frozen for a new model:
     //
 
-    ddacx_.getDisplayOptsSource().getDisplayOptions().dropDataBasedOptions();
+    ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
     iOVersion_ = CURRENT_IO_VERSION_;
     
     colGen_.dropColors();
@@ -578,7 +580,9 @@ public class Metabase implements ColorResolver {
           iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
           iOVersion_.equals(PREVIOUS_IO_VERSION_C_)) {
         Database legDb = perTab_.get(chosen);
-        legDb.getPertData().transferFromLegacy();
+        DisplayOptions dOpt = ddacx_.getDisplayOptsSource().getDisplayOptions();
+        TimeAxisDefinition tad = legDb.getTimeAxisDefinition();
+        legDb.getPertData().transferFromLegacy(legDb, dOpt, tad);
       }    
     }
  

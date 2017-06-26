@@ -310,7 +310,7 @@ public abstract class DialogBuiltProtoMotif implements Cloneable {
     if (gc == null) {
       throw new IllegalStateException();
     }
-    support.addEdit(new GenomeChangeCmd(dacx, gc));
+    support.addEdit(new GenomeChangeCmd(gc));
     return (newNode);
   }
   

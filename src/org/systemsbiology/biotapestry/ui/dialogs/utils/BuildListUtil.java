@@ -38,10 +38,10 @@ import javax.swing.ListModel;
 import javax.swing.border.EtchedBorder;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.CheckBoxList;
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -65,7 +65,6 @@ public class BuildListUtil {
   private boolean forceDrops_;
   private JFrame parent_; 
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   private static final ImageIcon greenIcon_;
  
   ////////////////////////////////////////////////////////////////////////////
@@ -90,9 +89,8 @@ public class BuildListUtil {
   ** Constructor 
   */
   
-  public BuildListUtil(UIComponentSource uics, DataAccessContext dacx, JFrame parent, String nodeName, List clonedCurrEntries, Vector targCand, boolean forceDrops) { 
+  public BuildListUtil(UIComponentSource uics, JFrame parent, String nodeName, List clonedCurrEntries, Vector targCand, boolean forceDrops) { 
     uics_ = uics;
-    dacx_ = dacx;
     parent_ = parent; 
     if (clonedCurrEntries == null) {
       newEntries_ = new ArrayList();
@@ -143,9 +141,9 @@ public class BuildListUtil {
   ** 
   */
 
-  public static JPanel buildMessagePanel(DataAccessContext dacx, List<BuildListResult> buildListResults) {
+  public static JPanel buildMessagePanel(HandlerAndManagerSource hams, List<BuildListResult> buildListResults) {
     
-    ResourceManager rMan = dacx.getRMan();    
+    ResourceManager rMan = hams.getRMan();    
     GridBagConstraints gbc = new GridBagConstraints();
     JPanel messagePanel = new JPanel();
     messagePanel.setBorder(new EtchedBorder());
@@ -300,7 +298,7 @@ public class BuildListUtil {
         }
       }
     }
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     //
     // FIX ME??  Consider modifying this to give clearer instructions when
     // a maternal or zygotic channel has been selected instead of the default!

@@ -36,7 +36,6 @@ import javax.swing.JScrollPane;
 import javax.swing.border.Border;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -56,7 +55,6 @@ public class DialogSupport {
 
   private DialogSupportClient dsClient_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   private ResourceManager rMan_; 
   private GridBagConstraints gbc_;
   private JDialog closeMe_;
@@ -84,11 +82,10 @@ public class DialogSupport {
   ** Constructor 
   */ 
    
-  public DialogSupport(DialogSupportClient client, UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc) {
+  public DialogSupport(DialogSupportClient client, UIComponentSource uics, GridBagConstraints gbc) {
     uics_ = uics;
-    dacx_ = dacx;
     dsClient_ = client;
-    rMan_ = dacx_.getRMan();
+    rMan_ = uics_.getRMan();
     gbc_ = gbc;
   }
   
@@ -97,11 +94,10 @@ public class DialogSupport {
   ** Constructor 
   */ 
   
-  public DialogSupport(UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc, JDialog closeMe) {
+  public DialogSupport(UIComponentSource uics, GridBagConstraints gbc, JDialog closeMe) {
     uics_ = uics;
-    dacx_ = dacx;
     closeMe_ = closeMe;
-    rMan_ = dacx_.getRMan();
+    rMan_ = uics_.getRMan();
     gbc_ = gbc;
   }  
   
@@ -110,10 +106,9 @@ public class DialogSupport {
   ** Constructor 
   */ 
   
-  public DialogSupport(UIComponentSource uics, DataAccessContext dacx, GridBagConstraints gbc) {
+  public DialogSupport(UIComponentSource uics, GridBagConstraints gbc) {
     uics_ = uics;
-    dacx_ = dacx;
-    rMan_ = dacx_.getRMan();
+    rMan_ = uics_.getRMan();
     gbc_ = gbc;
   }  
   

@@ -615,9 +615,9 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     // info, since it will need to be mapped based on the nav tree undo info, and we
     // are going to use it to restore our tree after we are done.
     //
-
-    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx);
-    support.addEdit(new ExpansionChangeCmd(dacx, ec));
+    NavTree nt = dacx.getGenomeSource().getModelHierarchy();  
+    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, nt);
+    support.addEdit(new ExpansionChangeCmd(ec));
     if (recordPathControllerState) {
       UserTreePathController utpc = uics_.getPathController();
       support.addEdit(new UserTreePathControllerChangeCmd(dacx, utpc.recordStateForUndo(true)));
@@ -633,15 +633,15 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   public void doRedoExpansionChange(UndoSupport support, DataAccessContext dacx, NavTreeChange ntc, boolean recordPathControllerState) {      
 
-    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx);
     NavTree nt = dacx.getGenomeSource().getModelHierarchy();
+    ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(false, nt);
     ec.expanded = nt.mapAllPaths(ec.expanded, ntc, false);
     ec.selected = nt.mapAPath(ec.selected, ntc, false);
     if (recordPathControllerState) {
       UserTreePathController utpc = uics_.getPathController();
       support.addEdit(new UserTreePathControllerChangeCmd(dacx, utpc.recordStateForUndo(false)));
     }
-    support.addEdit(new ExpansionChangeCmd(dacx, ec));      
+    support.addEdit(new ExpansionChangeCmd(ec));      
 
     return;     
   }  
@@ -680,7 +680,19 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     String imKey = nt.getImageKey(tn, forMap);
     return (imKey != null);
   }
-
+   
+  /***************************************************************************
+  **
+  ** Answer if curr node is a group node
+  */  
+   
+  public boolean currNodeIsGroupNode() {
+    NavTree nt = ddacx_.getGenomeSource().getModelHierarchy();
+    TreePath tp = getTreeSelectionPath();  
+    String groupNodeID = nt.getGroupNodeID(tp);
+    return (groupNodeID != null);
+  }
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE METHODS
@@ -745,7 +757,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   public void updateNavTreeNames(ModelChangeEvent mcev, DataAccessContext dacx) { 
     String id = mcev.isProxyKey() ? mcev.getProxyKey() : mcev.getGenomeKey();
     NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
-    UiUtil.fixMePrintout("Nav tree names changed here to match model name change!");
+    // NOTE: This is where nav tree names are changed to match model name change.
     navTree.nodeNameRefresh(id, dacx);
     if (myTree_ != null) {
       myTree_.revalidate();

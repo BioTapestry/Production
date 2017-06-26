@@ -38,7 +38,6 @@ import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
@@ -220,105 +219,162 @@ public class TemporalInputRangeData {
     }
     return;
   }
- 
+
+  /***************************************************************************
+  ** 
+  ** Prepare for building the temporal input range data purely from the time course data.
+  */
+
+  public List<HoldForBuild> prepForBuildFromTCD(DataAccessContext dac) {
+    
+    //
+    // OK, we can have an issue if the user has mapped a model node to more than one
+    // underlying TIR source or entry. Which entry to build? Which source to use? So
+    // if we have one-to-many maps, we would be creating a whole slew of entries. For
+    // now, just refuse to do it if we encounter anything more complex than one-to-one
+    // maps. But note we are OK with time course one-to-many maps, since those will 
+    // just combine in an "OR" fashion.
+    // Don't want to abort the procedure part-way thru, so we will do the checking first
+    // and hold onto the results.
+    //
+    
+    TimeCourseDataMaps tcdm = dac.getDataMapSrc().getTimeCourseDataMaps();
+    DBGenome genome = dac.getDBGenome();
+    
+    ArrayList<HoldForBuild> hfbs = new ArrayList<HoldForBuild>();
+    Iterator<Linkage> lit = genome.getLinkageIterator();
+    while (lit.hasNext()) {
+      HoldForBuild hfb = new HoldForBuild();
+      hfb.link = lit.next();
+      String src = hfb.link.getSource();
+      String trg = hfb.link.getTarget();
+      String srcNameT = genome.getNode(src).getRootName();
+      String trgNameT = genome.getNode(trg).getRootName();
+      hfb.stcm = tcdm.getTimeCourseTCMDataKeysWithDefault(src, dac.getGenomeSource());
+      hfb.tisks = getTemporalInputRangeSourceKeysWithDefaultGivenName(src, srcNameT);   
+      hfb.tirks = getTemporalInputRangeEntryKeysWithDefaultGivenName(trg, trgNameT);
+      if ((hfb.tisks.size() > 1) || (hfb.tirks.size() > 1)) {
+        return (null);
+      }
+      hfbs.add(hfb);
+    }
+    return (hfbs);
+  }
+
   /***************************************************************************
   ** 
   ** Build the temporal input range data purely from the time course data. Do this inside an undo transaction
   */
 
-  public void buildFromTCD(DataAccessContext dac) {
+  public void buildFromTCD(DataAccessContext dac, List<HoldForBuild> hfbs) {
     
     TimeCourseData tcd = dac.getExpDataSrc().getTimeCourseData();
-    TimeCourseDataMaps tcdm = dac.getDataMapSrc().getTimeCourseDataMaps();
-    DBGenome genome = dac.getDBGenome();
-    
+    double weak = dac.getDisplayOptsSource().getDisplayOptions().getWeakExpressionLevel();
+   
+    //
+    // OK, we can have an issue if the user has mapped a model node to more than one
+    // underlying TIR source or entry. Which entry to build? Which source to use? So
+    // if we have one-to-many maps, we would be creating a whole slew of entries. For
+    // now, just refuse to do it if we encounter anything more complex than one-to-one
+    // maps. But note we are OK with time course one-to-many maps, since those will 
+    // just combine in an "OR" fashion.
+    // Don't want to abort the procedure part-way thru, so we will do the checking first
+    // and hold onto the results.
+    //
+     
     Set<Integer> times = tcd.getInterestingTimes();
     SortedSet<Integer> sortedTimes = new TreeSet<Integer>(times);
     sortedTimes = DataUtil.fillOutHourly(sortedTimes);
     
     Map<String, Set<CrossRegionTuple>> xRegLinks = dac.getFGHO().getAllCrossLinks(this);
        
-    Iterator<Linkage> lit = genome.getLinkageIterator();
-    while (lit.hasNext()) {
-      Linkage link = lit.next();
-      String src = link.getSource();
-      String trg = link.getTarget();
-      List<TimeCourseDataMaps.TCMapping> stcm = tcdm.getTimeCourseTCMDataKeysWithDefault(src, dac.getGenomeSource());
-      String srcNameT = genome.getNode(src).getRootName();
-      String trgNameT = genome.getNode(trg).getRootName();
-      List<String> tisks = getTemporalInputRangeSourceKeysWithDefaultGivenName(src, srcNameT);   
-      List<String> tirks = getTemporalInputRangeEntryKeysWithDefaultGivenName(trg, trgNameT);
-      UiUtil.fixMePrintout("this is tisks x tirks x sctm! NO! Incorrect duplications can happen");
-      for (String trgName : tirks) {
-        for (String srcName : tisks) {
-          TemporalRange tr = getRange(trgName);
-          InputTimeRange itr = (tr == null) ? null : tr.getTimeRange(srcName);
-          Set<CrossRegionTuple> xrts = xRegLinks.get(GenomeItemInstance.getBaseID(link.getID()));
-          
-          for (TimeCourseDataMaps.TCMapping tcm : stcm) {            
-            TimeCourseGene tcg = tcd.getTimeCourseData(tcm.name);
-            // Guys in VfG but no VfA will show up here:
-            if (tcg == null) {
-              continue;
+    for (HoldForBuild hfb : hfbs) {
+      if (hfb.tisks.isEmpty() || hfb.tirks.isEmpty()) {
+        continue; // Should not happen
+      }
+      String trgName = hfb.tirks.get(0);
+      String srcName = hfb.tisks.get(0);
+      TemporalRange tr = getRange(trgName);
+      InputTimeRange itr = (tr == null) ? null : tr.getTimeRange(srcName);
+      Set<CrossRegionTuple> xrts = xRegLinks.get(GenomeItemInstance.getBaseID(hfb.link.getID()));
+      
+      for (TimeCourseDataMaps.TCMapping tcm : hfb.stcm) {            
+        TimeCourseGene tcg = tcd.getTimeCourseData(tcm.name);
+        // Guys in VfG but no VfA will show up here:
+        if (tcg == null) {
+          continue;
+        }
+        Set<String> regions = tcg.expressesInRegions(tcm.channel, true);
+        
+        Iterator<Integer> tmit = sortedTimes.iterator();
+        while (tmit.hasNext()) {
+          Integer time = tmit.next();
+          Iterator<String> rit = regions.iterator();
+          while (rit.hasNext()) {
+            String region = rit.next();
+            TimeCourseGene.VariableLevel vl = new TimeCourseGene.VariableLevel();
+            boolean expressesAtTime = false;
+            int exLev = tcg.getExpressionLevelForSource(region, time, tcm.channel, vl, weak);
+            if ((exLev == ExpressionEntry.EXPRESSED) ||
+                (exLev == ExpressionEntry.WEAK_EXPRESSION)) {
+              expressesAtTime = true;
+            } else if (exLev == ExpressionEntry.VARIABLE) {
+              if (vl.level > 0.0) {
+                expressesAtTime = true;
+              }
             }
-            Set<String> regions = tcg.expressesInRegions(tcm.channel, true);
-            
-            Iterator<Integer> tmit = sortedTimes.iterator();
-            while (tmit.hasNext()) {
-              Integer time = tmit.next();
-              Iterator<String> rit = regions.iterator();
-              while (rit.hasNext()) {
-                String region = rit.next();
-                TimeCourseGene.VariableLevel vl = new TimeCourseGene.VariableLevel();
-                boolean expressesAtTime = false;
-                int exLev = tcg.getExpressionLevelForSource(region, time, tcm.channel, vl);
-                if ((exLev == ExpressionEntry.EXPRESSED) ||
-                    (exLev == ExpressionEntry.WEAK_EXPRESSION)) {
-                  expressesAtTime = true;
-                } else if (exLev == ExpressionEntry.VARIABLE) {
-                  if (vl.level > 0.0) {
-                    expressesAtTime = true;
+            if (expressesAtTime) {
+              //
+              // New entry? New input range for source? Add it:
+              //
+              if (tr == null) {
+                tr = new TemporalRange(trgName, null, true);
+                addEntry(tr);
+              }
+              if (itr == null) {
+                itr = new InputTimeRange(srcName);
+                tr.addTimeRange(itr);
+              }
+              //
+              // Get cross-region tuples that are sourced in the current region.
+              // Add in the mono-region tuple to the cross-regions:
+              //
+              
+              HashSet<CrossRegionTuple> genXrts = new HashSet<CrossRegionTuple>();
+              genXrts.add(new CrossRegionTuple(region, region));
+              if (xrts != null) {
+                for (CrossRegionTuple xrtu : xrts) {
+                  if (xrtu.getSourceRegion().equals(region)) {
+                    genXrts.add(xrtu.clone());
                   }
                 }
-                if (expressesAtTime) {
-                  if (tr == null) {
-                    tr = new TemporalRange(trgName, null, true);
-                    addEntry(tr);
+              }
+              //
+              // For each src-trg region tuple:
+              //
+              for (CrossRegionTuple gxrtu : genXrts) {
+                //
+                // See if we have a matching region and range to work with:
+                //
+                RegionAndRange rar = null;
+                Iterator<RegionAndRange> itrar = itr.getRanges();
+                int rarSign = RegionAndRange.signForSign(hfb.link.getSign());
+                while (itrar.hasNext()) {
+                  RegionAndRange range = itrar.next();                
+                  String reg = range.getRegion();
+                  if ((reg != null) && DataUtil.keysEqual(gxrtu.getTargetRegion(), reg) && (rarSign == range.getSign())) {
+                    rar = range;
+                    break;
                   }
-                  if (itr == null) {
-                    itr = new InputTimeRange(srcName);
-                    tr.addTimeRange(itr);
-                  }
-                  HashSet<CrossRegionTuple> genXrts = new HashSet<CrossRegionTuple>();
-                  genXrts.add(new CrossRegionTuple(region, region));
-                  if (xrts != null) {
-                    for (CrossRegionTuple xrtu : xrts) {
-                      if (xrtu.getSourceRegion().equals(region)) {
-                        genXrts.add(xrtu.clone());
-                      }
-                    }
-                  }
-                  for (CrossRegionTuple gxrtu : genXrts) {
-                    RegionAndRange rar = null;
-                    Iterator<RegionAndRange> itrar = itr.getRanges();
-                    int rarSign = RegionAndRange.signForSign(link.getSign());
-                    while (itrar.hasNext()) {
-                      RegionAndRange range = itrar.next();                
-                      String reg = range.getRegion();
-                      if ((reg != null) && DataUtil.keysEqual(gxrtu.getTargetRegion(), reg) && (rarSign == range.getSign())) {
-                        rar = range;
-                        break;
-                      }
-                    }
-                    int tiv = time.intValue();
-                    if (rar == null) {
-                      String srcReg = (gxrtu.isCross()) ? gxrtu.getSourceRegion() : null;
-                      rar = new RegionAndRange(gxrtu.getTargetRegion(), tiv, tiv, RegionAndRange.signForSign(link.getSign()), null, srcReg);
-                      itr.add(rar);                
-                    } else {
-                      rar.addTime(tiv);
-                    }
-                  }
+                }
+                // Nothing existing? Add it. Else add the time:
+                int tiv = time.intValue();
+                if (rar == null) {
+                  String srcReg = (gxrtu.isCross()) ? gxrtu.getSourceRegion() : null;
+                  rar = new RegionAndRange(gxrtu.getTargetRegion(), tiv, tiv, RegionAndRange.signForSign(hfb.link.getSign()), null, srcReg);
+                  itr.add(rar);                
+                } else {
+                  rar.addTime(tiv);
                 }
               }
             }
@@ -1758,12 +1814,92 @@ public class TemporalInputRangeData {
     return ("TemporalInputRangeData: " + " entries = " + entries_);
   }
 
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // PUBLIC INNER CLASSES
-  //
-  ////////////////////////////////////////////////////////////////////////////
   
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // INNER CLASSES
+  //
+  ////////////////////////////////////////////////////////////////////////////   
+  
+  /***************************************************************************
+  **
+  ** Utility for TIRD building
+  */
+  
+  public static class HoldForBuild {
+    Linkage link;
+    List<TimeCourseDataMaps.TCMapping> stcm;
+    List<String> tisks;   
+    List<String> tirks;
+  }
+  
+  /***************************************************************************
+  **
+  ** Used to return group tuples
+  */
+  
+  public static class CrossRegionTuple implements Cloneable {
+    private String srcReg_;
+    private String trgReg_;
+    
+    public CrossRegionTuple(String srcReg, String trgReg) {
+      if ((srcReg == null) || (trgReg == null)) {
+        throw new IllegalArgumentException();
+      }
+      srcReg_ = srcReg;
+      trgReg_ = trgReg;
+    }
+   
+    @Override
+    public CrossRegionTuple clone() { 
+      try {
+        return ((CrossRegionTuple)super.clone());
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    } 
+  
+    @Override
+    public boolean equals(Object other) {
+      if (other == this) {
+        return (true);
+      }
+      if (other == null) {
+        return (false);
+      }
+      if (!(other instanceof CrossRegionTuple)) {
+        return (false);
+      }
+      CrossRegionTuple otherGT = (CrossRegionTuple)other;
+      if (!this.srcReg_.equals(otherGT.srcReg_)) {
+        return (false);
+      }
+      return (this.trgReg_.equals(otherGT.trgReg_));
+    }
+    
+    public boolean isCross() {
+      return (!srcReg_.equals(trgReg_));
+    }
+  
+    public String getSourceRegion() {
+      return (srcReg_);
+    }
+    
+    public String getTargetRegion() {
+      return (trgReg_);
+    } 
+    
+    @Override
+    public int hashCode() {
+      return ((srcReg_.hashCode() * 3) + trgReg_.hashCode());
+    }
+    
+    @Override
+    public String toString() {
+      return ("CrossRegionTuple : " + srcReg_ + " -> " + trgReg_);
+    }
+  }   
+
   /***************************************************************************
   **
   ** Used to return QPCR map results
@@ -1833,7 +1969,6 @@ public class TemporalInputRangeData {
       return (retval);     
     }  
     
-    @SuppressWarnings("unused")
     private TemporalInputRangeData buildFromXML(String elemName, Attributes attrs) throws IOException {  
       return (new TemporalInputRangeData(dacx_));
     }
@@ -2155,80 +2290,4 @@ public class TemporalInputRangeData {
     out.println("</trGroupMaps>");
     return;
   }
-  
-    ////////////////////////////////////////////////////////////////////////////
-  //
-  // INNER CLASSES
-  //
-  ////////////////////////////////////////////////////////////////////////////   
-  
-  /***************************************************************************
-  **
-  ** Used to return group tuples
-  */
-  
-  public static class CrossRegionTuple implements Cloneable {
-    private String srcReg_;
-    private String trgReg_;
-    
-    public CrossRegionTuple(String srcReg, String trgReg) {
-      if ((srcReg == null) || (trgReg == null)) {
-        throw new IllegalArgumentException();
-      }
-      srcReg_ = srcReg;
-      trgReg_ = trgReg;
-    }
-   
-    @Override
-    public CrossRegionTuple clone() { 
-      try {
-        return ((CrossRegionTuple)super.clone());
-      } catch (CloneNotSupportedException cnse) {
-        throw new IllegalStateException();
-      }
-    } 
-  
-    @Override
-    public boolean equals(Object other) {
-      if (other == this) {
-        return (true);
-      }
-      if (other == null) {
-        return (false);
-      }
-      if (!(other instanceof CrossRegionTuple)) {
-        return (false);
-      }
-      CrossRegionTuple otherGT = (CrossRegionTuple)other;
-      if (!this.srcReg_.equals(otherGT.srcReg_)) {
-        return (false);
-      }
-      return (this.trgReg_.equals(otherGT.trgReg_));
-    }
-    
-    public boolean isCross() {
-      return (!srcReg_.equals(trgReg_));
-    }
-  
-    public String getSourceRegion() {
-      return (srcReg_);
-    }
-    
-    public String getTargetRegion() {
-      return (trgReg_);
-    } 
-    
-    @Override
-    public int hashCode() {
-      return ((srcReg_.hashCode() * 3) + trgReg_.hashCode());
-    }
-    
-    @Override
-    public String toString() {
-      return ("CrossRegionTuple : " + srcReg_ + " -> " + trgReg_);
-    }
-  }   
-  
-  
-  
 }

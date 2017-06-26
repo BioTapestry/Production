@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import org.xml.sax.Attributes;
-
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -93,7 +92,6 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   private boolean archival_;
   private boolean internalOnly_;
   private boolean isTemplate_;
-  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -116,7 +114,6 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   */
 
   public TimeCourseGene(TimeCourseGene other, boolean doData) {
-    this.dacx_ = other.dacx_;
     this.name_ = other.name_;
     this.hasTimeCourse_ = other.hasTimeCourse_;
     this.timeCourseNote_ = other.timeCourseNote_;  
@@ -161,8 +158,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(DataAccessContext dacx, String name, int confidence, boolean archival, boolean internalOnly) {
-    dacx_ = dacx;
+  public TimeCourseGene(String name, int confidence, boolean archival, boolean internalOnly) {
     name_ = name;
     confidence_ = confidence;
     archival_ = archival;
@@ -177,8 +173,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(DataAccessContext dacx, String name, Iterator<GeneTemplateEntry> tempit) {
-    this(dacx, name, tempit, false);
+  public TimeCourseGene(String name, Iterator<GeneTemplateEntry> tempit) {
+    this(name, tempit, false);
   }
   
   /***************************************************************************
@@ -186,8 +182,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(DataAccessContext dacx, String name, Iterator<GeneTemplateEntry> tempit, boolean isTemplate) {
-    dacx_ = dacx;
+  public TimeCourseGene(String name, Iterator<GeneTemplateEntry> tempit, boolean isTemplate) {
     name_ = name;
     confidence_ = TimeCourseGene.NORMAL_CONFIDENCE;
     archival_ = false;
@@ -210,11 +205,10 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor
   */
 
-  public TimeCourseGene(DataAccessContext dacx, String gene, String confidence, String timeCourse, 
+  public TimeCourseGene(String gene, String confidence, String timeCourse, 
                         String note, String archival, String internalOnly) 
     throws IOException {
 
-    dacx_ = dacx;
     name_ = gene;
 
     if (confidence == null) {
@@ -277,13 +271,12 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Constructor for the template.
   */
 
-  private TimeCourseGene(DataAccessContext dacx, boolean isTemplate) throws IOException {
+  private TimeCourseGene(boolean isTemplate) throws IOException {
 
     if (!isTemplate) {
       throw new IOException();
     }
     
-    dacx_ = dacx;
     name_ = "___Gene-For-BT-Template__";
     data_= new ArrayList<ExpressionEntry>();
     hasTimeCourse_ = false;
@@ -838,7 +831,9 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the expression level for a given region and hour.
   */
   
-  public int getExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, VariableLevel varLev) {
+  public int getExpressionLevelForSource(String region, int hour, 
+                                         ExpressionEntry.Source exprSource, 
+                                         VariableLevel varLev, double weak) {
     
     //
     // If the request falls outside an active region, we need
@@ -868,7 +863,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     // No exact match, so interpolate the results:
     //
     
-    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, exprSource, varLev));
+    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, exprSource, varLev, weak));
   }
  
   /***************************************************************************
@@ -876,7 +871,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Return the expression level for a given region and hour and Simulation run
   */
   
-  public int getExpressionLevelForSimulation(String simKey, String region, int hour, VariableLevel varLev) {
+  public int getExpressionLevelForSimulation(String simKey, String region, int hour, VariableLevel varLev, double weak) {
     
     //
     // If the request falls outside an active region, we need
@@ -906,7 +901,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     // No exact match, so interpolate the results:
     //
     
-    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev));
+    return (interpolateExpression(hour, trip.greatestLower, trip.leastHigher, ExpressionEntry.Source.NO_SOURCE_SPECIFIED, varLev, weak));
   }
 
   /***************************************************************************
@@ -1092,7 +1087,8 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   
   private boolean interpolateVariableExpression(int hour, ExpressionEntry greatestLower, 
                                                 ExpressionEntry leastHigher, 
-                                                ExpressionEntry.Source exprSource, VariableLevel varLev) {
+                                                ExpressionEntry.Source exprSource, 
+                                                VariableLevel varLev, double weak) {
     //
     // With variable expression, there is no edge strategy!  If mixed variable
     // and fixed, convert the fixed to a variable level:
@@ -1126,7 +1122,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     int lowerTime = greatestLower.getTime();
     VariableLevel lowerVarLev = new VariableLevel();
     if (!lowerVar) {
-      convertFixedToVariable(lowerExpr, lowerVarLev);
+      convertFixedToVariable(lowerExpr, lowerVarLev, weak);
     } else {
       lowerVarLev.level = greatestLower.getVariableLevelForSource(exprSource);
     }
@@ -1135,7 +1131,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     int higherExpr = leastHigher.getExpressionForSource(exprSource);
     VariableLevel higherVarLev = new VariableLevel();
     if (!higherVar) {
-      convertFixedToVariable(higherExpr, higherVarLev);
+      convertFixedToVariable(higherExpr, higherVarLev, weak);
     } else {
       higherVarLev.level = leastHigher.getVariableLevelForSource(exprSource);
     }
@@ -1156,14 +1152,14 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   ** Convert fixed values to variable ones:
   */ 
   
-  private void convertFixedToVariable(int exprLevel, VariableLevel varLev) {
+  private void convertFixedToVariable(int exprLevel, VariableLevel varLev, double weak) {
     switch (exprLevel) {
       case ExpressionEntry.NO_DATA:
       case ExpressionEntry.NOT_EXPRESSED:
         varLev.level = 0.0;
         break;
       case ExpressionEntry.WEAK_EXPRESSION:
-        varLev.level = dacx_.getDisplayOptsSource().getDisplayOptions().getWeakExpressionLevel();
+        varLev.level = weak;
         break;
       case ExpressionEntry.EXPRESSED:        
         varLev.level = 1.0;
@@ -1184,7 +1180,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   private int interpolateExpression(int hour, ExpressionEntry greatestLower, 
                                               ExpressionEntry leastHigher, 
                                               ExpressionEntry.Source exprSource, 
-                                              VariableLevel varLev) {
+                                              VariableLevel varLev, double weak) {
 
     //
     // We have to have a greatest lower, since otherwise we would have
@@ -1200,7 +1196,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     // and fixed, convert the fixed to a variable level:
     //
     
-    if (interpolateVariableExpression(hour, greatestLower, leastHigher, exprSource, varLev)) {
+    if (interpolateVariableExpression(hour, greatestLower, leastHigher, exprSource, varLev, weak)) {
       return (ExpressionEntry.VARIABLE);
     }
 
@@ -1605,7 +1601,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   */
   
   public int getExpressionTable(PrintWriter out, DataAccessContext dacx, TimeCourseData tcd, boolean showTree) {
-    return ((new TimeCourseTableDrawer(dacx, this)).getExpressionTable(out, tcd, showTree));
+    return ((new TimeCourseTableDrawer(dacx, dacx.getRMan(), this)).getExpressionTable(out, tcd, showTree));
   }
 
   /***************************************************************************
@@ -1912,7 +1908,7 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
   **
   */
   
-  public static TimeCourseGene buildFromXML(DataAccessContext dacx, String elemName, 
+  public static TimeCourseGene buildFromXML(String elemName, 
                                             Attributes attrs) throws IOException {
     if (!elemName.equals("timeCourse")) {
       return (null);
@@ -1955,12 +1951,12 @@ public class TimeCourseGene implements Cloneable, TimeCourseTableDrawer.Client {
     boolean makeTemplate = (new Boolean(isTemplate)).booleanValue();
     
     if (makeTemplate) {
-      return (new TimeCourseGene(dacx, true));
+      return (new TimeCourseGene(true));
     }
     if ((gene == null) || (confidence == null) || (timeCourse == null)) {
       throw new IOException();
     }
-    return (new TimeCourseGene(dacx, gene, confidence, timeCourse, note, archival, internalOnly));
+    return (new TimeCourseGene(gene, confidence, timeCourse, note, archival, internalOnly));
   }
   
   /***************************************************************************

@@ -165,6 +165,7 @@ public class RegionPropertiesDialogFactory extends DialogFactory {
 		private JComboBox rpadCombo_;
 		private JComboBox hideCombo_;
 		private String groupName_;
+		private DataAccessContext dacx_;
 
 		private static final long serialVersionUID = 1L;
 
@@ -183,6 +184,7 @@ public class RegionPropertiesDialogFactory extends DialogFactory {
 			super(cfh, "groupprop.title", new Dimension(900,400), 11, new RegionRequest(), true);
 			this.groupName_ = groupName;
 			props_ = props;
+			dacx_ = cfh.getDataAccessContext();
 			layoutKey_ = dacx_.getCurrentLayoutID();
 
 			//
@@ -193,10 +195,10 @@ public class RegionPropertiesDialogFactory extends DialogFactory {
 			nameField_ = new JTextField();
 			addLabeledWidget(label, nameField_, false, false);
 	
-			colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, cfh.getHarnessBuilder(), null, true, "groupprop.activecolor", false, false);
+			colorWidget1_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), cfh.getHarnessBuilder(), null, true, "groupprop.activecolor", false, false);
 			ArrayList<ColorDeletionListener> colorDeletionListeners = new ArrayList<ColorDeletionListener>();
 			colorDeletionListeners.add(colorWidget1_);
-			colorWidget2_ = new ColorSelectionWidget(uics_, dacx_, cfh.getHarnessBuilder(), colorDeletionListeners, true, "groupprop.inactivecolor", true, false);    
+			colorWidget2_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), cfh.getHarnessBuilder(), colorDeletionListeners, true, "groupprop.inactivecolor", true, false);    
 
 			addWidgetFullRow(colorWidget1_, false);
 			addWidgetFullRow(colorWidget2_, false);    

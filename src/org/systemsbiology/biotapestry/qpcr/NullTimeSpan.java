@@ -26,7 +26,6 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.MinMax;
 
@@ -46,7 +45,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   private int minTime_;
   private int maxTime_;
   private boolean isSpan_;
-  private DataAccessContext dacx_;
+//  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -59,8 +58,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(DataAccessContext dacx, int min) {
-    dacx_ = dacx; 
+  NullTimeSpan(int min) {
     minTime_ = min;
     isSpan_ = false;
     maxTime_ = -1;
@@ -71,8 +69,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(DataAccessContext dacx, int min, int max) {
-    dacx_ = dacx;
+  NullTimeSpan(int min, int max) {
     minTime_ = min;
     isSpan_ = true;
     maxTime_ = max;
@@ -83,8 +80,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   ** Constructor
   */
 
-  NullTimeSpan(DataAccessContext dacx, MinMax mm) {
-    dacx_ = dacx;
+  NullTimeSpan(MinMax mm) {
     minTime_ = mm.min;
     isSpan_ = mm.min < mm.max;
     maxTime_ = isSpan_ ? mm.max : -1;
@@ -125,7 +121,6 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   */
   
    void mergeInNewValues(NullTimeSpan other) {
-    this.dacx_ = other.dacx_;
     this.minTime_ = other.minTime_;
     this.isSpan_ = other.isSpan_;
     this.maxTime_ = other.maxTime_;
@@ -179,9 +174,8 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   **
   */
   
-   String displayString() {
+   String displayString(TimeAxisDefinition tad) {
     StringBuffer buf = new StringBuffer();
-    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     boolean namedStages = tad.haveNamedStages();
     String minTime = (namedStages) ? tad.getNamedStageForIndex(minTime_).name : Integer.toString(minTime_);
     buf.append(minTime);
@@ -311,7 +305,7 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
   **
   */
   
-   static NullTimeSpan buildFromXML(DataAccessContext dacx, String elemName, 
+   static NullTimeSpan buildFromXML(TimeAxisDefinition tad, String elemName, 
                                     Attributes attrs) throws IOException {
 
     if (!elemName.equals("defaultNullTimes") && !elemName.equals("nullTimes")) {
@@ -352,12 +346,11 @@ class NullTimeSpan implements Cloneable, Comparable<NullTimeSpan> {
     } catch (NumberFormatException nfe) {
       throw new IOException();
     }
-    
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+   
     if (!tad.spanIsOk(minTime, (isSpan) ? maxTime : minTime)) {      
       throw new IOException();
     }
 
-    return ((isSpan) ? new NullTimeSpan(dacx, minTime, maxTime) : new NullTimeSpan(dacx, minTime));
+    return ((isSpan) ? new NullTimeSpan(minTime, maxTime) : new NullTimeSpan(minTime));
   }  
 }

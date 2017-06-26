@@ -35,7 +35,6 @@ import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.IntegerEditor;
 import org.systemsbiology.biotapestry.util.ProtoInteger;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
@@ -61,7 +60,6 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
   private boolean namedStages_;
   private TimeAxisDefinition tad_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
  
@@ -76,10 +74,10 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
   ** Constructor 
   */ 
   
-  public RegionTopoTabSetupDialog(UIComponentSource uics, DataAccessContext dacx, List<Integer> currTimes, List<Integer> requiredTimes) {     
-    super(uics.getTopFrame(), dacx.getRMan().getString("topoTab.title"), true);
+  public RegionTopoTabSetupDialog(UIComponentSource uics, TimeAxisDefinition tad, List<Integer> currTimes, List<Integer> requiredTimes) {     
+    super(uics.getTopFrame(), uics.getRMan().getString("topoTab.title"), true);
     uics_ = uics;
-    dacx_ = dacx;  
+    tad_ = tad;
     setSize(500, 300);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -93,10 +91,10 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
     // Figure out if we accept numbers or names for the stages:
     //
     
-    tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
+
     namedStages_ = tad_.haveNamedStages();    
     
-    est_ = new EditableTable(uics_, dacx_, new ColumnTableModel(uics_, dacx_, tad_, namedStages_), uics_.getTopFrame());
+    est_ = new EditableTable(uics_, new ColumnTableModel(uics_, tad_, namedStages_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -105,7 +103,7 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(tablePan, gbc);
     
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 10, 10, false, true);
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -197,10 +195,10 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
 
     private static final long serialVersionUID = 1L;
     
-    ColumnTableModel(UIComponentSource uics, DataAccessContext dacx, TimeAxisDefinition tad, boolean namedStages) {
-      super(uics, dacx, NUM_COL_);
+    ColumnTableModel(UIComponentSource uics, TimeAxisDefinition tad, boolean namedStages) {
+      super(uics, NUM_COL_);
       String displayUnits = tad.unitDisplayString();
-      ResourceManager rMan = dacx.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       String unitHeading = MessageFormat.format(rMan.getString("topoTab.timeUnitFormat"), new Object[] {displayUnits});
       colNames_ = new String[] {unitHeading};
       colClasses_ = (namedStages) ? new Class[] {String.class} : new Class[] {ProtoInteger.class};
@@ -234,7 +232,7 @@ public class RegionTopoTabSetupDialog extends JDialog implements DialogSupport.D
         return (false);
       }
       
-      ResourceManager rMan = dacx_.getRMan();
+      ResourceManager rMan = uics_.getRMan();
       //
       // Make sure the integers are OK, non-overlapping, etc:
       //

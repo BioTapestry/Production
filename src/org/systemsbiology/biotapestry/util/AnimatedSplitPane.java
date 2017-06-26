@@ -29,7 +29,6 @@ import javax.swing.JPanel;
 import javax.swing.Timer;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.FontManager;
 
 /****************************************************************************
@@ -59,7 +58,6 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
   private double midFrac_;
   private AnimatedSplitPaneLayoutManager asplLM_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
   
@@ -69,11 +67,10 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  public AnimatedSplitPane(UIComponentSource uics, DataAccessContext dacx, AnimatedSplitPaneLayoutManager.PanelForSplit newTopComponent, 
+  public AnimatedSplitPane(UIComponentSource uics, FontManager fMgr, AnimatedSplitPaneLayoutManager.PanelForSplit newTopComponent, 
                            AnimatedSplitPaneLayoutManager.PanelForSplit newBottomComponent, AnimatedSplitListener asl) {
     super();
     uics_ = uics;
-    dacx_ = dacx;
     asplLM_ = new AnimatedSplitPaneLayoutManager();
     setLayout(asplLM_);
     myTop_ = newTopComponent;
@@ -83,8 +80,8 @@ public class AnimatedSplitPane extends JPanel implements ActionListener {
     barPanel_.setBackground(Color.LIGHT_GRAY.darker());
     emptyPanel_ = new JPanel();
     emptyPanel_.setLayout(new GridLayout(1, 1));
-    JLabel warning = new JLabel(dacx_.getRMan().getString("asp.tooSmallToDisplay"), JLabel.CENTER);
-    warning.setFont(dacx_.getFontManager().getFixedFont(FontManager.WORKSHEET_TITLES_LARGE));
+    JLabel warning = new JLabel(uics_.getRMan().getString("asp.tooSmallToDisplay"), JLabel.CENTER);
+    warning.setFont(fMgr.getFixedFont(FontManager.WORKSHEET_TITLES_LARGE));
     emptyPanel_.add(warning);
     add(myTop_, new AnimatedSplitPaneLayoutManager.ASPRole(AnimatedSplitPaneLayoutManager.IS_TOP));
     add(barPanel_, new AnimatedSplitPaneLayoutManager.ASPRole(AnimatedSplitPaneLayoutManager.IS_BAR));

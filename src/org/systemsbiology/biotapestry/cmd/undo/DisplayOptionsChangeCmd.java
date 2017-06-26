@@ -50,8 +50,8 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public DisplayOptionsChangeCmd(DataAccessContext dacx, DisplayOptionsChange restore) {
-    super(dacx);
+  public DisplayOptionsChangeCmd(DisplayOptionsChange restore) {
+    super();
     restore_ = restore;
   }  
   
@@ -79,7 +79,13 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   @Override
   public void undo() {
     super.undo();
-    dacx_.getDisplayOptsSource().changeUndo(restore_);
+    if (restore_.oldOpts != null) {
+      dacx_.getDisplayOptsSource().changeUndo(restore_);
+    } else if (restore_.oldPertOpts != null) {
+      dacx_.getExpDataSrc().getPertData().setPertDisplayOptionsForIO(restore_.oldPertOpts);
+    } else {
+      throw new IllegalStateException();
+    }
     return;
   }  
   
@@ -91,7 +97,13 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    dacx_.getDisplayOptsSource().changeRedo(restore_);
+    if (restore_.newOpts != null) {
+      dacx_.getDisplayOptsSource().changeRedo(restore_);
+    } else if (restore_.newPertOpts != null) {
+      dacx_.getExpDataSrc().getPertData().setPertDisplayOptionsForIO(restore_.newPertOpts);
+    } else {
+      throw new IllegalStateException();
+    }
     return;
   }
 }

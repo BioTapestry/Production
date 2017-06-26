@@ -193,7 +193,7 @@ public class SUPanel implements LayoutChangeListener,
     uics_.setTextBoxManager(new TextBoxManager(uics_, dacx));
 
     dragFloater_ = new ArrayList<Point>();
-    uics_.setCursorManager(new CursorManager(uics_));
+    uics_.setCursorManager(new CursorManager(myPanel_));
     cSrc_.setPanelCmds(new PanelCommands(uics_, ddacx, hBld_));
     
   //  currentNetMods_ = new TaggedSet();

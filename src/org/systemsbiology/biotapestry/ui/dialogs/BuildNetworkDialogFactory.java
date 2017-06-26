@@ -61,6 +61,7 @@ import javax.swing.table.TableColumn;
 
 import org.systemsbiology.biotapestry.app.RememberSource;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.ClientControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.RemoteRequest;
@@ -354,6 +355,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
     private EnumCellNodeType geneEnumType_;
     private StaticDataAccessContext dacx_;
     private UIComponentSource uics_;
+    private TabSource tSrc_; 
     private UndoFactory uFac_;
     
     private JLabel lccLabel_;
@@ -389,6 +391,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
       cfh_ = cfh.getClientHarness();
       dacx_ = cfh.getDataAccessContext();
       uics_ = cfh.getUI();
+      tSrc_ = cfh.getTabSource();
       rSrc_ = cfh.getMemorySource();
       ResourceManager rMan = dacx_.getRMan();
       typeTracker_ = new HashMap<String, EnumCellNodeType>();
@@ -642,7 +645,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
         }
       }); 
       
-      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(dacx_, true);    
+      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(uics_, true);    
       layoutChoiceCombo_ = new JComboBox(layoutChoices);        
       lccLabel_ = new JLabel(rMan.getString("buildNetwork.layoutChoice"));     
       UiUtil.gbcSet(gbc, 2, 0, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);    
@@ -2214,7 +2217,7 @@ public class BuildNetworkDialogFactory extends DialogFactory {
           if (vfgParent == null) {
             throw new IllegalStateException();
           } 
-          BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, dacx_, uFac_);
+          BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, dacx_, tSrc_, uFac_);
           StaticDataAccessContext dacxI = new StaticDataAccessContext(dacx_, vfgParent);
           List<BuildInstruction> parentList = bip.getInstructions(dacxI);
           int plSize = parentList.size();

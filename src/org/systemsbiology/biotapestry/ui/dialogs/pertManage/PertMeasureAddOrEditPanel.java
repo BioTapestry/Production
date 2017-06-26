@@ -39,11 +39,14 @@ import javax.swing.text.JTextComponent;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureProps;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.AnimatedSplitEditPanel;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -100,10 +103,10 @@ public class PertMeasureAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertMeasureAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
-    super(uics, dacx, parent, pet, myKey, 4);
+  public PertMeasureAddOrEditPanel(UIComponentSource uics, FontManager fMgr, TimeCourseData tcd, JFrame parent, PerturbationData pd, PendingEditTracker pet, String myKey) { 
+    super(uics, parent, pet, myKey, 4);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics_, dacx_, parent, pd, rMan_, gbc_, pet_);
+    pmh_ = new PertManageHelper(uics_, parent, pd, tcd, rMan_, gbc_, pet_);
 
     //
     // Edit panel

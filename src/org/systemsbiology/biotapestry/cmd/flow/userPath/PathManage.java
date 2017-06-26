@@ -20,12 +20,15 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.userPath;
 
+import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractStepState;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.SimpleRestrictedNameDialogFactory;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
@@ -44,6 +47,7 @@ public class PathManage extends AbstractControlFlow {
   ////////////////////////////////////////////////////////////////////////////  
   
   private boolean doCreate_;
+  private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -56,7 +60,8 @@ public class PathManage extends AbstractControlFlow {
   ** Constructor 
   */ 
   
-  public PathManage(boolean doCreate) {
+  public PathManage(boolean doCreate, BTState appState) {
+    appState_ = appState;
     name =  (doCreate) ? "command.TreePathCreate" : "command.TreePathDelete";
     desc = (doCreate) ? "command.TreePathCreate" : "command.TreePathDelete";
     icon = (doCreate) ? "NewTreePath24.gif" : "DeleteTreePath24.gif";
@@ -89,7 +94,7 @@ public class PathManage extends AbstractControlFlow {
    
    @Override  
    public boolean isEnabled(CheckGutsCache cache) {
-     return ((doCreate_) ? cache.haveSubmodelsOrOverlay() : true); // Second case actually managed manually!
+     return ((doCreate_) ? cache.haveSubmodelsOrOverlay() || cache.currNodeIsGroupNode() : true); // Second case actually managed manually!
    }
 
   /***************************************************************************
@@ -104,7 +109,8 @@ public class PathManage extends AbstractControlFlow {
     while (true) {
       ManageState ans;
       if (last == null) {
-        ans = new ManageState(doCreate_, cfh);      
+        ans = new ManageState(doCreate_, cfh);
+        ans.setAppState(appState_);
       } else {
         ans = (ManageState)last.currStateX;
         ans.stockCfhIfNeeded(cfh);
@@ -135,6 +141,7 @@ public class PathManage extends AbstractControlFlow {
   public static class ManageState extends AbstractStepState implements DialogAndInProcessCmd.CmdState {
 
     private String createName_;
+    private DynamicDataAccessContext ddacx_;
    
     /***************************************************************************
     **
@@ -156,6 +163,17 @@ public class PathManage extends AbstractControlFlow {
       nextStep_ = (doCreate) ? "stepOneForCreate" : "stepForDelete";
     }
 
+    /***************************************************************************
+    **
+    ** We have to use appState for the moment...
+    */ 
+    
+    public void setAppState(BTState appState) {
+      // We ignore the static context we are being handed, and use what we are provided here!
+      ddacx_ = new DynamicDataAccessContext(appState);
+      return;
+    }
+    
     /***************************************************************************
     **
     ** Do the creation
@@ -202,7 +220,7 @@ public class PathManage extends AbstractControlFlow {
     */ 
          
     private DialogAndInProcessCmd stepThreeForCreate() {
-      uics_.getPathController().addAPath(createName_, dacx_, uFac_);
+      uics_.getPathController().addAPath(createName_, ddacx_, uFac_);
       uics_.getPathControls().handlePathButtons();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
@@ -213,7 +231,7 @@ public class PathManage extends AbstractControlFlow {
     */ 
         
     private DialogAndInProcessCmd stepForDelete() {
-      uics_.getPathController().deleteCurrentPath(dacx_, uFac_); 
+      uics_.getPathController().deleteCurrentPath(ddacx_, uFac_); 
       uics_.getPathControls().handlePathButtons();      
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 

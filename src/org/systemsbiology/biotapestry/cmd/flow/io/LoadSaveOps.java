@@ -47,6 +47,7 @@ import org.systemsbiology.biotapestry.cmd.flow.export.ExportPublish;
 import org.systemsbiology.biotapestry.cmd.flow.tabs.TabOps;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.nav.RecentFilesManager;
@@ -54,6 +55,7 @@ import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.parser.ParserClient;
 import org.systemsbiology.biotapestry.parser.SUParser;
 import org.systemsbiology.biotapestry.perturb.PerturbCsvFormatFactory;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
 import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoFormatFactory;
 import org.systemsbiology.biotapestry.timeCourse.PerturbedTimeCourseGeneCSVFormatFactory;
@@ -67,10 +69,12 @@ import org.systemsbiology.biotapestry.ui.dialogs.FileChooserWrapperFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.pertManage.DesignBatchKeyDialog;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 import org.systemsbiology.biotapestry.util.FilePreparer;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.InvalidInputException;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -234,8 +238,7 @@ public class LoadSaveOps extends AbstractControlFlow {
       case PERTURB:
         return (true);
       case LOAD_AS_NEW_TABS:
-        UiUtil.fixMePrintout("Actually only if not empty: e.g. cache.tabCount>1");
-        return (true);
+        return ((cache.getTabCount() > 1) || cache.genomeNotEmpty() || cache.hasPerturbationData() || cache.haveTimeCourseData());
       case EXPORT:
         return (cache.genomeNotNull());      
       case PERT_EXPRESS:   
@@ -972,8 +975,14 @@ public class LoadSaveOps extends AbstractControlFlow {
  
     private DialogAndInProcessCmd doPerturbedExpression() {   
       try {
-        PerturbedTimeCourseGeneCSVFormatFactory csvff= new PerturbedTimeCourseGeneCSVFormatFactory(ddacx_, uFac_);
-        if (csvff.readPerturbedExpressionCSV(myFile_)) {
+        
+        TimeCourseData tcd = ddacx_.getExpDataSrc().getTimeCourseData();
+        TimeAxisDefinition tad = ddacx_.getExpDataSrc().getTimeAxisDefinition();
+        PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
+        
+        
+        PerturbedTimeCourseGeneCSVFormatFactory csvff= new PerturbedTimeCourseGeneCSVFormatFactory(tcd, tad, pd, uFac_);
+        if (csvff.readPerturbedExpressionCSV(myFile_, ddacx_)) {
           myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
         }
       } catch (InvalidInputException iiex) {
@@ -1139,7 +1148,7 @@ public class LoadSaveOps extends AbstractControlFlow {
       } 
       try {
         // STILL MORE UI TO PORT!
-        DesignBatchKeyDialog dbkd = new DesignBatchKeyDialog(uics_, ddacx_);
+        DesignBatchKeyDialog dbkd = new DesignBatchKeyDialog(uics_);
         dbkd.setVisible(true);
         if (!dbkd.haveResult()) {
           return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -1150,10 +1159,13 @@ public class LoadSaveOps extends AbstractControlFlow {
         boolean useInvest = dbkd.useInvest();  
         boolean useCondition = dbkd.useCondition();
         
-        PerturbCsvFormatFactory csvff = new PerturbCsvFormatFactory(uics_, ddacx_, uFac_, useDate, useTime, useBatch, 
+        PerturbCsvFormatFactory csvff = new PerturbCsvFormatFactory(uics_, uFac_, useDate, useTime, useBatch, 
                                                                     useInvest, useCondition);
+        
+        PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
+        
         // SORRY LOTS OF DIALOGS BURIED DOWN IN THIS CALL:
-        if (csvff.parsePerturbCSV(myFile_)) {
+        if (csvff.parsePerturbCSV(myFile_, pd, uics_, ddacx_)) {
           myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
         }
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));

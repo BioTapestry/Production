@@ -32,7 +32,6 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 
 
@@ -176,7 +175,7 @@ public class CopiesPerEmbryoGene implements Cloneable {
   ** Get an HTML count table suitable for display.
   */
   
-  public void getCountTable(PrintWriter out, DataAccessContext dacx) {
+  public void getCountTable(PrintWriter out, TimeAxisDefinition tad) {
                                    
     Set<Integer> timeKeys = data_.keySet();
     int numTimes = timeKeys.size();
@@ -204,7 +203,7 @@ public class CopiesPerEmbryoGene implements Cloneable {
         int currEntry = rowBase + j;
         if (currEntry < numTimes) {
           Integer timeKey = times.get(currEntry);
-          buildTimeCell(out, timeKey, dacx);
+          buildTimeCell(out, timeKey, tad);
         } else {
           buildEmptyCell(out);
         }
@@ -296,10 +295,10 @@ public class CopiesPerEmbryoGene implements Cloneable {
   **
   */
   
-  public void buildTimeCell(PrintWriter out, Integer timeObj, DataAccessContext dacx) {
+  public void buildTimeCell(PrintWriter out, Integer timeObj, TimeAxisDefinition tad) {
     out.print("<td width=\"70\" align=\"center\" valign=\"center\"><b>");    
     out.print("<b>");
-    String timeLabel = TimeAxisDefinition.getTimeDisplay(dacx, timeObj, true, false);
+    String timeLabel = TimeAxisDefinition.getTimeDisplay(tad, timeObj, true, false);
     out.print(timeLabel);
     out.print("</b>");
     out.println("</td>");        

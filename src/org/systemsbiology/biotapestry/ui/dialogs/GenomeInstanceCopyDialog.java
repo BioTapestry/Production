@@ -27,7 +27,6 @@ import javax.swing.JCheckBox;
 import java.text.MessageFormat;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 
 /****************************************************************************
@@ -61,8 +60,8 @@ public class GenomeInstanceCopyDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public GenomeInstanceCopyDialog(UIComponentSource uics, DataAccessContext dacx, String origName, boolean hasKids) {     
-    super(uics, dacx, "gicopy.title", new Dimension(500, 200), 4);
+  public GenomeInstanceCopyDialog(UIComponentSource uics, String origName, boolean hasKids) {     
+    super(uics, "gicopy.title", new Dimension(500, 200), 4);
    
     //
     // Build the name panel:

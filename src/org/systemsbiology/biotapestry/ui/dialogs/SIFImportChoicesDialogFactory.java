@@ -202,7 +202,7 @@ public class SIFImportChoicesDialogFactory extends DialogFactory {
      
       layoutChoiceLabel_ = new JLabel(rMan_.getString("chooseSIFImport.layout"));
       
-      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(dacx_, true);    
+      Vector<EnumChoiceContent<SpecialtyLayoutEngine.SpecialtyType>> layoutChoices = SpecialtyLayoutEngine.SpecialtyType.getChoices(uics_, true);    
       layoutChoiceCombo_ = new JComboBox(layoutChoices); 
       setLayoutOptions_ = new JCheckBox(rMan_.getString("chooseSIFImport.setOptions"), true);
       

@@ -31,7 +31,6 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 
 /****************************************************************************
@@ -60,7 +59,6 @@ class Batch implements Cloneable {
   private String date_;
   private String invest_;
   private String batchKey_;
-  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -73,8 +71,7 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(DataAccessContext dacx) {
-    dacx_ = dacx;
+  Batch() {
     measurements_ = new ArrayList<Measurement>();
     time_ = NO_TIME;
     date_ = null;
@@ -87,8 +84,7 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(DataAccessContext dacx, int time, String date, String invest) {
-    dacx_ = dacx;
+  Batch(int time, String date, String invest) {
     measurements_ = new ArrayList<Measurement>();
     time_ = time;
     date_ = date;
@@ -101,8 +97,7 @@ class Batch implements Cloneable {
   ** Constructor
   */
 
-  Batch(DataAccessContext dacx, int time, String date, String invest, String batchKey) {
-    dacx_ = dacx;
+  Batch(int time, String date, String invest, String batchKey) {
     measurements_ = new ArrayList<Measurement>();
     time_ = time;
     date_ = date;
@@ -254,11 +249,11 @@ class Batch implements Cloneable {
   **
   */
   
-   String getTimeString() {
+   String getTimeString(TimeAxisDefinition tad) {
     if (time_ == NO_TIME) {
       return (null);
     }
-    return (TimeAxisDefinition.getTimeDisplay(dacx_, new Integer(time_), false, false));
+    return (TimeAxisDefinition.getTimeDisplay(tad, Integer.valueOf(time_), false, false));
   } 
   
   /***************************************************************************
@@ -311,11 +306,11 @@ class Batch implements Cloneable {
   ** Write the Batch to HTML
   */
   
-   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime) {
+   void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime, TimeAxisDefinition tad) {
     Iterator<Measurement> mit = getMeasurements();
     while (mit.hasNext()) {
       Measurement m = mit.next();
-      m.writeHTML(out, ind, qtp, batchTime);
+      m.writeHTML(out, ind, qtp, batchTime, tad);
       if (mit.hasNext()) {
         out.print(",");
         qtp.breakSpace();
@@ -403,8 +398,7 @@ class Batch implements Cloneable {
   **
   */
   
-   static Batch buildFromXML(DataAccessContext dacx, String elemName, 
-                             Attributes attrs) throws IOException {
+   static Batch buildFromXML(String elemName, Attributes attrs) throws IOException {
     if (!elemName.equals("batch") && !elemName.equals("nullBatch")) {
       return (null);
     }
@@ -443,9 +437,9 @@ class Batch implements Cloneable {
     }
     
     if ((timeVal != NO_TIME) || (date != null) || (invest != null) || (batchKey != null)) {
-      return (new Batch(dacx, timeVal, date, invest, batchKey));
+      return (new Batch(timeVal, date, invest, batchKey));
     } else {
-      return (new Batch(dacx));
+      return (new Batch());
     }
   }  
 }

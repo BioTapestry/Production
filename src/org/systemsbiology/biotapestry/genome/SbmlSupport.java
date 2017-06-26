@@ -30,7 +30,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Collections;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.SimParamSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -48,7 +48,7 @@ public class SbmlSupport {
   //
   ////////////////////////////////////////////////////////////////////////////
    
-  private DataAccessContext dacx_;
+  private SimParamSource sps_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -61,8 +61,8 @@ public class SbmlSupport {
   ** Not-null constructor
   */
 
-  public SbmlSupport(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public SbmlSupport(SimParamSource sps) {
+    sps_ = sps;
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -304,7 +304,7 @@ public class SbmlSupport {
       String nid = node.getID();
       DBInternalLogic dbil = ((DBNode)node).getInternalLogic();
       if (dbil != null) {
-        String initVal = dbil.getSimulationParam(dacx_, "initVal", node.getNodeType());
+        String initVal = dbil.getSimulationParam(sps_, "initVal", node.getNodeType());
         if (initVal != null) {
           initVals.put(nid, initVal);
         }
@@ -318,7 +318,7 @@ public class SbmlSupport {
       String gid = gene.getID();
       DBInternalLogic dbil = ((DBGene)gene).getInternalLogic();
       if (dbil != null) {
-        String initVal = dbil.getSimulationParam(dacx_, "initVal", gene.getNodeType());
+        String initVal = dbil.getSimulationParam(sps_, "initVal", gene.getNodeType());
         if (initVal != null) {
           initVals.put(gid, initVal);
         }
@@ -401,7 +401,7 @@ public class SbmlSupport {
       DBNode dbn = (DBNode)genome.getNode(nodeID);
       DBInternalLogic dbil = dbn.getInternalLogic();
       if (dbil != null) {
-        String val = dbil.getSimulationParam(dacx_, paramPrefix, dbn.getNodeType());
+        String val = dbil.getSimulationParam(sps_, paramPrefix, dbn.getNodeType());
         if (val != null) {
           ind.indent();
           buf.append("<parameter name=\"");

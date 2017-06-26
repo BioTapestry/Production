@@ -41,7 +41,9 @@ import javax.swing.border.EmptyBorder;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.GeneTemplateEntry;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
@@ -71,6 +73,8 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   private ListWidget lw_;
   private TimeCourseData tcd_;
   private TimeCourseDataMaps tcdm_;
+  private PerturbationData pd_;
+  private TimeAxisDefinition tad_;
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
@@ -94,7 +98,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     dacx_ = dacx;
     uFac_ = uFac;
     
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     setSize(700, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -107,6 +111,9 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     
     tcd_ = dacx.getExpDataSrc().getTimeCourseData();
     tcdm_  = dacx.getDataMapSrc().getTimeCourseDataMaps();
+    pd_ = dacx.getExpDataSrc().getPertData();
+    tad_ = dacx.getExpDataSrc().getTimeAxisDefinition();
+    
     Iterator<TimeCourseGene> genes = tcd_.getGenes();
     ArrayList<String> srcs = new ArrayList<String>();
     while (genes.hasNext()) {
@@ -124,7 +131,8 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
       public void actionPerformed(ActionEvent ev) {
         try {
           TimeCourseGene targ = tcd_.getTimeCourseDataCaseInsensitive((String)(lw_.getSelectedObjects()[0]));
-          PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(uics_, dacx_, targ.getName(), uFac_);
+          PerturbExpressionEntryDialog tced = 
+            PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(uics_, pd_, tcd_, tad_, targ.getName(), uFac_);
           if (tced != null) {
             tced.setVisible(true);
           }
@@ -176,7 +184,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   */
   
   public List<String> addRow(ListWidget widget) {
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     
     //
     // If data table is not set up, do it right now:
@@ -225,9 +233,9 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     UndoSupport support = uFac_.provideUndoSupport("undo.tctmdadd", dacx_); 
     
     Iterator<GeneTemplateEntry> template = tcd_.getGeneTemplate();
-    TimeCourseGene tcg = new TimeCourseGene(dacx_, newGene, template);
+    TimeCourseGene tcg = new TimeCourseGene(newGene, template);
     TimeCourseChange tcc = tcd_.addTimeCourseGene(tcg);
-    support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));    
+    support.addEdit(new TimeCourseChangeCmd(tcc));    
  
     Iterator<TimeCourseGene> genes = tcd_.getGenes();
     ArrayList<String> srcs = new ArrayList<String>();
@@ -259,10 +267,10 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
       String geneName = (String)widget.getElementAt(rows[i]);
       TimeCourseChange[] changes = tcdm_.dropMapsTo(geneName);
       for (int j = 0; j < changes.length; j++) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, changes[j]));
+        support.addEdit(new TimeCourseChangeCmd(changes[j]));
       }
       TimeCourseChange tcc = tcd_.dropGene(geneName);
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(tcc));
       for (int j = i + 1; j < rows.length; j++) {
         if (rows[j] > rows[i]) {
           rows[j]--;
@@ -289,7 +297,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   */
   
   public List<String> editRow(ListWidget widget, int[] selectedRows) {
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     if (selectedRows.length != 1) {
       throw new IllegalArgumentException();
     }

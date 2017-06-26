@@ -466,7 +466,7 @@ public class AddSubGroup extends AbstractControlFlow {
       
       GenomeChange gc = dacx_.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newSubGroup);
       if (gc != null) {
-        support.addEdit(new GenomeChangeCmd(dacx_, gc));
+        support.addEdit(new GenomeChangeCmd(gc));
         support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       } 
       

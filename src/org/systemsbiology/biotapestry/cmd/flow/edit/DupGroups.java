@@ -473,7 +473,7 @@ public class DupGroups extends AbstractControlFlow {
                 
       GenomeChange gc = gi.addLinkage(newLink);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }    
   
@@ -584,7 +584,7 @@ public class DupGroups extends AbstractControlFlow {
       GenomeChange gc = (isGene) ? targetGi.addGene((GeneInstance)newNode)
                                  : targetGi.addNode(newNode);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }    
   

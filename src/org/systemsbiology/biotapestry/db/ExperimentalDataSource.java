@@ -187,14 +187,14 @@ public interface ExperimentalDataSource  {
  
   /***************************************************************************
   ** 
-  ** Set the time axis definition
+  ** Install a legacy definition
   */
 
   public void installLegacyTimeAxisDefinition(DataAccessContext dacx);
   
   /***************************************************************************
   ** 
-  ** Set the time axis definition
+  ** Answer if we are using shared experimental data
   */
 
   public boolean amUsingSharedExperimentalData();

@@ -513,7 +513,7 @@ public class AddCisRegModule extends AbstractControlFlow {
       
       GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(gene_.getID(), regList_);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         ModelChangeEvent mcev = new ModelChangeEvent(dacx_.getGenomeSource().getID(), dacx_.getDBGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
         support.addEvent(mcev);

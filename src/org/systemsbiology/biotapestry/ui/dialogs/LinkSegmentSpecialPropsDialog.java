@@ -102,7 +102,7 @@ public class LinkSegmentSpecialPropsDialog extends JDialog {
     cp.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();
 
-    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_, hBld, true, null);    
+    sdsPan_ = new SuggestedDrawStylePanel(uics_, dacx_.getColorResolver(), hBld, true, null);    
     UiUtil.gbcSet(gbc, 0, 0, 10, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
     cp.add(sdsPan_, gbc);
     

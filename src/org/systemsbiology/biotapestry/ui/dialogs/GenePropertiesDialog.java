@@ -54,6 +54,7 @@ import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGeneRegion;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.GeneInstance;
@@ -109,6 +110,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
   private HarnessBuilder hBld_;
   private Gene gene_;
   private Genome genome_;
+  private DBGenome dbGenome_;
   
   private NodeAndLinkPropertiesSupport nps_;
   
@@ -133,6 +135,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     hBld_ = hBld;
     props_ = props;
     layoutKey_ = dacx_.getCurrentLayoutID();
+    dbGenome_ = dacx_.getDBGenome();
     
     genome_ = dacx_.getCurrentGenome();
     boolean forRoot = dacx_.currentGenomeIsRootDBGenome();
@@ -174,7 +177,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     // Build the button panel:
     //
 
-    DialogSupport ds = new DialogSupport(this, uics_, dacx_, gbc);
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
     ds.buildAndInstallButtonBox(cp, 9, 10, true, false); 
     setLocationRelativeTo(uics_.getTopFrame());
     displayProperties();
@@ -248,7 +251,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     
     if (genome_ instanceof DynamicGenomeInstance) {
       throw new IllegalArgumentException();
@@ -304,7 +307,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     // Evidence levels:
     //
     
-    evidenceCombo_ = new JComboBox(DBGene.getEvidenceChoices(dacx_));    
+    evidenceCombo_ = new JComboBox(DBGene.getEvidenceChoices(uics_));    
     
     label = new JLabel(rMan.getString("nprop.evidence"));
     UiUtil.gbcSet(gbc, 0, rownum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);
@@ -344,7 +347,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     // Build the color panel.
     //
     
-    colorWidget_ = new ColorSelectionWidget(uics_, dacx_, hBld_, null, true, "nprop.color", true, false);
+    colorWidget_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, null, true, "nprop.color", true, false);
 
     int rowNum = 0;
     UiUtil.gbcSet(gbc, 0, rowNum++, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
@@ -439,7 +442,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     
     if (!haveDynInstance) {
       int evidence = gene_.getEvidenceLevel();
-      evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(dacx_, evidence));
+      evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(uics_, evidence));
       int pads = gene_.getPadCount();
       boolean amBig = (pads > DBGene.DEFAULT_PAD_COUNT);
       nps_.setExtraPads(new ChoiceContent(Integer.toString(pads), pads), amBig, NodeProperties.UNDEFINED_GROWTH);
@@ -636,7 +639,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       if (!newName.trim().equals(oldName)) {
         GenomeChange gc = genome_.changeGeneName(ref, newName);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           globalNameChange = true;
           support.addEdit(gcc);
           rootChange = true;
@@ -648,7 +651,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       if (oldEvidence != newEvidence) {
         GenomeChange gc = genome_.changeGeneEvidence(ref, newEvidence);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
           rootChange = true;
         }
@@ -664,7 +667,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       if (pads != newPads) {
         GenomeChange gc = genome_.changeGeneSize(ref, newPads);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
           rootChange = true;
         }
@@ -673,7 +676,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       if (modRegions != null) {
         GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(gene_.getID(), modRegions);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
           rootChange = true;
         }
@@ -729,7 +732,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
           }  
           GenomeChange gc = genome_.replaceGene(copyGene);
           if (gc != null) {
-            GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+            GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
             support.addEdit(gcc);
             instanceChange = true;
           }
@@ -855,7 +858,7 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
   private List<EnumCell> buildEvidenceCombos() {  
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
     StringBuffer buf = new StringBuffer();
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     Set<String> evals = DBGene.evidenceLevels();
     Iterator<String> evit = evals.iterator();
     int count = 0;

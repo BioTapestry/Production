@@ -29,6 +29,7 @@ import java.util.Map;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
@@ -429,7 +430,7 @@ public class ImportCSV extends AbstractControlFlow  {
       FullHierarchyBuilder.BIPData bipd;
      
       try {
-        fhcsv = new FullHierarchyCSVFormatFactory(uics_, rcx_);
+        fhcsv = new FullHierarchyCSVFormatFactory(uics_, tSrc_, rcx_);
         if (useFile != null) {
           bipd = fhcsv.buildFromCSVForeground(useFile, (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), support);
         } else {
@@ -474,7 +475,7 @@ public class ImportCSV extends AbstractControlFlow  {
         }
       }
 
-      CSVImportRunner runner = new CSVImportRunner(uics_, uFac_, new StaticDataAccessContext(rcx_), fhcsv, bipd, nodeIDMap, dbGenomeCSVName,
+      CSVImportRunner runner = new CSVImportRunner(uics_, tSrc_, uFac_, new StaticDataAccessContext(rcx_), fhcsv, bipd, nodeIDMap, dbGenomeCSVName,
                                                    support, importMode_, doOpt, doSquash, overlayOption, uics_.isHeadless(), 
                                                    specLayout_, params_);
 
@@ -556,7 +557,7 @@ public class ImportCSV extends AbstractControlFlow  {
       }
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         uics_.getCommonView().manageWindowTitle(chosenFile_);
-        myLsSup_.postLoadOperations(true, rcx_, 0, false, false, null);
+        myLsSup_.postLoadOperations(true, 0, false, false, null);
       }
       LayoutLinkSupport.offerColorFixup(uics_, rcx_, result, uFac_);
       return (true);
@@ -584,8 +585,10 @@ public class ImportCSV extends AbstractControlFlow  {
     private SpecialtyLayoutEngineParams params_;
     private UIComponentSource uics_;
     private UndoFactory uFac_;
+    private TabSource tSrc_;
     
     public CSVImportRunner(UIComponentSource uics,
+                           TabSource tSrc,
                            UndoFactory uFac,
                            StaticDataAccessContext dacx,
                            FullHierarchyCSVFormatFactory fhcsv, 
@@ -609,12 +612,13 @@ public class ImportCSV extends AbstractControlFlow  {
       myDacx_ = dacx;
       uics_ = uics;
       uFac_ = uFac;
+      tSrc_ = tSrc;
     }
     
     public Object runCore() throws AsynchExitRequestException {
       // Perhaps not needed, but does allow settings to be changed without messing with myDacx_, so safer to keep for now...
       StaticDataAccessContext rcxR = new StaticDataAccessContext(myDacx_);
-      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(uics_, uFac_, rcxR, bipd_, 
+      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(uics_, tSrc_, uFac_, rcxR, bipd_, 
                                                                    (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT),                                                                 
                                                                    support_, doOpts_, doSquash_, overlayOption_, 
                                                                    nodeIDMap_, dbGenomeCSVName_, this, 0.0, 1.0, specLayout_, params_);

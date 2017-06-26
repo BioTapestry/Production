@@ -351,7 +351,7 @@ public class InsertNodeInLink extends AbstractControlFlow {
       gc = rcxR.getCurrentGenomeAsDBGenome().addNodeWithExistingLabel(legacyNodeField);
     }
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     
@@ -403,7 +403,7 @@ public class InsertNodeInLink extends AbstractControlFlow {
                                              Linkage.NONE, pir.landingPad, rootLink.getLaunchPad()); 
         gc = ((DBGenome)rcxR.getCurrentGenome()).addLinkWithExistingLabel(newLinkage);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);
         }
         preMidLinks.put(srcID, firstLinkID);
@@ -418,7 +418,7 @@ public class InsertNodeInLink extends AbstractControlFlow {
       }
       gc = ((DBGenome)rcxR.getCurrentGenome()).addLinkWithExistingLabel(newLinkage2);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxR, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
       postMidLinks.put(linkID, newLinkID);
@@ -587,7 +587,7 @@ public class InsertNodeInLink extends AbstractControlFlow {
                  gc = rcxI.getCurrentGenome().changeNodeSize(useNode.getID(), needed);
               }
               if (gc != null) {
-                GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+                GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
                 support.addEdit(gcc);
               }
             }
@@ -957,7 +957,7 @@ public class InsertNodeInLink extends AbstractControlFlow {
       LinkageInstance newLink = newLinksToAdd.get(i);
       GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addLinkage(newLink);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
     }

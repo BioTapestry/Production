@@ -28,6 +28,7 @@ import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.CommonView;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
@@ -337,7 +338,7 @@ public class ImportSIF extends AbstractControlFlow  {
       }
       myLsSup_.getFprep(rcxT_).setPreference("ImportDirectory", chosenFile_.getAbsoluteFile().getParent());
       UndoSupport support = uFac_.provideUndoSupport("undo.buildFromSIF", rcxT_);            
-      SIFImportRunner runner = new SIFImportRunner(uics_, rcxT_, uFac_, chosenFile_, importMode_, doOpt, overlayOption, support, specLayout_, params_);
+      SIFImportRunner runner = new SIFImportRunner(uics_, tSrc_, rcxT_, uFac_, chosenFile_, importMode_, doOpt, overlayOption, support, specLayout_, params_);
       BackgroundWorkerClient bwc;     
       if (!uics_.isHeadless()) { // not headless, true background thread
         bwc = new BackgroundWorkerClient(uics_, rcxT_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);      
@@ -396,7 +397,7 @@ public class ImportSIF extends AbstractControlFlow  {
       }
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         cv.manageWindowTitle(chosenFile_.getName());
-        myLsSup_.postLoadOperations(true, rcxT_, 0, false, false, null);
+        myLsSup_.postLoadOperations(true, 0, false, false, null);
       }
       LayoutLinkSupport.offerColorFixup(uics_, rcxT_, result.coreResult, uFac_);
       
@@ -420,6 +421,7 @@ public class ImportSIF extends AbstractControlFlow  {
   private static class SIFImportRunner extends BackgroundWorker {
  
     private UIComponentSource myUics_;
+    private TabSource myTSrc_;
     private UndoFactory myUFac_;
     private StaticDataAccessContext myDacx_;
     private UndoSupport support_;
@@ -430,12 +432,13 @@ public class ImportSIF extends AbstractControlFlow  {
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
     
-    public SIFImportRunner(UIComponentSource uics, StaticDataAccessContext dacx, UndoFactory uFac, File file,
+    public SIFImportRunner(UIComponentSource uics, TabSource tSrc, StaticDataAccessContext dacx, UndoFactory uFac, File file,
                            SIFImportChoicesDialogFactory.LayoutModes importMode, boolean doOpts, int overlayOption,
                            UndoSupport support, SpecialtyLayout specLayout, SpecialtyLayoutEngineParams params) {
       super(new DBGenomeSIFFormatFactory.AugmentedResult(new LinkRouter.RoutingResult(), false));      
       file_ = file;
       myUics_ = uics;
+      myTSrc_ = tSrc;
       myUFac_ = uFac;
       myDacx_ = dacx;
       importMode_ = importMode;
@@ -449,7 +452,7 @@ public class ImportSIF extends AbstractControlFlow  {
     public Object runCore() throws AsynchExitRequestException {
       DBGenomeSIFFormatFactory sff = new DBGenomeSIFFormatFactory();
       try {
-        DBGenomeSIFFormatFactory.AugmentedResult ar = sff.buildFromSIF(myUics_, myDacx_, myUFac_, file_,                                                       
+        DBGenomeSIFFormatFactory.AugmentedResult ar = sff.buildFromSIF(myUics_,  myDacx_, myTSrc_, myUFac_, file_,                                                       
                                                                        (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT),
                                                                        specLayout_, params_,
                                                                        support_, doOpts_, overlayOption_, this, 0.0, 1.0);

@@ -373,6 +373,9 @@ public class Layout implements Cloneable {
     while (ntit.hasNext()) {
       Note note = ntit.next();
       NoteProperties np = getNoteProperties(note.getID());
+      if (np == null) {
+        UiUtil.fixMePrintout("dup model with notes crashing here with NPE");
+      }
       IRenderer rend = np.getRenderer();
       Rectangle bounds = rend.getBounds(note, irx, null);
       if (retval == null) {
@@ -8387,9 +8390,7 @@ public class Layout implements Cloneable {
     }
            
     noteProps_ = new HashMap<String, NoteProperties>();
-    Iterator<String> ntpit = other.noteProps_.keySet().iterator();
-    while (ntpit.hasNext()) {
-      String key = ntpit.next();
+    for (String key : other.noteProps_.keySet()) {
       NoteProperties np = other.noteProps_.get(key);
       this.noteProps_.put(key, np.clone());
     }

@@ -27,8 +27,11 @@ import java.awt.event.ActionListener;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -43,12 +46,18 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Metabase;
+import org.systemsbiology.biotapestry.db.TabNameData;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.CustomEvidenceDrawStyle;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
@@ -97,12 +106,10 @@ public class DisplayOptionsDialog extends JDialog {
   private JFrame parent_;
   private String layoutKey_;
   private SortedMap<Integer, CustomEvidenceDrawStyle> customEvidence_;
-  private ArrayList<MinMax> currentColumns_;
-  private Map<String, String> currentMeasureColors_;
-  private String currentScaleString_;
-  private boolean currentInvestMode_;
-  private MinMax currentNullDefaultSpan_;
-  private StaticDataAccessContext dacx_;
+  
+  private ArrayList<PertDisplayOptions> currPDOs_;
+
+  private DynamicDataAccessContext ddacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
   private HarnessBuilder hBld_;
@@ -120,30 +127,25 @@ public class DisplayOptionsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public DisplayOptionsDialog(UIComponentSource uics, StaticDataAccessContext dacx, HarnessBuilder hBld, UndoFactory uFac) {     
-    super(uics.getTopFrame(), dacx.getRMan().getString("displayOptions.title"), true);   
+  public DisplayOptionsDialog(UIComponentSource uics, DynamicDataAccessContext ddacx, HarnessBuilder hBld, UndoFactory uFac) {     
+    super(uics.getTopFrame(), uics.getRMan().getString("displayOptions.title"), true);   
     
     uics_ = uics;
-    dacx_ = dacx;
+    ddacx_ = ddacx;
     uFac_ = uFac;
     hBld_ = hBld;
-    layoutKey_ = dacx_.getCurrentLayoutID();
-    ResourceManager rMan = dacx_.getRMan();
-    DisplayOptions options = dacx_.getDisplayOptsSource().getDisplayOptions();
+    layoutKey_ = ddacx_.getCurrentLayoutID();
+    ResourceManager rMan = ddacx_.getRMan();
+    DisplayOptions options = ddacx_.getDisplayOptsSource().getDisplayOptions();
+  
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
     options.fillCustomEvidenceMap(customEvidence_);
     
-    currentColumns_ = new ArrayList<MinMax>();
-    Iterator<MinMax> colIt = options.getColumnIterator();
-    while (colIt.hasNext()) {
-      MinMax nextCol = colIt.next();
-      currentColumns_.add(nextCol.clone());   
-    }
-    currentMeasureColors_ = new HashMap<String, String>(options.getMeasurementDisplayColors());
-    currentScaleString_ = options.getPerturbDataDisplayScaleKey();
-    currentInvestMode_ = options.breakOutInvestigators();
-    currentNullDefaultSpan_ = options.getNullPertDefaultSpan();
-     
+    UiUtil.fixMePrintout("Wrong! This has entries ~perTab");
+    PertDisplayOptions pOptions = ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions();
+    currPDOs_ = new ArrayList<PertDisplayOptions>();  
+    currPDOs_.add(pOptions.clone());
+    
     setSize(600, 600);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -152,16 +154,16 @@ public class DisplayOptionsDialog extends JDialog {
           
     int rowNum = 0;
     
-    busBranchChoice_ = new JComboBox(DisplayOptions.branchOptions(dacx_));
-    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(dacx_, options.getBranchMode()));
+    busBranchChoice_ = new JComboBox(DisplayOptions.branchOptions(uics_));
+    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(uics_, options.getBranchMode()));
     JLabel label = new JLabel(rMan.getString("displayOptions.branchOptions"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(busBranchChoice_, gbc);
     
-    evidenceChoice_ = new JComboBox(DisplayOptions.evidenceOptions(dacx_));
-    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(dacx_, options.getEvidence()));
+    evidenceChoice_ = new JComboBox(DisplayOptions.evidenceOptions(uics_));
+    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(uics_, options.getEvidence()));
     label = new JLabel(rMan.getString("displayOptions.evidenceOptions"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
@@ -182,7 +184,7 @@ public class DisplayOptionsDialog extends JDialog {
     buttonCU_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          CustomEvidenceDialog dialog = new CustomEvidenceDialog(uics_, dacx_, hBld_, customEvidence_);
+          CustomEvidenceDialog dialog = new CustomEvidenceDialog(uics_, ddacx_.getColorResolver(), hBld_, customEvidence_);
           dialog.setVisible(true);
           if (dialog.haveResult()) {
             customEvidence_ = dialog.getNewEvidenceMap();      
@@ -197,32 +199,32 @@ public class DisplayOptionsDialog extends JDialog {
     cp.add(buttonCU_, gbc);
     enableCustomEvidence();  
     
-    firstZoomChoice_ = new JComboBox(DisplayOptions.getFirstZoomChoices(dacx_));
-    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(dacx_, options.getFirstZoomMode()));
+    firstZoomChoice_ = new JComboBox(DisplayOptions.getFirstZoomChoices(uics_));
+    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(uics_, options.getFirstZoomMode()));
     label = new JLabel(rMan.getString("displayOptions.firstZoom"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(firstZoomChoice_, gbc);
     
-    navZoomChoice_ = new JComboBox(DisplayOptions.getNavZoomChoices(dacx_));
-    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(dacx_, options.getNavZoomMode()));
+    navZoomChoice_ = new JComboBox(DisplayOptions.getNavZoomChoices(uics_));
+    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(uics_, options.getNavZoomMode()));
     label = new JLabel(rMan.getString("displayOptions.navZoom"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(navZoomChoice_, gbc); 
     
-    nodeActivityChoice_ = new JComboBox(DisplayOptions.getNodeActivityChoices(dacx_));
-    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(dacx_, options.getNodeActivity()));
+    nodeActivityChoice_ = new JComboBox(DisplayOptions.getNodeActivityChoices(uics_));
+    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(uics_, options.getNodeActivity()));
     label = new JLabel(rMan.getString("displayOptions.nodeActivity"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
     UiUtil.gbcSet(gbc, 1, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.W, 1.0, 1.0);
     cp.add(nodeActivityChoice_, gbc);
     
-    linkActivityChoice_ = new JComboBox(DisplayOptions.getLinkActivityChoices(dacx_));
-    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(dacx_, options.getLinkActivity()));
+    linkActivityChoice_ = new JComboBox(DisplayOptions.getLinkActivityChoices(uics_));
+    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(uics_, options.getLinkActivity()));
     label = new JLabel(rMan.getString("displayOptions.linkActivity"));
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(label, gbc);    
@@ -262,12 +264,8 @@ public class DisplayOptionsDialog extends JDialog {
       public void actionPerformed(ActionEvent ev) {
         try {
           QpcrSetupDialog npd = QpcrSetupDialog.qpcrSetupDialogWrapper(uics_,
-                                                                       dacx_,
-                                                                       currentColumns_, 
-                                                                       currentMeasureColors_, 
-                                                                       currentScaleString_,
-                                                                       currentInvestMode_, 
-                                                                       currentNullDefaultSpan_,
+                                                                       ddacx_,
+                                                                       currPDOs_,
                                                                        uFac_);
           if (npd == null) {
             return;
@@ -276,11 +274,10 @@ public class DisplayOptionsDialog extends JDialog {
           if (!npd.haveResult()) {
             return;
           }
-          currentColumns_ = new ArrayList(npd.getColumnResults());         
-          currentInvestMode_ = npd.getInvestModeResults();
-          currentNullDefaultSpan_ = npd.getSpanResult();  
-          currentScaleString_ = npd.getScaleResult(); 
-          currentMeasureColors_ = npd.getColorResults();       
+          int np = currPDOs_.size(); 
+          for (int i = 0; i < np; i++) {
+            currPDOs_.set(i, npd.getResults(i));
+          }
         } catch (Exception ex) {
           uics_.getExceptionHandler().displayException(ex);
         }
@@ -381,11 +378,12 @@ public class DisplayOptionsDialog extends JDialog {
     // Undo/Redo support
     //
     
-    ResourceManager rMan = dacx_.getRMan();
-    UndoSupport support = uFac_.provideUndoSupport("undo.displayOptions", dacx_);     
+    ResourceManager rMan = uics_.getRMan();
+    UndoSupport support = uFac_.provideUndoSupport("undo.displayOptions", new StaticDataAccessContext(ddacx_));     
 
-    MinimalDispOptMgr dopmgr = dacx_.getDisplayOptsSource();
-    DisplayOptions newOpts = new DisplayOptions(dacx_);
+    MinimalDispOptMgr dopmgr = ddacx_.getDisplayOptsSource();
+    DisplayOptions newOpts = new DisplayOptions();
+
     
     String bigFootStr = bigFootField_.getText();
     if (!bigFootStr.trim().equals("")) {
@@ -467,20 +465,24 @@ public class DisplayOptionsDialog extends JDialog {
       }
     }
     
-    newOpts.setShowExpressionTableTree(showTreeBox_.isSelected()); 
-    newOpts.setColumns(currentColumns_);         
-    newOpts.setBreakOutInvestigatorMode(currentInvestMode_);
-    newOpts.setNullDefaultSpan(currentNullDefaultSpan_);  
-    newOpts.setPerturbDataDisplayScaleKey(currentScaleString_); 
-    newOpts.setMeasurementDisplayColors(currentMeasureColors_);       
-  
+    newOpts.setShowExpressionTableTree(showTreeBox_.isSelected());
+    
     DisplayOptionsChange doc = dopmgr.setDisplayOptions(newOpts);
-    PerturbationData pd = dacx_.getExpDataSrc().getPertData();
-    pd.dropCachedDisplayState();
-
-    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx_, doc);
+    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
     support.addEdit(docc);
-
+    
+    //
+    // Perturbation display options:
+    //
+    
+    int np = currPDOs_.size();
+    for (int i = 0; i < np; i++) {
+      UiUtil.fixMePrintout("WRIONG! Needs to get pert data for every different tab");
+      PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
+      pd.setPertDisplayOptions(currPDOs_.get(i).clone(), support);
+      pd.dropCachedDisplayState();
+    }
+   
     LayoutChangeEvent lcev = new LayoutChangeEvent(layoutKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE);
     support.addEvent(lcev);
  
@@ -496,6 +498,47 @@ public class DisplayOptionsDialog extends JDialog {
     return (true);
   }
   
+  /***************************************************************************
+  **
+  ** Perturbation data display options need to be sprinked out across tabs and shared
+  ** data tabs.
+  */
+  
+  private void figureOutPerturbationSharing(DataAccessContext dacx, TabSource tSrc) {
+
+    Metabase mb = dacx.getMetabase();
+    Metabase.DataSharingPolicy dsp = mb.getDataSharingPolicy();
+    boolean isSharing = dsp.isSpecifyingSharing() & dsp.sharePerts;     
+    Set<String> sharDB = (isSharing) ? mb.tabsSharingData() : new HashSet<String>();
+     
+    TreeMap<Integer, String> ordered = new TreeMap<Integer, String>();
+    
+    List<TabSource.AnnotatedTabData> atds = tSrc.getTabs();
+    for (TabSource.AnnotatedTabData atd : atds) {
+      int indx = tSrc.getTabIndexFromId(atd.dbID);
+      if (sharDB.contains(atd.dbID)) {
+        
+      }
+ 
+    }
+    /*
+    if (isSharing) {
+      Set<String> sharDB = mb.tabsSharingData();
+      for (String dbID : sharDB) {
+        int indx = tSrc.getTabIndexFromId(dbID); 
+        TabNameData tnd = mb.getDB(dbID).getTabNameData();
+        ordered.put(Integer.valueOf(indx), tnd.getTitle());
+        
+        
+        TabPinnedDynamicDataAccessContext(DynamicDataAccessContext ddacx, String currTab) {
+      }     
+      for (String modName : ordered.values()) { 
+        UiUtil.fixMePrintout("do something or ditch this");
+      }
+    }
+   */
+    return;
+  }
  
   /***************************************************************************
   **
@@ -504,13 +547,13 @@ public class DisplayOptionsDialog extends JDialog {
   */
   
   private void resetDefaults() {
-    DisplayOptions defOptions = new DisplayOptions(dacx_);
-    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(dacx_, defOptions.getBranchMode()));
-    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(dacx_, defOptions.getEvidence()));
-    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(dacx_, defOptions.getFirstZoomMode()));
-    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(dacx_, defOptions.getNavZoomMode()));
-    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(dacx_, defOptions.getNodeActivity()));
-    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(dacx_, defOptions.getLinkActivity()));
+    DisplayOptions defOptions = new DisplayOptions();
+    busBranchChoice_.setSelectedItem(DisplayOptions.mapBranchOptions(uics_, defOptions.getBranchMode()));
+    evidenceChoice_.setSelectedItem(DisplayOptions.mapEvidenceOptions(uics_, defOptions.getEvidence()));
+    firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(uics_, defOptions.getFirstZoomMode()));
+    navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(uics_, defOptions.getNavZoomMode()));
+    nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(uics_, defOptions.getNodeActivity()));
+    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(uics_, defOptions.getLinkActivity()));
     inactiveGray_.resetValue(defOptions.getInactiveBright());
     
     bigFootField_.setText(Integer.toString(defOptions.getExtraFootSize()));   

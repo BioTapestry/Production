@@ -39,12 +39,13 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.PertDataPoint;
 import org.systemsbiology.biotapestry.perturb.PertFilter;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.FixedJButton;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -75,6 +76,7 @@ public class PertFilterPanel extends JPanel {
   ////////////////////////////////////////////////////////////////////////////  
   
   private PerturbationData pd_;
+  private TimeAxisDefinition tad_;
   private JComboBox srcCombo_;
   private JComboBox pertCombo_;
   private JComboBox targCombo_;
@@ -106,8 +108,7 @@ public class PertFilterPanel extends JPanel {
   private Dimension saveMin_;
   private Client myClient_;
   private UIComponentSource uics_;
-  private DataAccessContext dacx_;
-  
+
   private static final long serialVersionUID = 1L;
 
   ////////////////////////////////////////////////////////////////////////////
@@ -121,14 +122,14 @@ public class PertFilterPanel extends JPanel {
   ** Constructor 
   */ 
   
-  public PertFilterPanel(UIComponentSource uics, DataAccessContext dacx, PerturbationData pd, Client myClient) {
-    dacx_ = dacx;
+  public PertFilterPanel(UIComponentSource uics, PerturbationData pd, TimeAxisDefinition tad, Client myClient) {
     uics_ = uics;
     pd_ = pd;
+    tad_ = tad;
     myClient_ = myClient;
     myABC_ = new ApplyButtonControl();
     
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics_.getRMan();    
     setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints();  
     
@@ -195,13 +196,13 @@ public class PertFilterPanel extends JPanel {
     investRender_ = new PertManageHelper.FilterListRenderer(uics_, investCombo_.getRenderer());
     investCombo_.setRenderer(investRender_);
     investCombo_.addActionListener(myABC_);
-    Vector fmo = getInvestOptions();
+    Vector fmo = getInvestOptions(uics_);
     investModeCombo_ = new JComboBox(fmo);
     investModeCombo_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
           myABC_.enableApply();
-          stockInvestigatorChoices();
+          stockInvestigatorChoices(tad_, uics_.getRMan());
         } catch (Exception ex) {
           uics_.getExceptionHandler().displayException(ex);
         }
@@ -442,13 +443,12 @@ public class PertFilterPanel extends JPanel {
   ** Stock with current options
   */ 
   
-  public void stockFilterPanel() { 
+  public void stockFilterPanel(TimeAxisDefinition tad, ResourceManager rMan) { 
   
-    ResourceManager rMan = dacx_.getRMan();    
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
     
     // SOURCES ---------------------
-    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(PertFilter.Cat.SOURCE_NAME);  
+    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(PertFilter.Cat.SOURCE_NAME, tad, rMan);  
     srcCombo_.removeAllItems();
     srcCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> scit = srcCand.iterator();
@@ -459,7 +459,7 @@ public class PertFilterPanel extends JPanel {
     srcRender_.setActive(srcCand);   
 
     // PERTS ---------------------
-    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(PertFilter.Cat.PERT);
+    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(PertFilter.Cat.PERT, tad, rMan);
     pertCombo_.removeAllItems();
     pertCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> pit = pertCand.iterator();   
@@ -470,7 +470,7 @@ public class PertFilterPanel extends JPanel {
     pertRender_.setActive(pertCand);
  
     // TARGET ---------------------
-    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(PertFilter.Cat.TARGET); 
+    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(PertFilter.Cat.TARGET, tad, rMan); 
     targCombo_.removeAllItems();
     targCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> tcit = targCand.iterator();
@@ -481,7 +481,7 @@ public class PertFilterPanel extends JPanel {
     targRender_.setActive(targCand);
    
     // TIME ---------------------
-    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(PertFilter.Cat.TIME);
+    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(PertFilter.Cat.TIME, tad, rMan);
     timeCombo_.removeAllItems();
     timeCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> tmit = timeCand.iterator();
@@ -492,10 +492,10 @@ public class PertFilterPanel extends JPanel {
     timeRender_.setActive(timeCand);
    
     // INVEST ---------------------
-    stockInvestigatorChoices();
+    stockInvestigatorChoices(tad, rMan);
     
     // VALS  ---------------------
-    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(PertFilter.Cat.VALUE);
+    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(PertFilter.Cat.VALUE, tad, rMan);
     valCombo_.removeAllItems();
     valCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> vcit = valCand.iterator();
@@ -514,11 +514,10 @@ public class PertFilterPanel extends JPanel {
   ** Stock investigators with current options
   */ 
   
-  public void stockInvestigatorChoices() {
-    ResourceManager rMan = dacx_.getRMan();    
+  public void stockInvestigatorChoices(TimeAxisDefinition tad, ResourceManager rMan) {  
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
     TrueObjChoiceContent tocc = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();
-    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates((PertFilter.Cat)tocc.val); 
+    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates((PertFilter.Cat)tocc.val, tad, rMan); 
     investCombo_.removeAllItems();
     investCombo_.addItem(ncstr);
     Iterator<TrueObjChoiceContent> icit = investCand.iterator();
@@ -535,38 +534,37 @@ public class PertFilterPanel extends JPanel {
   ** Update the filter renderers
   */ 
   
-  public void updateFilterRenderers(List<PertDataPoint> filteredData) {
-    ResourceManager rMan = dacx_.getRMan();
+  public void updateFilterRenderers(List<PertDataPoint> filteredData, TimeAxisDefinition tad, ResourceManager rMan) {
     TrueObjChoiceContent ncstr = new TrueObjChoiceContent(rMan.getString("pertManage.chooseAll"), null);
 
     // SOURCES ---------------------
-    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(filteredData, PertFilter.Cat.SOURCE_NAME);
+    SortedSet<TrueObjChoiceContent> srcCand = pd_.getCandidates(filteredData, PertFilter.Cat.SOURCE_NAME, tad, rMan);
     srcCand.add(ncstr);
     srcRender_.setActive(srcCand);
     srcCombo_.invalidate();
     // PERTS ---------------------
-    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(filteredData, PertFilter.Cat.PERT);
+    SortedSet<TrueObjChoiceContent> pertCand = pd_.getCandidates(filteredData, PertFilter.Cat.PERT, tad, rMan);
     pertCand.add(ncstr);
     pertRender_.setActive(pertCand);
     pertCombo_.invalidate();
     // TARGET ---------------------
-    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(filteredData, PertFilter.Cat.TARGET);
+    SortedSet<TrueObjChoiceContent> targCand = pd_.getCandidates(filteredData, PertFilter.Cat.TARGET, tad, rMan);
     targCand.add(ncstr);
     targRender_.setActive(targCand);
     targCombo_.invalidate();
     // TIME ---------------------
-    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(filteredData, PertFilter.Cat.TIME);
+    SortedSet<TrueObjChoiceContent> timeCand = pd_.getCandidates(filteredData, PertFilter.Cat.TIME, tad, rMan);
     timeCand.add(ncstr);
     timeRender_.setActive(timeCand);
     timeCombo_.invalidate();
     // INVEST ---------------------
     TrueObjChoiceContent tocc = (TrueObjChoiceContent)investModeCombo_.getSelectedItem();
-    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates(filteredData, (PertFilter.Cat)tocc.val); 
+    SortedSet<TrueObjChoiceContent> investCand = pd_.getCandidates(filteredData, (PertFilter.Cat)tocc.val, tad, rMan); 
     investCand.add(ncstr);
     investRender_.setActive(investCand);
     investCombo_.invalidate();
     // VALS or something  ---------------------
-    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(filteredData, PertFilter.Cat.VALUE);
+    SortedSet<TrueObjChoiceContent> valCand = pd_.getCandidates(filteredData, PertFilter.Cat.VALUE, tad, rMan);
     valCand.add(ncstr);
     valRender_.setActive(valCand);
     valCombo_.invalidate();
@@ -656,10 +654,10 @@ public class PertFilterPanel extends JPanel {
   ** Get the choices for controls
   */
   
-  public Vector<TrueObjChoiceContent> getInvestOptions() {
+  public Vector<TrueObjChoiceContent> getInvestOptions( HandlerAndManagerSource hams) {
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
-    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST));
-    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST_LIST));
+    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST, hams));
+    retval.add(getMatchOptionsChoice(PertFilter.Cat.INVEST_LIST, hams));
     return (retval);
   }  
   
@@ -668,8 +666,8 @@ public class PertFilterPanel extends JPanel {
   ** Get the choice
   */
   
-  public TrueObjChoiceContent getMatchOptionsChoice(PertFilter.Cat which) {
-    return (new TrueObjChoiceContent(dacx_.getRMan().getString("pertFilt." + PertFilter.mapCategory(which)), which));
+  public TrueObjChoiceContent getMatchOptionsChoice(PertFilter.Cat which, HandlerAndManagerSource hams) {
+    return (new TrueObjChoiceContent(hams.getRMan().getString("pertFilt." + PertFilter.mapCategory(which)), which));
   } 
   
   /***************************************************************************

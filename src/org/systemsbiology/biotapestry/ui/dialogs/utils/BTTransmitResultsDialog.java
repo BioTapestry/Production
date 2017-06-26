@@ -66,7 +66,7 @@ public abstract class BTTransmitResultsDialog extends BTStashResultsDialog imple
   
   protected BTTransmitResultsDialog(ServerControlFlowHarness cfh, String titleResource, Dimension size, int columns, 
                                     ServerControlFlowHarness.UserInputs request, boolean doApply) {
-    super(cfh.getUI(), cfh.getDataAccessContext(), titleResource, size, columns);
+    super(cfh.getUI(), titleResource, size, columns);
     doApply_ = doApply;
     request_ = request;
     cfh_ = cfh.getClientHarness();
@@ -82,7 +82,7 @@ public abstract class BTTransmitResultsDialog extends BTStashResultsDialog imple
   
   protected BTTransmitResultsDialog(ServerControlFlowHarness cfh, String titleResource, Dimension size, int columns, 
                                     ServerControlFlowHarness.UserInputs request, boolean doApply, boolean doForStash) {
-    super(cfh.getUI(), cfh.getDataAccessContext(), titleResource, size, columns);
+    super(cfh.getUI(), titleResource, size, columns);
     doApply_ = doApply;
     doForStash_ = doForStash;
     request_ = request;

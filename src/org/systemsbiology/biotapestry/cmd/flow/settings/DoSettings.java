@@ -55,6 +55,7 @@ import org.systemsbiology.biotapestry.ui.dialogs.TimeAxisSetupDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseSetupDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TimeCourseTableManageDialog;
 import org.systemsbiology.biotapestry.util.ColorDeletionListener;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -282,12 +283,13 @@ public class DoSettings extends AbstractControlFlow {
            
       switch (myAction_) {
         case DISPLAY:      
-          DisplayOptionsDialog dod = new DisplayOptionsDialog(uics_, dacx_, hBld_, uFac_);
+          DisplayOptionsDialog dod = new DisplayOptionsDialog(uics_, ddacx_, hBld_, uFac_);
           dod.setVisible(true);   
           break;  
         case COLORS:      
           return (handleGetColorDialog());
-        case FONTS:      
+        case FONTS:
+          UiUtil.fixMePrintout("One current layout for a global resource? Huh?");
           FontDialog fd = new FontDialog(uics_, dacx_, dacx_.getCurrentLayoutID(), uFac_);
           fd.setVisible(true);
           break;

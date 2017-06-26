@@ -24,6 +24,8 @@ import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.GenomeSource;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -128,7 +130,9 @@ public class LinkPertDataDisplayPlugIn implements InternalLinkDataDisplayPlugIn 
     PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
     String baseTargID = GenomeItemInstance.getBaseID(targID);
     String baseSourceID = GenomeItemInstance.getBaseID(sourceID);
-    if (!pd.haveDataForNode(baseTargID, baseSourceID, pdms)) {
+    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+    DBGenome dbGenome = gs.getRootDBGenome();
+    if (!pd.haveDataForNode(dbGenome, baseTargID, baseSourceID, pdms)) {
       return(" ");
     }
     buf.append("<center><h1>");
@@ -136,7 +140,7 @@ public class LinkPertDataDisplayPlugIn implements InternalLinkDataDisplayPlugIn 
     buf.append(desc);
     buf.append("</h1></center>\n");
     boolean largeFont = uics_.doBig();
-    String table = pd.getHTML(baseTargID, baseSourceID, true, largeFont, tpdacx);
+    String table = pd.getHTML(baseTargID, baseSourceID, true, largeFont, dbGenome, tad, pdms, uics_.getRMan());
     if (table != null) {
       buf.append(table);
     } else {

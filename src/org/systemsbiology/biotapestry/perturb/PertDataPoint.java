@@ -32,7 +32,7 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.perturb.PerturbationData.RegionRestrict;
@@ -42,6 +42,7 @@ import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.DoubMinMax;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.Splitter;
@@ -128,7 +129,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   
   public boolean publishAsCSV(PrintWriter out, SourceSrc ss, Experiment prs, 
                               ConditionDictionary cdict, MeasureDictionary mdict, 
-                              PertAnnotations pAn, RegionRestrict rr, String invests) {  
+                              PertAnnotations pAn, RegionRestrict rr, String invests, TimeAxisDefinition tad) {  
     
     out.print("\"");
     String bKey = getBatchKey();
@@ -142,7 +143,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
     out.print("\",\"");
     out.print(getTargetName(ss));
     out.print("\",\"");
-    out.print(getTimeDisplayString(ss, true, true).replaceAll(" ", "").replaceAll("to", "-"));
+    out.print(getTimeDisplayString(ss, tad, true, true).replaceAll(" ", "").replaceAll("to", "-"));
     out.print("\",\"");
     if (legacyVal_ == null) {
       out.print(value_);
@@ -335,8 +336,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the value for the point per the given parameters
   */
   
-  public void getDataValuePerParams(DataAccessContext dacx, Parameters params, List<ValueAndUnits> results, SourceSrc ss) {
-    Double nsd = params.getNotSigDoub(dacx);
+  public void getDataValuePerParams(Parameters params, List<ValueAndUnits> results, SourceSrc ss, PerturbationData pd) {
+    Double nsd = params.getNotSigDoub(pd);
     Experiment prs = ss.getExperiment(experimentKey_);
     DoubMinMax dmm = prs.getThresholds(measureTypeKey_, ss);
     if (legacyVal_ != null) {
@@ -630,9 +631,9 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   **
   */
   
-  public String getTimeDisplayString(SourceSrc sources, boolean showUnits, boolean abbreviate) {
+  public String getTimeDisplayString(SourceSrc sources, TimeAxisDefinition tad, boolean showUnits, boolean abbreviate) {
     Experiment prs = sources.getExperiment(experimentKey_);
-    return (prs.getTimeDisplayString(showUnits, abbreviate)); 
+    return (prs.getTimeDisplayString(tad, showUnits, abbreviate)); 
   }
   
   /***************************************************************************
@@ -686,11 +687,12 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the candidate values for the given single filter category
   */
   
-  public void getCandidates(DataAccessContext dacx, PertFilter.Cat filterCat, SortedSet<TrueObjChoiceContent> fillUp, SourceSrc sources) {
+  public void getCandidates(PertFilter.Cat filterCat, SortedSet<TrueObjChoiceContent> fillUp, 
+                            SourceSrc sources, TimeAxisDefinition tad, ResourceManager rMan) {
     Experiment prs = sources.getExperiment(experimentKey_);
     switch (filterCat) {
       case EXPERIMENT:
-        prs.addToExperimentSet(fillUp, sources);
+        prs.addToExperimentSet(fillUp, sources, tad);
         return;
       case SOURCE:
         prs.addToSourceSet(fillUp, sources);
@@ -710,7 +712,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
         int legMax = prs.getLegacyMaxTime();
         int max = (legMax != Experiment.NO_TIME) ? legMax : min;
         MinMax times = new MinMax(min, max);
-        fillUp.add(new TrueObjChoiceContent(prs.getTimeDisplayString(true, true), times));
+        fillUp.add(new TrueObjChoiceContent(prs.getTimeDisplayString(tad, true, true), times));
         return;
       case INVEST:
         List<String> invests = prs.getInvestigators();
@@ -727,11 +729,11 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
         return;        
       case VALUE:
         if (aboveThresholds(sources)) {
-          String above = dacx.getRMan().getString("pertCand.aboveThresh");
+          String above = rMan.getString("pertCand.aboveThresh");
           fillUp.add(new TrueObjChoiceContent(above, PertFilter.Match.ABOVE_THRESH));
         } 
         if (isSignificant(sources)) {
-          String above = dacx.getRMan().getString("pertCand.significant");
+          String above = rMan.getString("pertCand.significant");
           fillUp.add(new TrueObjChoiceContent(above, PertFilter.Match.IS_SIGNIFICANT)); 
         }
         return;
@@ -1090,8 +1092,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the significance choice
   */
   
-  public TrueObjChoiceContent getForcedSignificanceChoice(DataAccessContext dacx) {
-    return (getSignificanceChoice(dacx, isSignificant_));
+  public TrueObjChoiceContent getForcedSignificanceChoice(HandlerAndManagerSource hams) {
+    return (getSignificanceChoice(hams, isSignificant_));
   } 
   
   /***************************************************************************
@@ -1461,11 +1463,11 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the choices for significance
   */
   
-  public static Vector<TrueObjChoiceContent> getSignificanceOptions(DataAccessContext dacx) {
+  public static Vector<TrueObjChoiceContent> getSignificanceOptions(HandlerAndManagerSource hams) {
     Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
-    retval.add(getSignificanceChoice(dacx, null));
-    retval.add(getSignificanceChoice(dacx, new Boolean(false)));
-    retval.add(getSignificanceChoice(dacx, new Boolean(true)));
+    retval.add(getSignificanceChoice(hams, null));
+    retval.add(getSignificanceChoice(hams, new Boolean(false)));
+    retval.add(getSignificanceChoice(hams, new Boolean(true)));
     return (retval);
   }  
   
@@ -1474,8 +1476,8 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the choice for significance
   */
   
-  public static TrueObjChoiceContent getSignificanceChoice(DataAccessContext dacx, Boolean sig) {
-    ResourceManager rMan = dacx.getRMan();
+  public static TrueObjChoiceContent getSignificanceChoice(HandlerAndManagerSource hams, Boolean sig) {
+    ResourceManager rMan = hams.getRMan();
     if (sig == null) {
       return (new TrueObjChoiceContent(rMan.getString("pertData.sigNotSet"), null));
     } else if (!sig.booleanValue()) {
@@ -1499,14 +1501,14 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   public static class Parameters {
     private String convKey_;
 
-    public Parameters(DataAccessContext dacx) {
-      MeasureDictionary md = dacx.getExpDataSrc().getPertData().getMeasureDictionary();
+    public Parameters(PerturbationData pd) {
+      MeasureDictionary md = pd.getMeasureDictionary();
       // All data goes out as DDCT!!!
       convKey_ = md.getStandardScaleKeys()[MeasureDictionary.DDCT_INDEX];     
     }
     
-    public Double getNotSigDoub(DataAccessContext dacx) {
-      MeasureDictionary md = dacx.getExpDataSrc().getPertData().getMeasureDictionary();
+    public Double getNotSigDoub(PerturbationData pd) {
+      MeasureDictionary md = pd.getMeasureDictionary();
       return (md.getMeasureScale(convKey_).getUnchanged());
     }
     

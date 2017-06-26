@@ -1148,10 +1148,10 @@ public class DynamicGenomeInstance extends GenomeInstance {
             Double simVal = null;
             if (simKey != null) {
               UiUtil.fixMePrintout("Still knotty issues");
-              int simExp = tcg.getExpressionLevelForSimulation(simKey, groupUse.mappedGroup, time, varLev);
+              int simExp = tcg.getExpressionLevelForSimulation(simKey, groupUse.mappedGroup, time, varLev, weakLevel);
               simVal = ExpressionEntry.discreteToVar(simExp, (simExp == ExpressionEntry.VARIABLE) ? Double.valueOf(varLev.level) : null, weakLevel);
             }
-            int expression = tcg.getExpressionLevelForSource(groupUse.mappedGroup, time, tcm.channel, varLev);
+            int expression = tcg.getExpressionLevelForSource(groupUse.mappedGroup, time, tcm.channel, varLev, weakLevel);
             if (expression == ExpressionEntry.EXPRESSED) {
               addIt = true;
               partialLevel = false;

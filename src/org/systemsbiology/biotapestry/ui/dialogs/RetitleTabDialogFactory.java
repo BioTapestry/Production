@@ -194,7 +194,7 @@ public class RetitleTabDialogFactory extends DialogFactory {
       crq.haveResult = false;
       
       if (crq.titleResult.equals("")) {
-        ResourceManager rMan = dacx_.getRMan();
+        ResourceManager rMan = uics_.getRMan();
         String message = rMan.getString("changeTabTitle.emptyTitle");
         String title = rMan.getString("changeTabTitle.TitleErrorTitle");
         SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);
@@ -207,7 +207,7 @@ public class RetitleTabDialogFactory extends DialogFactory {
       }
           
       if(crq.titleResult.length() > MAX_TITLE_LENGTH) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           String message = rMan.getString("changeTabTitle.tooLong");
           String title = rMan.getString("changeTabTitle.TitleErrorTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -227,7 +227,7 @@ public class RetitleTabDialogFactory extends DialogFactory {
       } 
       
       if(crq.descResult.equals("")) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           String message = rMan.getString("changeTabDesc.emptyDesc");
           String title = rMan.getString("changeTabDesc.DescWarnTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_OPTION, message, title);
@@ -243,7 +243,7 @@ public class RetitleTabDialogFactory extends DialogFactory {
             throw new IllegalStateException();
           }
       } else if(crq.descResult.length() > MAX_DESC_LENGTH) {
-          ResourceManager rMan = dacx_.getRMan();
+          ResourceManager rMan = uics_.getRMan();
           String message = rMan.getString("changeTabDesc.tooLong");
           String title = rMan.getString("changeTabDesc.DescErrorTitle");
           SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.ERROR, message, title);

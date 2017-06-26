@@ -177,7 +177,7 @@ public class LoadSaveSupport {
   */ 
     
   public FilePreparer getFprep(DataAccessContext dacx) {   
-    return (new FilePreparer(uics_, dacx, uics_.getTopFrame(), prefClass_));
+    return (new FilePreparer(uics_, ddacx_, uics_.getTopFrame(), prefClass_));
   }  
   
   /***************************************************************************
@@ -312,7 +312,7 @@ public class LoadSaveSupport {
       return (retval);  
     }
     cv.manageWindowTitle(url.toString());
-    postLoadOperations(false, ddacx_, 0, true, false, null);
+    postLoadOperations(false, 0, true, false, null);
     sup.drawModel(true);
     FilePreparer.FileInputResultClosure retval = new FilePreparer.FileInputResultClosure();
     retval.setPasswordStatus((pEval != null) ? !pEval.failure : true);
@@ -492,7 +492,7 @@ public class LoadSaveSupport {
       return (retval);  
     }
     cv.manageWindowTitle(chosenFileName);
-    postLoadOperations(false, ddacx_, 0, true, forAppend, appendSupport);
+    postLoadOperations(false, 0, true, forAppend, appendSupport);
     return (new FilePreparer.FileInputResultClosure());
   } 
 
@@ -539,7 +539,7 @@ public class LoadSaveSupport {
     }
     
     tSrc_.setTabAppendUndoSupport(appendSupport);  
-    postLoadOperations(false, ddacx_, preTabCount, true, true, appendSupport);
+    postLoadOperations(false, preTabCount, true, true, appendSupport);
     tSrc_.setTabAppendUndoSupport(null);
     appendSupport.finish();
     
@@ -573,11 +573,11 @@ public class LoadSaveSupport {
         List<String> mergeIssues = mf.getMergeIssues();
         if ((mergeIssues != null) && !mergeIssues.isEmpty()) {
           MessageTableReportingDialog mtrd = 
-                   new MessageTableReportingDialog(uics_, new StaticDataAccessContext(ddacx_),
+                   new MessageTableReportingDialog(uics_,
                                                    mergeIssues, 
-                                                   "tabMerge.issues", 
-                                                   "tabMerge.issues", 
-                                                   "tabMerge.issues", 
+                                                   "tabMerge.issuesTitle", 
+                                                   "tabMerge.issuesHeader", 
+                                                   "tabMerge.issuesColumn", 
                                                    new Dimension(800, 800), false, true);
           mtrd.setVisible(true);
         }
@@ -738,7 +738,7 @@ public class LoadSaveSupport {
   ** Handles post-loading operations
   */ 
        
-  public void postLoadOperations(boolean selectRoot, DataAccessContext dacx, 
+  public void postLoadOperations(boolean selectRoot,
                                  int firstIndex, boolean multiTab, boolean forAppend, UndoSupport appendSupport) {    
     if (multiTab) { 
       int numTab = tSrc_.getNumTab();
@@ -757,9 +757,9 @@ public class LoadSaveSupport {
         TabChange tc = tSrc_.setCurrentTabIndex(i);
         // If this is not done after the above statement, the tree and view get all whacked out of sync.
         if ((tc != null) && (appendSupport != null)) {
-          appendSupport.addEdit(new TabChangeCmd(dacx, tc));
+          appendSupport.addEdit(new TabChangeCmd(ddacx_, tc));
         }
-        postLoadOperationsPerTab(selectRoot, dacx);
+        postLoadOperationsPerTab(selectRoot);
       }   
       for (int i = 0; i < numTab; i++) {  
         uics_.getZoomCommandSupportForTab(i).setIgnoreScroll(false);
@@ -769,7 +769,7 @@ public class LoadSaveSupport {
         cSrc_.clearUndoTracking();
       }
     } else {
-      postLoadOperationsPerTab(selectRoot, dacx);
+      postLoadOperationsPerTab(selectRoot);
     }
     return;
   }
@@ -779,9 +779,9 @@ public class LoadSaveSupport {
   ** Handles post-loading operations
   */ 
        
-  private void postLoadOperationsPerTab(boolean selectRoot, DataAccessContext dacx) { 
-    GroupSettingSource gsm = dacx.getGSM();
-    NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
+  private void postLoadOperationsPerTab(boolean selectRoot) {
+    GroupSettingSource gsm = ddacx_.getGSM();
+    NavTree navTree = ddacx_.getGenomeSource().getModelHierarchy();
     VirtualModelTree vmtree = uics_.getTree();
     vmtree.setTreeModel(navTree);
     List<TreePath> nonleafPaths = navTree.getAllPathsToNonLeaves();
@@ -796,27 +796,26 @@ public class LoadSaveSupport {
     // _before_ loading up the new genome!
     //
     uics_.getPathController().clearControllerState();
-    uics_.getNetOverlayController().resetControllerState(dacx);
+    uics_.getNetOverlayController().resetControllerState(ddacx_);
     VirtualPathControls vpc = uics_.getPathControls();
     vpc.updateUserPathActions();
     vpc.setCurrentUserPath(0);    
         
-    Iterator<GenomeInstance> giit = dacx.getGenomeSource().getInstanceIterator();
+    Iterator<GenomeInstance> giit = ddacx_.getGenomeSource().getInstanceIterator();
     while (giit.hasNext()) {
       GenomeInstance gi = giit.next();
       gsm.setGroupVisibilities(gi, GroupSettings.Setting.ACTIVE);        
     }
-    preloadWithoutRefresh(dacx);
-    Workspace ws = dacx.getWorkspaceSource().getWorkspace();
+    preloadWithoutRefresh();
+    Workspace ws = ddacx_.getWorkspaceSource().getWorkspace();
     if (ws.needsCenter()) {  // Legacy condition...
       ddacx_.getZoomTarget().fixCenterPoint(true, null, false);
     }
    
     if (!uics_.isHeadless()) {
       uics_.getCommonView().postLoadVisibility();
-      StartupView sv = dacx.getGenomeSource().getStartupView();
-      System.out.println("SV is " + sv.getModel());
-      SetCurrentModel.StepState.installStartupView(uics_, dacx, selectRoot, sv);
+      StartupView sv = ddacx_.getGenomeSource().getStartupView();
+      SetCurrentModel.StepState.installStartupView(uics_, ddacx_, selectRoot, sv);
       DisplayOptions dop = ddacx_.getDisplayOptsSource().getDisplayOptions();
       switch (dop.getFirstZoomMode()) {
         case FIRST_ZOOM_TO_ALL_MODELS:
@@ -841,28 +840,28 @@ public class LoadSaveSupport {
   ** triggering a refresh
   */
   
-  private void preloadWithoutRefresh(DataAccessContext dacx) {
-    NavTree navTree = dacx.getGenomeSource().getModelHierarchy();
+  private void preloadWithoutRefresh() {
+    NavTree navTree = ddacx_.getGenomeSource().getModelHierarchy();
     TreePath dstp = navTree.getDefaultSelection();    
     String genomeID = navTree.getGenomeID(dstp);
     String proxyID = navTree.getDynamicProxyID(dstp); 
-    Metabase mBase = dacx.getMetabase();
+    Metabase mBase = ddacx_.getMetabase();
     UiUtil.fixMePrintout("HORRIBLE HACK");
     BTState appState = mBase.getAppState();
     if (genomeID != null) {
-      String layoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
+      String layoutID = ddacx_.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
       appState.setGraphLayout(layoutID);
-      appState.setGenomeForUndo(genomeID, dacx);
+      appState.setGenomeForUndo(genomeID, ddacx_);
     } else if (proxyID != null) {
-      DynamicInstanceProxy dip = dacx.getGenomeSource().getDynamicProxy(proxyID);
+      DynamicInstanceProxy dip = ddacx_.getGenomeSource().getDynamicProxy(proxyID);
       int min = dip.getMinimumTime();
       genomeID = dip.getKeyForTime(min, true);
-      String layoutID = dacx.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
+      String layoutID = ddacx_.getLayoutSource().mapGenomeKeyToLayoutKey(genomeID);
       appState.setGraphLayout(layoutID);
-      appState.setGenomeForUndo(genomeID, dacx);
+      appState.setGenomeForUndo(genomeID, ddacx_);
     } else {
       appState.setGraphLayout(null);
-      appState.setGenomeForUndo(genomeID, dacx);
+      appState.setGenomeForUndo(genomeID, ddacx_);
     }
     return;
   }
@@ -981,7 +980,7 @@ public class LoadSaveSupport {
         }
         boolean doOpt = false;
         UndoSupport support = uFac_.provideUndoSupport("undo.buildFromGaggleNetwork", dacx_);            
-        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(uics_, dacx_, uFac_, instruct, importMode_, doOpt, support, specLayout, params);
+        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(uics_, dacx_, tSrc_, uFac_, instruct, importMode_, doOpt, support, specLayout, params);
         BackgroundWorkerClient bwc = 
           new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
         runner.setClient(bwc);
@@ -1045,7 +1044,7 @@ public class LoadSaveSupport {
       if (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT) {
         ResourceManager rMan = ddacx_.getRMan();
         cv.manageWindowTitle(rMan.getString("gaggleSupport.gaggle") + ": " + species_);
-        postLoadOperations(true, dacx_, 0, false, false, null);
+        postLoadOperations(true, 0, false, false, null);
       }
       LayoutLinkSupport.offerColorFixup(uics_, dacx_, result, uFac_);
       return (new FilePreparer.FileInputResultClosure());
@@ -1060,7 +1059,8 @@ public class LoadSaveSupport {
   private static class NewGaggleNetworkRunner extends BackgroundWorker {
  
     private UIComponentSource myUics_;
-    private UndoFactory myUFac_; 
+    private UndoFactory myUFac_;
+    private TabSource myTSrc_;
     private DataAccessContext myDacx_;
     private UndoSupport support_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
@@ -1069,7 +1069,7 @@ public class LoadSaveSupport {
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
     
-    public NewGaggleNetworkRunner(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, List<BuildInstruction> commands,
+    public NewGaggleNetworkRunner(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac, List<BuildInstruction> commands,
                                   SIFImportChoicesDialogFactory.LayoutModes importMode, boolean doOpts,
                                   UndoSupport support, SpecialtyLayout specLayout, SpecialtyLayoutEngineParams params) {
       super(new LinkRouter.RoutingResult());      
@@ -1077,6 +1077,7 @@ public class LoadSaveSupport {
       myUics_ = uics;
       myUFac_ = uFac;
       myDacx_ = dacx;
+      myTSrc_ = tSrc;
       importMode_ = importMode;
       doOpts_ = doOpts;
       support_ = support;
@@ -1087,7 +1088,7 @@ public class LoadSaveSupport {
     public Object runCore() throws AsynchExitRequestException {
       DBGenomeSIFFormatFactory sff = new DBGenomeSIFFormatFactory();
       try {
-        LinkRouter.RoutingResult res = sff.buildForGaggle(myUics_, myDacx_, myUFac_, commands_,
+        LinkRouter.RoutingResult res = sff.buildForGaggle(myUics_, myDacx_, myTSrc_, myUFac_, commands_,
                                                           (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), 
                                                           specLayout_, params_,
                                                           support_, doOpts_, this, 0.0, 1.0);

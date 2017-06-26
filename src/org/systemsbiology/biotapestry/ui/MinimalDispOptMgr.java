@@ -50,13 +50,6 @@ public interface MinimalDispOptMgr {
   
   public void turnOnSpecialLinkBranches(UndoSupport support, DataAccessContext dacx, boolean doFinish);
 
-  /***************************************************************************
-  **
-  ** Handle changes due to perturbation data changes
-  */
-  
-  public void modifyForPertDataChange(UndoSupport support, DataAccessContext dacx);
-  
   
   /***************************************************************************
   ** 

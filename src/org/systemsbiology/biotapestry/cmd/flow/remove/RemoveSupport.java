@@ -472,7 +472,7 @@ public class RemoveSupport {
        String inherit = Group.buildInheritedID(grp.getID(), parent.getGeneration());
        if (parent.getGroup(inherit) == null) {
          GenomeChange gc = rcx.getCurrentGenomeAsInstance().removeGroupNoChecks(grp.getID());
-         GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+         GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
          support.addEdit(gcc);    
     
          GroupSettingSource gsm = rcx.getGSM();          

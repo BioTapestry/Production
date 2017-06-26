@@ -31,6 +31,7 @@ import java.awt.Dimension;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
@@ -96,7 +97,7 @@ public class DBGenomeSIFFormatFactory {
 
   public AugmentedResult buildFromSIF(UIComponentSource uics,
                                       StaticDataAccessContext dacx,
-                                      UndoFactory uFac, File infile,                                                                                             
+                                      TabSource tSrc, UndoFactory uFac, File infile,                                                                                             
                                       boolean doReplacement,
                                       SpecialtyLayout specLayout,
                                       SpecialtyLayoutEngineParams params,
@@ -152,7 +153,7 @@ public class DBGenomeSIFFormatFactory {
     options.optimizationPasses = (doOpts) ? 1 : 0;
     options.overlayOption = overlayOption;
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, dacx, uFac);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, dacx, tSrc, uFac);
     BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, dacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);
@@ -168,6 +169,7 @@ public class DBGenomeSIFFormatFactory {
 
   public LinkRouter.RoutingResult buildForGaggle(UIComponentSource uics,
                                                  DataAccessContext dacx,
+                                                 TabSource tSrc,
                                                  UndoFactory uFac,
                                                  List<BuildInstruction> commands,
                                                  boolean doReplacement,
@@ -194,7 +196,7 @@ public class DBGenomeSIFFormatFactory {
     }
     
     StaticDataAccessContext sdacx = new StaticDataAccessContext(dacx);
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, sdacx, uFac);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, sdacx, tSrc, uFac);
     BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, sdacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);

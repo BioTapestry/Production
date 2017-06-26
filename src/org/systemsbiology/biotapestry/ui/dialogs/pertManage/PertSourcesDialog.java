@@ -31,7 +31,6 @@ import java.util.TreeMap;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.perturb.PertSource;
 import org.systemsbiology.biotapestry.perturb.PertSources;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -72,8 +71,8 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public PertSourcesDialog(UIComponentSource uics, DataAccessContext dacx, PertSources currSources, Iterator<PertSources> existing) {
-    super(uics, dacx, "setPertSources.title", new Dimension(500, 300), 1);
+  public PertSourcesDialog(UIComponentSource uics, PerturbationData pd, PertSources currSources, Iterator<PertSources> existing) {
+    super(uics, "setPertSources.title", new Dimension(500, 300), 1);
     currSources_ = currSources;
     existingSrcs_ = new HashSet<PertSources>();
     while (existing.hasNext()) {
@@ -83,7 +82,7 @@ public class PertSourcesDialog extends BTStashResultsDialog {
       }
       existingSrcs_.add(eps);     
     }
-    pd_ = dacx.getExpDataSrc().getPertData();
+    pd_ = pd;
     pertSrcList_ = buildPertSourceEnum();
     JPanel tabPan = buildTable();
     addTable(tabPan, 5);
@@ -183,7 +182,7 @@ public class PertSourcesDialog extends BTStashResultsDialog {
   */
   
   private JPanel buildTable() {    
-    estSrcForEdit_ = new EditableTable(uics_, dacx_, new EditableTable.OneEnumTableModel(uics_, dacx_, "peaep.perturb", pertSrcList_), uics_.getTopFrame());
+    estSrcForEdit_ = new EditableTable(uics_, new EditableTable.OneEnumTableModel(uics_, "peaep.perturb", pertSrcList_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = false;
     etp.tableIsUnselectable = false;

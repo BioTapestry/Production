@@ -54,6 +54,7 @@ import org.systemsbiology.biotapestry.cmd.flow.select.Selection;
 import org.systemsbiology.biotapestry.cmd.flow.simulate.SimulationLaunch;
 import org.systemsbiology.biotapestry.cmd.flow.userPath.PathStop;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBNode;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -1791,8 +1792,9 @@ public class MenuSource {
   
     PerturbationData pd = dacx.getExpDataSrc().getPertData();
     PerturbationDataMaps pdms = dacx.getDataMapSrc().getPerturbationDataMaps();
+    DBGenome dbGenome = dacx.getGenomeSource().getRootDBGenome();
 
-    Set<String> sources = pd.getPerturbationSources(targNodeID, pdms);
+    Set<String> sources = pd.getPerturbationSources(dbGenome, targNodeID, pdms);
     if (sources.size() == 0) {
       pertSrcMenu.setEnabled(false);
       return (pertSrcMenu);

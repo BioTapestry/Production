@@ -292,7 +292,7 @@ public class AddNote extends AbstractControlFlow {
       UndoSupport support = uFac_.provideUndoSupport("undo.addNote", dacx_);
       GenomeChange gc = dacx_.getCurrentGenome().addNoteWithExistingLabel(newNote);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
       }
       

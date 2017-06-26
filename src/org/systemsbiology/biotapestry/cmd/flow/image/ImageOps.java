@@ -38,6 +38,7 @@ import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
 import org.systemsbiology.biotapestry.cmd.undo.ImageChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.event.TreeNodeChangeEvent;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
@@ -46,9 +47,9 @@ import org.systemsbiology.biotapestry.nav.ImageChange;
 import org.systemsbiology.biotapestry.nav.ImageManager;
 import org.systemsbiology.biotapestry.nav.NavTree;
 import org.systemsbiology.biotapestry.nav.XPlatModelNode;
-import org.systemsbiology.biotapestry.ui.dialogs.ImageLibraryDisplay;
 import org.systemsbiology.biotapestry.util.FileExtensionFilters;
 import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -167,10 +168,17 @@ public class ImageOps extends AbstractControlFlow {
           return (false);
         }
         if (key.modType == XPlatModelNode.ModelType.DYNAMIC_PROXY) {
+          if (!nodeIsSelectedDPNode(key, rcx, uics)) {
+            return (false);
+          }
+          UiUtil.fixMePrintout("no, if no image for current slider setting, cannot drop");
           return (rcx.getGenomeSource().getDynamicProxy(key.id).hasGenomeImage());
         }
         return (rcx.getGenomeSource().getGenome(key.id).getGenomeImage() != null);
       case ADD:
+        if (key.modType == XPlatModelNode.ModelType.DYNAMIC_PROXY) {         
+          return (nodeIsSelectedDPNode(key, rcx, uics));
+        }
         return ((key.modType != XPlatModelNode.ModelType.GROUPING_ONLY) && (key.modType != XPlatModelNode.ModelType.SUPER_ROOT));
       case GROUPING_NODE_ADD:
         return (key.modType == XPlatModelNode.ModelType.GROUPING_ONLY);  
@@ -235,6 +243,40 @@ public class ImageOps extends AbstractControlFlow {
       last = next;
     }
   }
+ 
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PRIVATE METHODS
+  //
+  ////////////////////////////////////////////////////////////////////////////    
+
+  /***************************************************************************
+  **
+  ** User can bring up popup menu and do things even if the node is not
+  ** the currently seleted model. With slider models, this is more confusing
+  ** than helpful, since slider state is important. We do not allow add or
+  ** drops if selected node is not the source of the popup:
+  ** 
+  */ 
+  
+  private boolean nodeIsSelectedDPNode(XPlatModelNode.NodeKey key, DataAccessContext rcx, UIComponentSource uics) {
+    NavTree nt = rcx.getGenomeSource().getModelHierarchy();
+    TreeNode node = nt.resolveNode(key); 
+    String proxyID = nt.getDynamicProxyID(node);
+    if (proxyID == null) {
+      return (false);
+    }
+    // Note the "current genome" in the rcx is for the node, not the current selection...
+    VirtualModelTree vmt = uics.getTree();
+    TreePath tp = vmt.getTreeSelectionPath();
+    String currDPI = nt.getDynamicProxyID(tp);
+    if (currDPI == null) {
+      return (false);
+    }
+    return (currDPI == proxyID);
+  }
+  
+  
  
   /***************************************************************************
   **
@@ -370,9 +412,6 @@ public class ImageOps extends AbstractControlFlow {
 
     private DialogAndInProcessCmd addAction() {
     
-      ImageLibraryDisplay ild = new ImageLibraryDisplay(uics_, dacx_);
-      ild.setVisible(true);
-      
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
       
       int warnHeight = ImageManager.WARN_DIM_Y;
@@ -384,7 +423,7 @@ public class ImageOps extends AbstractControlFlow {
       }
       ImageManager.NewImageInfo nii = il.nii;
           
-      if (nii.change != null) {
+      if (nii.key != null) {
         String genomeID = nt.getGenomeID(popupNode_);
         String proxyID = nt.getDynamicProxyID(popupNode_);
             
@@ -404,19 +443,26 @@ public class ImageOps extends AbstractControlFlow {
             } catch (NumberFormatException nfex) {
               throw new IllegalStateException();
             }
-          } else {
-            time = dip.getMinimumTime();
-            UiUtil.fixMePrintout("NO! NEED DIALOG IF NOT ON CURRENT MODEL");
+          } else { // We are NOT looking at the model we are adding image to. Not legal (should be disabled)
+            throw new IllegalStateException();
           }
           genomeID = dip.getKeyForTime(time, true);
         }
         
         DataAccessContext dacx4u = new StaticDataAccessContext(dacx_, genomeID);    
         UndoSupport support = uFac_.provideUndoSupport("undo.setImage", dacx4u);
-        
-        nii.change.genomeKey = genomeID; // All undo processing goes through genome
-        support.addEdit(new ImageChangeCmd(dacx4u, nii.change));
+        UiUtil.fixMePrintout("Undo of image assignment not closing model image panel if group node has image");
+        UiUtil.fixMePrintout("Because proxy still has image key");
+        UiUtil.fixMePrintout("Gotta set change.proxyKey to drop image from proxy? No, that does not work");
+
+
+        // This was causing a crash:
+        UiUtil.fixMePrintout("But how do we get image manager to e.g. drop fresh image??");
+  //      nii.change.genomeKey = genomeID; // All undo processing goes through genome
+  //      support.addEdit(new ImageChangeCmd(dacx4u, nii.change));
   
+        // Note that this handles proxies as well, since the genomeID an represent a dynamic instance:
+        
         ImageChange[] ics = dacx_.getGenomeSource().getGenome(genomeID).setGenomeImage(mgr_, nii.key);
         
         if (ics != null) {
@@ -431,6 +477,39 @@ public class ImageOps extends AbstractControlFlow {
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }
     
+    /***************************************************************************
+     **
+     ** Build time string
+     */
+     
+     private String timeValToString(int val) { 
+       TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+       boolean namedStages = tad.haveNamedStages();
+       String displayUnits = tad.unitDisplayString();       
+       String formatKey = (tad.unitsAreASuffix()) ? "grpColMatEdit.nameFormat" : "grpColMatEdit.nameFormatPrefix";
+       String format = dacx_.getRMan().getString(formatKey);
+       String stageName = (namedStages) ? tad.getNamedStageForIndex(val).name : Integer.toString(val);
+       String dispName = MessageFormat.format(format, new Object[] {stageName, displayUnits});
+       return (dispName);
+     } 
+ 
+    /***************************************************************************
+     **
+     ** Build Times
+     */
+     
+     private Object[] buildTimeChoices(DynamicInstanceProxy dip) { 
+       int min = dip.getMinimumTime();
+       int max = dip.getMaximumTime();
+       int count = 0;
+       Object[] retval = new Object[max - min + 1]; 
+       for (int i = min; i <= max; i++) {
+         String dispName = timeValToString(i);
+         retval[count++] = new TrueObjChoiceContent(dispName, Integer.valueOf(i));
+       }
+       return (retval);
+     }
+
     /***************************************************************************
     **
     ** Command
@@ -448,8 +527,9 @@ public class ImageOps extends AbstractControlFlow {
       }
       ImageManager.NewImageInfo nii = il.nii;
           
-      if (nii.change != null) {
-        UndoSupport support = uFac_.provideUndoSupport("undo.setGroupNodeImage", dacx_);
+      if (nii.key != null) {
+        String whichOp = (forMap) ? "undo.setGroupNodeMapImage": "undo.setGroupNodeImage";
+        UndoSupport support = uFac_.provideUndoSupport(whichOp, dacx_);
         String groupNodeID = nt.getGroupNodeID(popupNode_);
         nii.change.groupNodeKey = groupNodeID;
         nii.change.groupNodeForMap = forMap;  
@@ -481,6 +561,7 @@ public class ImageOps extends AbstractControlFlow {
       String genomeID = nt.getGenomeID(popupNode_);
       if (genomeID == null) {
         UiUtil.fixMePrintout("NO! NEED PROXY IF SLIDER");
+        String currDPI = nt.getDynamicProxyID(popupNode_);
         throw new IllegalStateException();
       }
       DataAccessContext dacx4u = new StaticDataAccessContext(dacx_, genomeID);
@@ -502,7 +583,8 @@ public class ImageOps extends AbstractControlFlow {
     private DialogAndInProcessCmd dropActionForGroup(boolean forMap) {
       NavTree nt = dacx_.getGenomeSource().getModelHierarchy();
       String groupNodeID = nt.getGroupNodeID(popupNode_);
-      UndoSupport support = uFac_.provideUndoSupport("undo.dropImage", dacx_);
+      String whichOp = (forMap) ? "undo.dropGroupNodeMapImage": "undo.dropGroupNodeImage";
+      UndoSupport support = uFac_.provideUndoSupport(whichOp, dacx_);
       ImageChange ic = nt.dropGroupImage(groupNodeID, forMap);
       if (ic != null) {
         support.addEdit(new ImageChangeCmd(dacx_, ic));

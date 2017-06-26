@@ -26,6 +26,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Vector;
 
+import javax.swing.tree.TreePath;
+
+import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.NavigationChange;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
@@ -33,6 +36,7 @@ import org.systemsbiology.biotapestry.cmd.undo.NavigationChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.UserTreePathChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.StartupView;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TaggedSet;
@@ -153,6 +157,18 @@ public class UserTreePathController {
   */
   
   public boolean currentModelMatchesStop(UserTreePathStop stop, DataAccessContext dacx) {
+    
+    NavTree.KidSuperType type = stop.getNodeType();
+    if (type == NavTree.KidSuperType.GROUP) {
+      if (!uics_.getTree().currNodeIsGroupNode()) {
+        return (false);
+      }
+      TreePath selPath = uics_.getTree().getTreeSelectionPath();
+      NavTree navTree = dacx.getGenomeSource().getModelHierarchy(); 
+      String grpNode = navTree.getGroupNodeID(selPath);
+      return (grpNode.equals(stop.getNodeID()));    
+    }
+    
     String genomeKey = dacx.getCurrentGenomeID();
     if (!stop.getGenomeID().equals(genomeKey)) {
       return (false);
@@ -172,7 +188,7 @@ public class UserTreePathController {
       return (false);
     }
     
-    TaggedSet currReveal = NetOverlayController.normalizedRevealedModules(dacx, genomeKey, currOverlay, currModules, dacx.getOSO().getRevealedModules());
+    TaggedSet currReveal = NetOverlayController.normalizedRevealedModules(dacx.getLayoutSource(), genomeKey, currOverlay, currModules, dacx.getOSO().getRevealedModules());
     TaggedSet stopReveal = stop.getRevealed();
     return (currReveal.equals(stopReveal));
   }  
@@ -311,7 +327,7 @@ public class UserTreePathController {
   ** 
   */
   
-  public void setCurrentPath(String pathKey, DataAccessContext dacx, UndoFactory uFac) {
+  public void setCurrentPath(String pathKey, DynamicDataAccessContext dacx, UndoFactory uFac) {
     if (currPathKey_ != null) {
       lastStop_.put(currPathKey_, new Integer(currStopIndex_));
     }
@@ -340,7 +356,7 @@ public class UserTreePathController {
   ** 
   */
   
-  public void pathBackward(DataAccessContext dacx, UndoFactory uFac) {
+  public void pathBackward(DynamicDataAccessContext dacx, UndoFactory uFac) {
     int stopCount = getStopCount();
     if ((stopCount > 0) && (currStopIndex_ > 0)) {
       PathNavigationInfo pni = new PathNavigationInfo();
@@ -370,7 +386,8 @@ public class UserTreePathController {
       pni.nav.odc.newModKeys = stop.getModules().clone();
       pni.nav.odc.newRevealedKeys = stop.getRevealed().clone();
           
-      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), stop.getRevealed(), pni, dacx);      
+      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), stop.getRevealed(), 
+                     stop.getNodeType(), stop.getNodeID(), pni, dacx);      
     }   
     return;
   }  
@@ -381,7 +398,7 @@ public class UserTreePathController {
   ** 
   */
   
-  public void pathForward(DataAccessContext dacx, UndoFactory uFac) {
+  public void pathForward(DynamicDataAccessContext dacx, UndoFactory uFac) {
     int stopCount = getStopCount();
     if ((stopCount > 0) && (currStopIndex_ < (stopCount - 1))) {
       PathNavigationInfo pni = new PathNavigationInfo();
@@ -410,7 +427,8 @@ public class UserTreePathController {
       pni.nav.odc.newOvrKey = stop.getOverlay();
       pni.nav.odc.newModKeys = stop.getModules().clone();
       pni.nav.odc.newRevealedKeys = stop.getRevealed().clone();      
-      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), stop.getRevealed(), pni, dacx);
+      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), 
+                     stop.getRevealed(), stop.getNodeType(), stop.getNodeID(), pni, dacx);
     }   
     return;
   } 
@@ -493,11 +511,20 @@ public class UserTreePathController {
   ** Add a stop to the current path.  May be a change to navigation.
   */
   
-  public void addAStop(String addToPathKey, String insertMode, DataAccessContext dacx, UndoFactory uFac) {
-    String key = dacx.getCurrentGenomeID();
-    String ovrKey = dacx.getOSO().getCurrentOverlay();
-    TaggedSet mods = dacx.getOSO().getCurrentNetModules();
-    TaggedSet revs = dacx.getOSO().getRevealedModules();    
+  public void addAStop(String addToPathKey, String insertMode, DynamicDataAccessContext dacx, UndoFactory uFac) {
+    
+    TreePath selPath = uics_.getTree().getTreeSelectionPath();
+    NavTree navTree = dacx.getGenomeSource().getModelHierarchy(); 
+    String grpNode = navTree.getGroupNodeID(selPath);
+    NavTree.KidSuperType type = (grpNode == null) ? NavTree.KidSuperType.MODEL : NavTree.KidSuperType.GROUP;
+    
+    String key = (type == NavTree.KidSuperType.MODEL) ? dacx.getCurrentGenomeID() : null;
+    String ovrKey = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getCurrentOverlay() : null;
+    TaggedSet mods = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getCurrentNetModules() : null;
+    TaggedSet revs = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getRevealedModules() : null; 
+    
+    UserTreePathStop newStop = new UserTreePathStop(key, ovrKey, mods, revs, type, grpNode);
+  
     
     ArrayList<UserTreePathChangeCmd> postNavs = new ArrayList<UserTreePathChangeCmd>();
     UserTreePathManager mgr = uics_.getPathMgr();
@@ -516,7 +543,7 @@ public class UserTreePathController {
       throw new IllegalArgumentException();
     } 
 
-    UserTreePathChange change = mgr.addPathStop(addToPathKey, key, newIndexVal, ovrKey, mods, revs);
+    UserTreePathChange change = mgr.addPathStop(addToPathKey, newIndexVal, newStop);
     UndoSupport support = uFac.provideUndoSupport("undo.treePathAddStop", dacx);
     postNavs.add(new UserTreePathChangeCmd(dacx, change));
     setCurrentPath(addToPathKey, new Integer(newIndexVal), support, postNavs, null, dacx, uFac);
@@ -533,10 +560,18 @@ public class UserTreePathController {
   */
   
   public void addAPath(String newName, DataAccessContext dacx, UndoFactory uFac) {
-    String key = dacx.getCurrentGenomeID();
-    String ovrKey = dacx.getOSO().getCurrentOverlay();
-    TaggedSet mods = dacx.getOSO().getCurrentNetModules();
-    TaggedSet revs = dacx.getOSO().getRevealedModules();
+    
+    TreePath selPath = uics_.getTree().getTreeSelectionPath();
+    NavTree navTree = dacx.getGenomeSource().getModelHierarchy(); 
+    String grpNode = navTree.getGroupNodeID(selPath);
+    NavTree.KidSuperType type = (grpNode == null) ? NavTree.KidSuperType.MODEL : NavTree.KidSuperType.GROUP;
+    
+    String key = (type == NavTree.KidSuperType.MODEL) ? dacx.getCurrentGenomeID() : null;
+    String ovrKey = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getCurrentOverlay() : null;
+    TaggedSet mods = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getCurrentNetModules() : null;
+    TaggedSet revs = (type == NavTree.KidSuperType.MODEL) ? dacx.getOSO().getRevealedModules() : null; 
+    
+    UserTreePathStop newStop = new UserTreePathStop(key, ovrKey, mods, revs, type, grpNode);
        
     UserTreePathManager mgr = uics_.getPathMgr();
     int currPathIndex = (currPathKey_ == null) ? -1 : mgr.getPathIndex(currPathKey_);
@@ -547,7 +582,7 @@ public class UserTreePathController {
     lastPathKey_ = currPathKey_;
     currPathKey_ = mgr.getPathKey(currPathIndex);
     currStopIndex_ = -1;
-    change = mgr.addPathStop(currPathKey_, key, ++currStopIndex_, ovrKey, mods, revs);
+    change = mgr.addPathStop(currPathKey_, ++currStopIndex_, newStop);
     utpcc = new UserTreePathChangeCmd(dacx, change);
     support.addEdit(utpcc);
     support.finish();
@@ -562,7 +597,7 @@ public class UserTreePathController {
   ** Delete the current path. May be a navigation change
   */
   
-  public void deleteCurrentPath(DataAccessContext dacx, UndoFactory uFac) {
+  public void deleteCurrentPath(DynamicDataAccessContext dacx, UndoFactory uFac) {
     OverlayDisplayChange odc = stashForDeletion(dacx);
     ArrayList<UserTreePathChangeCmd> postNavs = new ArrayList<UserTreePathChangeCmd>();
     UserTreePathManager mgr = uics_.getPathMgr();
@@ -614,7 +649,7 @@ public class UserTreePathController {
   ** Delete the current stop.  May be a nav change.
   */
   
-  public void deleteCurrentStop(DataAccessContext dacx, UndoFactory uFac) {
+  public void deleteCurrentStop(DynamicDataAccessContext dacx, UndoFactory uFac) {
     OverlayDisplayChange odc = stashForDeletion(dacx);
     UserTreePathManager mgr = uics_.getPathMgr();
     int stopCount = getStopCount();
@@ -1026,9 +1061,9 @@ public class UserTreePathController {
   ** For insertion mode combo boxes
   */
 
-  public static Vector<ObjChoiceContent> insertionOptions(DataAccessContext dacx) {
+  public static Vector<ObjChoiceContent> insertionOptions(HandlerAndManagerSource hams) {
     Vector<ObjChoiceContent> retval = new Vector<ObjChoiceContent>();
-    ResourceManager rMan = dacx.getRMan();
+    ResourceManager rMan = hams.getRMan();
     retval.add(new ObjChoiceContent(rMan.getString("pathInsertOptions." + INSERT_AFTER_CURRENT), INSERT_AFTER_CURRENT));   
     retval.add(new ObjChoiceContent(rMan.getString("pathInsertOptions." + INSERT_END), INSERT_END));
     retval.add(new ObjChoiceContent(rMan.getString("pathInsertOptions." + INSERT_START), INSERT_START));
@@ -1041,8 +1076,8 @@ public class UserTreePathController {
   ** Get a combo box element
   */
   
-  public static ObjChoiceContent choiceForOption(DataAccessContext dacx, String option) {
-    return (new ObjChoiceContent(dacx.getRMan().getString("pathInsertOptions." + option), option));
+  public static ObjChoiceContent choiceForOption(HandlerAndManagerSource hams, String option) {
+    return (new ObjChoiceContent(hams.getRMan().getString("pathInsertOptions." + option), option));
   }    
   
   ////////////////////////////////////////////////////////////////////////////
@@ -1059,7 +1094,7 @@ public class UserTreePathController {
   
   private void setCurrentPath(String pathKey, Integer newStopIndex, 
                               UndoSupport support, List<UserTreePathChangeCmd> postNavs, 
-                              OverlayDisplayChange precalcOdc, DataAccessContext dacx, UndoFactory uFac) {
+                              OverlayDisplayChange precalcOdc, DynamicDataAccessContext dacx, UndoFactory uFac) {
     PathNavigationInfo pni = new PathNavigationInfo();
     pni.support = (support == null) ? uFac.provideUndoSupport("undo.chooseTreePath", dacx) : support;
     if (postNavs != null) {
@@ -1135,7 +1170,8 @@ public class UserTreePathController {
       pni.nav.odc.newModKeys = stop.getModules().clone();
       pni.nav.odc.newRevealedKeys = stop.getRevealed().clone();      
       
-      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), stop.getRevealed(), pni, dacx);
+      selectTreePath(stop.getGenomeID(), stop.getOverlay(), stop.getModules(), 
+                     stop.getRevealed(), stop.getNodeType(), stop.getNodeID(), pni, dacx);
     } else {
       currStopIndex_ = -1;
       pni.nav.newUserPathStop = currStopIndex_;
@@ -1157,17 +1193,17 @@ public class UserTreePathController {
   */
   
   private void selectTreePath(String modelKey, String ovrKey, TaggedSet modules, 
-                              TaggedSet revealed, PathNavigationInfo pni, DataAccessContext dacx) {
+                              TaggedSet revealed, NavTree.KidSuperType type, String nodeID, PathNavigationInfo pni, DynamicDataAccessContext ddacx) {
     pendingNavInfo_ = pni;
     pendingNavProcessed_ = false;
-    StartupView suv = new StartupView(modelKey, ovrKey, modules, revealed, null);  
-    SetCurrentModel.StepState.installStartupView(uics_, dacx, false, suv);
+    StartupView suv = new StartupView(modelKey, ovrKey, modules, revealed, null, type, nodeID);  
+    SetCurrentModel.StepState.installStartupView(uics_, ddacx, false, suv);
     // 
     // If the path we sent didn't actually change the model, then we need to
     // make sure that the path selection change gets registered.
     //
     if (!pendingNavProcessed_) {
-      NavigationChangeCmd ncc = new NavigationChangeCmd(dacx, pni.nav);
+      NavigationChangeCmd ncc = new NavigationChangeCmd(ddacx, pni.nav);
       pni.support.addEdit(ncc);
       pni.finish();
     }

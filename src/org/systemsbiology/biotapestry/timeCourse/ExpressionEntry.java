@@ -28,6 +28,7 @@ import java.text.MessageFormat;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -719,8 +720,8 @@ public class ExpressionEntry implements Cloneable {
   ** Build display name
   */
 
-  public static String buildZygoticDisplayName(DataAccessContext dacx, String name) { 
-    String format = dacx.getRMan().getString("expressionChannel.zygoticSource");    
+  public static String buildZygoticDisplayName(HandlerAndManagerSource hams, String name) { 
+    String format = hams.getRMan().getString("expressionChannel.zygoticSource");    
     String desc = MessageFormat.format(format, new Object[] {name}); 
     return (desc);
   }
@@ -730,8 +731,8 @@ public class ExpressionEntry implements Cloneable {
   ** Build display name
   */
 
-  public static String buildMaternalDisplayName(DataAccessContext dacx, String name) { 
-    String format = dacx.getRMan().getString("expressionChannel.maternalSource");    
+  public static String buildMaternalDisplayName(HandlerAndManagerSource hams, String name) { 
+    String format = hams.getRMan().getString("expressionChannel.maternalSource");    
     String desc = MessageFormat.format(format, new Object[] {name}); 
     return (desc);
   }

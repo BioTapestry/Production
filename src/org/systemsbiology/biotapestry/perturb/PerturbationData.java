@@ -39,23 +39,29 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.DataUtil;
-import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.DataMapSource;
+import org.systemsbiology.biotapestry.db.ExperimentalDataSource;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.qpcr.QpcrLegacyPublicExposed;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
+import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Splitter;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 
 /****************************************************************************
@@ -174,7 +180,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   private long invertTargNameCacheVersionSN_;
   private HashMap<String, String> invertTargNameCache_;
   
-  private DataAccessContext dacx_;
+  private PertDisplayOptions pdo_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -187,8 +193,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Constructor
   */
 
-  public PerturbationData(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public PerturbationData() {
     labels_ = new UniqueLabeller();
     experiments_ = new HashMap<String, Experiment>();
     sourceDefs_ = new HashMap<String, PertSource>();
@@ -213,8 +218,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
     invertSrcNameCache_ = null;   
     invertTargNameCacheVersionSN_ = 0L;
     invertTargNameCache_ = null;  
-      
     userFields_ = new ArrayList<String>();
+    
+    pdo_ = new PertDisplayOptions(this);
   }
 
   /***************************************************************************
@@ -222,8 +228,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Constructor
   */
 
-  public PerturbationData(DataAccessContext dacx, long serNum) {
-    this(dacx);
+  public PerturbationData(long serNum) {
+    this();
     serialNumber_ = serNum;
   }
   
@@ -232,227 +238,80 @@ public class PerturbationData implements Cloneable, SourceSrc {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
- 
+  
   /***************************************************************************
   **
-  ** Export the measurement
- 
-  
-  private void mergeData(PerturbationData otherPD, DataAccessContext dacx, UndoSupport support) throws IOException {
-     
-    
-    
-    HashMap<String, String> investIDs = new HashMap<String, String>();
-    Iterator<String> opdki = otherPD.getInvestigatorKeys();
-    while (opdki.hasNext()) {
-      String ik = opdki.next();
-      String inv = otherPD.getInvestigator(ik);
-      PerturbationData.KeyAndDataChange kdac = provideInvestigator(inv);
-      if (kdac.undoInfo != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, kdac.undoInfo));        
-      }
-      investIDs.put(ik, kdac.key);
-    }
-    
-    Iterator<String> sdki = otherPD.getSourceDefKeys();
-    while (sdki.hasNext()) {
-      String psk = sdki.next();
-      PertSource ps = otherPD.getSourceDef(psk);
-      PerturbationData.KeyAndDataChange kdac = providePertSrcName(ps.getSourceName(otherPD));
-      if (kdac.undoInfo != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, kdac.undoInfo));        
-      }
-      UiUtil.fixMePrintout("This needs work: unequal annotations or proxy stuff will not match for needed merging operation");
-      kdac = providePertSrc(kdac.key, ps.getExpTypeKey(), ps.getProxiedSpeciesKey(), ps.getProxySign(), ps.getAnnotationIDs(), false);
-      if (kdac.undoInfo != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, kdac.undoInfo));        
-      }
-    }
-
-    Iterator<String> exki = otherPD.getExperimentKeys();
-    while (exki.hasNext()) {
-      String exk = exki.next();
-      Experiment ex = otherPD.getExperiment(exk);
-      UiUtil.fixMePrintout("these keys NEED TO BE MAPPED FROM THE OTHER KEYS TO OUR KEYS!");
-      PerturbationData.KeyAndDataChange kdac = provideExperiment(ex.getSources(), ex.getTime(), ex.getLegacyMaxTime(), ex.getInvestigators(), ex.getConditionKey());
-      if (kdac.undoInfo != null) {
-        support.addEdit(new PertDataChangeCmd(appState_, dacx, kdac.undoInfo));        
-      }
-      //String psiKey = kdac.key;
-    }
-    
-    //Data points POINT TO EXPERIMENTS
-    
-        Set<String>targets = csv.getTargets();
-        Iterator<String> trit = targets.iterator();
-        while (trit.hasNext()) {
-          String targetKey = trit.next();
-          kdac = pd.provideTarget(csv.getOriginalTargetName(targetKey));
-          String targKey = kdac.key;
-          if (kdac.undoInfo != null) {
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
-          }
-          List<CSVData.DataPoint> meas = csv.getMeasurements(targetKey);
-          int numM = meas.size();
-          for (int i = 0; i < numM; i++) {
-            CSVData.DataPoint dp = meas.get(i);
-            double measv = Double.NaN;
-            try {
-              measv = Double.parseDouble(dp.value);
-            } catch (NumberFormatException nfex) {
-              throw new IllegalStateException();  // Checked previously; should not happen
-            }  
-            String mKey = csvs.getPDKey(CSVState.MEASURE_TYPE_PARAM_, dp.measurement);
-            PertDataPoint pdp = new PertDataPoint(pd.getNextDataKey(), timeStamp, psiKey, targKey, mKey, measv);
-            pdp.setBatchKey(csv.getBatchID());
-            pdp.setDate(csv.getDate());
-            pdp.setComment(dp.comment);
-            if ((dp.control != null) && !dp.control.trim().equals("")) {
-              kdac = pd.provideExpControl(dp.control);
-              if (kdac.undoInfo != null) {
-                support.addEdit(new PertDataChangeCmd(appState_, dacx_, kdac.undoInfo));        
-              }
-              pdp.setControl(kdac.key);
-            }
-         
-            pdp.setIsSig(convertSigInput(dp.isValid));
-            PertDataChange pdc = pd.setDataPoint(pdp);      
-            support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
-            
-            //
-            // Annotations
-            //
-            
-            if ((dp.annots != null) && !dp.annots.isEmpty()) {              
-              Map<String, String> aToKey = paramNameToPdKeyMap_.get(CSVState.ANNOT_PARAM_UC_);
-              ArrayList<String> keyList = new ArrayList<String>();
-              int numdpa = dp.annots.size();
-              for (int j = 0; j < numdpa; j++) {
-                String tag = dp.annots.get(j);
-                keyList.add(aToKey.get(tag));
-              }           
-              pdc = pd.setFootnotesForDataPoint(pdp.getID(), keyList);
-              support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
-            }
-           
-            //
-            // User Fields
-            //
-            
-            boolean allEmpty = true;
-            ArrayList<String> userV = new ArrayList<String>();
-            int ufCount = pd.getUserFieldCount();
-            for (int j = 0; j < ufCount; j++) {
-              String ufName = pd.getUserFieldName(j);
-              String ufVal = dp.userFields.get(DataUtil.normKey(ufName));    
-              if (ufVal == null) {
-                ufVal = "";
-              }
-              ufVal = ufVal.trim();
-              if (!ufVal.equals("")) {
-                allEmpty = false;
-              }
-              userV.add(ufVal);
-            }
-            pdc = pd.setUserFieldValues(pdp.getID(), (allEmpty) ? null : userV);
-            if (pdc != null) {
-              support.addEdit(new PertDataChangeCmd(appState_, dacx_, pdc));
-            }
-          }
-        }
-      }
-
- /* 
-  public KeyAndDataChange provideExperiment(PertSources srcs, int time, int legacyMax, List<String> investList, String condKey);
-
-  public KeyAndDataChange providePertSrcName(String srcName); 
-
-  
-  public KeyAndDataChange providePertSrc(String srcNameKey, String typeKey, 
-                                         String proxyForKey, String proxySign, 
-                                         List<String> annotations, boolean justSrcAndType);
-
-  public KeyAndDataChange provideMeasureProps(String measName, String scaleKey, Double negThresh, Double posThresh);
-
-  public KeyAndDataChange providePertProps(String propName, String abbrev, PertDictionary.PertLinkRelation linkRelation);
- 
-  
-  public KeyAndDataChange provideUserField(String fieldName);
-  public KeyAndDataChange provideExpControl(String ctrlDesc);
-  public KeyAndDataChange provideExpCondition(String condDesc); 
-  public KeyAndDataChange provideInvestigator(String investName);
-   public KeyAndDataChange provideTarget(String targName) {
+  ** Get the display options for this data
   */
   
-    /*
-    PerturbationData newVal = (PerturbationData)super.clone();
-      
-      newVal.dataPoints_ = new HashMap<String, PertDataPoint>();
-      Iterator<String> dpit = this.dataPoints_.keySet().iterator();
-      while (dpit.hasNext()) {
-        String dpKey = dpit.next();
-        newVal.dataPoints_.put(dpKey, this.dataPoints_.get(dpKey).clone());
-      }
-      
-      newVal.sourceDefs_ = new HashMap<String, PertSource>();
-      Iterator<String> sdit = this.sourceDefs_.keySet().iterator();
-      while (sdit.hasNext()) {
-        String sdKey = sdit.next();
-        newVal.sourceDefs_.put(sdKey, this.sourceDefs_.get(sdKey).clone());
-      }
-      
-      newVal.experiments_ = new HashMap<String, Experiment>();
-      Iterator<String> psit = this.experiments_.keySet().iterator();
-      while (psit.hasNext()) {
-        String psKey = psit.next();
-        newVal.experiments_.put(psKey, this.experiments_.get(psKey).clone());
-      }
-      
-      newVal.dataPointNotes_ = new HashMap<String, List<String>>();
-      Iterator<String> dpnit = this.dataPointNotes_.keySet().iterator();
-      while (dpnit.hasNext()) {
-        String dpKey = dpnit.next();
-        newVal.dataPointNotes_.put(dpKey, new ArrayList<String>(this.dataPointNotes_.get(dpKey)));
-      } 
-      
-      newVal.userData_ = new HashMap<String, List<String>>();
-      Iterator<String> udit = this.userData_.keySet().iterator();
-      while (udit.hasNext()) {
-        String udKey = udit.next();
-        // Data is immutable, shallow copy is OK:
-        newVal.userData_.put(udKey, new ArrayList<String>(this.dataPointNotes_.get(udKey)));
-      } 
- 
-      newVal.pertAnnot_ = this.pertAnnot_.clone();
-      newVal.labels_ = this.labels_.clone();
-      
-      newVal.entryMap_ = this.entryMap_.clone();
-      newVal.sourceMap_ = this.sourceMap_.clone();
-      
-   //   newVal.investigators_ = new HashMap<String, String>(this.investigators_);
-      newVal.targets_ = new HashMap<String, String>(this.targets_);
-      newVal.sourceNames_ = new HashMap<String, String>(this.sourceNames_);
-
-      newVal.regionRestrictions_ = new HashMap<String, RegionRestrict>();
-      Iterator<String> rrit = this.regionRestrictions_.keySet().iterator();
-      while (rrit.hasNext()) {
-        String rKey = rrit.next();
-        newVal.regionRestrictions_.put(rKey, this.regionRestrictions_.get(rKey).clone());
-      }
+  public PertDisplayOptions getPertDisplayOptions() { 
+    return (pdo_);
+  }
   
-      newVal.pertDict_ = this.pertDict_.clone();
-      newVal.measureDict_ = this.measureDict_.clone();
-      newVal.condDict_ = this.condDict_.clone();
-      newVal.userFields_ = new ArrayList<String>(this.userFields_);
- 
-    
+  /***************************************************************************
+  **
+  ** Set the display options for this data
+  */
+  
+  public void setLegacyPertDisplayOptions(PertDisplayOptions pdo) {
+    pdo_ = pdo.clone();
+    pdo_.setPerturbData(this);
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Set the display options for this data
+  */
+  
+  public void setPertDisplayOptionsForIO(PertDisplayOptions pdo) {
+    pdo_ = pdo;
     return;
   }
   
   
+  /***************************************************************************
+  ** 
+  ** Install new display options
+  */
+
+  public void setPertDisplayOptions(PertDisplayOptions pdo, UndoSupport support) {
+    DisplayOptionsChange doc = new DisplayOptionsChange();
+    doc.oldPertOpts = pdo_.clone();
+    pdo_ = pdo;
+    doc.newPertOpts = pdo_.clone();    
+    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
+    support.addEdit(docc);
+    return;
+  }
   
-  
-  
+  /***************************************************************************
+  ** 
+  ** Do modifications if the perturbation data changes
+  */
+
+  public void modifyForPertDataChange(UndoSupport support) {
+    
+    Map<String, String> revMap = pdo_.haveInconsistentMeasurementDisplayColors();
+    String revSTag = pdo_.haveInconsistentScaleTag();
+    if ((revMap != null) || (revSTag != null)) {
+      PertDisplayOptions revDO = pdo_.clone();
+      if (revMap != null) {
+        revDO.setMeasurementDisplayColors(revMap);
+      }
+      if (revSTag != null) {      
+        revDO.setPerturbDataDisplayScaleKey(revSTag);
+      }
+      DisplayOptionsChange doc = new DisplayOptionsChange();
+      doc.oldPertOpts = pdo_.clone();
+      pdo_ = revDO;
+      doc.newPertOpts = pdo_.clone();    
+      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
+      support.addEdit(docc);
+    }
+    return;   
+  }
+
   /***************************************************************************
   **
   ** Get the choices for experiments
@@ -492,12 +351,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the choices for experiments
   */
   
-  public Vector<TrueObjChoiceContent> getExperimentOptions() { 
+  public Vector<TrueObjChoiceContent> getExperimentOptions(TimeAxisDefinition tad) { 
     TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
     Iterator<String> oit = experiments_.keySet().iterator();
     while (oit.hasNext()) {
       String key = oit.next();
-      sorted.add(getExperimentChoice(key));
+      sorted.add(getExperimentChoice(key, tad));
     }
     return (new Vector<TrueObjChoiceContent>(sorted));
   }  
@@ -507,9 +366,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the choice for an experiment
   */
   
-  public TrueObjChoiceContent getExperimentChoice(String key) {
+  public TrueObjChoiceContent getExperimentChoice(String key, TimeAxisDefinition tad) {
     Experiment expr = experiments_.get(key);
-    return (expr.getChoiceContent(this));
+    return (expr.getChoiceContent(this, tad));
   }    
 
   /***************************************************************************
@@ -557,7 +416,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public DependencyAnalyzer getDependencyAnalyzer() {
-    return (new DependencyAnalyzer(dacx_, this));    
+    return (new DependencyAnalyzer(this));    
   } 
     
   /***************************************************************************
@@ -565,10 +424,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Transfer data from legacy QPCR into us
   */
   
-  public void transferFromLegacy() {
+  public void transferFromLegacy(DataMapSource dms, DisplayOptions dOpt, TimeAxisDefinition tad) {
     if (legacyQPCR_ != null) {
       pertDict_.createAllLegacyPerturbProps();
-      legacyQPCR_.transferFromLegacy();
+      legacyQPCR_.transferFromLegacy(this, dms, dOpt, tad);
     }
     return;
   } 
@@ -982,18 +841,17 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get qpcr for display:
   */
   
-  private void stockQPCR(TabPinnedDynamicDataAccessContext tpdacx) {
+  private void stockQPCR(DBGenome dbGenome, TimeAxisDefinition tad, PerturbationDataMaps pdms, ResourceManager rMan) {
     if (legacyQPCR_ == null) {
-      legacyQPCR_ = new QpcrLegacyPublicExposed(tpdacx);
+      legacyQPCR_ = new QpcrLegacyPublicExposed();
     }
-    PerturbationDataMaps pdms = tpdacx.getDataMapSrc().getPerturbationDataMaps();
     long srcSN = pdms.getSerialNumber(PerturbationDataMaps.MapType.SOURCE);
     long trgSN = pdms.getSerialNumber(PerturbationDataMaps.MapType.ENTRIES);
     if (!legacyQPCR_.readyForDisplay() || 
         (qpcrForDisplayVersionSN_ != serialNumber_) ||
         (qpcrForDisplaySourceVersionSN_ != srcSN) ||
         (qpcrForDisplayEntryVersionSN_ != trgSN)) {
-      legacyQPCR_.createQPCRFromPerts();      
+      legacyQPCR_.createQPCRFromPerts(this, tad, pdms, dbGenome, rMan);      
       qpcrForDisplayVersionSN_ = serialNumber_;
       qpcrForDisplaySourceVersionSN_ = srcSN;
       qpcrForDisplayEntryVersionSN_ = trgSN;
@@ -1006,9 +864,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get qpcr for display:
   */
   
-  public String getHTML(String geneId, String sourceID, boolean noCss, boolean bigScreen, TabPinnedDynamicDataAccessContext tpdacx) {
-    stockQPCR(tpdacx);
-    String ret = legacyQPCR_.getHTML(geneId, sourceID, noCss, bigScreen, tpdacx);
+  public String getHTML(String geneId, String sourceID, boolean noCss, boolean bigScreen, 
+                        DBGenome dbGenome, TimeAxisDefinition tad, PerturbationDataMaps pdms, ResourceManager rMan) {
+    stockQPCR(dbGenome, tad, pdms, rMan);
+    String ret = legacyQPCR_.getHTML(geneId, sourceID, noCss, bigScreen, dbGenome, this, tad, rMan);
     return (ret);
   }
   
@@ -1017,9 +876,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Publish to file:
   */
   
-  public boolean publish(PrintWriter out, TabPinnedDynamicDataAccessContext tpdacx) {
-    stockQPCR(tpdacx);
-    return (legacyQPCR_.publish(out, tpdacx));
+  public boolean publish(PrintWriter out, DBGenome dbGenome, TimeAxisDefinition tad, PerturbationDataMaps pdms, ResourceManager rMan) {
+    stockQPCR(dbGenome, tad, pdms, rMan);
+    PertDisplayOptions dOpt = getPertDisplayOptions();
+    return (legacyQPCR_.publish(out, this, tad, dOpt, rMan));
   }
   
   /***************************************************************************
@@ -1027,7 +887,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Publish CSV to file:
   */
   
-  public boolean publishAsCSV(PrintWriter out) {
+  public boolean publishAsCSV(PrintWriter out, TimeAxisDefinition tad) { //, TabPinnedDynamicDataAccessContext dacx) {
   
     /*
     public static final String BATCH_ID     = "BatchID";
@@ -1072,7 +932,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       buf.append("::---BT---::");
       buf.append(exp.getPertDisplayString(this, PertSources.NO_FOOTS).toUpperCase());
       buf.append("::---BT---::");
-      buf.append(exp.getTimeDisplayString(false, true));
+      buf.append(exp.getTimeDisplayString(tad, false, true));
       String ord = buf.toString();
       SortedSet<String> hs = expKeys.get(ord);
       if (hs == null) {
@@ -1264,7 +1124,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
      //   out.println();
        out.println("\"BatchID\",\"PerturbationAgent\",\"MeasuredGene\",\"Time\",\"Measurement\",\"MeasureType\",\"ExpControl\",\"ForceSignificance\",\"Date\",\"Comments\",\"Annot\",\"RegRestrict\"");
     //   out.println("\"BatchID\",\"PerturbationAgent\",\"MeasuredGene\",\"Time\",\"Measurement\",\"ForceSignificance\",\"Comments\",\"Annot\"");
-
+            
         Iterator<SortedSet<String>> pkit = pointKeys.values().iterator();
         while (pkit.hasNext()) {
           SortedSet<String> dpKeySet = pkit.next();
@@ -1273,7 +1133,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
             String dpKey = dpksit.next();
             PertDataPoint pdp = dataPoints_.get(dpKey);
             RegionRestrict rr = getRegionRestrictionForDataPoint(dpKey);
-            pdp.publishAsCSV(out, this, exp, condDict_, measureDict_, pertAnnot_, rr, invests);         
+            pdp.publishAsCSV(out, this, exp, condDict_, measureDict_, pertAnnot_, rr, invests, tad);         
           }       
         } 
         out.println();
@@ -1948,7 +1808,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public KeyAndDataChange provideExperiment(PertSources srcs, int time, int legacyMax, List<String> investList, String condKey) {
-    Experiment prs = new Experiment(dacx_, "", srcs, time, investList, condKey);
+    Experiment prs = new Experiment("", srcs, time, investList, condKey);
     if (legacyMax != Experiment.NO_TIME) {
       prs.setLegacyMaxTime(legacyMax);
     }    
@@ -2497,7 +2357,6 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all experimental condition refs into one
   */
   
-  @SuppressWarnings("unused")
   public PertDataChange mergeExperimentCondRefs(Set<String> expsToMerge, String condKey, Set<String> abandonKeys) {
     PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);
     retval.expSubsetOrig = new HashMap<String, Experiment>();
@@ -2954,8 +2813,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add or replace a target name, along with annotations
   */
   
-  public PertDataChange[] setTargetName(String keyID, String name, List<String> annots, List<PerturbationDataMaps> pdms) {
-    return (setTargetNameManageIdents(keyID, name, annots, true, pdms));
+  public PertDataChange[] setTargetName(String keyID, String name, List<String> annots, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
+    return (setTargetNameManageIdents(keyID, name, annots, true, pdms, dbGenome));
   }
   
   /***************************************************************************
@@ -2964,7 +2823,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private PertDataChange[] setTargetNameManageIdents(String keyID, String name, List<String> annots, 
-                                                     boolean doIdents, List<PerturbationDataMaps> pdms) {
+                                                     boolean doIdents, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
 
     PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
@@ -2982,7 +2841,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     if (doIdents) {
       for (PerturbationDataMaps pdm : pdms) {
-        retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(targets_)));
+        retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(dbGenome, targets_)));
       }
     }
         
@@ -2994,7 +2853,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add or replace a target name, along with annotations
   */
   
-  private PertDataChange[] changeTargetNameManageIdents(String keyID, String name, List<PerturbationDataMaps> pdms) {
+  private PertDataChange[] changeTargetNameManageIdents(String keyID, String name, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
 
     PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
@@ -3005,7 +2864,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     retval.serialNumberNew = ++serialNumber_;
     retlist.add(retval);
     for (PerturbationDataMaps pdm : pdms) {
-      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(targets_)));
+      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(dbGenome, targets_)));
     }
     return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
@@ -3050,7 +2909,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] mergeTargetNames(List<String> keyIDs, String useKey, String newName, 
-                                           List<String> newFoots, List<PerturbationDataMaps> pdms) {
+                                           List<String> newFoots, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     
     for (PerturbationDataMaps pdm : pdms) {
@@ -3061,13 +2920,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
     for (int i = 0; i < numIDs; i++) {
       String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
-        retlist.addAll(Arrays.asList(setTargetNameManageIdents(useKey, newName, newFoots, false, pdms)));
+        retlist.addAll(Arrays.asList(setTargetNameManageIdents(useKey, newName, newFoots, false, pdms, dbGenome)));
       } else {
         retlist.addAll(Arrays.asList(deleteTargetName(keyID, pdms)));
       }
     }
     for (PerturbationDataMaps pdm : pdms) {
-      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(targets_)));
+      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForEntries(dbGenome, targets_)));
     }
     
     return (retlist.toArray(new PertDataChange[retlist.size()]));
@@ -3154,7 +3013,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of source names.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeSourceNames(List<String> keyIDs, String useKey, String newName, List<PerturbationDataMaps> pdms) {
+  public PertDataChange[] mergeSourceNames(List<String> keyIDs, String useKey, String newName, 
+                                           List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
      
     // All nodes that have a custom map to one of the merged sources will now
@@ -3169,14 +3029,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
     for (int i = 0; i < numIDs; i++) {
       String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
-        retlist.addAll(Arrays.asList(setSourceNameManageIdents(useKey, newName, false, pdms)));
+        retlist.addAll(Arrays.asList(setSourceNameManageIdents(useKey, newName, false, pdms, dbGenome)));
       } else {
         retlist.addAll(Arrays.asList(deleteSourceName(keyID, pdms)));
       }
     }
     
     for (PerturbationDataMaps pdm : pdms) {
-      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForSources(sourceNames_)));
+      retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForSources(dbGenome, sourceNames_)));
     }
     
     return (retlist.toArray(new PertDataChange[retlist.size()]));
@@ -3188,8 +3048,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add or replace a source name
   */
   
-  public PertDataChange[] setSourceName(String keyID, String name, List<PerturbationDataMaps> pdms) {
-    return (setSourceNameManageIdents(keyID, name, true, pdms));
+  public PertDataChange[] setSourceName(String keyID, String name, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
+    return (setSourceNameManageIdents(keyID, name, true, pdms, dbGenome));
   }
   
   /***************************************************************************
@@ -3198,7 +3058,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private PertDataChange[] setSourceNameManageIdents(String keyID, String name, 
-                                                     boolean dropIdent, List<PerturbationDataMaps> pdms) {
+                                                     boolean dropIdent, List<PerturbationDataMaps> pdms, DBGenome dbGenome) {
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     
     PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_NAME);
@@ -3211,7 +3071,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     if (dropIdent) {
       for (PerturbationDataMaps pdm : pdms) {
-        retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForSources(sourceNames_)));
+        retlist.addAll(Arrays.asList(pdm.dropIdentityMapsForSources(dbGenome, sourceNames_)));
       }
     }
     
@@ -3752,14 +3612,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** just those present in a given set of data points)
   */
   
-  public SortedSet<TrueObjChoiceContent> getAllAvailableCandidates(PertFilter.Cat filterCat) {
+  public SortedSet<TrueObjChoiceContent> getAllAvailableCandidates(PertFilter.Cat filterCat, TimeAxisDefinition tad) {
     TreeSet<TrueObjChoiceContent> retval = new TreeSet<TrueObjChoiceContent>();
     switch (filterCat) {
       case EXPERIMENT:
         Iterator<Experiment> prsit = experiments_.values().iterator();
         while (prsit.hasNext()) {
           Experiment chk = prsit.next();
-          chk.addToExperimentSet(retval, this);
+          chk.addToExperimentSet(retval, this, tad);
         }
         return (retval);
       case TARGET:
@@ -3804,7 +3664,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the candidate values for the given single filter category
   */
   
-  public SortedSet<TrueObjChoiceContent> getCandidates(List<PertDataPoint> chooseFrom, PertFilter.Cat filterCat) {
+  public SortedSet<TrueObjChoiceContent> getCandidates(List<PertDataPoint> chooseFrom, 
+                                                       PertFilter.Cat filterCat, TimeAxisDefinition tad, ResourceManager rMan) {
     TreeSet<TrueObjChoiceContent> retval = new TreeSet<TrueObjChoiceContent>();
     if (chooseFrom == null) {
       chooseFrom = new ArrayList<PertDataPoint>(dataPoints_.values());
@@ -3812,7 +3673,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     int numRs = chooseFrom.size();
     for (int i = 0; i < numRs; i++) {
       PertDataPoint pdp = chooseFrom.get(i);
-      pdp.getCandidates(dacx_, filterCat, retval, this);
+      pdp.getCandidates(filterCat, retval, this, tad, rMan);
     }
     return (retval);
   }
@@ -3822,8 +3683,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the candidate values for the given single filter category
   */
   
-  public SortedSet<TrueObjChoiceContent> getCandidates(PertFilter.Cat filterCat) {
-    return (getCandidates(null, filterCat));
+  public SortedSet<TrueObjChoiceContent> getCandidates(PertFilter.Cat filterCat, TimeAxisDefinition tad, ResourceManager rMan) {
+    return (getCandidates(null, filterCat, tad, rMan));
   }
    
   /***************************************************************************
@@ -4746,18 +4607,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   **
   */
   
-  public boolean haveDataForNode(String nodeID, String sourceID, PerturbationDataMaps pdm) {
+  public boolean haveDataForNode(DBGenome dbGenome, String nodeID, String sourceID, PerturbationDataMaps pdm) {
     if (!haveData()) {
       return (false);
     }
-    List<String> mapped = pdm.getDataEntryKeysWithDefault(nodeID, this);
+    List<String> mapped = pdm.getDataEntryKeysWithDefault(dbGenome, nodeID, this);
     if ((mapped == null) || mapped.isEmpty()) {
       return (false);
     }
     
     List<String> smapped = null;
     if (sourceID != null) {
-      smapped = pdm.getDataSourceKeysWithDefault(sourceID, this);
+      smapped = pdm.getDataSourceKeysWithDefault(dbGenome, sourceID, this);
       if ((smapped == null) || smapped.isEmpty()) {
         return (false);
       }  
@@ -4798,18 +4659,22 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   
-  public PertDataChange[] changeName(String oldName, String newName, List<PerturbationDataMaps> pdms) {
+  public PertDataChange[] changeName(String oldName, String newName, List<PerturbationDataMaps> pdms, 
+                                     DBGenome dbGenome, ExperimentalDataSource eds) {
+    
+    if (eds.amUsingSharedExperimentalData()) {
+      throw new IllegalStateException();
+    }
     ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
-    UiUtil.fixMePrintout("NO! all other tabs must *create* maps to the newly named data entry!");
     
     String foundTarg = getTargKeyFromName(oldName);
     if (foundTarg != null) {
-      retlist.addAll(Arrays.asList(changeTargetNameManageIdents(foundTarg, newName, pdms)));
+      retlist.addAll(Arrays.asList(changeTargetNameManageIdents(foundTarg, newName, pdms, dbGenome)));
     }
     
     String foundSrc = getSourceKeyFromName(oldName);
     if (foundSrc != null) {
-      retlist.addAll(Arrays.asList(setSourceName(foundSrc, newName, pdms)));
+      retlist.addAll(Arrays.asList(setSourceName(foundSrc, newName, pdms, dbGenome)));
     }
 
     PertDataChange[] changes = retlist.toArray(new PertDataChange[retlist.size()]);
@@ -4946,7 +4811,6 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all experiment refs to a single one
   */
   
-  @SuppressWarnings("unused")
   public PertDataChange mergeExperimentRefs(Set<String> pointsToMerge, String expKey, Set<String> abandonKeys) {
     PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
     retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
@@ -5399,14 +5263,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get single-source perturbation source IDs for the given targetID
   */
   
-  public Set<String> getPerturbationSources(String targetID, PerturbationDataMaps pdm) {
+  public Set<String> getPerturbationSources(DBGenome dbGenome, String targetID, PerturbationDataMaps pdm) {
     //
     // Get the genes that match the target ids.  Go through the
     // perturbation sources and find the perturbations.
     //
     HashSet<String> retval = new HashSet<String>();
   
-    List<PertDataPoint> stPerts = getSrcTargPerts(null, targetID, pdm);
+    List<PertDataPoint> stPerts = getSrcTargPerts(dbGenome, null, targetID, pdm);
     int numSt = stPerts.size();
     if (numSt == 0) {
       return (retval);
@@ -5416,7 +5280,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       PertDataPoint pdp = stPerts.get(i);
       String sskey = pdp.getSingleSourceKey(this);
       if (sskey != null) {
-        retval.addAll(pdm.getDataSourceKeyInverse(sskey, invertSrcNameCache_));
+        retval.addAll(pdm.getDataSourceKeyInverse(dbGenome, sskey, invertSrcNameCache_));
       }
     }
     return (retval);
@@ -5500,9 +5364,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get a filter expression for the given src and target
   */
   
-  public PertFilterExpression getFilterExpression(String sourceID, String targetID, boolean allowProxy, PerturbationDataMaps pdm) {
-    List<String> skeys = (sourceID == null) ? null : pdm.getDataSourceKeysWithDefault(sourceID, this);
-    List<String> tkeys = pdm.getDataEntryKeysWithDefault(targetID, this);
+  public PertFilterExpression getFilterExpression(DBGenome dbGenome, String sourceID, String targetID, boolean allowProxy, PerturbationDataMaps pdm) {
+    List<String> skeys = (sourceID == null) ? null : pdm.getDataSourceKeysWithDefault(dbGenome, sourceID, this);
+    List<String> tkeys = pdm.getDataEntryKeysWithDefault(dbGenome, targetID, this);
     return (getFilterExpression((sourceID == null), skeys, tkeys, allowProxy));
   }
   
@@ -5560,8 +5424,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the perturbations between the source and target
   */
   
-  public List<PertDataPoint> getSrcTargPerts(String sourceID, String targetID, PerturbationDataMaps pdm) {
-    PertFilterExpression fex = getFilterExpression(sourceID, targetID, false, pdm);
+  public List<PertDataPoint> getSrcTargPerts(DBGenome dbGenome, String sourceID, String targetID, PerturbationDataMaps pdm) {
+    PertFilterExpression fex = getFilterExpression(dbGenome, sourceID, targetID, false, pdm);
     return (getPerturbations(fex));
   } 
   
@@ -5588,8 +5452,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the average perturbation value between the source and target
   */
   
-  public double getPertAverageValue(String sourceID, String targetID, boolean avgSigOnly, PerturbationDataMaps pdm) { 
-    List<PertDataPoint> stPerts = getSrcTargPerts(sourceID, targetID, pdm);
+  public double getPertAverageValue(DBGenome dbGenome, String sourceID, String targetID, boolean avgSigOnly, PerturbationDataMaps pdm) { 
+    List<PertDataPoint> stPerts = getSrcTargPerts(dbGenome, sourceID, targetID, pdm);
     int numSt = stPerts.size();
     if (numSt == 0) {
       return (0.0);
@@ -5613,12 +5477,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the tooltip for the given source/target pair.  May be null.
   */
   
-  public String getToolTip(String sourceID, String targetID, String scaleKey, PerturbationDataMaps pdm) {
+  public String getToolTip(DBGenome dbGenome, String sourceID, String targetID, 
+                           String scaleKey, PerturbationDataMaps pdm, TimeAxisDefinition tad) {
     //
     // Get the pert data:
     //
     
-    List<PertDataPoint> stPerts = getSrcTargPerts(sourceID, targetID, pdm);
+    List<PertDataPoint> stPerts = getSrcTargPerts(dbGenome, sourceID, targetID, pdm);
     int numstp = stPerts.size();
     if (numstp == 0) {
       return ("");
@@ -5717,7 +5582,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       while (dfstit.hasNext()) {  
         MinMax time = dfstit.next();
         buf.append("&nbsp;&nbsp;"); 
-        buf.append(Experiment.getTimeDisplayString(dacx_, time, true, true));   
+        buf.append(Experiment.getTimeDisplayString(tad, time, true, true));   
         buf.append(": ");
         Map<String, List<String>> batchesForTime = dataForST.get(time);
         Iterator<String> bftit = batchesForTime.keySet().iterator();
@@ -5742,7 +5607,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     buf.append("</html>");    
     return (buf.toString());
   } 
- 
+
   /***************************************************************************
   **
   ** Write the Perturbation data to XML
@@ -5760,202 +5625,210 @@ public class PerturbationData implements Cloneable, SourceSrc {
     out.println(">");
     ind.up();
     
-    //
-    // get these out first, so they will be available when we read stuff
-    // back in:
-    //
-     
-    pertDict_.writeXML(out, ind);
-    measureDict_.writeXML(out, ind);
-    condDict_.writeXML(out, ind);
-    
-    if (pertAnnot_.haveMessages()) {
-      pertAnnot_.writeXML(out, ind);
-    }
-    
-    //
-    // Targets
-    //
-    
-    TreeSet<String> tKeys = new TreeSet<String>(targets_.keySet());
-    if (!tKeys.isEmpty()) {
-      ind.indent();
-      out.println("<pertTargs>");
-      ind.up();
-      Iterator<String> tkit = tKeys.iterator();
-      while (tkit.hasNext()) {
-        String tkey = tkit.next();
-        String targ = targets_.get(tkey);
+    if (haveData()) {
+      //
+      // get these out first, so they will be available when we read stuff
+      // back in:
+      //
+       
+      pertDict_.writeXML(out, ind);
+      measureDict_.writeXML(out, ind);
+      condDict_.writeXML(out, ind);
+      
+      if (pertAnnot_.haveMessages()) {
+        pertAnnot_.writeXML(out, ind);
+      }
+      
+      //
+      // Targets
+      //
+      
+      TreeSet<String> tKeys = new TreeSet<String>(targets_.keySet());
+      if (!tKeys.isEmpty()) {
         ind.indent();
-        out.print("<pertTarg id=\"");
-        out.print(tkey);
-        out.print("\" name=\"");
-        out.print(CharacterEntityMapper.mapEntities(targ, false));
-        List<String> notes = getFootnotesForTarget(tkey);
-        if ((notes != null) && !notes.isEmpty()) {
-          out.print("\" notes=\"");
-          out.print(Splitter.tokenJoin(notes, ","));
-        }
-        out.println("\"/>");
-      }   
-      ind.down().indent(); 
-      out.println("</pertTargs>");
-    }
-    
-    //
-    // Source names
-    //
-    
-    TreeSet<String> snKeys = new TreeSet<String>(sourceNames_.keySet());
-    if (!snKeys.isEmpty()) {
-      ind.indent();
-      out.println("<pertSrcNames>");
-      ind.up();
-      Iterator<String> tkit = snKeys.iterator();
-      while (tkit.hasNext()) {
-        String snkey = tkit.next();
-        String srcName = sourceNames_.get(snkey);
-        ind.indent();
-        out.print("<pertSrcName id=\"");
-        out.print(snkey);
-        out.print("\" name=\"");
-        out.print(CharacterEntityMapper.mapEntities(srcName, false));
-        out.println("\"/>");
-      }   
-      ind.down().indent(); 
-      out.println("</pertSrcNames>");
-    }
-
-    //
-    // Investigators:
-    //
-    
-    TreeSet<String> iKeys = new TreeSet<String>(investigators_.keySet());
-    if (!iKeys.isEmpty()) {
-      ind.indent();
-      out.println("<pertInvests>");
-      ind.up();
-      Iterator<String> ikit = iKeys.iterator();
-      while (ikit.hasNext()) {
-        String ikey = ikit.next();
-        String invest = investigators_.get(ikey);
-        ind.indent();
-        out.print("<pertInvest id=\"");
-        out.print(ikey);
-        out.print("\" name=\"");
-        out.print(CharacterEntityMapper.mapEntities(invest, false));
-        out.println("\"/>");
-      }   
-      ind.down().indent(); 
-      out.println("</pertInvests>");
-    }
- 
-    //
-    // Perturbation source definitions:
-    //
-    
-    TreeSet<String> sdKeys = new TreeSet<String>(sourceDefs_.keySet());
-    if (!sdKeys.isEmpty()) {
-      ind.indent();
-      out.println("<pertSourceDefs>");
-      ind.up();
-      Iterator<String> sdkit = sdKeys.iterator();
-      while (sdkit.hasNext()) {
-        String sdkey = sdkit.next();
-        PertSource psd = sourceDefs_.get(sdkey);
-        psd.writeXML(out, ind);
-      }   
-      ind.down().indent(); 
-      out.println("</pertSourceDefs>");
-    }
-    
-    //
-    // Experiments:
-    //  
-    
-    TreeSet<String> psKeys = new TreeSet<String>(experiments_.keySet());
-    if (!psKeys.isEmpty()) {
-      ind.indent();
-      out.println("<experiments>");
-      ind.up();
-      Iterator<String> pskit = psKeys.iterator();
-      while (pskit.hasNext()) {
-        String pskey = pskit.next();
-        Experiment psi = experiments_.get(pskey);
-        psi.writeXML(out, ind);
-      }   
-      ind.down().indent(); 
-      out.println("</experiments>");
-    }
-    
-    //
-    // Region restrictions:
-    //  
-    
-    TreeSet<String> rrKeys = new TreeSet<String>(regionRestrictions_.keySet());
-    if (!rrKeys.isEmpty()) {
-      ind.indent();
-      out.println("<regRestricts>");
-      ind.up();
-      Iterator<String> rrkit = rrKeys.iterator();
-      while (rrkit.hasNext()) {
-        String rrkey = rrkit.next();
-        RegionRestrict rr = regionRestrictions_.get(rrkey);
-        rr.writeXML(out, ind, rrkey);
-      }   
-      ind.down().indent(); 
-      out.println("</regRestricts>");
-    }
-    
-    //
-    // User-defined data fields:
-    // 
-    
-    if (!userFields_.isEmpty()) { 
-      ind.indent();
-      out.println("<userFields>");
-      ind.up();
-      Iterator<String> ufit = userFields_.iterator();
-      while (ufit.hasNext()) {
-        String fieldName = ufit.next();
-        ind.indent();
-        out.print("<userField name=\"");
-        out.print(CharacterEntityMapper.mapEntities(fieldName, false));
-        out.println("\"/>");
-      }   
-      ind.down().indent(); 
-      out.println("</userFields>");
- 
-      TreeSet<String> edKeys = new TreeSet<String>(userData_.keySet());
-      if (!edKeys.isEmpty()) {
-        ind.indent();
-        out.println("<userDataVals>");
+        out.println("<pertTargs>");
         ind.up();
-        Iterator<String> edkit = edKeys.iterator();
-        while (edkit.hasNext()) {
-          String udfkey = edkit.next();
-          List<String> udf = userData_.get(udfkey);
-          writeXMLForUserData(out, ind, udf, udfkey);
+        Iterator<String> tkit = tKeys.iterator();
+        while (tkit.hasNext()) {
+          String tkey = tkit.next();
+          String targ = targets_.get(tkey);
+          ind.indent();
+          out.print("<pertTarg id=\"");
+          out.print(tkey);
+          out.print("\" name=\"");
+          out.print(CharacterEntityMapper.mapEntities(targ, false));
+          List<String> notes = getFootnotesForTarget(tkey);
+          if ((notes != null) && !notes.isEmpty()) {
+            out.print("\" notes=\"");
+            out.print(Splitter.tokenJoin(notes, ","));
+          }
+          out.println("\"/>");
         }   
         ind.down().indent(); 
-        out.println("</userDataVals>");
+        out.println("</pertTargs>");
+      }
+      
+      //
+      // Source names
+      //
+      
+      TreeSet<String> snKeys = new TreeSet<String>(sourceNames_.keySet());
+      if (!snKeys.isEmpty()) {
+        ind.indent();
+        out.println("<pertSrcNames>");
+        ind.up();
+        Iterator<String> tkit = snKeys.iterator();
+        while (tkit.hasNext()) {
+          String snkey = tkit.next();
+          String srcName = sourceNames_.get(snkey);
+          ind.indent();
+          out.print("<pertSrcName id=\"");
+          out.print(snkey);
+          out.print("\" name=\"");
+          out.print(CharacterEntityMapper.mapEntities(srcName, false));
+          out.println("\"/>");
+        }   
+        ind.down().indent(); 
+        out.println("</pertSrcNames>");
+      }
+  
+      //
+      // Investigators:
+      //
+      
+      TreeSet<String> iKeys = new TreeSet<String>(investigators_.keySet());
+      if (!iKeys.isEmpty()) {
+        ind.indent();
+        out.println("<pertInvests>");
+        ind.up();
+        Iterator<String> ikit = iKeys.iterator();
+        while (ikit.hasNext()) {
+          String ikey = ikit.next();
+          String invest = investigators_.get(ikey);
+          ind.indent();
+          out.print("<pertInvest id=\"");
+          out.print(ikey);
+          out.print("\" name=\"");
+          out.print(CharacterEntityMapper.mapEntities(invest, false));
+          out.println("\"/>");
+        }   
+        ind.down().indent(); 
+        out.println("</pertInvests>");
+      }
+   
+      //
+      // Perturbation source definitions:
+      //
+      
+      TreeSet<String> sdKeys = new TreeSet<String>(sourceDefs_.keySet());
+      if (!sdKeys.isEmpty()) {
+        ind.indent();
+        out.println("<pertSourceDefs>");
+        ind.up();
+        Iterator<String> sdkit = sdKeys.iterator();
+        while (sdkit.hasNext()) {
+          String sdkey = sdkit.next();
+          PertSource psd = sourceDefs_.get(sdkey);
+          psd.writeXML(out, ind);
+        }   
+        ind.down().indent(); 
+        out.println("</pertSourceDefs>");
+      }
+      
+      //
+      // Experiments:
+      //  
+      
+      TreeSet<String> psKeys = new TreeSet<String>(experiments_.keySet());
+      if (!psKeys.isEmpty()) {
+        ind.indent();
+        out.println("<experiments>");
+        ind.up();
+        Iterator<String> pskit = psKeys.iterator();
+        while (pskit.hasNext()) {
+          String pskey = pskit.next();
+          Experiment psi = experiments_.get(pskey);
+          psi.writeXML(out, ind);
+        }   
+        ind.down().indent(); 
+        out.println("</experiments>");
+      }
+      
+      //
+      // Region restrictions:
+      //  
+      
+      TreeSet<String> rrKeys = new TreeSet<String>(regionRestrictions_.keySet());
+      if (!rrKeys.isEmpty()) {
+        ind.indent();
+        out.println("<regRestricts>");
+        ind.up();
+        Iterator<String> rrkit = rrKeys.iterator();
+        while (rrkit.hasNext()) {
+          String rrkey = rrkit.next();
+          RegionRestrict rr = regionRestrictions_.get(rrkey);
+          rr.writeXML(out, ind, rrkey);
+        }   
+        ind.down().indent(); 
+        out.println("</regRestricts>");
+      }
+      
+      //
+      // User-defined data fields:
+      // 
+      
+      if (!userFields_.isEmpty()) { 
+        ind.indent();
+        out.println("<userFields>");
+        ind.up();
+        Iterator<String> ufit = userFields_.iterator();
+        while (ufit.hasNext()) {
+          String fieldName = ufit.next();
+          ind.indent();
+          out.print("<userField name=\"");
+          out.print(CharacterEntityMapper.mapEntities(fieldName, false));
+          out.println("\"/>");
+        }   
+        ind.down().indent(); 
+        out.println("</userFields>");
+   
+        TreeSet<String> edKeys = new TreeSet<String>(userData_.keySet());
+        if (!edKeys.isEmpty()) {
+          ind.indent();
+          out.println("<userDataVals>");
+          ind.up();
+          Iterator<String> edkit = edKeys.iterator();
+          while (edkit.hasNext()) {
+            String udfkey = edkit.next();
+            List<String> udf = userData_.get(udfkey);
+            writeXMLForUserData(out, ind, udf, udfkey);
+          }   
+          ind.down().indent(); 
+          out.println("</userDataVals>");
+        }
+      }
+      
+      TreeSet<String> dpKeys = new TreeSet<String>(dataPoints_.keySet());
+      if (!dpKeys.isEmpty()) {
+        ind.indent();
+        out.println("<dataPoints>");
+        ind.up();
+        Iterator<String> dpkit = dpKeys.iterator();
+        while (dpkit.hasNext()) {
+          String dpkey = dpkit.next();
+          PertDataPoint pdp = dataPoints_.get(dpkey);
+          pdp.writeXML(out, ind, this);
+        }
+        ind.down().indent(); 
+        out.println("</dataPoints>");
       }
     }
+    //
+    // Starting V8, this goes with pert data, not with other display options:
+    //
     
-    TreeSet<String> dpKeys = new TreeSet<String>(dataPoints_.keySet());
-    if (!dpKeys.isEmpty()) {
-      ind.indent();
-      out.println("<dataPoints>");
-      ind.up();
-      Iterator<String> dpkit = dpKeys.iterator();
-      while (dpkit.hasNext()) {
-        String dpkey = dpkit.next();
-        PertDataPoint pdp = dataPoints_.get(dpkey);
-        pdp.writeXML(out, ind, this);
-      }
-      ind.down().indent(); 
-      out.println("</dataPoints>");
-    } 
+    pdo_.writeXML(out, ind);
+    
     ind.down().indent();    
     out.println("</perturbationData>");
     return;
@@ -6042,12 +5915,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   **
   */
   
-  public static String getTimeDisplay(DataAccessContext dacx, Integer timeObj, boolean showUnits, boolean abbreviate) {
+  public static String getTimeDisplay(TimeAxisDefinition tad, Integer timeObj, boolean showUnits, boolean abbreviate) {
     if (timeObj == null) {
       return (null);
     }
 
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     String timeStr;
     if (tad.haveNamedStages()) {
       int timeNum = timeObj.intValue();
@@ -6523,6 +6395,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     private Experiment.PertSourcesInfoWorker psiw_;
     private NameMapper.NameMapperWorker legacyNmw_;
     private MyLegacyNameMapperGlue legacyNmwGlue_;
+    private PertDisplayOptions.PertDisplayOptionsWorker pdow_;
     
     public PertDataWorker(boolean mapsAreIllegal, boolean serialNumberIsIllegal, boolean isForMeta) {
       super(new FactoryWhiteboard());
@@ -6539,6 +6412,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
       installWorker(new TargetWorker(whiteboard), new MyAugTargGlue());
       installWorker(new SourceNameWorker(whiteboard), new MySrcNameGlue());    
       installWorker(new PertSource.PertSourceWorker(whiteboard), new MySourceDefGlue());
+     
+      pdow_ = new PertDisplayOptions.PertDisplayOptionsWorker(whiteboard);
+      installWorker(pdow_, new MyDisplayOpsGlue());
       
       psiw_ = new Experiment.PertSourcesInfoWorker(whiteboard);
       installWorker(psiw_, new MySourceGlue());
@@ -6546,7 +6422,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       installWorker(new PertDataPoint.PertDataPointWorker(whiteboard), new MyDataGlue()); 
       
       //
-      // Older I/O has perturbation data embedded in the Perturbation data:
+      // Older I/O has perturbation map data embedded in the Perturbation data:
       //
       legacyNmw_ = new NameMapper.NameMapperWorker(whiteboard);
       legacyNmwGlue_ =  new MyLegacyNameMapperGlue();
@@ -6567,8 +6443,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
     public void setContext(TabPinnedDynamicDataAccessContext dacx) {
       dacx_ = dacx;
       psiw_.installContext(dacx);
-      legacyNmw_.installContext(dacx);
       legacyNmwGlue_.installContext(dacx);
+      pdow_.setContext(dacx);
       return;
     }
  
@@ -6578,7 +6454,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
         board.pertData = buildFromXML(elemName, attrs);
         retval = board.pertData;
-        if (board.pertData != null) {     
+        if (board.pertData != null) {
+          // Here is where we install legacy display options that now attach to each
+          // perturbation display set:
+          PertDisplayOptions pdo = dacx_.getDisplayOptsSource().getDisplayOptions().getLegacyPDO();
+          if (pdo != null) {
+            board.pertData.setLegacyPertDisplayOptions(pdo);
+          }        
           if (isForMeta_) {
             dacx_.getMetabase().setSharedPertData(board.pertData);
           } else {
@@ -6597,16 +6479,25 @@ public class PerturbationData implements Cloneable, SourceSrc {
         }
         try {
           long sNum = Long.parseLong(serNum); 
-          return (new PerturbationData(dacx_, sNum));
+          return (new PerturbationData(sNum));
         } catch (NumberFormatException nfex) {
           throw new IOException();
         }
       } else {
-        return (new PerturbationData(dacx_));
+        return (new PerturbationData());
       }
     }
   }
   
+  public static class MyDisplayOpsGlue implements GlueStick {
+    public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
+                                  Object optionalArgs) throws IOException {
+      FactoryWhiteboard board = (FactoryWhiteboard)optionalArgs;
+      board.pertData.setPertDisplayOptionsForIO(board.pertDisplayOptions);
+      return (null);
+    }
+  }
+ 
   public static class MyInvestGlue implements GlueStick {
     public Object glueKidToParent(Object kidObj, AbstractFactoryClient parentWorker, 
                                   Object optionalArgs) throws IOException {
@@ -6754,7 +6645,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       DataMapSource dms = tpdacx_.getDataMapSrc();
       PerturbationDataMaps pdm = dms.getPerturbationDataMaps();
       if (pdm == null) {
-        pdm = new PerturbationDataMaps(tpdacx_);
+        pdm = new PerturbationDataMaps();
         dms.setPerturbationDataMaps(pdm);
       }  
       pdm.installNameMap(board.currPertDataMap);

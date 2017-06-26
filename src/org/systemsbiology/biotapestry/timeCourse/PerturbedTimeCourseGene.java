@@ -30,6 +30,7 @@ import java.util.List;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.perturb.PertSources;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.DataUtil;
@@ -67,7 +68,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   private String timeCourseNote_;  
   private int confidence_;
   private boolean internalOnly_;
-  private DataAccessContext dacx_;
+  private PerturbationData pd_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -90,7 +91,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
 
   public PerturbedTimeCourseGene(PerturbedTimeCourseGene other, boolean doData) {
-    this.dacx_ = other.dacx_;
+    this.pd_ = other.pd_;
     this.sources_ = other.sources_.clone();
     this.timeCourseNote_ = other.timeCourseNote_;  
     this.confidence_ = other.confidence_;
@@ -119,8 +120,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(DataAccessContext dacx, PertSources sources, int confidence, boolean internalOnly) {
-    dacx_ = dacx;
+  public PerturbedTimeCourseGene(PerturbationData pd, PertSources sources, int confidence, boolean internalOnly) {
+    pd_ = pd;
     sources_ = sources.clone();
     confidence_ = confidence;
     internalOnly_ = internalOnly;
@@ -133,8 +134,8 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(DataAccessContext dacx, PertSources sources, Iterator<GeneTemplateEntry> tempit) {
-    dacx_ = dacx;
+  public PerturbedTimeCourseGene(PerturbationData pd, PertSources sources, Iterator<GeneTemplateEntry> tempit) {
+    pd_ = pd;
     sources_ = sources.clone();
     confidence_ = TimeCourseGene.NORMAL_CONFIDENCE;
     internalOnly_ = false;
@@ -154,14 +155,14 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Constructor
   */
 
-  public PerturbedTimeCourseGene(DataAccessContext dacx, String srcs, String confidence, String note, String internalOnly) 
+  public PerturbedTimeCourseGene(PerturbationData pd, String srcs, String confidence, String note, String internalOnly) 
     throws IOException {
    
     if (srcs == null) {
       throw new IOException();
     }
-    dacx_ = dacx;
-    sources_ = new PertSources(dacx_);
+    pd_ = pd;
+    sources_ = new PertSources(pd);
     List<String> srcList = Splitter.stringBreak(srcs, ",", 0, false);
     int numSrc = srcList.size();
     for (int i = 0; i < numSrc; i++){
@@ -280,7 +281,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
   
   public String getName() {
-    return (sources_.getDisplayString(dacx_.getExpDataSrc().getPertData(), PertSources.NO_FOOTS));
+    return (sources_.getDisplayString(pd_, PertSources.NO_FOOTS));
   }  
   
   /***************************************************************************
@@ -561,7 +562,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the expression level for a given region and hour.
   */
   
-  public int getExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev) {
+  public int getExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev, double weak) {
     Iterator<ExpressionEntry> eit = getExpressions();
     return (getExpressionLevelGuts(eit, region, hour, exprSource, varLev));
   } 
@@ -571,7 +572,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   ** Return the control expression level for a given region and hour.
   */
   
-  public int getControlExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev) {
+  public int getControlExpressionLevelForSource(String region, int hour, ExpressionEntry.Source exprSource, TimeCourseGene.VariableLevel varLev, double weak) {
     Iterator<ExpressionEntry> eit = getControlExpressions();
     return (getExpressionLevelGuts(eit, region, hour, exprSource, varLev));
   } 
@@ -749,7 +750,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
   
   public int getExpressionTable(PrintWriter out, TimeCourseGene wtGene, TimeCourseData tcd, DataAccessContext dacx) {
-    return ((new TimeCourseTableDrawer(dacx, wtGene, this)).getPertExpressionTable(out, tcd));
+    return ((new TimeCourseTableDrawer(dacx, dacx.getRMan(), wtGene, this)).getPertExpressionTable(out, tcd));
   }
      
   /***************************************************************************
@@ -831,6 +832,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
       throw new IOException();
     }
     
-    return (new PerturbedTimeCourseGene(dacx, pertSrcs, confidence, note, internalOnly));
+    PerturbationData pd = dacx.getExpDataSrc().getPertData();
+    return (new PerturbedTimeCourseGene(pd, pertSrcs, confidence, note, internalOnly));
   }
 }

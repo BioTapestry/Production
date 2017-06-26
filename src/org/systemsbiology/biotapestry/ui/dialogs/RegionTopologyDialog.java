@@ -84,6 +84,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private TimeAxisDefinition tad_;
   
   private static final long serialVersionUID = 1L;
   
@@ -155,6 +156,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
     //
 
     TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     Iterator<TimeCourseData.TopoTimeRange> timeit = tcd.getRegionTopologyTimes();    
     topoLocs_ = tcd.getRegionTopologyLocator().clone();
     currTimes_ = new ArrayList<Integer>();
@@ -190,7 +192,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
           if (currTabData_ != null) {
             currTabData_.rtPanel.clearSelections();
           }
-          RegionTopoTabSetupDialog rttsd = new RegionTopoTabSetupDialog(uics_, dacx_, currTimes_, requiredTimes_);
+          RegionTopoTabSetupDialog rttsd = new RegionTopoTabSetupDialog(uics_, tad_, currTimes_, requiredTimes_);
           rttsd.setVisible(true);
           if (rttsd.haveChanges()) {
             reformatTabs(rttsd.getNewTimes());
@@ -342,7 +344,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
     TimeCourseChange tcc = tcd.setRegionTopologiesInfo(newTopologies, topoLocs_);
 
     if (tcc != null) {
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(tcc));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
       support.finish();
     }

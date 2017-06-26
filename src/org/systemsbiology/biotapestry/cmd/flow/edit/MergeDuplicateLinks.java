@@ -247,7 +247,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
       }
       GenomeChange[] gcm = gi.mergeComplementaryLinks(linkID, mergie, oldToNew);
       for (int i = 0; i < gcm.length; i++) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gcm[i]);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gcm[i]);
         support.addEdit(gcc); 
       } 
       support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
@@ -271,7 +271,7 @@ public class MergeDuplicateLinks extends AbstractControlFlow {
       String key = dsit.next();
       GenomeChange gc = rcx.getCurrentGenome().removeLinkage(key);
       if (gc != null) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenome().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       }

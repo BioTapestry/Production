@@ -27,12 +27,12 @@ import java.util.HashSet;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.ObjChoiceContent;
 import org.systemsbiology.biotapestry.util.Splitter;
 
@@ -514,11 +514,11 @@ public class PertSource implements Cloneable {
   ** Gets the valid measurement types in a list
   */
   
-  public static List<ObjChoiceContent> getProxySignValues(DataAccessContext dacx) { 
+  public static List<ObjChoiceContent> getProxySignValues(HandlerAndManagerSource hams) { 
     ArrayList<ObjChoiceContent> retval = new ArrayList<ObjChoiceContent>();
-    retval.add(getProxySignValue(dacx, NO_PROXY));
-    retval.add(getProxySignValue(dacx, SAME_SIGN_PROXY));
-    retval.add(getProxySignValue(dacx, OPPOSITE_SIGN_PROXY));
+    retval.add(getProxySignValue(hams, NO_PROXY));
+    retval.add(getProxySignValue(hams, SAME_SIGN_PROXY));
+    retval.add(getProxySignValue(hams, OPPOSITE_SIGN_PROXY));
     return (retval);
   }
   
@@ -527,8 +527,8 @@ public class PertSource implements Cloneable {
   ** Gets a valid measurement types
   */
   
-  public static ObjChoiceContent getProxySignValue(DataAccessContext dacx, String proxVal) { 
-    return (new ObjChoiceContent(dacx.getRMan().getString("proxyTypes." + proxVal), proxVal));
+  public static ObjChoiceContent getProxySignValue(HandlerAndManagerSource hams, String proxVal) { 
+    return (new ObjChoiceContent(hams.getRMan().getString("proxyTypes." + proxVal), proxVal));
   }
 
   /***************************************************************************

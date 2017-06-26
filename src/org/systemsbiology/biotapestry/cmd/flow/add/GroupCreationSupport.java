@@ -477,7 +477,7 @@ public class GroupCreationSupport {
     
     GenomeChange gc = gi.addGroupWithExistingLabel(newGroup); 
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxTrg_, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     
@@ -536,7 +536,7 @@ public class GroupCreationSupport {
     Group newGroup = new Group(rcx.getRMan(), useGroup.getID(), false, null);
     GenomeChange gc = rcx.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     
@@ -739,7 +739,7 @@ public class GroupCreationSupport {
     if (gc != null) {
       for (int i = 0; i < gc.length; i++) {
         if (gc[i] != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc[i]);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc[i]);
           support.addEdit(gcc);
           retval = true;
         }              
@@ -776,7 +776,7 @@ public class GroupCreationSupport {
     Group newGroup = new Group(rcx.getRMan(), newSubgroup, false, null);
     GenomeChange gc = rcx.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup);
     if (gc != null) {
-      support.addEdit(new GenomeChangeCmd(rcx, gc));
+      support.addEdit(new GenomeChangeCmd(gc));
       support.addEvent(new ModelChangeEvent(rcx.getGenomeSource().getID(), rcx.getCurrentGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
     }     
     

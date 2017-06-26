@@ -138,8 +138,8 @@ public class LayoutParametersDialog extends BTStashResultsDialog {
   */ 
   
   public LayoutParametersDialog(UIComponentSource uics, DataAccessContext dacx) {
-    super(uics, dacx, "layoutParam.title", new Dimension(950, 550), 1);
-    rcx_ = new StaticDataAccessContext(dacx_).getContextForRoot();
+    super(uics, "layoutParam.title", new Dimension(950, 550), 1);
+    rcx_ = new StaticDataAccessContext(dacx).getContextForRoot();
     LayoutOptionsManager lopmgr = rcx_.getLayoutOptMgr();
     LayoutOptions options = lopmgr.getLayoutOptions();
         

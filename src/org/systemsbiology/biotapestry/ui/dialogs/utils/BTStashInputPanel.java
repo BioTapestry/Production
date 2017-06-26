@@ -35,8 +35,6 @@ import javax.swing.border.LineBorder;
 import javax.swing.border.TitledBorder;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-
 
 /****************************************************************************
 **
@@ -71,12 +69,12 @@ public class BTStashInputPanel extends JPanel implements DialogSupport.DialogSup
   ** Constructor 
   */ 
   
-  public BTStashInputPanel(BTStashResultsDialog owner, UIComponentSource uics, DataAccessContext dacx, String question, String title) {     
+  public BTStashInputPanel(BTStashResultsDialog owner, UIComponentSource uics, String question, String title) {     
     owner_ = owner;
     answer_ = null;
     gbc_ = new GridBagConstraints();
     rowNum_ = 0;
-    ds_ = new DialogSupport(this, uics, dacx, gbc_);
+    ds_ = new DialogSupport(this, uics, gbc_);
     setBorder(new CompoundBorder(new BevelBorder(BevelBorder.RAISED), new TitledBorder(new LineBorder(Color.BLACK, 3), ds_.getRman().getString(title), TitledBorder.CENTER, TitledBorder.ABOVE_TOP)));
     setLayout(new GridBagLayout());
     textField_ = new JTextField(20);

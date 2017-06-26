@@ -218,7 +218,7 @@ public class PropagateSupport {
       gc = gi.addNode(newInstance);
     }
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxT, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       if (support == null) {
         throw new IllegalArgumentException();
       }
@@ -282,7 +282,7 @@ public class PropagateSupport {
     LinkageInstance newInstance = new LinkageInstance(useLink); 
     GenomeChange gc = gi.addLinkage(newInstance);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxT, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }
     return (newInstance); 
@@ -735,7 +735,7 @@ public class PropagateSupport {
       gc = rcxI.getCurrentGenome().addNode(newNode);
     }
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxI, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     }    
 
@@ -877,7 +877,7 @@ public class PropagateSupport {
     
     GenomeChange gc = rcxT.getCurrentGenome().addLinkage(newLink);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcxT, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);
     } 
 
@@ -905,7 +905,7 @@ public class PropagateSupport {
         if (gca != null) {
           for (int i = 0; i < gca.length; i++) {
             if (gca[i] != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(rcxT, gca[i]);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gca[i]);
               support.addEdit(gcc);
               support.addEvent(new ModelChangeEvent(rcxT.getGenomeSource().getID(), cgi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
               doGeneral = true;

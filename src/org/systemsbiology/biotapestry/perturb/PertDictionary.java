@@ -31,12 +31,12 @@ import java.util.Vector;
 
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.NameValuePair;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
@@ -84,22 +84,22 @@ public class PertDictionary implements Cloneable {
        return (tag_);      
      }
      
-     public String getDisplayTag(DataAccessContext dacx) {
-       return (dacx.getRMan().getString("pertDict.relation" + tag_));      
+     public String getDisplayTag(HandlerAndManagerSource hams) {
+       return (hams.getRMan().getString("pertDict.relation" + tag_));      
      }
         
      public boolean linkSignUndetermined() {
        return (undet_);      
      }
          
-     public EnumChoiceContent<PertLinkRelation> generateCombo(DataAccessContext dacx) {
-       return (new EnumChoiceContent<PertLinkRelation>(getDisplayTag(dacx), this));
+     public EnumChoiceContent<PertLinkRelation> generateCombo(HandlerAndManagerSource hams) {
+       return (new EnumChoiceContent<PertLinkRelation>(getDisplayTag(hams), this));
      }  
       
-     public static Vector<EnumChoiceContent<PertLinkRelation>> getLinkRelationshipOptions(DataAccessContext dacx) {
+     public static Vector<EnumChoiceContent<PertLinkRelation>> getLinkRelationshipOptions(HandlerAndManagerSource hams) {
        Vector<EnumChoiceContent<PertLinkRelation>> retval = new Vector<EnumChoiceContent<PertLinkRelation>>();
        for (PertLinkRelation lr: values()) {
-         retval.add(lr.generateCombo(dacx));    
+         retval.add(lr.generateCombo(hams));    
        }
        return (retval);
      }

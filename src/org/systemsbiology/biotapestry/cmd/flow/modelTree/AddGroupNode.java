@@ -316,9 +316,9 @@ public class AddGroupNode extends AbstractControlFlow {
       // are going to use it to restore our tree after we are done.
       //
  
-      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, dacx_);
+      ExpansionChange ec = (new TreeSupport(uics_)).buildExpansionChange(true, nt);
       List<TreePath> holdExpanded = ec.expanded;
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
+      support.addEdit(new ExpansionChangeCmd(ec));      
 
       //
       // We are adding the new node.  This causes the selection path to be dropped,
@@ -367,10 +367,10 @@ public class AddGroupNode extends AbstractControlFlow {
       // to make it consistent with nav change tree representation.
       //
 
-      ec = (new TreeSupport(uics_)).buildExpansionChange(false, dacx_);
+      ec = (new TreeSupport(uics_)).buildExpansionChange(false, nt);
       ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, false);
       ec.selected = nt.mapAPath(ec.selected, nac.ntc, false);      
-      support.addEdit(new ExpansionChangeCmd(dacx_, ec));      
+      support.addEdit(new ExpansionChangeCmd(ec));      
 
       support.finish();
       nt.setSkipFlag(NavTree.Skips.NO_FLAG);

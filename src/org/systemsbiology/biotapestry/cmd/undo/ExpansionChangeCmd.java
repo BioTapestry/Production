@@ -21,7 +21,6 @@
 package org.systemsbiology.biotapestry.cmd.undo;
 
 import org.systemsbiology.biotapestry.app.ExpansionChange;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 
 /****************************************************************************
 **
@@ -50,8 +49,8 @@ public class ExpansionChangeCmd extends BTUndoCmd {
   ** Build the command
   */ 
   
-  public ExpansionChangeCmd(DataAccessContext dacx, ExpansionChange restore) {
-    super(dacx);
+  public ExpansionChangeCmd(ExpansionChange restore) {
+    super();
     restore_ = restore;
   }
 

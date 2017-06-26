@@ -25,12 +25,12 @@ import java.text.MessageFormat;
 import java.util.Iterator;
 import java.util.Map;
 
-import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureProps;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
+import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
-import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -67,7 +67,7 @@ class QpcrTablePublisher {
   private boolean bigScreen_;
   private Map<String, String> spanColors_;
   private String scaleKey_;
-  private TabPinnedDynamicDataAccessContext ddacx_;
+ // private TabPinnedDynamicDataAccessContext ddacx_;
        
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -80,13 +80,11 @@ class QpcrTablePublisher {
   ** For exports
   */
 
-  QpcrTablePublisher(TabPinnedDynamicDataAccessContext ddacx, Map<String, String> colors) {
-    ddacx_ = ddacx;
+  QpcrTablePublisher(Map<String, String> colors, PertDisplayOptions dOpt) {
     out_ = null;
     noCss_ = false;
     bigScreen_ = false;
     spanColors_ = colors;
-    DisplayOptions dOpt = ddacx_.getDisplayOptsSource().getDisplayOptions();
     scaleKey_ = dOpt.getPerturbDataDisplayScaleKey();
   }
    
@@ -96,13 +94,11 @@ class QpcrTablePublisher {
   */
 
   @SuppressWarnings("unused")
-  QpcrTablePublisher(TabPinnedDynamicDataAccessContext ddacx, boolean bigScreen, Map<String, String> colors) { 
-    ddacx_ = ddacx;
+  QpcrTablePublisher(boolean bigScreen, Map<String, String> colors, PertDisplayOptions dOpt) { 
     out_ = null;
     noCss_ = true;
     bigScreen_ = false;
     spanColors_ = colors;
-    DisplayOptions dOpt = ddacx_.getDisplayOptsSource().getDisplayOptions();
     scaleKey_ = dOpt.getPerturbDataDisplayScaleKey();
   }
    
@@ -127,7 +123,7 @@ class QpcrTablePublisher {
   ** For export
   */
 
-  boolean publish(PrintWriter out, QPCRData qpcr) { 
+  boolean publish(PrintWriter out, QPCRData qpcr, PerturbationData pd, TimeAxisDefinition tad, ResourceManager rMan) { 
     out_ = out;
     Indenter ind = new Indenter(out_, Indenter.DEFAULT_INDENT); 
     ind.indent();
@@ -159,7 +155,7 @@ class QpcrTablePublisher {
     out_.write("/*]]>*/\n");
     ind.down().indent();    
     out_.write("</style>\n");    
-    qpcr.writeHTML(out_, ind, this, ddacx_);
+    qpcr.writeHTML(out_, ind, this, pd, tad, rMan);
     ind.down().indent();
     out_.write("</body>\n");
     ind.down().indent();
@@ -268,13 +264,9 @@ class QpcrTablePublisher {
   ** Describe colors and scaling
   */
 
-  void colorsAndScaling() { 
-    PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
+  void colorsAndScaling(PerturbationData pd, ResourceManager rMan) { 
     MeasureDictionary md = pd.getMeasureDictionary();
-    ResourceManager rMan = ddacx_.getRMan();
     String colorNote = rMan.getString("qpcrData.colorKeyFmt"); 
-    
-    
     String scaleNote = rMan.getString("qpcrData.scaleKeyFmt");
       
     out_.print("<center><p>");  
@@ -332,7 +324,7 @@ class QpcrTablePublisher {
   **
   */
   
-  void writePerturbationHeader(Indenter ind, NullTimeSpan span) {   
+  void writePerturbationHeader(Indenter ind, NullTimeSpan span, TimeAxisDefinition tad, ResourceManager rMan) {   
     ind.indent();
     out_.println("<p></p>");
     ind.indent();    
@@ -349,11 +341,10 @@ class QpcrTablePublisher {
     ind.indent();  
     out_.println("<td>");
     ind.up().indent();
-    ResourceManager rMan = ddacx_.getRMan();
     String tabNote = rMan.getString("qpcrData.nullTableNote");    
     
     MinMax tc = new MinMax(span.getMin(), span.getMax());
-    String tdisp = TimeSpan.spanToString(ddacx_, tc);
+    String tdisp = TimeSpan.spanToString(tad, tc);
     
     if (!span.isASpan()) {
       StringBuffer spanBuf = new StringBuffer();

@@ -66,7 +66,6 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   protected CardLayout myCard_;
   protected BTStashInputPanel ip_;
   protected boolean showingPrime_;
-  protected DataAccessContext dacx_;
    
   private static final long serialVersionUID = 1L;
   
@@ -81,12 +80,12 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   ** Constructor 
   */ 
   
-  protected BTStashResultsDialog(UIComponentSource uics, DataAccessContext dacx, String titleResource, Dimension size, int columns) {     
-    super(uics.getTopFrame(), dacx.getRMan().getString(titleResource), true);
+  protected BTStashResultsDialog(UIComponentSource uics, String titleResource, Dimension size, int columns) {     
+    super(uics.getTopFrame(), uics.getRMan().getString(titleResource), true);
     haveResult_ = false;
     uics_ = uics;
-    dacx_ = dacx;
-    rMan_ = dacx_.getRMan();    
+
+    rMan_ = uics_.getRMan();    
     setSize(size.width, size.height);
     truPane_ = (JPanel)getContentPane();
     myCard_ = new CardLayout();
@@ -102,7 +101,7 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
     cp_.setLayout(new GridBagLayout());
     gbc_ = new GridBagConstraints();
     rowNum_ = 0;
-    ds_ = new DialogSupport(this, uics, dacx, gbc_);
+    ds_ = new DialogSupport(this, uics, gbc_);
     columns_ = columns;
   }
 
@@ -194,7 +193,7 @@ public abstract class BTStashResultsDialog extends JDialog implements DialogSupp
   */ 
   
   protected void buildInputPane(String question, String title) {
-    ip_ = new BTStashInputPanel(this, uics_, dacx_, question, title);
+    ip_ = new BTStashInputPanel(this, uics_, question, title);
     ip_.positionInputPane(backPane_);
     return;
   }

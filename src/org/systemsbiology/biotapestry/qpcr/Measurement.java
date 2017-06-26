@@ -30,7 +30,6 @@ import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.Splitter;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 
@@ -71,7 +70,6 @@ class Measurement implements Cloneable {
   private Boolean isSignificant_;
   private String comments_;
   private String colorDisplay_;
-  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -84,11 +82,10 @@ class Measurement implements Cloneable {
   ** Constructor.  Not doing validation; use class function first.
   */
 
-  Measurement(DataAccessContext dacx, String value, String time, String notes, String control, Boolean isSig, String comments) {
-    dacx_ = dacx; 
+  Measurement(TimeAxisDefinition tad, String value, String time, String notes, String control, Boolean isSig, String comments) {
     // Can be null while being created
     value_ = (value == null) ? null : value.trim().toUpperCase();
-    time_ = timeConversion(dacx_, time);
+    time_ = timeConversion(tad, time);
     nonStdMaxTime_ = null;
     notes_ = notes;
     control_ = control;
@@ -102,7 +99,6 @@ class Measurement implements Cloneable {
   */
 
   Measurement(Measurement other) {
-    this.dacx_ = other.dacx_;
     this.value_ = other.value_;
     this.time_ = other.time_;
     this.nonStdMaxTime_ = other.nonStdMaxTime_;
@@ -123,8 +119,8 @@ class Measurement implements Cloneable {
   ** Set a non-standard max time
   */
 
-   void setNonStdMaxTime(String nonStdMax) {
-     nonStdMaxTime_ = timeConversion(dacx_, nonStdMax);
+   void setNonStdMaxTime(TimeAxisDefinition tad, String nonStdMax) {
+     nonStdMaxTime_ = timeConversion(tad, nonStdMax);
      return;
    }
  
@@ -245,8 +241,7 @@ class Measurement implements Cloneable {
   **
   */
   
-  @SuppressWarnings("unused")
-  void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime) {
+  void writeHTML(PrintWriter out, Indenter ind, QpcrTablePublisher qtp, Integer batchTime, TimeAxisDefinition tad) {
     boolean closeColor = false;
     if ((colorDisplay_ != null) && !colorDisplay_.equalsIgnoreCase("black")) {
       qtp.openColor(colorDisplay_);
@@ -265,7 +260,7 @@ class Measurement implements Cloneable {
     }
     if ((time_ != null) && ((batchTime == null) || !batchTime.equals(time_))) {
       out.print(" (");
-      out.print(getTimeDisplay(true, true));
+      out.print(getTimeDisplay(tad, true, true));
       out.print(")");
     }     
     return;
@@ -277,15 +272,15 @@ class Measurement implements Cloneable {
   **
   */
   
-   String getTimeDisplay(boolean showUnits, boolean abbreviate) {
+   String getTimeDisplay(TimeAxisDefinition tad, boolean showUnits, boolean abbreviate) {
     if (time_ == null) {
       return (null);
     }
-    String minDisp = TimeAxisDefinition.getTimeDisplay(dacx_, time_, showUnits, abbreviate);
+    String minDisp = TimeAxisDefinition.getTimeDisplay(tad, time_, showUnits, abbreviate);
     if (nonStdMaxTime_ == null) {
       return (minDisp);  
     } else {
-      String maxDisp = TimeAxisDefinition.getTimeDisplay(dacx_, nonStdMaxTime_, showUnits, abbreviate);
+      String maxDisp = TimeAxisDefinition.getTimeDisplay(tad, nonStdMaxTime_, showUnits, abbreviate);
       return (minDisp + "-" + maxDisp);
     }  
   }  
@@ -325,7 +320,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static Measurement buildFromXML(DataAccessContext dacx, String elemName, 
+   static Measurement buildFromXML(TimeAxisDefinition tad, String elemName, 
                                    Attributes attrs, double legacyThresh) throws IOException {
     if (!elemName.equals("measurement") && !elemName.equals("nullMeasurement")) {
       return (null);
@@ -370,7 +365,7 @@ class Measurement implements Cloneable {
       throw new IOException();
     }
     
-    if (!isValidTime(dacx, time)) {
+    if (!isValidTime(tad, time)) {
       throw new IOException();
     }
     
@@ -381,7 +376,7 @@ class Measurement implements Cloneable {
     legacyThresh = Math.abs(legacyThresh);
     Boolean isSig = (isSigString != null) ? Boolean.valueOf(isSigString) 
                                           : new Boolean(!isBelowThreshold(value, null, -legacyThresh, legacyThresh)); 
-    return (new Measurement(dacx, value, time, notes, control, isSig, comments));
+    return (new Measurement(tad, value, time, notes, control, isSig, comments));
   }
   
   /***************************************************************************
@@ -419,7 +414,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static boolean isValidTime(DataAccessContext dacx, String input) {
+   static boolean isValidTime(TimeAxisDefinition tad , String input) {
     if (input == null) {
       return (true);
     } 
@@ -427,8 +422,7 @@ class Measurement implements Cloneable {
     if (input.equals("")) {
       return (true);
     }
-   
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+
     if (tad.haveNamedStages()) {
       int stageNum = tad.getIndexForNamedStage(input);      
       return (stageNum != TimeAxisDefinition.INVALID_STAGE_NAME);
@@ -448,7 +442,7 @@ class Measurement implements Cloneable {
   **
   */
   
-   static Integer timeConversion(DataAccessContext dacx, String input) {
+   static Integer timeConversion(TimeAxisDefinition tad, String input) {
     if (input == null) {
       return (null);
     } 
@@ -457,7 +451,6 @@ class Measurement implements Cloneable {
       return (null);
     }
    
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (tad.haveNamedStages()) {
       int stageNum = tad.getIndexForNamedStage(input);      
       if (stageNum == TimeAxisDefinition.INVALID_STAGE_NAME) {

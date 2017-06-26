@@ -46,6 +46,7 @@ import javax.swing.event.ListSelectionEvent;
 import javax.swing.event.ListSelectionListener;
 
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
+import org.systemsbiology.biotapestry.db.ColorResolver;
 import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
@@ -94,7 +95,7 @@ public class ColorEditorDialogFactory extends DialogFactory {
    
     BuildArgs dniba = (BuildArgs)ba;
     if (platform.getPlatform() == DialogPlatform.Plat.DESKTOP) {
-      return (new DesktopDialog(cfh, dniba.colors, dniba.cannotDeleteColors, dniba.cdl));
+      return (new DesktopDialog(cfh, dniba.colors, dniba.cannotDeleteColors, dniba.cdl, dniba.cRes));
     }
     throw new IllegalArgumentException();
   }
@@ -115,13 +116,16 @@ public class ColorEditorDialogFactory extends DialogFactory {
     
     List<NamedColor> colors;
     Set<String> cannotDeleteColors;
-    List<ColorDeletionListener> cdl;  
+    List<ColorDeletionListener> cdl;
+    ColorResolver cRes;
  
-    public BuildArgs(List<NamedColor> colors, Set<String> cannotDeleteColors, List<ColorDeletionListener> cdl) {
+    public BuildArgs(List<NamedColor> colors, Set<String> cannotDeleteColors, 
+                     List<ColorDeletionListener> cdl, ColorResolver cRes) {
       super(null);
       this.colors = colors;
       this.cannotDeleteColors = cannotDeleteColors;
       this.cdl = cdl;
+      this.cRes = cRes;
     } 
   }
    
@@ -151,6 +155,7 @@ public class ColorEditorDialogFactory extends DialogFactory {
     private boolean updatingUI_;
     private List<ColorDeletionListener> cdls_;
     private Set<String> cannotDeleteColors_;
+    private ColorResolver cRes_;
  
     private static final long serialVersionUID = 1L;
     
@@ -166,9 +171,12 @@ public class ColorEditorDialogFactory extends DialogFactory {
     */ 
     
     public DesktopDialog(ServerControlFlowHarness cfh, List<NamedColor> colors, 
-                         Set<String> cannotDelete, List<ColorDeletionListener> colorDeletionListeners) { 
+                         Set<String> cannotDelete, 
+                         List<ColorDeletionListener> colorDeletionListeners,
+                         ColorResolver cRes) { 
       super(cfh, "colorDialog.title", new Dimension(1024, 500), 1, new ColorsRequest(), true);
       cdls_ = colorDeletionListeners;
+      cRes_ = cRes;
       updatingUI_ = false;
       cannotDeleteColors_ = cannotDelete;
       GridBagConstraints gbc = new GridBagConstraints();
@@ -393,8 +401,10 @@ public class ColorEditorDialogFactory extends DialogFactory {
       // Now enter the color into the list with a neutral grey:
       //
       
-      UiUtil.fixMePrintout("This has got to be across the wire!");
-      String colKey = dacx_.getColorResolver().getNextColorLabel();
+      //
+      // FIX ME! This is not going to work: it must be a qBomb! 
+     
+      String colKey = cRes_.getNextColorLabel();
       NamedColor newCol = new NamedColor(colKey, new Color(127, 127, 127), newName);
       colorList_.add(newCol);
       updatingUI_ = true;
@@ -475,6 +485,10 @@ public class ColorEditorDialogFactory extends DialogFactory {
       colorListing_.setListData(colorList_.toArray());
       updatingUI_ = false;
   
+      UiUtil.fixMePrintout("ColorDeletionListeners not getting called!!");
+      
+      
+      
       return;
     }   
   

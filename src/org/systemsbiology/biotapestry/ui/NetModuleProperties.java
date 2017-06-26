@@ -40,7 +40,6 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
 import org.systemsbiology.biotapestry.db.ColorResolver;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
 import org.systemsbiology.biotapestry.parser.GlueStick;
@@ -49,6 +48,7 @@ import org.systemsbiology.biotapestry.ui.freerender.NodeBounder;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Bounds;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.LineBreaker;
 import org.systemsbiology.biotapestry.util.SliceAndDicer;
 import org.systemsbiology.biotapestry.util.UiUtil;
@@ -1976,13 +1976,13 @@ public class NetModuleProperties implements Cloneable {
   ** Return possible type choices values
   */
   
-  public static Vector<ChoiceContent> getDisplayTypes(DataAccessContext dacx, boolean includeMemberOnly) {
+  public static Vector<ChoiceContent> getDisplayTypes(HandlerAndManagerSource hams, boolean includeMemberOnly) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_TYPES_; i++) {
       if ((i == MEMBERS_ONLY) && !includeMemberOnly) {
         continue;
       }
-      retval.add(typeForCombo(dacx, i));
+      retval.add(typeForCombo(hams, i));
     }
     return (retval);
   }  
@@ -1992,8 +1992,8 @@ public class NetModuleProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent typeForCombo(DataAccessContext dacx, int type) {
-    return (new ChoiceContent(mapTypeToDisplay(dacx, type), type));
+  public static ChoiceContent typeForCombo(HandlerAndManagerSource hams, int type) {
+    return (new ChoiceContent(mapTypeToDisplay(hams, type), type));
   }  
 
   /***************************************************************************
@@ -2001,9 +2001,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map display types
   */
 
-  public static String mapTypeToDisplay(DataAccessContext dacx, int type) {
+  public static String mapTypeToDisplay(HandlerAndManagerSource hams, int type) {
     String typeTag = mapToTypeTag(type);
-    return (dacx.getRMan().getString("nModProp." + typeTag));
+    return (hams.getRMan().getString("nModProp." + typeTag));
   }  
   
   /***************************************************************************
@@ -2011,9 +2011,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map display types to instructions
   */
 
-  public static String mapTypeToInstruction(DataAccessContext dacx, int type) {
+  public static String mapTypeToInstruction(HandlerAndManagerSource hams, int type) {
     String typeTag = mapToTypeTag(type);
-    return (dacx.getRMan().getString("nModProp.instruction_" + typeTag));
+    return (hams.getRMan().getString("nModProp.instruction_" + typeTag));
   }    
   
   /***************************************************************************
@@ -2056,10 +2056,10 @@ public class NetModuleProperties implements Cloneable {
   ** Return possible name fade choices values
   */
   
-  public static Vector<ChoiceContent> getNameFades(DataAccessContext dacx) {
+  public static Vector<ChoiceContent> getNameFades(HandlerAndManagerSource hams) {
     Vector<ChoiceContent> retval = new Vector<ChoiceContent>();
     for (int i = 0; i < NUM_FADES_; i++) {
-      retval.add(fadeForCombo(dacx, i));
+      retval.add(fadeForCombo(hams, i));
     }
     return (retval);
   }  
@@ -2069,8 +2069,8 @@ public class NetModuleProperties implements Cloneable {
   ** Get a combo box element
   */
   
-  public static ChoiceContent fadeForCombo(DataAccessContext dacx, int fade) {
-    return (new ChoiceContent(mapFadeToDisplay(dacx, fade), fade));
+  public static ChoiceContent fadeForCombo(HandlerAndManagerSource hams, int fade) {
+    return (new ChoiceContent(mapFadeToDisplay(hams, fade), fade));
   }  
 
   /***************************************************************************
@@ -2078,9 +2078,9 @@ public class NetModuleProperties implements Cloneable {
   ** Map fade types
   */
 
-  public static String mapFadeToDisplay(DataAccessContext dacx, int fade) {
+  public static String mapFadeToDisplay(HandlerAndManagerSource hams, int fade) {
     String fadeTag = mapToFadeTag(fade);
-    return (dacx.getRMan().getString("nModProp." + fadeTag));
+    return (hams.getRMan().getString("nModProp." + fadeTag));
   }
   
   /***************************************************************************

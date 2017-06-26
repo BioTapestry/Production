@@ -476,7 +476,7 @@ public class RemoveNode extends AbstractControlFlow {
         String key = dsit.next();
         GenomeChange gc = gi.removeNode(key);
         if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(rcxGI, gc);
+          GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
           support.addEdit(gcc);        
         }
         Iterator<Layout> layit = rcx.getLayoutSource().getLayoutIterator();
@@ -581,7 +581,7 @@ public class RemoveNode extends AbstractControlFlow {
     String deadName = rcx.getCurrentGenome().getNode(deadID).getRootName();
     GenomeChange gc = rcx.getCurrentGenome().removeNode(deadID);
     if (gc != null) {
-      GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+      GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
       support.addEdit(gcc);        
     }
     
@@ -641,7 +641,7 @@ public class RemoveNode extends AbstractControlFlow {
           TimeCourseDataMaps.TCMapping tcm = kit.next();
           TimeCourseChange tchg = tcd.dropGene(tcm.name);
           if (tchg != null) {
-            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(rcx, tchg, false);
+            TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
             support.addEdit(cmd);
             haveDelete = true;
           }
@@ -685,13 +685,13 @@ public class RemoveNode extends AbstractControlFlow {
    
     PertDataChange chg = pdms.dropDataEntryKeys(nodeID);
     if (chg != null) {
-      PertDataChangeCmd cmd = new PertDataChangeCmd(rcx, chg, false);
+      PertDataChangeCmd cmd = new PertDataChangeCmd(chg, false);
       support.addEdit(cmd);
       haveDelete = true;
     }
     chg = pdms.dropDataSourceKeys(nodeID);
     if (chg != null) {
-      PertDataChangeCmd cmd = new PertDataChangeCmd(rcx, chg, false);
+      PertDataChangeCmd cmd = new PertDataChangeCmd(chg, false);
       support.addEdit(cmd);
       haveDelete = true;
     }
@@ -700,7 +700,7 @@ public class RemoveNode extends AbstractControlFlow {
     if (tcdm != null) {
       TimeCourseChange tchg = tcdm.dropDataKeys(nodeID);
       if (tchg != null) {
-        TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(rcx, tchg, false);
+        TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
         support.addEdit(cmd);
         haveDelete = true;
       }

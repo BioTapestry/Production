@@ -46,7 +46,6 @@ import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutLinkSupport;
 import org.systemsbiology.biotapestry.cmd.flow.layout.LayoutRubberStamper;
 import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.LocalLayoutSource;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
@@ -74,6 +73,7 @@ import org.systemsbiology.biotapestry.util.AsynchExitRequestException;
 import org.systemsbiology.biotapestry.util.BTProgressMonitor;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.EnumChoiceContent;
+import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.LinkPlacementGrid;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
@@ -104,17 +104,17 @@ public class SpecialtyLayoutEngine {
       this.tag_ = tag;  
     }
     
-    public EnumChoiceContent<SpecialtyType> generateCombo(DataAccessContext dacx) {
-      return (new EnumChoiceContent<SpecialtyType>(dacx.getRMan().getString("layoutParam." + tag_), this));
+    public EnumChoiceContent<SpecialtyType> generateCombo(HandlerAndManagerSource hams) {
+      return (new EnumChoiceContent<SpecialtyType>(hams.getRMan().getString("layoutParam." + tag_), this));
     }
   
-    public static Vector<EnumChoiceContent<SpecialtyType>> getChoices(DataAccessContext dacx, boolean skipHalo) {
+    public static Vector<EnumChoiceContent<SpecialtyType>> getChoices(HandlerAndManagerSource hams, boolean skipHalo) {
       Vector<EnumChoiceContent<SpecialtyType>> retval = new Vector<EnumChoiceContent<SpecialtyType>>();
       for (SpecialtyType st: values()) {
         if (skipHalo && st.equals(HALO)) {
           continue;
         }
-        retval.add(st.generateCombo(dacx)); 
+        retval.add(st.generateCombo(hams)); 
       }
       return (retval);
     }
@@ -2294,7 +2294,7 @@ public class SpecialtyLayoutEngine {
          gc = rcx.getCurrentGenome().changeNodeSize(nodeID, newPads);
       }
       if ((gc != null) && (support != null)) {
-        GenomeChangeCmd gcc = new GenomeChangeCmd(rcx, gc);
+        GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
         support.addEdit(gcc);
         // FIXME! issue a model change command
       }

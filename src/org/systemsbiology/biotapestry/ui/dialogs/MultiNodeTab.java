@@ -152,7 +152,7 @@ public class MultiNodeTab {
     if (!haveDynInstance) {
       if ((gcp.evidenceCoverage != ConsensusProps.UNDEFINED_OPTION_COVERAGE) && 
           (gcp.evidenceCoverage != ConsensusProps.NO_OPTION_COVERAGE)) {   
-        Vector<ChoiceContent> eviOpts = DBGene.getEvidenceChoices(dacx_);
+        Vector<ChoiceContent> eviOpts = DBGene.getEvidenceChoices(uics_);
         eviOpts.add(0, new ChoiceContent(rMan.getString("multiSelProps.various"), Gene.LEVEL_VARIOUS));
         evidenceCombo_ = new JComboBox(eviOpts);    
 
@@ -196,7 +196,7 @@ public class MultiNodeTab {
     // Color setting:
     //
 
-    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_, hBld_, colorListeners_, true, "nprop.color", true, true);
+    colorWidget1_ = new ColorSelectionWidget(uics_, dacx_.getColorResolver(), hBld_, colorListeners_, true, "nprop.color", true, true);
     UiUtil.gbcSet(gbc, 0, layoutRownum++, 11, 1, UiUtil.HOR, 0, 0, 0, 0, 0, 0, UiUtil.W, 1.0, 0.0);
     layoutPanel.add(colorWidget1_, gbc);     
 
@@ -304,11 +304,11 @@ public class MultiNodeTab {
         if (cgp.consensusEvidence == Gene.LEVEL_VARIOUS) {
           evidenceCombo_.setSelectedIndex(0);
         } else {          
-          evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(dacx_, cgp.consensusEvidence));
+          evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(uics_, cgp.consensusEvidence));
         }
       }
 
-      String tag = (cgp.consensusExtraPadCount == ConsensusNodeProps.NO_PAD_CHANGE) ? dacx_.getRMan().getString("multiSelProps.various")
+      String tag = (cgp.consensusExtraPadCount == ConsensusNodeProps.NO_PAD_CHANGE) ? uics_.getRMan().getString("multiSelProps.various")
                                                                                     : Integer.toString(cgp.consensusExtraPadCount);
       nps_.setExtraPadsForMulti(new ChoiceContent(tag, cgp.consensusExtraPadCount), cgp.consensusDoExtraPads, cgp.consensusGrowth);
 
@@ -419,7 +419,7 @@ public class MultiNodeTab {
             }  
             GenomeChange gc = (isForGene_) ? dacx_.getCurrentGenome().replaceGene((GeneInstance)copyNode) : dacx_.getCurrentGenome().replaceNode(copyNode);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
               instanceChange = true;
             }
@@ -461,7 +461,7 @@ public class MultiNodeTab {
           if (newEvidence != Gene.LEVEL_VARIOUS) {
             GenomeChange gc = dacx_.getCurrentGenome().changeGeneEvidence(nodeID, newEvidence);
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
               modelChange = true;
             }
@@ -484,7 +484,7 @@ public class MultiNodeTab {
             GenomeChange gc = (nodeType == Node.GENE) ? dacx_.getCurrentGenome().changeGeneSize(nodeID, newPads.intValue()) 
                                                       : dacx_.getCurrentGenome().changeNodeSize(nodeID, newPads.intValue());
             if (gc != null) {
-              GenomeChangeCmd gcc = new GenomeChangeCmd(dacx_, gc);
+              GenomeChangeCmd gcc = new GenomeChangeCmd(gc);
               support.addEdit(gcc);
               modelChange = true;
             }

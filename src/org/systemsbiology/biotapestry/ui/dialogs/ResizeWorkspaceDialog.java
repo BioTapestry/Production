@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,8 +35,8 @@ import javax.swing.event.CaretEvent;
 import javax.swing.event.CaretListener;
 
 import org.systemsbiology.biotapestry.app.UIComponentSource;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.Workspace;
+import org.systemsbiology.biotapestry.nav.ZoomTarget;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTStashResultsDialog;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 
@@ -82,14 +82,14 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
   ** Constructor 
   */ 
   
-  public ResizeWorkspaceDialog(UIComponentSource uics, DataAccessContext dacx, int padding) { 
-    super(uics, dacx, "resizeWork.title", new Dimension(500, 250), 2);
+  public ResizeWorkspaceDialog(UIComponentSource uics, Workspace wsp, ZoomTarget ztrg, 
+                               boolean emptyNoOverlay, int padding) { 
+    super(uics, "resizeWork.title", new Dimension(500, 250), 2);
    
-    Workspace wsp = dacx_.getWorkspaceSource().getWorkspace();
     Dimension currDims = wsp.getCanvasSize();
     double aspectRatio = wsp.getCanvasAspectRatio();
-    Rectangle modelSize = dacx_.getZoomTarget().getAllModelBounds();
-    Point2D currentCenter = dacx_.getZoomTarget().getRawCenterPoint();
+    Rectangle modelSize = ztrg.getAllModelBounds();
+    Point2D currentCenter = ztrg.getRawCenterPoint();
     
     currDims_ = new Workspace.FixedAspectDim(currDims, aspectRatio);
     modelDims_ = Workspace.calcBoundedFit(modelSize, padding, aspectRatio);
@@ -134,7 +134,7 @@ public class ResizeWorkspaceDialog extends BTStashResultsDialog {
         }
       }
     }); 
-    if (dacx.getDBGenome().isEmpty() && !dacx.getFGHO().overlayExists()) {
+    if (emptyNoOverlay) {
       buttonM.setEnabled(false);
     }
     

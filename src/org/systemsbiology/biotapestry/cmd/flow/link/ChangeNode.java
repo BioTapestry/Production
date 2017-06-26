@@ -664,7 +664,7 @@ public class ChangeNode extends AbstractControlFlow {
       //
         
       GenomeChange undo = dacx_.getCurrentGenome().changeLinkageTargetNode(link, targetID, padNum);
-      support.addEdit(new GenomeChangeCmd(dacx_, undo));
+      support.addEdit(new GenomeChangeCmd(undo));
       changedModels.add(dacx_.getCurrentGenomeID());
          
       //
@@ -736,7 +736,7 @@ public class ChangeNode extends AbstractControlFlow {
             //
             int currPadNum = PropagateSupport.findLandingPad(newNodeID, padNum, rcxI, dacx_, null);
             undo = gi.changeLinkageTargetNode(childLink, newNodeID, currPadNum);
-            support.addEdit(new GenomeChangeCmd(rcxI, undo));    
+            support.addEdit(new GenomeChangeCmd(undo));    
           }
           changeSet.add(clid);
           changedModels.add(rcxI.getCurrentGenomeID());
@@ -783,7 +783,7 @@ public class ChangeNode extends AbstractControlFlow {
             }
           }
           if (undo != null) {
-            support.addEdit(new GenomeChangeCmd(dacx_, undo));
+            support.addEdit(new GenomeChangeCmd(undo));
             changedModels.add(giid);
           }
         }
@@ -1221,7 +1221,7 @@ public class ChangeNode extends AbstractControlFlow {
         //
         
         GenomeChange undo = rcxR.getCurrentGenome().changeLinkageSourceNode(nextLink, sourceID, padNum);
-        support.addEdit(new GenomeChangeCmd(rcxR, undo));
+        support.addEdit(new GenomeChangeCmd(undo));
         changedModels.add(rcxR.getCurrentGenomeID());
          
         //
@@ -1315,7 +1315,7 @@ public class ChangeNode extends AbstractControlFlow {
               int currPadNum = prepareSourcePad(newNodeID, rcxi, rcxR, padNum, support);      
                   
               undo = gi.changeLinkageSourceNode(childLink, newNodeID, currPadNum);
-              support.addEdit(new GenomeChangeCmd(rcxi, undo));    
+              support.addEdit(new GenomeChangeCmd(undo));    
             }
             changeSet.add(clid);
             changedModels.add(rcxi.getCurrentGenomeID());
@@ -1361,7 +1361,7 @@ public class ChangeNode extends AbstractControlFlow {
               }
             }
             if (undo != null) {
-              support.addEdit(new GenomeChangeCmd(rcxi, undo));
+              support.addEdit(new GenomeChangeCmd(undo));
               changedModels.add(rcxi.getCurrentGenomeID());
             }
           }

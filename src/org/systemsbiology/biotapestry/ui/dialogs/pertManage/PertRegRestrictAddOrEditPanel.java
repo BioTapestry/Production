@@ -55,6 +55,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   
   private PerturbationData.RegionRestrict rrResult_;
   private PerturbationData pd_;
+  private TimeCourseData tcd_;
   private ArrayList<EnumCell> regionList_;
   private String parentCurrKey_;
 
@@ -78,12 +79,14 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   ** Constructor 
   */ 
   
-  public PertRegRestrictAddOrEditPanel(UIComponentSource uics, DataAccessContext dacx, JFrame myParent, PerturbationData pd,
-                                       PendingEditTracker pet, String myKey, 
+  public PertRegRestrictAddOrEditPanel(UIComponentSource uics, JFrame myParent, 
+                                       PerturbationData pd,
+                                       TimeCourseData tcd, PendingEditTracker pet, String myKey, 
                                        int legacyModes) {
-    super(uics, dacx, myParent, pet, myKey, 2);
+    super(uics, myParent, pet, myKey, 2);
     pd_ = pd;
-    pmh_ = new PertManageHelper(uics, dacx, myParent, pd, rMan_, gbc_, pet_);
+    tcd_ = tcd;
+    pmh_ = new PertManageHelper(uics, myParent, pd, tcd, rMan_, gbc_, pet_);
       
     JLabel descLabel = new JLabel(rMan_.getString("prraep.description"));
     UiUtil.gbcSet(gbc_, 0, rowNum_++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);       
@@ -94,7 +97,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
     //
 
     regionList_ = new ArrayList<EnumCell>();
-    estRr_ = new EditableTable(uics, dacx, new EditableTable.OneEnumTableModel(uics, dacx, "prraep.region", regionList_), parent_);
+    estRr_ = new EditableTable(uics, new EditableTable.OneEnumTableModel(uics, "prraep.region", regionList_), parent_);
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.tableIsUnselectable = false;
@@ -186,7 +189,7 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   */
   
   protected void updateOptions() {
-    regionList_ = buildRegionEnum();
+    regionList_ = buildRegionEnum(tcd_);
     HashMap<Integer, EditableTable.EnumCellInfo> perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
     perColumnEnums.put(new Integer(EditableTable.OneEnumTableModel.ENUM_COL_), new EditableTable.EnumCellInfo(false, regionList_, EnumCell.class));      
     estRr_.refreshEditorsAndRenderers(perColumnEnums);
@@ -302,9 +305,8 @@ public class PertRegRestrictAddOrEditPanel extends AnimatedSplitEditPanel {
   ** 
   */
   
-  private ArrayList<EnumCell> buildRegionEnum() { 
+  private ArrayList<EnumCell> buildRegionEnum(TimeCourseData tcd) { 
     ArrayList<EnumCell> retval = new ArrayList<EnumCell>();
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
     TreeSet<String> toSort = new TreeSet<String>(String.CASE_INSENSITIVE_ORDER);
     toSort.addAll(tcd.getRegions());
     Iterator<String> tsit = toSort.iterator();

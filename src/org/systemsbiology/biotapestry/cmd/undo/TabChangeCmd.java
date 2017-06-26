@@ -104,7 +104,6 @@ public class TabChangeCmd extends BTUndoCmd {
   @Override
   public void redo() {
     super.redo();
-    System.out.println("Redo tab change " +  restore_.oldChangeIndex + " "  + restore_.newChangeIndex + " " + restore_.forUI + " " + restore_.didTabChange);
     if (restore_.forUI) {
       uics_.getCommonView().changeTabRedo(restore_);
     } else {

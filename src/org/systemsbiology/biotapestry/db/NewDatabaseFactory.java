@@ -54,6 +54,7 @@ import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseFormatFactory;
 import org.systemsbiology.biotapestry.ui.LayoutFactory;
+import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -330,6 +331,8 @@ public class NewDatabaseFactory implements ParserClient {
         }
         numTab = appendBase_ + numTab;
         TabOps.doNewTabStat(tSrc_, uics_, dacx_, uFac_, true, null, numTab, null, null, null, sharing, supportForAppend_);
+        // Gotta reset the id so that we create the correct tab context below
+        id = tSrc_.getDbIdForIndex(numTab);
       }
       setClientContext(ddacx_.getTabContext(id));
       return (null);
