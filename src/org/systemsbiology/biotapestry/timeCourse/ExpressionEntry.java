@@ -31,7 +31,7 @@ import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
+//import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -154,9 +154,10 @@ public class ExpressionEntry implements Cloneable {
   ** Constructor
   */
 
-  public ExpressionEntry(DataAccessContext dacx, String region, String time, 
+  public ExpressionEntry(String region, String time, 
                          String expr, String source, String confidence,
-                         String strategySource, String startStrategy, String endStrategy, String variable) 
+                         String strategySource, String startStrategy, 
+                         String endStrategy, String variable, TimeAxisDefinition tad) 
     throws IOException {
 
     region_ = region;
@@ -166,7 +167,6 @@ public class ExpressionEntry implements Cloneable {
       throw new IOException();
     }
    
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.timeIsOk(time_)) {      
       throw new IOException();
     }    
@@ -870,8 +870,7 @@ public class ExpressionEntry implements Cloneable {
   ** Show the expression key
   */
 
-  public static void expressionKeyCSV(DataAccessContext dacx, PrintWriter out, boolean encodeConfidence) {
-    ResourceManager rMan = dacx.getRMan();
+  public static void expressionKeyCSV(PrintWriter out, boolean encodeConfidence, ResourceManager rMan) {
     out.println("\"\"");
     out.println("\"\"");
     out.print("\"");
@@ -1091,7 +1090,7 @@ public class ExpressionEntry implements Cloneable {
   **
   */
   
-  public static ExpressionEntry buildFromXML(DataAccessContext dacx, String elemName, 
+  public static ExpressionEntry buildFromXML(TimeAxisDefinition tad, String elemName, 
                                              Attributes attrs) throws IOException {
     if (!elemName.equals("data")) {
       return (null);
@@ -1141,6 +1140,6 @@ public class ExpressionEntry implements Cloneable {
       throw new IOException();
     }
     
-    return (new ExpressionEntry(dacx, region, time, expr, srcStr, confidence, stratSrcStr, startStrategy, endStrategy, variable));
+    return (new ExpressionEntry(region, time, expr, srcStr, confidence, stratSrcStr, startStrategy, endStrategy, variable, tad));
   }
 }

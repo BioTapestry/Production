@@ -20,6 +20,7 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 
@@ -47,11 +48,21 @@ public class DisplayOptionsChangeCmd extends BTUndoCmd {
 
   /***************************************************************************
   **
-  ** Build the command
+  ** Build the command. Use this if the change can use the current DACX
   */ 
   
   public DisplayOptionsChangeCmd(DisplayOptionsChange restore) {
     super();
+    restore_ = restore;
+  }  
+  
+  /***************************************************************************
+  **
+  ** Build the command
+  */ 
+  
+  public DisplayOptionsChangeCmd(DisplayOptionsChange restore, TabPinnedDynamicDataAccessContext tpdacx) {
+    super(tpdacx);
     restore_ = restore;
   }  
   

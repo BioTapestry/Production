@@ -41,6 +41,7 @@ import org.systemsbiology.biotapestry.db.GlobalChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PertFilterExpression;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.LayoutOptionsManager;
 import org.systemsbiology.biotapestry.ui.NamedColor;
@@ -283,7 +284,7 @@ public class DoSettings extends AbstractControlFlow {
            
       switch (myAction_) {
         case DISPLAY:      
-          DisplayOptionsDialog dod = new DisplayOptionsDialog(uics_, ddacx_, hBld_, uFac_);
+          DisplayOptionsDialog dod = new DisplayOptionsDialog(uics_, dacx_, hBld_, tSrc_, uFac_);
           dod.setVisible(true);   
           break;  
         case COLORS:      
@@ -306,32 +307,33 @@ public class DoSettings extends AbstractControlFlow {
           }
           break;
         case TIME_AXIS:      
-          TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx_, uFac_);
+          TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx_, dacx_.getMetabase(), tSrc_, uFac_, true);
           tasd.setVisible(true);
           break;
         case PERTURB:
           uics_.getCommonView().launchPerturbationsManagementWindow(new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP), dacx_, uics_, uFac_);
           break;
         case TIME_COURSE_MANAGE:      
-          TimeCourseTableManageDialog tctmd = new TimeCourseTableManageDialog(uics_, dacx_, uFac_);
+          TimeCourseTableManageDialog tctmd = new TimeCourseTableManageDialog(uics_, dacx_, tSrc_, uFac_);
           tctmd.setVisible(true);
           break;
         case TIME_COURSE_SETUP:
-          TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
+          TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeCourseSetupDialogWrapper(uics_, dacx_, tSrc_, uFac_);
           if (tcsd == null) {
             return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
           }
           tcsd.setVisible(true);
           break;
         case REGION_HIERARCHY:
-          DevelopmentSpecDialog.assembleAndApplyHierarchy(uics_, dacx_, uFac_);
+          TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+          DevelopmentSpecDialog.assembleAndApplyHierarchy(uics_, tcd, uFac_, dacx_);
           break;
         case TEMPORAL_INPUT_MANAGE: 
-          TemporalInputTableManageDialog titmd = new TemporalInputTableManageDialog(uics_, dacx_, uFac_);
+          TemporalInputTableManageDialog titmd = new TemporalInputTableManageDialog(uics_, dacx_, tSrc_, uFac_);
           titmd.setVisible(true);
           break;
         case REGION_TOPOLOGY:
-          RegionTopologyDialog rtd = RegionTopologyDialog.regionTopoDialogWrapper(uics_, dacx_, uFac_);
+          RegionTopologyDialog rtd = RegionTopologyDialog.regionTopoDialogWrapper(uics_, dacx_, tSrc_, uFac_);
           if (rtd != null) {
             rtd.setVisible(true);
           }
@@ -360,7 +362,7 @@ public class DoSettings extends AbstractControlFlow {
       Collections.sort(colorList);
       Set<String> doNotDelete = cRes.cannotDeleteColors();
       
-      ColorEditorDialogFactory.BuildArgs ba = new ColorEditorDialogFactory.BuildArgs(colorList, doNotDelete, cdls_);
+      ColorEditorDialogFactory.BuildArgs ba = new ColorEditorDialogFactory.BuildArgs(colorList, doNotDelete, cdls_, dacx_.getColorResolver());
       ColorEditorDialogFactory cedf = new ColorEditorDialogFactory(cfh_);
       ServerControlFlowHarness.Dialog cfhd = cedf.getDialog(ba);
       DialogAndInProcessCmd retval = new DialogAndInProcessCmd(cfhd, this);
@@ -437,7 +439,7 @@ public class DoSettings extends AbstractControlFlow {
       GlobalChange gc = dacx_.getColorResolver().updateColors(newColors);   
       GlobalChangeCmd gcc = new GlobalChangeCmd(dacx_, gc);
       support.addEdit(gcc);
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
   
       //
       // Inform listeners:

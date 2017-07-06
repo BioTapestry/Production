@@ -78,15 +78,31 @@ public abstract class BTUndoCmd extends AbstractUndoableEdit {
   
   /***************************************************************************
   **
+  ** A single Undo operation may contain changes across many different tabs!
+  ** If that is the case, each command can provide tab-specific DACX. Find out if
+  ** command has set dacx:
+  */ 
+  
+  public boolean dacxIsSet() {
+    return (dacx_ != null);
+  }
+
+  /***************************************************************************
+  **
   ** We can add the app state when the command is registered with support. This
-  ** allows us to avoid needing to pass appState around so much!
+  ** allows us to avoid needing to pass appState around so much! 
+  ** BUT! A single Undo operation may contain changes across many different tabs!
+  ** If that is the case, the command can provide tab-specific DACX. If that is the
+  ** case, we use that instead.
   */ 
   
   public void setAppState(TabSource tSrc, CmdSource cSrc, UIComponentSource uics, StaticDataAccessContext dacx) {
     tSrc_ = tSrc;
     uics_ = uics;
     cSrc_ = cSrc;
-    dacx_ = dacx;
+    if (!dacxIsSet() && (dacx != null)) {
+      dacx_ = dacx;
+    }
     return;
   }
 

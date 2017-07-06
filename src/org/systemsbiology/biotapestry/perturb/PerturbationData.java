@@ -19,28 +19,22 @@
 
 package org.systemsbiology.biotapestry.perturb;
 
-import java.util.Set;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.TreeSet;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.io.PrintWriter;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.Vector;
 
-import org.xml.sax.Attributes;
-
-import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.util.MinMax;
-import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -58,11 +52,16 @@ import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.BoundedDoubMinMax;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
+import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.Indenter;
+import org.systemsbiology.biotapestry.util.MinMax;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.Splitter;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
+import org.xml.sax.Attributes;
 
 /****************************************************************************
 **
@@ -238,7 +237,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
-  
+ 
+
   /***************************************************************************
   **
   ** Get the display options for this data
@@ -275,12 +275,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Install new display options
   */
 
-  public void setPertDisplayOptions(PertDisplayOptions pdo, UndoSupport support) {
+  public void setPertDisplayOptions(PertDisplayOptions pdo, UndoSupport support, TabPinnedDynamicDataAccessContext tpdacx) {
+    UiUtil.fixMePrintout("Cannot use single dacx_ support for all these changes!");
     DisplayOptionsChange doc = new DisplayOptionsChange();
     doc.oldPertOpts = pdo_.clone();
     pdo_ = pdo;
     doc.newPertOpts = pdo_.clone();    
-    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
+    DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc, tpdacx);
     support.addEdit(docc);
     return;
   }
@@ -290,7 +291,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Do modifications if the perturbation data changes
   */
 
-  public void modifyForPertDataChange(UndoSupport support) {
+  public void modifyForPertDataChange(UndoSupport support, TabPinnedDynamicDataAccessContext tpdacx) {
     
     Map<String, String> revMap = pdo_.haveInconsistentMeasurementDisplayColors();
     String revSTag = pdo_.haveInconsistentScaleTag();
@@ -306,7 +307,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       doc.oldPertOpts = pdo_.clone();
       pdo_ = revDO;
       doc.newPertOpts = pdo_.clone();    
-      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
+      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc, tpdacx);
       support.addEdit(docc);
     }
     return;   
@@ -5263,7 +5264,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get single-source perturbation source IDs for the given targetID
   */
   
-  public Set<String> getPerturbationSources(DBGenome dbGenome, String targetID, PerturbationDataMaps pdm) {
+  public Set<String> getPerturbationSources(DBGenome dbGenome, String targetID, PerturbationDataMaps pdm) {    
+    
     //
     // Get the genes that match the target ids.  Go through the
     // perturbation sources and find the perturbations.
@@ -5275,7 +5277,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (numSt == 0) {
       return (retval);
     }
-      
+    
+    buildInvertSrcNameCache(); 
     for (int i = 0; i < numSt; i++) {
       PertDataPoint pdp = stPerts.get(i);
       String sskey = pdp.getSingleSourceKey(this);
@@ -6442,9 +6445,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
     public void setContext(TabPinnedDynamicDataAccessContext dacx) {
       dacx_ = dacx;
-      psiw_.installContext(dacx);
       legacyNmwGlue_.installContext(dacx);
-      pdow_.setContext(dacx);
       return;
     }
  

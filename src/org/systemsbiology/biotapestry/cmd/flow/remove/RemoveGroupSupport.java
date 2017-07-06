@@ -68,7 +68,6 @@ import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.ui.Layout;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -322,7 +321,7 @@ public class RemoveGroupSupport {
     RemoveNode.proxyPostExtraNodeDeletionSupport(uics, rcx, support);
    
     if (needGeneral) {
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
     }
  
     if (localUndo) {support.finish();}
@@ -440,7 +439,7 @@ public class RemoveGroupSupport {
     dsit = deadSet.iterator();
     while (dsit.hasNext()) {
       NodeInstance ni = (NodeInstance)dsit.next();
-      RemoveNode.doNodeDelete(uics, ni.getID(), rcx, support, null, keepEmptyMemOnly); 
+      RemoveNode.doNodeDelete(uics, tSrc, ni.getID(), rcx, support, null, keepEmptyMemOnly); 
     }
     
     //
@@ -486,7 +485,7 @@ public class RemoveGroupSupport {
     RemoveNode.proxyPostExtraNodeDeletionSupport(uics, rcx, support);   
     
     if (needGeneral) {
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
     }
     
     Iterator<GenomeInstance> dit = rcx.getGenomeSource().getInstanceIterator();
@@ -512,9 +511,9 @@ public class RemoveGroupSupport {
     Iterator<String> ssit = subsets.iterator();
     while (ssit.hasNext()) {
       String subkey = ssit.next();
-      doTopInstanceGroupCleanup(rcx, subkey, support);
+      doTopInstanceGroupCleanup(rcx, subkey, tSrc, support);
     } 
-    doTopInstanceGroupCleanup(rcx, groupKey, support);
+    doTopInstanceGroupCleanup(rcx, groupKey, tSrc, support);
     return;
   }  
 
@@ -614,7 +613,7 @@ public class RemoveGroupSupport {
     // Now if we have the top instance, delete the group properties and the mappings!
     //
     
-    doTopInstanceGroupCleanup(rcx, groupKey, support);
+    doTopInstanceGroupCleanup(rcx, groupKey, tSrc, support);
     return;
   }
   
@@ -739,7 +738,7 @@ public class RemoveGroupSupport {
   ** If we have the top instance, delete the group properties and the mappings!
   */  
   
-  private static void doTopInstanceGroupCleanup(StaticDataAccessContext rcx, String key, UndoSupport support) {   
+  private static void doTopInstanceGroupCleanup(StaticDataAccessContext rcx, String key, TabSource tSrc, UndoSupport support) {   
     //
     // Now if we have the top instance, delete the group properties and the mappings!
     //
@@ -771,7 +770,7 @@ public class RemoveGroupSupport {
       }
     }
     
-    doTopInstanceGroupMapCleanup(rcx, key, support);
+    doTopInstanceGroupMapCleanup(rcx, key, tSrc, support);
     
     return;
   }
@@ -781,7 +780,7 @@ public class RemoveGroupSupport {
   ** If we have the top instance, delete the mappings!
   */  
   
-  public static void doTopInstanceGroupMapCleanup(StaticDataAccessContext rcx, String key, UndoSupport support) {   
+  public static void doTopInstanceGroupMapCleanup(StaticDataAccessContext rcx, String key, TabSource tSrc, UndoSupport support) {   
     //
     // Now if we have the top instance, delete the group mappings!
     //
@@ -798,7 +797,7 @@ public class RemoveGroupSupport {
       if (tchg != null) {
         TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
         support.addEdit(cmd);
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       }
     }
     
@@ -808,7 +807,7 @@ public class RemoveGroupSupport {
       if (tichg != null) {
         TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(rcx, tichg, false);
         support.addEdit(cmd);
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       }
     }
     

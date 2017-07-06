@@ -110,6 +110,8 @@ public class UndoSupport {
     if (edit.changesModel()) {
       cSrc_.bumpUndoCount();
     }
+    
+    
     edit.setAppState(tSrc_, cSrc_, uics_, dacx_);
     edit_.addEdit(edit);
     return;

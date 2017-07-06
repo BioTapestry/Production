@@ -297,7 +297,7 @@ public class EditModelProps extends AbstractControlFlow {
         case STATIC_CHILD_INSTANCE:
           myProps = new ModelProperties(popupModel_.getID(), null, popupModel_.getLongName(),
                                         popupModel_.getDescription(), popupModel_);
-          SingleInstanceModelPropDialog simpd = new SingleInstanceModelPropDialog(uics_, dacx_, popupModel_.getID(), nav, popupNode_, uFac_);
+          SingleInstanceModelPropDialog simpd = new SingleInstanceModelPropDialog(uics_, dacx_, popupModel_.getID(), nav, popupNode_, tSrc_, uFac_);
           simpd.setVisible(true);
           break;
         case DYNAMIC_SUM_INSTANCE:

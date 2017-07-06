@@ -436,7 +436,7 @@ public class FullHierarchyCSVFormatFactory {
       } 
       TreeNode parNode = nt.nodeForModel(nameToId.get(md.modelParent));     
       nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
-      NavTree.NodeAndChanges nac = nt.addNode(nodeType, md.modelName, parNode, new NavTree.ModelID(nextKey), null, null, dacx_);
+      NavTree.NodeAndChanges nac = nt.addNode(nodeType, md.modelName, parNode, new NavTree.ModelID(nextKey), null, null, uics_.getRMan());
       nt.setSkipFlag(NavTree.Skips.NO_FLAG);
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       ntcs.add(nac.ntc);

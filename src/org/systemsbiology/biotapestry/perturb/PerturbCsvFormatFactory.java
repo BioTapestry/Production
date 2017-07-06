@@ -40,6 +40,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.JOptionPane;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
@@ -232,7 +233,6 @@ public class PerturbCsvFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
 
- // private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private HashMap<String, Map<String, AbstractParam>> newParamsInFile_;
   private HashMap<String, Map<String, String>> paramNameToPdKeyMap_;
@@ -241,6 +241,7 @@ public class PerturbCsvFormatFactory {
   private boolean useBatch_;
   private boolean useInvest_;
   private boolean useCondition_;
+  private TabSource tSrc_;
   private UndoFactory uFac_;
    
   ////////////////////////////////////////////////////////////////////////////
@@ -255,10 +256,11 @@ public class PerturbCsvFormatFactory {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  public PerturbCsvFormatFactory(UIComponentSource uics, UndoFactory uFac, boolean useDate, boolean useTime, 
+  public PerturbCsvFormatFactory(UIComponentSource uics, TabSource tSrc, UndoFactory uFac, boolean useDate, boolean useTime, 
                                  boolean useBatch, boolean useInvest, boolean useCondition) {
     uics_ = uics;
     uFac_ = uFac;
+    tSrc_ = tSrc;
     newParamsInFile_ = new HashMap<String, Map<String, AbstractParam>>();
     paramNameToPdKeyMap_ = new HashMap<String, Map<String, String>>();
     useDate_ = useDate;
@@ -373,7 +375,7 @@ public class PerturbCsvFormatFactory {
     if (!tad.isInitialized()) {
       Map<String, AbstractParam> newTS = newParamsInFile_.get(CSVState.TIME_SCALE_PARAM_UC_);
       if ((newTS == null) || (newTS.size() != 1)) {
-        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics_, dacx, uFac_);
+        boolean keepGoing = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics_, dacx, dacx.getMetabase(), tSrc_, uFac_, true);
         if (!keepGoing) {
           return (new TaggedTAD(null, false));
         }

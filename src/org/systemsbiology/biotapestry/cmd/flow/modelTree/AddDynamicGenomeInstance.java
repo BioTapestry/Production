@@ -286,9 +286,9 @@ public class AddDynamicGenomeInstance extends AbstractControlFlow {
           throw new IllegalStateException();
         }
         String key = newNodes.iterator().next();
-        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), popupNode_, new NavTree.ModelID(key), null, null, dacx_);      
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), popupNode_, new NavTree.ModelID(key), null, null, uics_.getRMan());      
       } else {
-        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), popupNode_, null, dip.getID(), null, dacx_);
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), popupNode_, null, dip.getID(), null, uics_.getRMan());
       }
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       ec.expanded = nt.mapAllPaths(ec.expanded, nac.ntc, true);

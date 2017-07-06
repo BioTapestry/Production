@@ -156,7 +156,7 @@ public class RemoveBuildInstruct extends AbstractControlFlow {
       
       UndoSupport support = uFac_.provideUndoSupport("undo.dropBuildInstructions", dacx_);       
       dropAllInstructions(support);  
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
       support.finish(); 
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     }

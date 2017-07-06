@@ -199,7 +199,7 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
         public void actionPerformed(ActionEvent ev) {
           try {
             boolean enabled = timeBoundsBox_.isSelected();
-            if (enabled && !timeAxisHelper_.establishTimeAxis()) {          
+            if (enabled && !timeAxisHelper_.establishTimeAxis(dacx_.getExpDataSrc(), dacx_)) {          
               timeBoundsBox_.setSelected(false);  // gonna cause a callback!
               return;
             }
@@ -220,14 +220,14 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
       minFieldLabel_ = new JLabel("");
       maxFieldLabel_ = new JLabel(""); 
       
-      timeAxisHelper_ = new TimeAxisHelper(uics_, dacx_, this, minFieldLabel_, maxFieldLabel_, uFac_);    
-      timeAxisHelper_.fixMinMaxLabels(false);
+      timeAxisHelper_ = new TimeAxisHelper(uics_, this, minFieldLabel_, maxFieldLabel_, cfh.getTabSource(), uFac_);    
+      timeAxisHelper_.fixMinMaxLabels(false, dacx_.getExpDataSrc().getTimeAxisDefinition());
       
-      minField_ = (timeBounded_) ? new JTextField(timeAxisHelper_.timeValToDisplay(minTime_)) : new JTextField();
+      minField_ = (timeBounded_) ? new JTextField(timeAxisHelper_.timeValToDisplay(minTime_, dacx_.getExpDataSrc().getTimeAxisDefinition())) : new JTextField();
       minFieldLabel_.setEnabled(timeBounded_);
       minField_.setEnabled(timeBounded_); 
    
-      maxField_ = (timeBounded_) ? new JTextField(timeAxisHelper_.timeValToDisplay(maxTime_)) : new JTextField();    
+      maxField_ = (timeBounded_) ? new JTextField(timeAxisHelper_.timeValToDisplay(maxTime_, dacx_.getExpDataSrc().getTimeAxisDefinition())) : new JTextField();    
       maxFieldLabel_.setEnabled(timeBounded_);
       maxField_.setEnabled(timeBounded_);
       
@@ -269,11 +269,11 @@ public class GenomeInstanceCreationDialogFactory extends DialogFactory {
          return (false);      
        }
        if (nocrq.timeBounded) {
-         nocrq.minTime = timeAxisHelper_.timeDisplayToIndex(minField_.getText());
+         nocrq.minTime = timeAxisHelper_.timeDisplayToIndex(minField_.getText(), dacx_.getExpDataSrc().getTimeAxisDefinition());
          if (nocrq.minTime == TimeAxisDefinition.INVALID_STAGE_NAME) {
            return (false);
          }
-         nocrq.maxTime = timeAxisHelper_.timeDisplayToIndex(maxField_.getText());
+         nocrq.maxTime = timeAxisHelper_.timeDisplayToIndex(maxField_.getText(), dacx_.getExpDataSrc().getTimeAxisDefinition());
          if (nocrq.maxTime == TimeAxisDefinition.INVALID_STAGE_NAME) {
            return (false);
          }

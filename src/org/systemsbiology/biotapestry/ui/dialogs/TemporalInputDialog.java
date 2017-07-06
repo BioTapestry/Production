@@ -42,6 +42,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -108,11 +109,11 @@ public class TemporalInputDialog extends JDialog implements DialogSupport.Dialog
   ** TI structure.
   */ 
   
-  public static TemporalInputDialog temporalInputDialogWrapper(UIComponentSource uics, DataAccessContext dacx, List<String> mappedIDs, boolean doForTable, UndoFactory uFac) {
+  public static TemporalInputDialog temporalInputDialogWrapper(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, List<String> mappedIDs, boolean doForTable, UndoFactory uFac) {
     
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, dacx.getMetabase(), tSrc, uFac, true);
       tasd.setVisible(true);
     }
     

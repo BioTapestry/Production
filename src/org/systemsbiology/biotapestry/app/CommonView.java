@@ -75,6 +75,7 @@ import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.flow.io.LoadSaveSupport;
 import org.systemsbiology.biotapestry.cmd.flow.modelTree.SetCurrentModel;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.TabNameData;
 import org.systemsbiology.biotapestry.event.EventManager;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
@@ -1741,7 +1742,9 @@ public class CommonView implements ModelChangeListener, TreeNodeChangeListener, 
        pmw_.jumpWithNewFilter(pfe);
        return;
      }
-              
+       
+     UiUtil.fixMePrintout("Change tab to different pert data set? Need to close previous pert manage window or launch a second one.");
+     
      if (!uics_.getLSSupport().prepTimeAxisForDataImport(dacx)) {
        return;
      }    
@@ -1750,6 +1753,28 @@ public class CommonView implements ModelChangeListener, TreeNodeChangeListener, 
      pmw_.setVisible(true);
      return;
   }
+   
+   /***************************************************************************
+   **
+   ** If user moves off of a tab to another, we will need to shut down the perturbation management
+   ** window unless the new tab is sharing data with the old tab.
+   */
+    
+   public void perturbationsManagementWindowHandleTabChange(Set<String> shared, String newTabKey, String oldTabKey) {
+     if (pmw_ == null) {
+       return;
+     }
+     if (shared.contains(newTabKey) && shared.contains(oldTabKey)) {
+       return;
+     }
+     if (pmw_ != null) {
+       pmw_.setVisible(false);
+       pmw_.dispose();
+       pmw_ = null;
+     } 
+     return;
+  }
+   
  
   /***************************************************************************
   **

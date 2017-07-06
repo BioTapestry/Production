@@ -35,6 +35,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TemporalInputChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -68,6 +69,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private TabSource tSrc_;
   
   private static final long serialVersionUID = 1L;
   
@@ -82,13 +84,14 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
   ** Constructor 
   */ 
   
-  public TemporalInputTableManageDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+  public TemporalInputTableManageDialog(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {     
     super(uics.getTopFrame(), dacx.getRMan().getString("titmd.title"), true);
     dacx_ = dacx;
     uics_ = uics;
     uFac_ = uFac;
+    tSrc_ = tSrc;
     
-    ResourceManager rMan = dacx_.getRMan();    
+    ResourceManager rMan = uics.getRMan();    
     setSize(500, 700);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -254,7 +257,7 @@ public class TemporalInputTableManageDialog extends JDialog implements ListWidge
     ArrayList<String> list = new ArrayList<String>();
     list.add(name);
            
-    TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(uics_, dacx_, list, true, uFac_);
+    TemporalInputDialog tid = TemporalInputDialog.temporalInputDialogWrapper(uics_, dacx_, tSrc_, list, true, uFac_);
     if (tid != null) {
       tid.setVisible(true);
     }

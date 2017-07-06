@@ -308,7 +308,7 @@ public class SimulationLaunch extends AbstractControlFlow {
       dc = dac_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);      
       support.addEdit(new DatabaseChangeCmd(appState_, dac_, dc));
       */   
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       dacx_.getGenomeSource().clearAllDynamicProxyCaches();
       return;

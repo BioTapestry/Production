@@ -173,10 +173,10 @@ public class DynamicInstanceProxyFactory extends AbstractFactoryClient {
             Iterator<String> nnit = newNodes.iterator();
             while (nnit.hasNext()) {
               String key = nnit.next();
-              tree.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, dacx_); 
+              tree.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dip.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, dacx_.getRMan()); 
             }
           } else {
-            tree.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), parNode, null, dip.getID(), null, dacx_);
+            tree.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dip.getName(), parNode, null, dip.getID(), null, dacx_.getRMan());
           }
         }
         currDip_ = dip;

@@ -396,7 +396,7 @@ public class ModelPropDialogFactory extends DialogFactory {
 		      public void actionPerformed(ActionEvent ev) {
 		        try {
 		          boolean enabled = timeBoundsBox_.isSelected();
-		          if (enabled && !timeAxisHelper_.establishTimeAxis()) {          
+		          if (enabled && !timeAxisHelper_.establishTimeAxis(dacx_.getExpDataSrc(), dacx_)) {          
 		            timeBoundsBox_.setSelected(false);  // gonna cause a callback!
 		            return;
 		          }
@@ -417,8 +417,8 @@ public class ModelPropDialogFactory extends DialogFactory {
 		    minFieldLabel_ = new JLabel("");
 		    maxFieldLabel_ = new JLabel(""); 
 		    
-		    timeAxisHelper_ = new TimeAxisHelper(uics_, dacx_, this, minFieldLabel_, maxFieldLabel_, uFac_);    
-		    timeAxisHelper_.fixMinMaxLabels(false);
+		    timeAxisHelper_ = new TimeAxisHelper(uics_, this, minFieldLabel_, maxFieldLabel_, cfh.getTabSource(), uFac_);    
+		    timeAxisHelper_.fixMinMaxLabels(false, dacx_.getExpDataSrc().getTimeAxisDefinition());
 
 		    minField_ = new JTextField();
 		    UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);
@@ -617,11 +617,13 @@ public class ModelPropDialogFactory extends DialogFactory {
 			    timeBoundsBox_.setSelected(hasTimeBounds);
 			    minFieldLabel_.setEnabled(hasTimeBounds);
 			    minField_.setEnabled(hasTimeBounds);
-			    String minText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(((GenomeInstance)theGenome).getMinTime()) : "";
+			    String minText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(((GenomeInstance)theGenome).getMinTime(),
+                                                                              dacx_.getExpDataSrc().getTimeAxisDefinition()) : "";
 			    minField_.setText(minText);
 			    maxFieldLabel_.setEnabled(hasTimeBounds);    
 			    maxField_.setEnabled(hasTimeBounds);
-			    String maxText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(((GenomeInstance)theGenome).getMaxTime()) : "";
+			    String maxText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(((GenomeInstance)theGenome).getMaxTime(), 
+			                                                                        dacx_.getExpDataSrc().getTimeAxisDefinition()) : "";
 			    maxField_.setText(maxText); 
 			}
 			

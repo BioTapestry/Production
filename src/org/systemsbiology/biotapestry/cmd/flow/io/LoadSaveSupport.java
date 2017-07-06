@@ -465,12 +465,9 @@ public class LoadSaveSupport {
     int preLoadCount = tSrc_.getNumTab();
     
     FilePreparer.FileInputResultClosure retval = loadFromSourceGuts(file, stream, false, 0, null);
-    if (!retval.wasSuccessful()) {
-      
+    if (!retval.wasSuccessful()) {   
       TabOps.clearOutTabs(tSrc_, uics_, preLoadCount);
-   //   newModelOperations(dacx);
-      
-      
+ 
       ddacx_.drop();
       chosenFileName = null;
       cv.manageWindowTitle(null);
@@ -517,26 +514,6 @@ public class LoadSaveSupport {
       TabOps.clearOutTabs(tSrc_, uics_, preTabCount);
       return (retval);              
     }
- 
-    //
-    // Check that everything is chill with each tab, and destroy those that are not:
-    //
-    
-    int numTab = tSrc_.getNumTab();
-    int currIndex = tSrc_.getCurrentTabIndex();
-    boolean badDeal = false;
-    for (int i = preTabCount; i < numTab; i++) {
-      tSrc_.setCurrentTabIndex(i);
-      if (ddacx_.getGenomeSource() == null) {
-        TabOps.clearATab(tSrc_, uics_, i, ddacx_);
-        badDeal = true;
-      }
-    }
-    tSrc_.setCurrentTabIndex(currIndex);
-    if (badDeal) {
-      retval = getFprep(ddacx_).getFileInputError(null);
-      return (retval);  
-    }
     
     tSrc_.setTabAppendUndoSupport(appendSupport);  
     postLoadOperations(false, preTabCount, true, true, appendSupport);
@@ -569,8 +546,15 @@ public class LoadSaveSupport {
         sup.parse(stream);
       }
       if (isForAppend) {
-        ddacx_.getMetabase().doTabAppendPostMerge();
-        List<String> mergeIssues = mf.getMergeIssues();
+        List<String> mergeIssues = new ArrayList<String>();
+        List<String> mfMergeIssues = mf.getMergeIssues();
+        if (mfMergeIssues != null) {
+          mergeIssues.addAll(mfMergeIssues);
+        }
+        List<String> mbMergeIssues = ddacx_.getMetabase().doTabAppendPostMerge();
+        if (mbMergeIssues != null) {
+          mergeIssues.addAll(mbMergeIssues);
+        }
         if ((mergeIssues != null) && !mergeIssues.isEmpty()) {
           MessageTableReportingDialog mtrd = 
                    new MessageTableReportingDialog(uics_,
@@ -578,7 +562,7 @@ public class LoadSaveSupport {
                                                    "tabMerge.issuesTitle", 
                                                    "tabMerge.issuesHeader", 
                                                    "tabMerge.issuesColumn", 
-                                                   new Dimension(800, 800), false, true);
+                                                   new Dimension(1000, 400), false, true);
           mtrd.setVisible(true);
         }
       }      
@@ -877,7 +861,7 @@ public class LoadSaveSupport {
       return (true);
     }
     
-    TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx, uFac_);
+    TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics_, dacx, dacx.getMetabase(), tSrc_, uFac_, true);
     tasd.setVisible(true);
     
     tad = dacx.getExpDataSrc().getTimeAxisDefinition();

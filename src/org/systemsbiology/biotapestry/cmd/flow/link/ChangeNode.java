@@ -33,6 +33,7 @@ import java.util.Set;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.MainCommands;
 import org.systemsbiology.biotapestry.cmd.PanelCommands;
@@ -893,7 +894,7 @@ public class ChangeNode extends AbstractControlFlow {
       UndoSupport support = uFac_.provideUndoSupport("undo.changeLinkSourceNode", dacx_);    
       PostSourceNodeChanger changer = new PostSourceNodeChanger();
       changer.manageTheChange(uics_, throughSeg, breakSegID, padNum, quickKillMap, ambiguity,
-                              segID, sourceID, dacx_, support);
+                              segID, sourceID, dacx_, tSrc_, support);
       return (true); 
     }
     
@@ -1075,7 +1076,7 @@ public class ChangeNode extends AbstractControlFlow {
     
     void manageTheChange(UIComponentSource uics, Set<String> throughSeg, LinkSegmentID breakSegID, 
                          int padNum, Map<String, Map<String, String>> quickKillMap, NodeChange ambiguity,
-                         LinkSegmentID segID, String sourceID, StaticDataAccessContext rcxR, UndoSupport support) { 
+                         LinkSegmentID segID, String sourceID, StaticDataAccessContext rcxR, TabSource tSrc, UndoSupport support) { 
       
       muics_ = uics;
       mdacx_ = rcxR;
@@ -1084,7 +1085,7 @@ public class ChangeNode extends AbstractControlFlow {
         new SourceNodeChangeRunner(throughSeg, breakSegID, 
                                    padNum, quickKillMap, ambiguity,
                                    segID, sourceID,
-                                   rcxR, support);
+                                   rcxR, tSrc, support);
       //
       // We may need to do lots of link relayout operations.  This MUST occur on a background
       // thread!
@@ -1124,6 +1125,7 @@ public class ChangeNode extends AbstractControlFlow {
   private static class SourceNodeChangeRunner extends BackgroundWorker {
 
     private Set<String> throughSeg_;
+    private TabSource tSrc_;
     private LinkSegmentID breakSegID_; 
     private int padNum_;
     private Map<String, Map<String, String>> quickKillMap_; 
@@ -1137,9 +1139,10 @@ public class ChangeNode extends AbstractControlFlow {
     public SourceNodeChangeRunner(Set<String> throughSeg, LinkSegmentID breakSegID, 
                                   int padNum, Map<String, Map<String, String>> quickKillMap, NodeChange ambiguity,
                                   LinkSegmentID segID, String sourceID,
-                                  StaticDataAccessContext rcxR, UndoSupport support) {
+                                  StaticDataAccessContext rcxR, TabSource tSrc, UndoSupport support) {
       super(new LinkRouter.RoutingResult());
       throughSeg_ = throughSeg;
+      tSrc_ = tSrc;
       breakSegID_ = breakSegID;
       padNum_ = padNum;
       quickKillMap_ = quickKillMap;
@@ -1155,7 +1158,7 @@ public class ChangeNode extends AbstractControlFlow {
       requestList_ = 
         changeLinkSourceNodeBackground(throughSeg_, breakSegID_, padNum_, quickKillMap_, 
                                        ambiguity_, segID_, sourceID_, 
-                                       support_, rcxR_, this, 0.0, 0.2);
+                                       tSrc_, support_, rcxR_, this, 0.0, 0.2);
       LayoutOptions lopt = new LayoutOptions(rcxR_.getLayoutOptMgr().getLayoutOptions());
       LinkRouter.RoutingResult result = LayoutLinkSupport.relayoutLinksGlobally(rcxR_, requestList_, support_, lopt, this, 0.2, 1.0);
       int numReq = requestList_.size();
@@ -1181,6 +1184,7 @@ public class ChangeNode extends AbstractControlFlow {
                                                                                            int padNum, Map<String, Map<String, String>> quickKillMap, 
                                                                                            NodeChange ambiguity,
                                                                                            LinkSegmentID segID, String sourceID,
+                                                                                           TabSource tSrc,
                                                                                            UndoSupport support,
                                                                                            StaticDataAccessContext rcxR,
                                                                                            BTProgressMonitor monitor,
@@ -1312,7 +1316,7 @@ public class ChangeNode extends AbstractControlFlow {
               // Get the source pad figured out.  We may need to force the issue
               // and change pads around to get a free pad:
               //
-              int currPadNum = prepareSourcePad(newNodeID, rcxi, rcxR, padNum, support);      
+              int currPadNum = prepareSourcePad(newNodeID, rcxi, rcxR, padNum, tSrc, support);      
                   
               undo = gi.changeLinkageSourceNode(childLink, newNodeID, currPadNum);
               support.addEdit(new GenomeChangeCmd(undo));    
@@ -1489,14 +1493,14 @@ public class ChangeNode extends AbstractControlFlow {
     */  
    
     private static int prepareSourcePad(String nodeID, StaticDataAccessContext rcxI, StaticDataAccessContext rcxR,
-                                        int prefPad, 
+                                        int prefPad, TabSource tSrc,  
                                         UndoSupport support) {  
    
       Integer srcPad = rcxI.getCurrentGenome().getSourcePad(nodeID);
       if (srcPad == null) {
         srcPad = PropagateSupport.findSourcePad(nodeID, prefPad, rcxI, rcxR, null);
         if (srcPad == null) {
-          PropagateSupport.emergencyPadForce(nodeID, rcxI, support);  // revert to root configuration
+          PropagateSupport.emergencyPadForce(nodeID, rcxI, tSrc, support);  // revert to root configuration
           srcPad = new Integer(prefPad);
         } 
       }

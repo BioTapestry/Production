@@ -470,7 +470,7 @@ public class EditGroupProperties extends AbstractControlFlow {
       PertDataChange[] pdc = pd.changeRegionNameForRegionRestrictions(oldName, newName);
       if (pdc.length > 0) {
         support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       }
       
       //

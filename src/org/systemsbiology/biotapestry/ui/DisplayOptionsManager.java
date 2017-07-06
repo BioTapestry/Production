@@ -113,7 +113,7 @@ public class DisplayOptionsManager implements MinimalDispOptMgr {
     newOpts.setBranchMode(DisplayOptions.OUTLINED_BUS_BRANCHES);
     DisplayOptionsChange doc = setDisplayOptions(newOpts);
     if (support != null) {
-      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(dacx, doc);
+      DisplayOptionsChangeCmd docc = new DisplayOptionsChangeCmd(doc);
       support.addEdit(docc);
       LayoutChangeEvent lcev = new LayoutChangeEvent(dacx.getCurrentLayoutID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);

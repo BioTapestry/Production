@@ -452,7 +452,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         }
       }
       if (aChange) {
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       }
       return;
     } 
@@ -546,7 +546,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         }
       }
       if (aChange) {
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       }
       return;
     }
@@ -640,7 +640,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
         }
       }
       if (aChange) {
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       }
       return;
     } 
@@ -1092,7 +1092,7 @@ public class MergeDuplicateNodes extends AbstractControlFlow {
       //
       
       for (String merged : mergeMap_.keySet()) {
-        RemoveNode.deleteNodeFromModelCore(uics_, merged, dacx_, support, null, false, uFac_);
+        RemoveNode.deleteNodeFromModelCore(uics_, tSrc_, merged, dacx_, support, null, false, uFac_);
       }
       
       //

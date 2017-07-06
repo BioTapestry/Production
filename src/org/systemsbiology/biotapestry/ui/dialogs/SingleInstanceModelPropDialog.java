@@ -38,6 +38,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.tree.TreeNode;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.NavTreeChangeCmd;
@@ -104,7 +105,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
   */ 
   
   public SingleInstanceModelPropDialog(UIComponentSource uics, StaticDataAccessContext dacx, 
-                                       String targetID, NavTree nt, TreeNode popupNode, UndoFactory uFac) {
+                                       String targetID, NavTree nt, TreeNode popupNode, TabSource tSrc, UndoFactory uFac) {
     super(uics.getTopFrame(), dacx.getRMan().getString("simprop.title"), true);
     uics_ = uics;
     dacx_ = dacx;
@@ -171,7 +172,7 @@ public class SingleInstanceModelPropDialog extends JDialog {
       public void actionPerformed(ActionEvent ev) {
         try {
           boolean enabled = timeBoundsBox_.isSelected();
-          if (enabled && !timeAxisHelper_.establishTimeAxis()) {          
+          if (enabled && !timeAxisHelper_.establishTimeAxis(dacx_.getExpDataSrc(), dacx_)) {          
             timeBoundsBox_.setSelected(false);  // gonna cause a callback!
             return;
           }
@@ -192,8 +193,8 @@ public class SingleInstanceModelPropDialog extends JDialog {
     minFieldLabel_ = new JLabel("");
     maxFieldLabel_ = new JLabel(""); 
     
-    timeAxisHelper_ = new TimeAxisHelper(uics_, dacx_, this, minFieldLabel_, maxFieldLabel_, uFac_);    
-    timeAxisHelper_.fixMinMaxLabels(false);
+    timeAxisHelper_ = new TimeAxisHelper(uics_, this, minFieldLabel_, maxFieldLabel_, tSrc, uFac_);    
+    timeAxisHelper_.fixMinMaxLabels(false, dacx_.getExpDataSrc().getTimeAxisDefinition());
 
     minField_ = new JTextField();
     UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);
@@ -368,11 +369,11 @@ public class SingleInstanceModelPropDialog extends JDialog {
     timeBoundsBox_.setSelected(hasTimeBounds);
     minFieldLabel_.setEnabled(hasTimeBounds);
     minField_.setEnabled(hasTimeBounds);
-    String minText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(theGenome.getMinTime()) : "";
+    String minText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(theGenome.getMinTime(), dacx_.getExpDataSrc().getTimeAxisDefinition()) : "";
     minField_.setText(minText);
     maxFieldLabel_.setEnabled(hasTimeBounds);    
     maxField_.setEnabled(hasTimeBounds);
-    String maxText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(theGenome.getMaxTime()) : "";
+    String maxText = (hasTimeBounds) ? timeAxisHelper_.timeValToDisplay(theGenome.getMaxTime(), dacx_.getExpDataSrc().getTimeAxisDefinition()) : "";
     maxField_.setText(maxText);   
     return;
   }
@@ -400,11 +401,11 @@ public class SingleInstanceModelPropDialog extends JDialog {
     int minResult = TimeAxisDefinition.INVALID_STAGE_NAME;
     int maxResult = TimeAxisDefinition.INVALID_STAGE_NAME;
     if (needBounds) {
-      minResult = timeAxisHelper_.timeDisplayToIndex(minField_.getText());
+      minResult = timeAxisHelper_.timeDisplayToIndex(minField_.getText(), dacx_.getExpDataSrc().getTimeAxisDefinition());
       if (minResult == TimeAxisDefinition.INVALID_STAGE_NAME) {
         return (false);
       }
-      maxResult = timeAxisHelper_.timeDisplayToIndex(maxField_.getText());
+      maxResult = timeAxisHelper_.timeDisplayToIndex(maxField_.getText(), dacx_.getExpDataSrc().getTimeAxisDefinition());
       if (maxResult == TimeAxisDefinition.INVALID_STAGE_NAME) {
         return (false);
       }

@@ -234,7 +234,7 @@ public class DBGenomeFactory extends AbstractFactoryClient {
         ((FactoryWhiteboard)sharedWhiteboard_).genome = dbg;
         NavTree tree = dacx_.getGenomeSource().getModelHierarchy();
         if (tree.needLegacyGlue()) {
-          tree.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID(dbg.getID()), null, null, dacx_);           
+          tree.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID(dbg.getID()), null, null, dacx_.getRMan());           
         }
         return (dbg);
       }

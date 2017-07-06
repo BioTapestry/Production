@@ -143,15 +143,15 @@ public class Database implements GenomeSource, LayoutSource,
  
   /***************************************************************************
   **
-  ** Not-null constructor. Gotta ditch the uics:
+  ** Not-null constructor.
   */
 
-  public Database(String id, int index, UIComponentSource uics, Metabase mb, TabPinnedDynamicDataAccessContext ddacx) {
+  public Database(String id, int index, UIComponentSource uics, Metabase mb) {
     mb_ = mb;
     uics_ = uics;
     id_ = id;
     index_ = index;
-    String defName = ddacx.getRMan().getString("database.defaultModelName");
+    String defName = uics_.getRMan().getString("database.defaultModelName");
     tabData_ = new TabNameData(defName, defName, defName);
     instances_ = new HashMap<String, GenomeInstance>();
     layouts_ = new HashMap<String, Layout>();
@@ -163,7 +163,7 @@ public class Database implements GenomeSource, LayoutSource,
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
     startupView_ = new StartupView();
-    installDataSharing(null, ddacx);
+    installDataSharing(null);
 
     instanceInstructionSets_ = new HashMap<String, InstanceInstructionSet>();
     uics_.getEventMgr().addModelChangeListener(this);
@@ -175,13 +175,13 @@ public class Database implements GenomeSource, LayoutSource,
   ** Install initialized data sharing policy
   */
 
-  public void installDataSharing(Metabase.DataSharingPolicy dsp, TabPinnedDynamicDataAccessContext ddacx) {
+  public void installDataSharing(Metabase.DataSharingPolicy dsp) {
     if (dsp == null) {     
       isDataSharing_ = Boolean.valueOf(false);
        // Actually need the dynamic one, since still building the database: 
       localTimeAxis_ = new TimeAxisDefinition(uics_.getRMan());
       localPertData_ = new PerturbationData();
-      localTimeCourse_ = new TimeCourseData(ddacx);
+      localTimeCourse_ = new TimeCourseData();
       localCopiesPerEmb_ = new CopiesPerEmbryoData();
       return; 
     }    
@@ -190,7 +190,7 @@ public class Database implements GenomeSource, LayoutSource,
     }
     localTimeAxis_ = (dsp.shareTimeUnits) ? null : new TimeAxisDefinition(uics_.getRMan());
     localPertData_ = (dsp.sharePerts) ? null : new PerturbationData();
-    localTimeCourse_ = (dsp.shareTimeCourses) ? null : new TimeCourseData(ddacx);
+    localTimeCourse_ = (dsp.shareTimeCourses) ? null : new TimeCourseData();
     localCopiesPerEmb_ = (dsp.sharePerEmbryoCounts) ? null : new CopiesPerEmbryoData();
     isDataSharing_ = Boolean.valueOf(dsp.isSpecifyingSharing());
     return;
@@ -375,12 +375,12 @@ public class Database implements GenomeSource, LayoutSource,
   */
 
   public void newModelViaDACX(TabPinnedDynamicDataAccessContext ddacx) {
-    dropViaDACX(ddacx);
+    dropViaDACX(ddacx.getRMan());
     genome_ = new DBGenome(ddacx, ddacx.getRMan().getString("tree.FullGenome"), "bioTapA");
     labels_.addExistingLabel("bioTapA");
     String layoutID = labels_.getNextLabel();    
     layouts_.put(layoutID, new Layout(layoutID, "bioTapA"));
-    navTree_.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID("bioTapA"), null, null, ddacx); 
+    navTree_.addNode(NavTree.Kids.ROOT_MODEL, null, null, new NavTree.ModelID("bioTapA"), null, null, ddacx.getRMan()); 
     
     
     modelData_ = null;
@@ -388,16 +388,8 @@ public class Database implements GenomeSource, LayoutSource,
     rangeData_ = new TemporalInputRangeData(ddacx);
     pdms_ = new PerturbationDataMaps();
     
-    installDataSharing(null, ddacx);
+    installDataSharing(null);
     
-    //
-    // We do NOT clear out display options, but we do need to drop
-    // defs that depend on the time def, so the time axis definition 
-    // is not frozen for a new model:
-    //
-
-    ddacx.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
-  
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
     startupView_ = new StartupView();     
@@ -409,23 +401,24 @@ public class Database implements GenomeSource, LayoutSource,
   ** Drop everything
   */
 
-  public void dropViaDACX(TabPinnedDynamicDataAccessContext ddacx) {
+  public void dropViaDACX(ResourceManager rMan) {
     genome_ = null;
     layouts_.clear();
     instances_.clear();
     dynProxies_.clear();
-    String defName = ddacx.getRMan().getString("database.defaultModelName");
+    String defName = rMan.getString("database.defaultModelName");
     tabData_ = new TabNameData(defName, defName, defName);
+    // Not all input files have perturbation data maps, so this does not
+    // get filled in during I/O. Cannot be set to null.
+    pdms_ = new PerturbationDataMaps();
+    rangeData_ = null;
+    installDataSharing(null);
     // Have to clear out above before clearing the tree so that
     // the tree clears correctly:
     navTree_.clearOut();
     modelData_ = null;
     tcdm_ = null;
-    // Not all input files have perturbation data maps, so this does not
-    // get filled in during I/O. Cannot be set to null.
-    pdms_ = new PerturbationDataMaps();
-    rangeData_ = null;
-    installDataSharing(null, ddacx);
+
     
     workspace_ = new Workspace();
     uniqueNameSuffix_ = 1;
@@ -2527,6 +2520,24 @@ public class Database implements GenomeSource, LayoutSource,
     return (retval);
   }
  
+  /***************************************************************************
+  **
+  ** If the user appends tabs from file that are sharing, and we are already sharing,
+  ** we currently toss the new shared data. We need to let the DBs sharing the data
+  ** to correctly null out their shring policy to be all local. No undo as this is
+  ** part of I/O
+  */
+
+  public void detachSharedData() {
+    List<DatabaseChange> retval = new ArrayList<DatabaseChange>();
+    isDataSharing_ = Boolean.valueOf(false);
+    localTimeAxis_ = new TimeAxisDefinition(uics_.getRMan());
+    localPertData_ = new PerturbationData();
+    localTimeCourse_ = new TimeCourseData();
+    localCopiesPerEmb_ = new CopiesPerEmbryoData();
+    return; 
+  }     
+  
   /***************************************************************************
   **
   ** When the user starts up, the data sets that can be shared or local are all local to the

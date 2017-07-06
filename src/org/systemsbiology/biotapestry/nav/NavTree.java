@@ -59,6 +59,7 @@ import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 
@@ -318,7 +319,8 @@ public class NavTree extends DefaultTreeModel {
   ** Add a node to the Nav Tree with the given information at the set index
   */ 
   
-  public NodeAndChanges addNode(Kids type, String name, TreeNode parNode, ModelID modelID, String proxyID, Integer indexObj, DataAccessContext dacx) {
+  public NodeAndChanges addNode(Kids type, String name, TreeNode parNode, ModelID modelID, 
+                                String proxyID, Integer indexObj, ResourceManager rMan) {
     int index;
     NavTreeChange retval = new NavTreeChange();
     retval.oldRoot = deepCopyRoot();
@@ -343,7 +345,7 @@ public class NavTree extends DefaultTreeModel {
         }
         // parNode is null for ROOT (legacy usage):
         parentNode = (DefaultMutableTreeNode)this.getRoot();
-        name = dacx.getRMan().getString("tree.FullGenome");
+        name = rMan.getString("tree.FullGenome");
         index = 0;
         break;
       case ROOT_INSTANCE:

@@ -35,7 +35,9 @@ import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogBuildArgs;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogFactory;
 import org.systemsbiology.biotapestry.ui.dialogs.factory.DialogPlatform;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.BTTransmitResultsDialog;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -122,10 +124,6 @@ public class SetDataSharingDialogFactory extends DialogFactory {
     ////////////////////////////////////////////////////////////////////////////  
   
     private JComboBox otherTabs_;
-    private JCheckBox shareTimeUnitsBox_;  
-    private JCheckBox shareTimeCourseBox_;
-    private JCheckBox sharePertBox_;
-    private JCheckBox sharePerEmbryoCountBox_;
     private boolean areSharing_;
     private List<TabSource.AnnotatedTabData> choices_;
    
@@ -143,66 +141,26 @@ public class SetDataSharingDialogFactory extends DialogFactory {
     */ 
     
     public DesktopDialog(ServerControlFlowHarness cfh, BuildArgs ba) { 
-      super(cfh, "dataSharingPolicy.title", new Dimension(650, 350), 4, new DataSharingRequest(), false);
+      super(cfh, "dataSharingPolicy.title", new Dimension(650, 200), 4, new DataSharingRequest(), false);
       areSharing_ = ba.areSharing;
       choices_ = ba.choices;
       
-      ForceUnits forun = new ForceUnits();
-      WannaShare ws = new WannaShare();
-     
-      JLabel topLabel = new JLabel(rMan_.getString("dataSharingPolicy.shareTimeUnitInfo"));
-      addWidgetFullRow(topLabel, false);  
+      JLabel topLabel = new JLabel(UiUtil.convertMessageToHtml(rMan_.getString("dataSharingPolicy.shareTimeUnitInfo")));
+      addWidgetFullRow(topLabel, false, false); 
     
-      boolean showChoices = (!areSharing_ && (choices_.size() >= 2));
-      String instruct = (showChoices) ? rMan_.getString("dataSharingPolicy.selectWhichAndModel") : rMan_.getString("dataSharingPolicy.selectWhich");
+      String instruct =  rMan_.getString("dataSharingPolicy.selectWhich");
       
       JLabel chooseLabel = new JLabel(instruct);
       addWidgetFullRow(chooseLabel, false);  
       
       //
-      // If we need to choose who to share with, give the choice:
+      // Chooose either to share, or not:
       //
-      if (showChoices) {
-        Vector<TrueObjChoiceContent> otherTabs = buildOptions(choices_);
-        JLabel tabLabel = new JLabel(rMan_.getString("dataSharingPolicy.withWho"));
-        otherTabs_ = new JComboBox(otherTabs);
-        addLabeledWidget(tabLabel, otherTabs_, false, false);
-      }
-          
-      //
-      // Ask if we are going to share time units
-      //
-     
-      shareTimeUnitsBox_ = new JCheckBox(rMan_.getString("dataSharingPolicy.shareTimeUnits"), false);
-      shareTimeUnitsBox_.addActionListener(ws);
-      addWidgetFullRow(shareTimeUnitsBox_, false);
-  
-      //
-      // Ask if we are going to share time course data
-      //
-     
-      shareTimeCourseBox_ = new JCheckBox(rMan_.getString("dataSharingPolicy.shareTimeCourse"), false);
-      shareTimeCourseBox_.addActionListener(forun);
-      shareTimeCourseBox_.addActionListener(ws);
-      addWidgetFullRow(shareTimeCourseBox_, false);
       
-      //
-      // Ask if we are going to share perturbation data
-      //
-     
-      sharePertBox_ = new JCheckBox(rMan_.getString("dataSharingPolicy.sharePertData"), false);
-      sharePertBox_.addActionListener(forun);
-      sharePertBox_.addActionListener(ws);
-      addWidgetFullRow(sharePertBox_, false);
-      
-      //
-      // Ask if we are going to share per embryo counts
-      //
-     
-      sharePerEmbryoCountBox_ = new JCheckBox(rMan_.getString("dataSharingPolicy.sharePerEmbryo"), false);
-      sharePerEmbryoCountBox_.addActionListener(forun);
-      sharePerEmbryoCountBox_.addActionListener(ws);
-      addWidgetFullRow(sharePerEmbryoCountBox_, false);
+      Vector<TrueObjChoiceContent> otherTabs = buildOptions(choices_, uics_.getRMan());
+      JLabel tabLabel = new JLabel(rMan_.getString("dataSharingPolicy.withWho"));
+      otherTabs_ = new JComboBox(otherTabs);
+      addLabeledWidget(tabLabel, otherTabs_, false, false);    
       
       finishConstruction(); 
     }
@@ -211,35 +169,7 @@ public class SetDataSharingDialogFactory extends DialogFactory {
     //
     // INNER CLASSES
     //
-    ////////////////////////////////////////////////////////////////////////////
-    
-    private class ForceUnits implements ActionListener {
-      public void actionPerformed(ActionEvent ev) {
-        try {
-          if (shareTimeCourseBox_.isSelected() || sharePertBox_.isSelected() || sharePerEmbryoCountBox_.isSelected()) {
-            shareTimeUnitsBox_.setSelected(true);
-          }
-        } catch (Exception ex) {
-          uics_.getExceptionHandler().displayException(ex);
-        }
-        return;
-      }
-    } 
-    
-    private class WannaShare implements ActionListener {
-      public void actionPerformed(ActionEvent ev) {
-        try {
-          boolean sharing = (shareTimeCourseBox_.isSelected() || sharePertBox_.isSelected() || 
-                             sharePerEmbryoCountBox_.isSelected() || shareTimeUnitsBox_.isSelected());
-          if (otherTabs_ != null) {
-            otherTabs_.setEnabled(sharing);
-          }
-        } catch (Exception ex) {
-          uics_.getExceptionHandler().displayException(ex);
-        }
-        return;
-      }
-    }
+    ////////////////////////////////////////////////////////////////////////////   
     
     ////////////////////////////////////////////////////////////////////////////
     //
@@ -270,11 +200,6 @@ public class SetDataSharingDialogFactory extends DialogFactory {
       if ((otherTabs_ != null) && otherTabs_.isEnabled()) {
         crq.startSharingWith = (String)((TrueObjChoiceContent)otherTabs_.getSelectedItem()).val;
       }
-      
-      crq.shareTimeUnits = shareTimeUnitsBox_.isSelected();
-      crq.shareTimeCourses = shareTimeCourseBox_.isSelected();
-      crq.sharePerts = sharePertBox_.isSelected();
-      crq.sharePerEmbryoCounts = sharePerEmbryoCountBox_.isSelected();
       crq.haveResult = true;
       return (true);
     }
@@ -284,8 +209,10 @@ public class SetDataSharingDialogFactory extends DialogFactory {
     ** Do the bundle 
     */
 
-    protected Vector<TrueObjChoiceContent> buildOptions(List<TabSource.AnnotatedTabData> tabs) {    
+    protected Vector<TrueObjChoiceContent> buildOptions(List<TabSource.AnnotatedTabData> tabs, ResourceManager rMan) {     
       Vector<TrueObjChoiceContent> retval = new Vector<TrueObjChoiceContent>();
+      TrueObjChoiceContent noShare = new TrueObjChoiceContent(rMan.getString("dataSharingPolicy.noNotShare"), null);
+      retval.add(noShare);
       for (TabSource.AnnotatedTabData atd : tabs) {
         TrueObjChoiceContent cc = new TrueObjChoiceContent(atd.tnd.getTitle(), atd.dbID);
         retval.add(cc);
@@ -304,10 +231,6 @@ public class SetDataSharingDialogFactory extends DialogFactory {
 
     private boolean haveResult;
     public String startSharingWith;
-    public boolean shareTimeUnits;  
-    public boolean shareTimeCourses;    
-    public boolean sharePerts; 
-    public boolean sharePerEmbryoCounts; 
     private boolean forApply_;
     
     public void clearHaveResults() {

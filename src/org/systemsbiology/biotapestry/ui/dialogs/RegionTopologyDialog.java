@@ -42,6 +42,7 @@ import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.util.ResourceManager;
@@ -100,10 +101,11 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
   ** topo structure.
   */ 
   
-  public static RegionTopologyDialog regionTopoDialogWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+  public static RegionTopologyDialog regionTopoDialogWrapper(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
+    TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, dacx.getMetabase(), tSrc, uFac, true);
       tasd.setVisible(true);
     }
     
@@ -117,7 +119,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
       return (null);
     }
     
-    RegionTopologyDialog rtd = new RegionTopologyDialog(uics, dacx, uFac);
+    RegionTopologyDialog rtd = new RegionTopologyDialog(uics, dacx, tad, tcd, uFac);
     return (rtd);
   }
   
@@ -132,11 +134,12 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
   ** Constructor 
   */ 
   
-  private RegionTopologyDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {    
+  private RegionTopologyDialog(UIComponentSource uics, DataAccessContext dacx, TimeAxisDefinition tad, TimeCourseData tcd, UndoFactory uFac) {    
     super(uics.getTopFrame(), dacx.getRMan().getString("regionTopo.title"), true);    
     uics_ = uics;
     dacx_ = dacx;
     uFac_ = uFac;
+    tad_ = tad;
     ResourceManager rMan = dacx_.getRMan();    
     setSize(640, 520);
     JPanel cp = (JPanel)getContentPane();
@@ -155,8 +158,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
     // Build the position panel tabs:
     //
 
-    TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
-    TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+ 
     Iterator<TimeCourseData.TopoTimeRange> timeit = tcd.getRegionTopologyTimes();    
     topoLocs_ = tcd.getRegionTopologyLocator().clone();
     currTimes_ = new ArrayList<Integer>();
@@ -166,7 +168,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
       TimeCourseData.RegionTopology regTopo = tcd.getRegionTopology(ttr);
       TabData ctd = new TabData();
       RegionTopologyPanel tabPanel = buildATab(ctd, regTopo, null, topoLocs_);
-      tabPane_.addTab(ttr.toString(), tabPanel);
+      tabPane_.addTab(ttr.heavyToString(tad, rMan), tabPanel);
       currTimes_.add(Integer.valueOf(ttr.minTime));
       if (!timeit.hasNext()) {
         currTimes_.add(Integer.valueOf(ttr.maxTime));        
@@ -439,7 +441,7 @@ public class RegionTopologyDialog extends JDialog implements ChangeListener {
       int currTime = tabBreak.intValue();
       if (i != 0) {
         int maxTime = (i == (num - 1)) ? currTime : currTime - 1;
-        TimeCourseData.TopoTimeRange ttr = new TimeCourseData.TopoTimeRange(dacx_, lastTime, maxTime);
+        TimeCourseData.TopoTimeRange ttr = new TimeCourseData.TopoTimeRange(lastTime, maxTime);
         newRanges.add(ttr);
       }
       lastTime = currTime;   

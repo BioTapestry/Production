@@ -48,6 +48,7 @@ import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DatabaseChange;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
@@ -271,7 +272,7 @@ public class SimpleBuilds extends AbstractControlFlow {
     
     private void p2RI() {
       StaticDataAccessContext rcxR = dacx_.getContextForRoot();
-      int sliceMode = (new BuildSupport(uics_, rcxR, uFac_)).getSliceMode(uics_.getTopFrame());
+      int sliceMode = (new BuildSupport(uics_, tSrc_, uFac_)).getSliceMode(uics_.getTopFrame());
       if (sliceMode == TimeCourseData.NO_SLICE) {
         return;
       }  
@@ -323,6 +324,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         //
         // Figure out the regions and times for importing:
         //
+        TimeAxisDefinition tad = rcxR.getExpDataSrc().getTimeAxisDefinition();
         TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
         TimeCourseDataMaps tcdm = rcxR.getDataMapSrc().getTimeCourseDataMaps();
         List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(TimeCourseData.SLICE_BY_TIMES, null);
@@ -349,13 +351,14 @@ public class SimpleBuilds extends AbstractControlFlow {
           // Create genome instance:
           //
           String nextKey = rcxR.getGenomeSource().getNextKey();
-          GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
+          GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(tad, uics_.getRMan()), nextKey, null);
           rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
           String nextloKey = rcxR.getGenomeSource().getNextKey();
           Layout lo = new Layout(nextloKey, nextKey);
           rcxR.getLayoutSource().addLayout(nextloKey, lo);
           TreeNode parNode = nt.nodeForModel(rcxR.getGenomeSource().getRootDBGenome().getID());
-          nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
+          nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(tad, uics_.getRMan()), parNode, 
+                     new NavTree.ModelID(nextKey), null, null, uics_.getRMan());
           dtm.nodeStructureChanged(rootNode);
           StaticDataAccessContext rcxI = new StaticDataAccessContext(rcxR, gi, lo);
           
@@ -420,7 +423,7 @@ public class SimpleBuilds extends AbstractControlFlow {
               if (trgInst == -1) {
                 continue;
               }          
-              PropagateSupport.propagateLinkageNoLayout(rcxI, (DBLinkage)link, rcxR, grpTup, support, null);
+              PropagateSupport.propagateLinkageNoLayout(rcxI, tSrc_, (DBLinkage)link, rcxR, grpTup, support, null);
             }
           }
           DatabaseChange dc = rcxI.getLayoutSource().startLayoutUndoTransaction(nextloKey);
@@ -493,6 +496,7 @@ public class SimpleBuilds extends AbstractControlFlow {
       double weak = dopt.getWeakExpressionLevel();
       
       TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
+      TimeAxisDefinition tad = rcxR.getExpDataSrc().getTimeAxisDefinition();
       List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(sliceMode, null);
       NavTree nt = rcxR.getGenomeSource().getModelHierarchy();
       DefaultTreeModel dtm = uics_.getTree().getTreeModel();
@@ -506,7 +510,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         // Create genome instance:
         //
         String nextKey = rcxR.getGenomeSource().getNextKey();
-        GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
+        GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(tad, uics_.getRMan()), nextKey, null);
         // FIX ME!! None of these changes are being added to undo support!<<<<<<<<
         gi.setTimes(ris.minTime, ris.maxTime);
         rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
@@ -514,7 +518,7 @@ public class SimpleBuilds extends AbstractControlFlow {
         Layout lo = new Layout(nextloKey, nextKey);
         rcxR.getLayoutSource().addLayout(nextloKey, lo);
         TreeNode parNode = nt.nodeForModel(rcxR.getGenomeSource().getRootDBGenome().getID());
-        nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
+        nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(tad, uics_.getRMan()), parNode, new NavTree.ModelID(nextKey), null, null, uics_.getRMan());
         dtm.nodeStructureChanged(rootNode);
         Map<String, Set<String>> regions = new HashMap<String, Set<String>>();
         instanceContents.put(nextKey, regions);
@@ -531,7 +535,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           // Build a group for each region in the current instance:
           //
           Point2D groupCenter = new Point2D.Double(400.0 * count, 500.0);
-          String regionKey = (new BuildSupport(uics_, rcxR, uFac_)).buildRegion(rcxI, region, groupCenter, support);
+          String regionKey = (new BuildSupport(uics_, tSrc_, uFac_)).buildRegion(rcxI, region, groupCenter, support);
           HashSet<String> regionMembers = new HashSet<String>();        
           //
           // Create nodes in root genome:

@@ -29,9 +29,11 @@ import java.util.Vector;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
@@ -546,7 +548,9 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
       da.killOffDependencies(refs, tcd_, support);
       PertDataChange pdc = pd_.deleteMeasureScale(selKey);
       support.addEdit(new PertDataChangeCmd(pdc));
-      pd_.modifyForPertDataChange(support);
+      Metabase mb = dacx_.getMetabase();
+      String tab = mb.getTabForPD(pd_);
+      pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
       support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
@@ -636,7 +640,9 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeMeasureScales(joinKeys_, pendingKey_, revisedScale);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    pd_.modifyForPertDataChange(support);
+    Metabase mb = dacx.getMetabase();
+    String tab = mb.getTabForPD(pd_);
+    pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -726,7 +732,9 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
                                                                          : "undo.editMeasureScale", dacx);    
     PertDataChange pdc = pd_.setMeasureScale(revisedScale);
     support.addEdit(new PertDataChangeCmd(pdc));
-    pd_.modifyForPertDataChange(support);
+    Metabase mb = dacx.getMetabase();
+    String tab = mb.getTabForPD(pd_);
+    pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();

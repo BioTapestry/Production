@@ -494,7 +494,7 @@ public class DialogSupport {
     cp.add(tf2, gbc_);
   
      
-    if (labelRS2 != null) {
+    if (labelRS3 != null) {
       JLabel lab3 = (labelRS3 instanceof String) ? new JLabel(rMan_.getString((String)labelRS3)) : (JLabel)labelRS3;
       UiUtil.gbcSet(gbc_, twoThirdCol, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 0.0);       
       cp.add(lab3, gbc_);  

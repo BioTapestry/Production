@@ -38,6 +38,7 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
 
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -77,6 +78,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   private TimeAxisDefinition tad_;
   private DataAccessContext dacx_;
   private UIComponentSource uics_;
+  private TabSource tSrc_;
   private UndoFactory uFac_;
   
   private static final long serialVersionUID = 1L;
@@ -92,11 +94,12 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
   ** Constructor 
   */ 
   
-  public TimeCourseTableManageDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {     
+  public TimeCourseTableManageDialog(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {     
     super(uics.getTopFrame(), dacx.getRMan().getString("tctmd.title"), true);
     uics_ = uics;
     dacx_ = dacx;
     uFac_ = uFac;
+    tSrc_ = tSrc;
     
     ResourceManager rMan = uics_.getRMan();    
     setSize(700, 700);
@@ -132,7 +135,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
         try {
           TimeCourseGene targ = tcd_.getTimeCourseDataCaseInsensitive((String)(lw_.getSelectedObjects()[0]));
           PerturbExpressionEntryDialog tced = 
-            PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(uics_, pd_, tcd_, tad_, targ.getName(), uFac_);
+            PerturbExpressionEntryDialog.launchIfPerturbSourcesExist(uics_, pd_, tcd_, tad_, dacx_, targ.getName(), uFac_);
           if (tced != null) {
             tced.setVisible(true);
           }
@@ -191,7 +194,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     //
     
     if (!tcd_.hasGeneTemplate()) {        
-      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
+      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeCourseSetupDialogWrapper(uics_, dacx_, tSrc_, uFac_);
       if (tcsd == null) {
         return (null);
       }
@@ -307,7 +310,7 @@ public class TimeCourseTableManageDialog extends JDialog implements ListWidgetCl
     //
     
     if (!tcd_.hasGeneTemplate()) {
-      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
+      TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeCourseSetupDialogWrapper(uics_, dacx_, tSrc_, uFac_);
       if (tcsd == null) {
         return (null);
       }

@@ -374,7 +374,7 @@ public class AddGenomeInstance extends AbstractControlFlow {
        
       vmTree.setIgnoreSelection(true);
       NavTree.Kids kidType = (parID == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
-      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, popupNode_, new NavTree.ModelID(nextKey), null, null, dacx_);
+      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, popupNode_, new NavTree.ModelID(nextKey), null, null, uics_.getRMan());
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       //
       // Note that these changes are now being made to the ExpansionChange that has already

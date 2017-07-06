@@ -28,7 +28,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -37,7 +36,6 @@ import org.systemsbiology.biotapestry.util.AttributeExtractor;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.NameValuePair;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 import org.xml.sax.Attributes;
 
@@ -96,7 +94,7 @@ public class PertDisplayOptions implements Cloneable {
   public PertDisplayOptions(PerturbationData pd, String pertDefMin, String pertDefMax, 
                             String scaleTag, String breakOutStr) throws IOException {
     
-    pd_ = null;
+    pd_ = pd;
     timeSpanCols_ = new ArrayList<MinMax>();
     pertMeasureColors_ = new HashMap<String, String>();
     
@@ -158,9 +156,6 @@ public class PertDisplayOptions implements Cloneable {
   public Map<String, String> getMeasurementDisplayColors() {
     if (pertMeasureColors_.isEmpty()) {
       HashMap<String, String> defMap = new HashMap<String, String>();
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-    UiUtil.fixMePrintout("Seeing null ptr here trying to look at experimental data on non-shared tab");
-       UiUtil.fixMePrintout("appState_.getDB()  fixed the problem, but we are not doing that anymore!");
       MeasureDictionary md = pd_.getMeasureDictionary();
       Iterator<String> mkit = md.getKeys();
       while (mkit.hasNext()) {
@@ -182,7 +177,6 @@ public class PertDisplayOptions implements Cloneable {
     if (pertMeasureColors_.isEmpty()) {
       return (null);
     }
-    UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
     MeasureDictionary md = pd_.getMeasureDictionary();
     HashSet<String> currKeys = new HashSet<String>();
     Iterator<String> mkit = md.getKeys();
@@ -218,7 +212,6 @@ public class PertDisplayOptions implements Cloneable {
     if (currentScaleTag_ == null) {
       return (null);
     }
-    UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
     MeasureDictionary md = pd_.getMeasureDictionary();
     Iterator<String> mkit = md.getScaleKeys();
     while (mkit.hasNext()) {
@@ -258,9 +251,6 @@ public class PertDisplayOptions implements Cloneable {
   
   public String getPerturbDataDisplayScaleKey() {
     if (currentScaleTag_ == null) {
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
-      UiUtil.fixMePrintout("Seeing null ptr here trying to look at experimental data on non-shared tab");
-       UiUtil.fixMePrintout("appState_.getDB() fixed the problem, but we are now using dacx");
       MeasureDictionary md = pd_.getMeasureDictionary();
       return (md.getStandardScaleKeys()[MeasureDictionary.DEFAULT_INDEX]);
     } else {
@@ -285,7 +275,6 @@ public class PertDisplayOptions implements Cloneable {
   
   public MinMax getNullPertDefaultSpan(TimeAxisDefinition tad) {
     if (nullPertDefaultSpan_ == null) {
-      UiUtil.fixMePrintout("NO! If pert data is per tab, so must this be per database!");
       return ((tad.isInitialized()) ? tad.getDefaultTimeSpan() : null);
     } else {
       return (nullPertDefaultSpan_);
@@ -323,7 +312,9 @@ public class PertDisplayOptions implements Cloneable {
   
   public void setColumns(ArrayList<MinMax> columns) {
     timeSpanCols_.clear();
-    timeSpanCols_.addAll(columns);
+    if (columns != null) {
+      timeSpanCols_.addAll(columns);
+    }
     return;
   }
 
@@ -479,18 +470,11 @@ public class PertDisplayOptions implements Cloneable {
       
   public static class PertDisplayOptionsWorker extends AbstractFactoryClient {
  
-   private DataAccessContext dacx_;
-    
     public PertDisplayOptionsWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add("pertDisplayOptions");
       installWorker(new ColumnWorker(whiteboard), new MyColumnGlue());
       installWorker(new ColorWorker(whiteboard), new MyColorGlue());
-    }
-  
-    public void setContext(DataAccessContext dacx) {
-      dacx_ = dacx;
-      return; 
     }
        
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
@@ -499,7 +483,6 @@ public class PertDisplayOptions implements Cloneable {
       if (elemName.equals("pertDisplayOptions")) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
         board.pertDisplayOptions = buildFromXML(board.pertData, elemName, attrs);
- //       dacx_.getDisplayOptsSource().setDisplayOptionsForIO(board.displayOptions);
         retval = board.pertDisplayOptions;
       }
       return (retval);     

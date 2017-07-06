@@ -122,6 +122,7 @@ public class FactoryWhiteboard extends FactoryUtilWhiteboard {
   
   public CustomEvidenceDrawStyle evidenceDrawSty;
   public DisplayOptions displayOptions;
+  public DisplayOptions appendDisplayOptions;
   public PertDisplayOptions pertDisplayOptions;
   public MinMax column;
   public NameValuePair pertColorPair;

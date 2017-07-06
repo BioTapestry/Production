@@ -27,6 +27,7 @@ import org.systemsbiology.biotapestry.db.GenomeSource;
 import org.systemsbiology.biotapestry.db.InstructionSource;
 import org.systemsbiology.biotapestry.db.LayoutSource;
 import org.systemsbiology.biotapestry.db.LocalDataCopyTarget;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.ModelDataSource;
 import org.systemsbiology.biotapestry.db.SimParamSource;
 import org.systemsbiology.biotapestry.db.TemporalRangeSource;
@@ -102,6 +103,16 @@ public class TabPinnedDynamicDataAccessContext extends DataAccessContext {
     this(appState, appState.getTabSource().getCurrentTab());
   }
   
+  /***************************************************************************
+  **
+  ** Use to pin to a particular tab if we just have metabase and current tab:
+  */  
+  
+  public TabPinnedDynamicDataAccessContext(Metabase mb, String currTab) {
+    // Hokey, but works for the moment:
+    this(mb.getAppState(), currTab);
+  }
+   
   /***************************************************************************
   **
   ** Use to pin to a particular tab if we are handed a fully Dynamic context:

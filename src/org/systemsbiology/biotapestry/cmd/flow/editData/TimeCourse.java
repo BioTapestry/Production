@@ -34,11 +34,13 @@ import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.edit.EditGroupProperties;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Node;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
@@ -345,7 +347,7 @@ public class TimeCourse extends AbstractControlFlow {
 
       UiUtil.fixMePrintout("Getting null ptr here trying to edit data");
       if (!tcd.hasGeneTemplate()) { 
-        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
+        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeCourseSetupDialogWrapper(uics_, dacx_, tSrc_, uFac_);
         if (tcsd == null) {
           return (false);
         }
@@ -377,9 +379,9 @@ public class TimeCourse extends AbstractControlFlow {
           List<TimeCourseDataMaps.TCMapping> entries = tcmd.getEntryList();
           TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(id, entries, true);
           if (tcc != null) {
-            support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+            support.addEdit(new TimeCourseChangeCmd(tcc));
           } 
-          support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
           keys = tcdm.getCustomTCMTimeCourseDataKeys(id);
           waiting = ((keys == null) || keys.isEmpty());
@@ -405,9 +407,12 @@ public class TimeCourse extends AbstractControlFlow {
     private boolean editPertData() { 
       String id = inter_.getObjectID();
       id = GenomeItemInstance.getBaseID(id);
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+      PerturbationData pd = dacx_.getExpDataSrc().getPertData();
       TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
       List<TimeCourseDataMaps.TCMapping> keys = tcdm.getTimeCourseTCMDataKeysWithDefault(id, dacx_.getGenomeSource());
-      PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.perturbExpressionEntryDialogWrapper(uics_, dacx_, keys, uFac_);
+      PerturbExpressionEntryDialog tced = PerturbExpressionEntryDialog.perturbExpressionEntryDialogWrapper(uics_, pd, tcd, tad, keys, dacx_, uFac_);
       if (tced != null) {
         tced.setVisible(true);
       }
@@ -433,12 +438,12 @@ public class TimeCourse extends AbstractControlFlow {
           TimeCourseDataMaps.TCMapping tcm = mit.next();
           TimeCourseChange[] changes = tcdm.dropMapsTo(tcm.name);
           for (int j = 0; j < changes.length; j++) {
-            support.addEdit(new TimeCourseChangeCmd(dacx_, changes[j]));
+            support.addEdit(new TimeCourseChangeCmd(changes[j]));
           }
           TimeCourseChange tcc = tcd.dropGene(tcm.name);
-          support.addEdit(new TimeCourseChangeCmd(dacx_, tcc)); 
+          support.addEdit(new TimeCourseChangeCmd(tcc)); 
         }
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
       }
       return (true);
@@ -458,9 +463,9 @@ public class TimeCourse extends AbstractControlFlow {
         UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCM", dacx_);          
         TimeCourseChange tchg = tcdm.dropDataKeys(id);
         if (tchg != null) {
-          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
+          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
           support.addEdit(cmd);
-          support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }
       }
@@ -476,8 +481,9 @@ public class TimeCourse extends AbstractControlFlow {
       String id = inter_.getObjectID();
       Node node = dacx_.getCurrentGenome().getNode(id);
       id = GenomeItemInstance.getBaseID(id);
+      TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
       TimeCourseDataMaps tcdm = dacx_.getDataMapSrc().getTimeCourseDataMaps();
-      TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, dacx_, node.getName(), id);
+      TimeCourseMappingDialog tcmd = new TimeCourseMappingDialog(uics_, tcd, tcdm, node.getName(), id);
       tcmd.setVisible(true);
       if (!tcmd.haveResult()) {
         return (false);
@@ -486,9 +492,9 @@ public class TimeCourse extends AbstractControlFlow {
       List<TimeCourseDataMaps.TCMapping> entries = tcmd.getEntryList();
       TimeCourseChange tcc = tcdm.addTimeCourseTCMMap(id, entries, true);
       if (tcc != null) {
-        support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+        support.addEdit(new TimeCourseChangeCmd(tcc));
       } 
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       return (true);
     }
@@ -506,9 +512,9 @@ public class TimeCourse extends AbstractControlFlow {
         TimeCourseChange tchg = tcdm.dropGroupMap(gid);
         if (tchg != null) {
           UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCRM", dacx_); 
-          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(dacx_, tchg, false);
+          TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
           support.addEdit(cmd);
-          support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }
       }
@@ -524,7 +530,7 @@ public class TimeCourse extends AbstractControlFlow {
       String gid = Group.getBaseID(myGroupID_);     
       TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
       if (!tcd.hasGeneTemplate()) { 
-        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeSourceSetupDialogWrapper(uics_, dacx_, uFac_);
+        TimeCourseSetupDialog tcsd = TimeCourseSetupDialog.timeCourseSetupDialogWrapper(uics_, dacx_, tSrc_, uFac_);
         if (tcsd == null) {
           return (false);
         }

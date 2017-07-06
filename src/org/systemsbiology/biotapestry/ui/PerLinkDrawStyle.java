@@ -116,7 +116,32 @@ public class PerLinkDrawStyle implements Cloneable {
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
     }
-  }  
+  } 
+  
+  
+  /***************************************************************************
+  **
+  ** Equals operator
+  */
+  @Override
+  public boolean equals(Object other) {
+    if (other == null) {
+      return (false);
+    }
+    if (other == this) {
+      return (true);
+    }
+    if (!(other instanceof PerLinkDrawStyle)) {
+      return (false);
+    }
+    PerLinkDrawStyle onc = (PerLinkDrawStyle)other;
+
+    if (!this.style_.equals(onc.style_)) {
+      return (false);
+    }  
+    
+    return (this.extent_ == onc.extent_);
+  }   
 
   /***************************************************************************
   **

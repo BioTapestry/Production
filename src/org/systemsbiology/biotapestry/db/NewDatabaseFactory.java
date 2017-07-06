@@ -54,7 +54,6 @@ import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseDataMaps;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseFormatFactory;
 import org.systemsbiology.biotapestry.ui.LayoutFactory;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -318,9 +317,9 @@ public class NewDatabaseFactory implements ParserClient {
         if (numTab == 0) {
           tSrc_.resetTabForLoad(id, numTab);
           if (!sharing.booleanValue()) {
-             dacx_.getLocalDataCopyTarget().installDataSharing(null, ddacx_.getTabContext(id));
+             dacx_.getLocalDataCopyTarget().installDataSharing(null);
           } else {
-             dacx_.getLocalDataCopyTarget().installDataSharing(dacx_.getMetabase().getDataSharingPolicy(), ddacx_.getTabContext(id));
+             dacx_.getLocalDataCopyTarget().installDataSharing(dacx_.getMetabase().getDataSharingPolicy());
           }
         } else {
           TabOps.doNewTabStat(tSrc_, uics_, dacx_, uFac_, true, id, numTab, null, null, null, sharing, null);

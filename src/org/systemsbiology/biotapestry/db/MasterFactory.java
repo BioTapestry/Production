@@ -81,7 +81,7 @@ public class MasterFactory implements ParserClient {
     if (isForAppend != (forAppend != null)) {
       throw new IllegalArgumentException();
     }
-    // the only tag we advertise about is the biotapestry tag:;
+    // the only tag we advertise about is the biotapestry tag:
     supportForAppend_ = forAppend;
     isViewer_ = isViewer;
     isForAppend_ = isForAppend;

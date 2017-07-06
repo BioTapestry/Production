@@ -23,6 +23,7 @@ import java.awt.Color;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.text.MessageFormat;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -96,6 +97,7 @@ public class Metabase implements ColorResolver {
   private ColorGenerator colGen_;
   private UniqueLabeller labels_;
   private MetabaseSharedCore sharedStash_;
+  private Set<String> preAppendShares_;
   private MetabaseSharedCore shared_;
   private String iOVersion_;
   private UIComponentSource uics_;
@@ -133,6 +135,29 @@ public class Metabase implements ColorResolver {
   ////////////////////////////////////////////////////////////////////////////
  
   /***************************************************************************
+  **
+  ** Find the db/tab a pd belongs to:
+  */
+  
+  public String getTabForPD(PerturbationData pd) {   
+
+    if (pd == null) {
+      throw new IllegalArgumentException();
+    }
+    Iterator<String> dbit = getDBIDs();
+  
+    while (dbit.hasNext()) {
+      String id = dbit.next();
+      Database db = getDB(id);
+      PerturbationData chkpd = db.getPertData();
+      if (pd == chkpd) { // Yep, same object
+        return (id);
+      }
+    } 
+    throw new IllegalStateException();
+  }  
+
+  /***************************************************************************
   ** 
   ** We have a circular reference....
   */
@@ -157,8 +182,9 @@ public class Metabase implements ColorResolver {
   */
 
   public void setForTabAppend() {
+    preAppendShares_ = tabsSharingData();
     sharedStash_ = shared_;
-    shared_ = new MetabaseSharedCore();
+    shared_ = new MetabaseSharedCore(); 
     return;
   }
   
@@ -167,56 +193,29 @@ public class Metabase implements ColorResolver {
   ** Merge shared data
   */
 
-  public void doTabAppendPostMerge() {
-    System.out.println("DANGER! Tossing unmerged data");
-    /*
-        if (forAppend_ && dataKeys_.contains(elemName)) {
-      if (forAppend_ && (currTarg_ != null)) {
-        UiUtil.fixMePrintout("Where is this coming from for append?");
-        TimeCourseData existing = appState_.getDB().getTimeCourseData();        
-        if (!existing.hasGeneTemplate() || existing.templatesMatch(currTarg_)) {
-          Set<String> failMerges = existing.mergeData(currTarg_);
-          if (failMerges != null) {
-            if (sharedBoard_.mergeIssues == null) {
-              sharedBoard_.mergeIssues = new ArrayList<String>();
-            }
-            String fmt = appState_.getRMan().getString("tabMerge.timeCourseGeneConflictFmt");
-            for (String failMerge : failMerges) {
-              String desc = MessageFormat.format(fmt, new Object[] {failMerge});
-              sharedBoard_.mergeIssues.add(desc);
-            }
-          }
-        } else {
-          if (sharedBoard_.mergeIssues == null) {
-            sharedBoard_.mergeIssues = new ArrayList<String>();
-          }
-          sharedBoard_.mergeIssues.add(appState_.getRMan().getString("tabMerge.fullTimeCourseTemplateFailure"));
-        }
-      }  
+  public List<String> doTabAppendPostMerge() {
+    //
+    // If user tries to append a file as new tabs which has shared data, and we 
+    // are already sharing data, we would either need to 1) support multiple shared
+    // data sets, 2) do a merge operation, 3) force duplicates up into each tab as
+    // shared copies. None of these are practical for V8. So we toss out the new 
+    // data, and tell the user this is not supported.
+    //
     
-    */
-    /*
-        if (isForAppend_) {
-      TimeAxisDefinition existing = appState_.getMetabase().getSharedTimeAxisDefinition();
-      boolean existingInit = existing.isInitialized();
-      boolean ctInit = ((currTarg_ != null) && currTarg_.isInitialized());
-      if (existingInit) {
-        if (ctInit && !existing.equals(currTarg_)) {
-          FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-          if (board.mergeIssues == null) {
-            board.mergeIssues = new ArrayList<String>();
-          }
-          board.mergeIssues.add(appState_.getRMan().getString("tabMerge.failedTimeAxisMatch"));
-          board.failedTimeAxisMerge = true;
-        }    
-      } else if (ctInit) {
-        appState_.getMetabase().setSharedTimeAxisDefinition(currTarg_);
-      }
+    List<String> retval = new ArrayList<String>();
+    if (shared_.amSharingExperimentalData() && sharedStash_.amSharingExperimentalData()) {
+      retval.add(ddacx_.getRMan().getString("tabMerge.sharedDataRejected"));   
+      Set<String> postAppendShares = tabsSharingData();
+      postAppendShares.removeAll(preAppendShares_);
+      for (String dbID : postAppendShares) { 
+        Database db = getDB(dbID);    
+        db.detachSharedData();
+      }    
     }
-    */
-    
     shared_ = sharedStash_;
-    return;
+    sharedStash_ = null;
+    preAppendShares_ = null;
+    return (retval);
   }
 
   /***************************************************************************
@@ -234,7 +233,7 @@ public class Metabase implements ColorResolver {
   */
 
   public void addDB(int tabNum, String dbID) {
-    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this, ddacx_.getTabContext(dbID)));
+    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this));
     return;
   }
   
@@ -249,7 +248,7 @@ public class Metabase implements ColorResolver {
     } else if (!labels_.addExistingLabel(dbID)) {
       throw new IllegalStateException();
     }
-    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this, ddacx_.getTabContext(dbID)));
+    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this));
     return (dbID);
   }
   
@@ -259,7 +258,7 @@ public class Metabase implements ColorResolver {
   */
 
   public String loadDBExistingLabel(int tabNum, String dbID) {
-    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this, ddacx_.getTabContext(dbID)));
+    perTab_.put(dbID, new Database(dbID, tabNum, uics_, this));
     return (dbID);
   }
 
@@ -375,7 +374,7 @@ public class Metabase implements ColorResolver {
     // is not frozen for a new model:
     //
 
-    ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
+    //ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
     
     iOVersion_ = CURRENT_IO_VERSION_;
     return;
@@ -406,18 +405,20 @@ public class Metabase implements ColorResolver {
     tSrc_.clearCurrentTabID(newID);
     
     //
-    // Default behavior with one tab is that this data is not shared, but local to the database:
-    //
-    
-    shared_.dropViaDACX();
-  
-    //
     // We do NOT clear out display options, but we do need to drop
     // defs that depend on the time def, so the time axis definition 
     // is not frozen for a new model:
     //
 
-    ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
+    //ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions().dropDataBasedOptions();
+
+    //
+    // Default behavior with one tab is that this data is not shared, but local to the database:
+    //
+    
+    shared_.dropViaDACX();
+  
+
     iOVersion_ = CURRENT_IO_VERSION_;
     
     colGen_.dropColors();
@@ -434,6 +435,7 @@ public class Metabase implements ColorResolver {
 
   public void legacyIOFixup(JFrame topWindow, int preTabCount, int postTabCount) {
     
+    UiUtil.fixMePrintout("Font Merging operation requires global module pad fixup"); 
     ddacx_.getFontManager().fixupLegacyIO();  // Need this starting version 3.1
     ResourceManager rMan = ddacx_.getRMan();
     String message = rMan.getString("legacyIOFixup.baseChange");
@@ -607,7 +609,7 @@ public class Metabase implements ColorResolver {
 
   /***************************************************************************
   ** 
-  ** Drop all shared perturbation data
+  ** Drop all shared data
   */
 
   public DatabaseChange dropAllSharedData() {
@@ -682,7 +684,11 @@ public class Metabase implements ColorResolver {
   ** Set the data sharing policy: For I/O (no undo support)
   */
 
-  public void installDataSharing(DataSharingPolicy dsp) {
+  public void installDataSharing(DataSharingPolicy dsp, boolean isForAppend) {
+    DataSharingPolicy current = shared_.getDataSharingPolicy();
+    if (isForAppend && current.init && current.shareTimeUnits && dsp.init && dsp.shareTimeUnits) {
+      UiUtil.fixMePrintout("WE CANNOT ALLOW THIS TO CONTINUE");
+    }
     shared_.installDataSharing(dsp);
     return;
   } 
@@ -1244,12 +1250,17 @@ public class Metabase implements ColorResolver {
       this.init = false;
     }
 
-    public DataSharingPolicy(boolean shareTimeUnits, boolean shareTimeCourses, boolean sharePerts, boolean sharePerEmbryoCounts) {
+    //
+    // Original plan was to allow fine-grained decision. But shared Pert Data requires shared time course, and 
+    // everybody requires shared units, so skip this for version 8:
+    //
+    
+    public DataSharingPolicy(boolean share) {
       this.init = true;
-      this.shareTimeUnits = shareTimeUnits;
-      this.shareTimeCourses = shareTimeCourses;
-      this.sharePerts = sharePerts;
-      this.sharePerEmbryoCounts = sharePerEmbryoCounts;
+      this.shareTimeUnits = share;
+      this.shareTimeCourses = share;
+      this.sharePerts = share;
+      this.sharePerEmbryoCounts = share;
     }
     
     public boolean isSpecifyingSharing() {
@@ -1290,9 +1301,11 @@ public class Metabase implements ColorResolver {
   public static class PolicyWorker extends AbstractFactoryClient {
     
     private DataAccessContext dacx_;
+    private boolean isForAppend_;
     
-    public PolicyWorker() {
+    public PolicyWorker(boolean isForAppend) {
       super(new FactoryWhiteboard());
+      isForAppend_ = isForAppend;
       myKeys_.add("dataSharingPolicy");
     }
   
@@ -1305,7 +1318,7 @@ public class Metabase implements ColorResolver {
       DataSharingPolicy retval = null;
       if (elemName.equals("dataSharingPolicy")) {
         retval = buildFromXML(elemName, attrs);
-        dacx_.getMetabase().installDataSharing(retval);
+        dacx_.getMetabase().installDataSharing(retval, isForAppend_);
       }
       return (retval);     
     }  
@@ -1320,9 +1333,17 @@ public class Metabase implements ColorResolver {
       if (!Boolean.valueOf(isInit).booleanValue()) {
         return (new DataSharingPolicy());
       } else {
+        boolean stu = Boolean.valueOf(sharTU).booleanValue();
+        boolean stc = Boolean.valueOf(sharTC).booleanValue();
+        boolean spd = Boolean.valueOf(sharPer).booleanValue(); 
+        boolean spe= Boolean.valueOf(sharPEC).booleanValue();
+        
+        boolean chk = stu;
+        if ((stc != chk) || (stc != spd) || (stc != spe)) {
+          throw new IOException();
+        }
       
-        DataSharingPolicy retval = new DataSharingPolicy(Boolean.valueOf(sharTU).booleanValue(), Boolean.valueOf(sharTC).booleanValue(),
-                                                         Boolean.valueOf(sharPer).booleanValue(), Boolean.valueOf(sharPEC).booleanValue());
+        DataSharingPolicy retval = new DataSharingPolicy(stc);
         return (retval);
       }
     }

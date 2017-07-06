@@ -275,7 +275,7 @@ public class RemoveSelections extends AbstractControlFlow {
       Iterator<String> dsit = ddqs_.deadList.iterator();
       while (dsit.hasNext()) {
         String deadID = dsit.next();
-        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(uics_, deadID, dacx_, support, ddqs_.dataDelete, true, uFac_);
+        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(uics_, tSrc_, deadID, dacx_, support, ddqs_.dataDelete, true, uFac_);
         didDelete |= nodeRemoved;
       }
       

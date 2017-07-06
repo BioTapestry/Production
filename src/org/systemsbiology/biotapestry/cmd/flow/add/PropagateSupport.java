@@ -130,7 +130,8 @@ public class PropagateSupport {
   */
   
   public static void pullDownsFromFrame(UIComponentSource uics, StaticDataAccessContext dacx, 
-                                        Set<String> nodeIDs, Set<String> linkIDs, String groupID1, String groupID2, UndoFactory uFac) {
+                                        Set<String> nodeIDs, Set<String> linkIDs, String groupID1, String groupID2, 
+                                        UndoFactory uFac) {
     StaticDataAccessContext rcxR = dacx.getContextForRoot(); // Root genome
     propagateDownElementsFromRootToGroup(nodeIDs, linkIDs, rcxR, dacx, groupID1, groupID2, uFac);    
     uics.getSUPanel().drawModel(false);
@@ -374,7 +375,8 @@ public class PropagateSupport {
   */  
  
   public static boolean propagateDownEntireRootToGroup(StaticDataAccessContext rcxT, 
-                                                       StaticDataAccessContext rcxR, String groupKey, UndoFactory uFac) {
+                                                       StaticDataAccessContext rcxR, String groupKey, 
+                                                       UndoFactory uFac) {
   
     //
     // Build up lists of genes, nodes, and links that are going down.
@@ -915,7 +917,7 @@ public class PropagateSupport {
       }
     }
     if (doGeneral) { // Flushes dynamic instances
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(0, rcxT.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
     }
     return;
   }  

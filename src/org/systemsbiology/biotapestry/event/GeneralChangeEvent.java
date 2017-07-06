@@ -33,10 +33,9 @@ public class GeneralChangeEvent implements ChangeEvent {
   //
   ////////////////////////////////////////////////////////////////////////////
   
-  public final static int NO_CHANGE            = 0;
-  public final static int UNSPECIFIED_CHANGE   = 1;
-  public final static int MODEL_DATA_CHANGE    = 2;
-  public final static int PERTURB_DATA_CHANGE  = 3;
+  public enum ChangeType {
+    NO_CHANGE, UNSPECIFIED_CHANGE, MODEL_DATA_CHANGE, PERTURB_DATA_CHANGE
+  }
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -44,7 +43,8 @@ public class GeneralChangeEvent implements ChangeEvent {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private int changeType_;
+  private ChangeType changeType_;
+  private String tabID_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -57,7 +57,8 @@ public class GeneralChangeEvent implements ChangeEvent {
   ** Build the event
   */ 
   
-  public GeneralChangeEvent(int changeType) {
+  public GeneralChangeEvent(int dummy, String tabID, ChangeType changeType) {
+    tabID_ = tabID;
     changeType_ = changeType;
   }
 
@@ -69,10 +70,19 @@ public class GeneralChangeEvent implements ChangeEvent {
   
   /***************************************************************************
   **
+  ** Get the tab ID
+  */ 
+  
+  public String getTabID() {
+    return (tabID_);
+  } 
+  
+  /***************************************************************************
+  **
   ** Get the change type
   */ 
   
-  public int getChangeType() {
+  public ChangeType getChangeType() {
     return (changeType_);
   } 
   
@@ -92,6 +102,10 @@ public class GeneralChangeEvent implements ChangeEvent {
       return (false);
     }
     GeneralChangeEvent otherGCE = (GeneralChangeEvent)other;
+    if (!this.tabID_.equals(otherGCE.tabID_)) {
+      return (false);
+    }
+    
     return (this.changeType_ == otherGCE.changeType_);
   }     
 }

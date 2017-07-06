@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
@@ -302,7 +303,7 @@ public class RemoveNode extends AbstractControlFlow {
            
       Map<String, PadNeedsForLayout> globalPadNeeds = dacx_.getFGHO().getGlobalNetModuleLinkPadNeeds();
       UndoSupport support = uFac_.provideUndoSupport("undo.deleteNode", dacx_); 
-      if (deleteNodeFromModelCore(uics_, intersect_.getObjectID(), dacx_, support, dataDelete_, false, uFac_)) {
+      if (deleteNodeFromModelCore(uics_, tSrc_, intersect_.getObjectID(), dacx_, support, dataDelete_, false, uFac_)) {
         uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);   
         if (globalPadNeeds != null) {
           ModificationCommands.repairNetModuleLinkPadsGlobally(dacx_, globalPadNeeds, false, support);
@@ -320,7 +321,7 @@ public class RemoveNode extends AbstractControlFlow {
   ** Delete a node from the model
   */  
  
-  public static boolean deleteNodeFromModelCore(UIComponentSource uics, String nodeID, StaticDataAccessContext rcx,
+  public static boolean deleteNodeFromModelCore(UIComponentSource uics, TabSource tSrc, String nodeID, StaticDataAccessContext rcx,
                                                 UndoSupport support, Map<String, Boolean> dataDelete, boolean keepEmptyMemOnly, UndoFactory uFac) {
  
     //
@@ -382,7 +383,7 @@ public class RemoveNode extends AbstractControlFlow {
       // Don't want to enumerate all those dynamic instances.  This is a stand in
       // that forces update of all dynamic models.
       if (needGeneral) {
-        support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
+        support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
       }
       if (localUndo) {support.finish();}      
       return (true);
@@ -407,7 +408,7 @@ public class RemoveNode extends AbstractControlFlow {
       RemoveLinkage.doLinkDelete(linkID, rcx, support);
     }
 
-    doNodeDelete(uics, nodeID, rcx, support, dataDelete, keepEmptyMemOnly);    
+    doNodeDelete(uics, tSrc, nodeID, rcx, support, dataDelete, keepEmptyMemOnly);    
 
     if (localUndo) {support.finish();}    
     return (true);
@@ -418,7 +419,7 @@ public class RemoveNode extends AbstractControlFlow {
   ** Delete an UNCONNECTED node from the given model and all submodels 
   */   
      
-  public static void doNodeDelete(UIComponentSource uics, String deadID, StaticDataAccessContext rcx, UndoSupport support, Map<String, Boolean> dataDelete, boolean keepEmptyMemOnly) {
+  public static void doNodeDelete(UIComponentSource uics, TabSource tSrc, String deadID, StaticDataAccessContext rcx, UndoSupport support, Map<String, Boolean> dataDelete, boolean keepEmptyMemOnly) {
     
     //
     // Figure out if we are dealing with the root, a topInstance, or a subset.
@@ -555,7 +556,7 @@ public class RemoveNode extends AbstractControlFlow {
       needGeneral = true;
     }
     if (isRoot) {
-      rootDeletionSteps(uics, deadID, rcx, support, dataDelete, keepEmptyMemOnly, needGeneral);
+      rootDeletionSteps(uics, tSrc, deadID, rcx, support, dataDelete, keepEmptyMemOnly, needGeneral);
     }
     return;
   }
@@ -565,7 +566,7 @@ public class RemoveNode extends AbstractControlFlow {
   ** Handle root case
   */  
  
-  private static void rootDeletionSteps(UIComponentSource uics, String deadID, StaticDataAccessContext rcx, UndoSupport support, 
+  private static void rootDeletionSteps(UIComponentSource uics, TabSource tSrc, String deadID, StaticDataAccessContext rcx, UndoSupport support, 
                                         Map<String, Boolean> dataDelete, boolean keepEmptyMemOnly, boolean needGeneral) {
      
     //
@@ -613,7 +614,7 @@ public class RemoveNode extends AbstractControlFlow {
     haveDeleted |= deleteDataMaps(rcx, support, deadID);
     
     if (haveDeleted || needGeneral) {
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(tSrc.getCurrentTab(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
     }
     return;
   }  

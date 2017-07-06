@@ -293,6 +293,8 @@ public class FontDialog extends JDialog {
     support.addEdit(fcc);
     
     // Actually, ALL layouts get changed (FIX ME):
+    UiUtil.fixMePrintout("ALL Layouts across ALL tabs!");
+    UiUtil.fixMePrintout("Currently just firing a redraw in SUPanel");
     LayoutChangeEvent lcev = new LayoutChangeEvent(layoutKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE);
     support.addEvent(lcev);        
 

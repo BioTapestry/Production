@@ -119,6 +119,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     setIconImage(new ImageIcon(ugif).getImage());
     setTitle(dacx_.getRMan().getString("pertManage.title"));
     pd_ = pd;
+    UiUtil.fixMePrintout("Time course data is used for region-restricted perturbation data");
     TimeCourseData tcd = dacx_.getExpDataSrc().getTimeCourseData();
     TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
     
@@ -132,6 +133,8 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     ResourceManager rMan = dacx_.getRMan();
     FontManager fMgr = dacx_.getFontManager();
     UiUtil.fixMePrintout("Hold it how can you share pert data across tabs with this dbgenome here???");
+    UiUtil.fixMePrintout("A build model from instructions will cause this reference to go stale:");
+    
     DBGenome dbg = dacx_.getGenomeSource().getRootDBGenome();
     UiUtil.fixMePrintout("This is also tab-specific");
     PerturbationDataMaps pdms = dacx_.getDataMapSrc().getPerturbationDataMaps();
@@ -149,6 +152,7 @@ public class PerturbationsManagementWindow extends JFrame implements PendingEdit
     panelList.add(pdpm);
     panelList.add(new PertExperimentManagePanel(uics_, dacx_, fMgr, uFac, this, pd_, tcd, tad, this, this, legacyModes));
     panelList.add(new PertSrcDefsManagePanel(uics_, fMgr, tad, dacx_, this, pd_, tcd, this, this, uFac));
+    UiUtil.fixMePrintout("Note this is the panel that is tracking name changes and modifying maps, which need to be per-tab");
     panelList.add(new PertSrcsAndTargsManagePanel(uics_, fMgr, tad, dacx_, this, pd_, tcd, pdms, dbg, this, this, uFac));
     panelList.add(new PertInvestManagePanel(uics_, dacx_, uFac, this, pd_, tcd, tad, this, this));
     panelList.add(new PertPropertiesManagePanel(uics_, fMgr, tad, dacx_, uFac, this, pd_, tcd, this, this));

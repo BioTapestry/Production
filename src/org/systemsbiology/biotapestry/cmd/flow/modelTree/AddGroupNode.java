@@ -328,7 +328,7 @@ public class AddGroupNode extends AbstractControlFlow {
       //
        
       vmTree.setIgnoreSelection(true);
-      NavTree.NodeAndChanges nac = nt.addNode(NavTree.Kids.GROUP_NODE, newName, popupNode_, null, null, null, dacx_);
+      NavTree.NodeAndChanges nac = nt.addNode(NavTree.Kids.GROUP_NODE, newName, popupNode_, null, null, null, uics_.getRMan());
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
      
       //

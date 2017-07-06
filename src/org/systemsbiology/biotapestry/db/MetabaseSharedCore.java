@@ -58,7 +58,7 @@ public class MetabaseSharedCore {
   */
 
   public MetabaseSharedCore() {
-    dsp_ = new Metabase.DataSharingPolicy(false, false, false, false);
+    dsp_ = new Metabase.DataSharingPolicy(false);
     timeAxis_ = null;
     pertData_ = null;
     sharedTimeCourse_ = null;
@@ -90,7 +90,7 @@ public class MetabaseSharedCore {
     //
     // Default behavior with one tab is that this data is not shared, but local to the database:
     //
-    dsp_ = new Metabase.DataSharingPolicy(false, false, false, false);
+    dsp_ = new Metabase.DataSharingPolicy(false);
     pertData_ = null;
     sharedTimeCourse_ = null;
     copiesPerEmb_ = null;
@@ -100,7 +100,7 @@ public class MetabaseSharedCore {
   
   /***************************************************************************
   ** 
-  ** Drop all shared perturbation data
+  ** Drop all shared data
   */
 
   public DatabaseChange dropAllSharedData() {
@@ -134,7 +134,7 @@ public class MetabaseSharedCore {
       dc.newCpe = null;
     }
     
-    Metabase.DataSharingPolicy dsp = new Metabase.DataSharingPolicy(false, false, false, false);
+    Metabase.DataSharingPolicy dsp = new Metabase.DataSharingPolicy(false);
     dc.dataSharingPolicyChange = true;
     dc.oldDsp = dsp_.clone();
     dsp_ = dsp;

@@ -216,9 +216,8 @@ public abstract class DataAccessContext {
       throw new IllegalStateException();
     }
     mb_.dropViaDACX();
-    // FIXME: This is pretty horrible:
     Database db = (Database)getGenomeSource();
-    db.dropViaDACX(new DynamicDataAccessContext(mb_.getAppState()).getTabContext(db.getID()));
+    db.dropViaDACX(getRMan());
     dropFollowOn();
     return;
   }

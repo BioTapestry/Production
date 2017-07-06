@@ -126,7 +126,7 @@ public class ExportExpression extends AbstractSimpleExport {
     TimeCourseExportSettings tces = (TimeCourseExportSettings)es.preFileSet;
     DataAccessContext dacx = new StaticDataAccessContext(appState_);
     TimeCourseData tcd = dacx.getExpDataSrc().getTimeCourseData();
-    tcd.exportCSV(es.out, !tces.ordByReg, tces.embedConf, !tces.skipInt);             
+    tcd.exportCSV(es.out, !tces.ordByReg, tces.embedConf, !tces.skipInt, dacx.getRMan());             
     return (true);  
   }
  

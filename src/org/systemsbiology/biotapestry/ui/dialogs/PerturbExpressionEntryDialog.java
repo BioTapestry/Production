@@ -103,6 +103,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   private PerturbationData pd_;
   private TimeCourseData tcd_;
   private TimeAxisDefinition tad_;
+  private DataAccessContext dacx_;
   
   private static final long serialVersionUID = 1L;
  
@@ -113,18 +114,14 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   */ 
   
   public static PerturbExpressionEntryDialog perturbExpressionEntryDialogWrapper(UIComponentSource uics, PerturbationData pd,
-                                                                                 TabPinnedDynamicDataAccessContext tapdx,
+                                                                                 TimeCourseData tcd, TimeAxisDefinition tad,
+                                                                                 List<TimeCourseDataMaps.TCMapping> keys,
+                                                                                 DataAccessContext dacx,
                                                                                  UndoFactory uFac) {
     
     boolean haveDefs = pd.getSourceDefKeys().hasNext();
-    
-    TimeCourseData tcd = tapdx.getExpDataSrc().getTimeCourseData();
-    TimeAxisDefinition tad = tapdx.getExpDataSrc().getTimeAxisDefinition();
+  
     UiUtil.fixMePrintout("WRONG! THis is always per tab, even with shared pert data");
-    ArrayList<TimeCourseDataMaps.TCMapping> mappedIDs = new ArrayList<TimeCourseDataMaps.TCMapping>();
-    mappedIDs.add(tapdx.getDataMapSrc().getTimeCourseDataMaps());
-    
- 
     if (!haveDefs) {
       ResourceManager rMan = uics.getRMan();
       int ok = JOptionPane.showConfirmDialog(uics.getTopFrame(), rMan.getString("tcentryp.needSourcesDefined"),
@@ -133,10 +130,10 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       if (ok != JOptionPane.YES_OPTION) {
         return (null);
       }
-      uics.getCommonView().launchPerturbationsManagementWindow(new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP), uics, pd, tcd, tad, uFac);
+      uics.getCommonView().launchPerturbationsManagementWindow(new PertFilterExpression(PertFilterExpression.Op.ALWAYS_OP), dacx, uics, uFac);
       return (null);
     }
-    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, pd, tcd, tad, mappedIDs, null, uFac);
+    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, pd, tcd, tad, keys, dacx, null, uFac);
     return (peed);
   }  
   
@@ -149,7 +146,9 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   public static PerturbExpressionEntryDialog launchIfPerturbSourcesExist(UIComponentSource uics, 
                                                                          PerturbationData pd, 
                                                                          TimeCourseData tcd, 
-                                                                         TimeAxisDefinition tad, String mid, UndoFactory uFac) {
+                                                                         TimeAxisDefinition tad,
+                                                                         DataAccessContext dacx,
+                                                                         String mid, UndoFactory uFac) {
     boolean haveDefs = pd.getSourceDefKeys().hasNext();
     if (!haveDefs) {
       ResourceManager rMan = uics.getRMan();
@@ -159,7 +158,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
                                     JOptionPane.ERROR_MESSAGE);
       return (null);
     }
-    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, pd, tcd, tad, null, mid, uFac);
+    PerturbExpressionEntryDialog peed = new PerturbExpressionEntryDialog(uics, pd, tcd, tad, null, dacx, mid, uFac);
     return (peed);
   }  
  
@@ -175,11 +174,13 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
   */ 
   
   private PerturbExpressionEntryDialog(UIComponentSource uics, PerturbationData pd, 
-                                       TimeCourseData tcd, TimeAxisDefinition tad, 
-                                       List<TimeCourseDataMaps.TCMapping> mappedIDs, 
+                                       TimeCourseData tcd, TimeAxisDefinition tad,
+                                       List<TimeCourseDataMaps.TCMapping> mappedIDs,
+                                       DataAccessContext dacx,
                                        String mid, UndoFactory uFac) {     
     super(uics.getTopFrame(), uics.getRMan().getString("tcentryp.title"), true);
     uics_ = uics;
+    dacx_ = dacx;
     uFac_ = uFac;
     pd_ = pd;
     tad_ = tad;
@@ -1242,7 +1243,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       tdat.gene.clearPerturbedStates();
       applyCacheData(tdat);   
       tcc = tcd_.finishGeneUndoTransaction(gName, tcc);
-      support.addEdit(new TimeCourseChangeCmd(dacx_, tcc));
+      support.addEdit(new TimeCourseChangeCmd(tcc));
     }
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
     support.finish();

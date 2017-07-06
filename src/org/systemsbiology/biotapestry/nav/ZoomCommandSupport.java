@@ -36,6 +36,7 @@ import javax.swing.event.ChangeListener;
 
 import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.util.HandlerAndManagerSource;
+import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -886,6 +887,7 @@ public class ZoomCommandSupport {
   public void tabNowVisible() { 
     if ((tSrc_ == null) || (tSrc_.getCurrentTabIndex() == myTab_)) {
       jsp_.getViewport().setViewSize(currViewSize_);
+      UiUtil.fixMePrintout("6/27: saw npe here after thrown IO exception on tab apppend");
       jsp_.getViewport().setViewPosition(hiddenView_);
       jsp_.getHorizontalScrollBar().invalidate();
       jsp_.getVerticalScrollBar().invalidate();

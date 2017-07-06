@@ -42,6 +42,7 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.OldPadMapper;
@@ -131,8 +132,8 @@ public class BuildSupport {
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private DataAccessContext dacx_;
   private UIComponentSource uics_;
+  private TabSource tSrc_;
   private UndoFactory uFac_;
   private BSData bsd_;
   
@@ -147,9 +148,9 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+  public BuildSupport(UIComponentSource uics, TabSource tSrc, UndoFactory uFac) {
     uics_ = uics;
-    dacx_ = dacx;
+    tSrc_ = tSrc;
     uFac_ = uFac;
   }
   
@@ -158,10 +159,10 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(UIComponentSource uics, DataAccessContext dacx, BSData bsd, UndoFactory uFac) {
+  public BuildSupport(UIComponentSource uics, BSData bsd, TabSource tSrc, UndoFactory uFac) {
     uics_ = uics;
-    dacx_ = dacx;
     bsd_ = bsd;
+    tSrc_ = tSrc;
     uFac_ = uFac;
   }
     
@@ -186,7 +187,7 @@ public class BuildSupport {
   */  
  
   public int getSliceMode(JFrame topWindow) {  
-    ResourceManager rMan = dacx_.getRMan();
+    ResourceManager rMan = uics_.getRMan();
     Vector<ChoiceContent> choices = new Vector<ChoiceContent>(); 
     ChoiceContent defaultSlice = 
       new ChoiceContent(rMan.getString("sliceMode." + TimeCourseData.SLICE_BY_REGIONS_TAG),
@@ -230,6 +231,7 @@ public class BuildSupport {
     // Figure out the regions and times for importing:
     //
 
+    TimeAxisDefinition tad = rcxR.getExpDataSrc().getTimeAxisDefinition();
     TimeCourseData tcd = rcxR.getExpDataSrc().getTimeCourseData();
     List<TimeCourseData.RootInstanceSuggestions> sugg = tcd.getRootInstanceSuggestions(sliceMode, neighbors);
    
@@ -255,7 +257,7 @@ public class BuildSupport {
       // Create genome root instance, add to database, add a layout for it:
       //
       String nextKey = rcxR.getNextKey();
-      GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(), nextKey, null);
+      GenomeInstance gi = new GenomeInstance(rcxR, ris.heavyToString(tad, uics_.getRMan()), nextKey, null);
       modelToSuggestion.put(nextKey, ris);
       gi.setTimes(ris.minTime, ris.maxTime);
       DatabaseChange dc = rcxR.getGenomeSource().addGenomeInstanceExistingLabel(nextKey, gi);
@@ -271,7 +273,8 @@ public class BuildSupport {
       nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
 
       TreeNode parNode = nt.nodeForModel(dacx.getGenomeSource().getRootDBGenome().getID());
-      NavTree.NodeAndChanges nac = nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(), parNode, new NavTree.ModelID(nextKey), null, null, rcxR);
+      NavTree.NodeAndChanges nac = nt.addNode(NavTree.Kids.ROOT_INSTANCE, ris.heavyToString(tad, uics_.getRMan()), 
+                                              parNode, new NavTree.ModelID(nextKey), null, null, uics_.getRMan());
       nt.setSkipFlag(NavTree.Skips.NO_FLAG);
       support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
       ntcs.add(nac.ntc); 
@@ -301,8 +304,8 @@ public class BuildSupport {
       
       if (doSums) {
         nextKey = rcxR.getGenomeSource().getNextKey();
-        String sumFormat = rcxR.getRMan().getString("toolCmd.summedFormat");
-        dipName = MessageFormat.format(sumFormat, new Object[] {ris.heavyToString()});     
+        String sumFormat = uics_.getRMan().getString("toolCmd.summedFormat");
+        dipName = MessageFormat.format(sumFormat, new Object[] {ris.heavyToString(tad, uics_.getRMan())});     
         dipS = new DynamicInstanceProxy(rcxR, dipName, nextKey, gi, true, ris.minTime, ris.maxTime, false, null); 
         dc = rcxR.getGenomeSource().addDynamicProxyExistingLabel(nextKey, dipS);
         support.addEdit(new DatabaseChangeCmd(rcxR, dc));
@@ -314,7 +317,7 @@ public class BuildSupport {
         String key = newNodes.iterator().next();
         parNode = nt.nodeForModel(gi.getID());
         nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
-        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipS.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, rcxR);
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipS.getProxiedInstanceName(key), parNode, new NavTree.ModelID(key), null, null, uics_.getRMan());
         nt.setSkipFlag(NavTree.Skips.NO_FLAG);
         support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
         ntcs.add(nac.ntc);
@@ -330,10 +333,9 @@ public class BuildSupport {
       // Per-time point:
       
       nextKey = rcxR.getGenomeSource().getNextKey();
-      TimeAxisDefinition tad = rcxR.getExpDataSrc().getTimeAxisDefinition();
       String displayUnits = tad.unitDisplayString();
-      String perTimeFormat = rcxR.getRMan().getString("toolCmd.perTimeFormat");
-      dipName = MessageFormat.format(perTimeFormat, new Object[] {ris.heavyToString(), displayUnits});
+      String perTimeFormat = uics_.getRMan().getString("toolCmd.perTimeFormat");
+      dipName = MessageFormat.format(perTimeFormat, new Object[] {ris.heavyToString(tad, uics_.getRMan()), displayUnits});
       GenomeInstance par = (dipS == null) ? gi : dipS.getAnInstance();      
       DynamicInstanceProxy dipH = 
         new DynamicInstanceProxy(rcxR, dipName, nextKey, par, false, ris.minTime, ris.maxTime, false, null); 
@@ -344,7 +346,7 @@ public class BuildSupport {
       String parentID = parent.getID();
       parNode = nt.nodeForModel(parentID);
       nt.setSkipFlag(NavTree.Skips.SKIP_FINISH);
-      nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipName, parNode, null, nextKey, null, rcxR);
+      nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipName, parNode, null, nextKey, null, uics_.getRMan());
       nt.setSkipFlag(NavTree.Skips.NO_FLAG);
       support.addEdit(new NavTreeChangeCmd(rcxR, nac.ntc));
       ntcs.add(nac.ntc);
@@ -434,7 +436,7 @@ public class BuildSupport {
   ** Propagate a root down using instructions
   */  
  
-  public boolean propagateRootUsingInstructions(StaticDataAccessContext rcxR, StaticDataAccessContext rcxO) throws AsynchExitRequestException {
+  public boolean propagateRootUsingInstructions(StaticDataAccessContext rcxR, StaticDataAccessContext rcxO, TabSource tSrc) throws AsynchExitRequestException {
                                                                                        
     if (rcxO.getCurrentGenome().isEmpty()) {
       bsd_.keepLayout = false;
@@ -529,7 +531,7 @@ public class BuildSupport {
       InstanceInstructionSet.RegionInfo ri = iis.getRegionForAbbreviation(region);
       String gid = legacyGroups.get(ri.name);
       String regionKey = (gid == null) ? rcxR.getNextKey() : gid;
-      Group newGroup = new Group(rcxI.getRMan(), regionKey, ri.name);
+      Group newGroup = new Group(uics_.getRMan(), regionKey, ri.name);
       regionMap.put(region, regionKey);
       if (gid != null) {
         newToOldRegionMap.put(regionKey, gid);
@@ -607,14 +609,14 @@ public class BuildSupport {
     iit = iis.getInstructionIterator();
     while (iit.hasNext()) {
       BuildInstructionInstance bii = iit.next();
-      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, instanceForGroup);
+      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, tSrc, instanceForGroup);
     }
     
     iit = iis.getInstructionIterator();
     pid.existingOnly = false;
     while (iit.hasNext()) {
       BuildInstructionInstance bii = iit.next();
-      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, instanceForGroup);
+      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, tSrc, instanceForGroup);
     }    
     //
     // Build the maps we need to transfer all the overlay info across the layout, for
@@ -896,6 +898,7 @@ public class BuildSupport {
                                    Map<String, Integer> topLinkInstanceNums, 
                                    Map<String, Integer> topNodeInstanceNums, 
                                    PadCalculatorToo.PadCache padCache, 
+                                   TabSource tSrc, 
                                    Map<String, Map<String, Integer>> instanceForGroup) {  
 
     String baseID = bii.getBaseID();
@@ -914,7 +917,7 @@ public class BuildSupport {
       DialogBuiltMotifPair dbmp = ldit.next(); 
       pIGuts(bii, pid, tupleMap, srcRegionNodes, targRegionNodes, 
              linkTupleMap, dbmp, topLinkInstanceNums, 
-             topNodeInstanceNums, padCache, instanceForGroup);
+             topNodeInstanceNums, padCache, tSrc, instanceForGroup);
     }
     return;
   }
@@ -976,6 +979,7 @@ public class BuildSupport {
                              Map<String, Integer> topLinkInstanceNums, 
                              Map<String, Integer> topNodeInstanceNums,
                              PadCalculatorToo.PadCache padCache,
+                             TabSource tSrc,
                              Map<String, Map<String, Integer>> instanceForGroup) {  
 
     //
@@ -1038,7 +1042,7 @@ public class BuildSupport {
         }          
         processNode(trgNodeID, legacyInstance, pid, trgRegKey, scv, instanceForGroup, topNodeInstanceNums);
       }
-      pIGutsForLink(pid, linkTupleMap, srcRegKey, trgRegKey, scv, topLinkInstanceNums, padCache, instanceForGroup);
+      pIGutsForLink(pid, tSrc, linkTupleMap, srcRegKey, trgRegKey, scv, topLinkInstanceNums, padCache, instanceForGroup);
     }
     return;
   }
@@ -1084,7 +1088,7 @@ public class BuildSupport {
   ** Process an instruction
   */  
  
-  private void pIGutsForLink(PIData pid, HashMap<String, Integer> linkTupleMap, 
+  private void pIGutsForLink(PIData pid, TabSource tSrc, HashMap<String, Integer> linkTupleMap, 
                                     String srcRegKey, String trgRegKey, SubsetCacheValues scv, 
                                     Map<String, Integer> topInstanceNums, 
                                     PadCalculatorToo.PadCache padCache, 
@@ -1128,7 +1132,7 @@ public class BuildSupport {
       // only add it if it hasn't already been added by previous instructions
       if (linkInstanceID == null) {
         Linkage link = pid.rcxR.getCurrentGenome().getLinkage(linkID);
-        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(pid.rcxI, pid.oldGi, (DBLinkage)link, 
+        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(pid.rcxI, tSrc, pid.oldGi, (DBLinkage)link, 
                                                                                     pid.rcxR, grpTup, pid.support, legacyInstance, 
                                                                                     topInstanceNums, padCache, instanceForGroup);
         scv.links.add(newLink.getID());
@@ -1305,7 +1309,7 @@ public class BuildSupport {
     HashSet<String> deadNodes = new HashSet<String>();
     HashSet<String> deadLinks = new HashSet<String>();
     collectUnusedItems(dacx.getCurrentGenome(), protoPairs, deadNodes, deadLinks); 
-    RemoveSupport.deleteNodesAndLinksFromModel(uics_, deadNodes, deadLinks, dacx, bsd_.support, null, true, uFac_);
+    RemoveSupport.deleteNodesAndLinksFromModel(uics_, tSrc_, deadNodes, deadLinks, dacx, bsd_.support, null, true, uFac_);
       
     //
     // Get a copy of the Layout:
@@ -1595,7 +1599,7 @@ public class BuildSupport {
     // want key to be unique in parent address space!                             
     String groupKey = rcxI.getNextKey();
     
-    Group newGroup = new Group(rcxI.getRMan(), groupKey, region);
+    Group newGroup = new Group(uics_.getRMan(), groupKey, region);
     GenomeChange gc = rcxI.getCurrentGenomeAsInstance().addGroupWithExistingLabel(newGroup); 
     if (gc != null) {
       GenomeChangeCmd gcc = new GenomeChangeCmd(gc);

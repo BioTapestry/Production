@@ -229,7 +229,7 @@ public class GenomeInstanceFactory extends AbstractFactoryClient {
           GenomeInstance parent = gi.getVfgParent();
           NavTree.Kids nodeType = (parent == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
           TreeNode parNode = tree.nodeForModel(dacx_.getGenomeSource().getRootDBGenome().getID());
-          tree.addNode(nodeType, gi.getName(), parNode, new NavTree.ModelID(gi.getID()), null, null, dacx_);
+          tree.addNode(nodeType, gi.getName(), parNode, new NavTree.ModelID(gi.getID()), null, null, dacx_.getRMan());
         }
         return (gi);
       }

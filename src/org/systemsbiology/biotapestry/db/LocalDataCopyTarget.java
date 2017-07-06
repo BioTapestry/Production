@@ -36,7 +36,7 @@ public interface LocalDataCopyTarget {
   ** Install initialized data sharing policy
   */
 
-  public void installDataSharing(Metabase.DataSharingPolicy dsp, TabPinnedDynamicDataAccessContext ddacx);
+  public void installDataSharing(Metabase.DataSharingPolicy dsp);
 
   /***************************************************************************
   ** 

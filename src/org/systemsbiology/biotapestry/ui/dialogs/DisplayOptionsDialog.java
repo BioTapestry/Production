@@ -25,11 +25,8 @@ import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.text.MessageFormat;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
@@ -46,15 +43,15 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.border.EmptyBorder;
 
-import org.systemsbiology.biotapestry.app.DynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.HarnessBuilder;
 import org.systemsbiology.biotapestry.cmd.undo.DisplayOptionsChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Database;
 import org.systemsbiology.biotapestry.db.Metabase;
-import org.systemsbiology.biotapestry.db.TabNameData;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
@@ -65,13 +62,12 @@ import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 import org.systemsbiology.biotapestry.ui.MinimalDispOptMgr;
 import org.systemsbiology.biotapestry.util.BrightnessField;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
-import org.systemsbiology.biotapestry.util.MinMax;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoFactory;
 import org.systemsbiology.biotapestry.util.UndoSupport;
-import org.systemsbiology.biotapestry.util.EnumChoiceContent;
 
 /****************************************************************************
 **
@@ -106,13 +102,13 @@ public class DisplayOptionsDialog extends JDialog {
   private JFrame parent_;
   private String layoutKey_;
   private SortedMap<Integer, CustomEvidenceDrawStyle> customEvidence_;
-  
-  private ArrayList<PertDisplayOptions> currPDOs_;
 
-  private DynamicDataAccessContext ddacx_;
+  private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
   private HarnessBuilder hBld_;
+  private TabSource tSrc_;
+  private Map<String, PertDisplayOptions> pdos_;
   
   private static final long serialVersionUID = 1L;
         
@@ -127,24 +123,21 @@ public class DisplayOptionsDialog extends JDialog {
   ** Constructor 
   */ 
   
-  public DisplayOptionsDialog(UIComponentSource uics, DynamicDataAccessContext ddacx, HarnessBuilder hBld, UndoFactory uFac) {     
+  public DisplayOptionsDialog(UIComponentSource uics, DataAccessContext dacx, HarnessBuilder hBld, TabSource tSrc, UndoFactory uFac) {     
     super(uics.getTopFrame(), uics.getRMan().getString("displayOptions.title"), true);   
     
     uics_ = uics;
-    ddacx_ = ddacx;
+    dacx_ = dacx;
     uFac_ = uFac;
     hBld_ = hBld;
-    layoutKey_ = ddacx_.getCurrentLayoutID();
-    ResourceManager rMan = ddacx_.getRMan();
-    DisplayOptions options = ddacx_.getDisplayOptsSource().getDisplayOptions();
+    tSrc_ = tSrc;
+    layoutKey_ = dacx_.getCurrentLayoutID();
+    ResourceManager rMan = dacx_.getRMan();
+    DisplayOptions options = dacx_.getDisplayOptsSource().getDisplayOptions();
+    pdos_ = getPDOPerTab();
   
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
     options.fillCustomEvidenceMap(customEvidence_);
-    
-    UiUtil.fixMePrintout("Wrong! This has entries ~perTab");
-    PertDisplayOptions pOptions = ddacx_.getExpDataSrc().getPertData().getPertDisplayOptions();
-    currPDOs_ = new ArrayList<PertDisplayOptions>();  
-    currPDOs_.add(pOptions.clone());
     
     setSize(600, 600);
     JPanel cp = (JPanel)getContentPane();
@@ -184,7 +177,7 @@ public class DisplayOptionsDialog extends JDialog {
     buttonCU_.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ev) {
         try {
-          CustomEvidenceDialog dialog = new CustomEvidenceDialog(uics_, ddacx_.getColorResolver(), hBld_, customEvidence_);
+          CustomEvidenceDialog dialog = new CustomEvidenceDialog(uics_, dacx_.getColorResolver(), hBld_, customEvidence_);
           dialog.setVisible(true);
           if (dialog.haveResult()) {
             customEvidence_ = dialog.getNewEvidenceMap();      
@@ -264,8 +257,10 @@ public class DisplayOptionsDialog extends JDialog {
       public void actionPerformed(ActionEvent ev) {
         try {
           QpcrSetupDialog npd = QpcrSetupDialog.qpcrSetupDialogWrapper(uics_,
-                                                                       ddacx_,
-                                                                       currPDOs_,
+                                                                       dacx_,
+                                                                       pdos_,
+                                                                       dacx_.getMetabase(),
+                                                                       tSrc_,
                                                                        uFac_);
           if (npd == null) {
             return;
@@ -274,10 +269,7 @@ public class DisplayOptionsDialog extends JDialog {
           if (!npd.haveResult()) {
             return;
           }
-          int np = currPDOs_.size(); 
-          for (int i = 0; i < np; i++) {
-            currPDOs_.set(i, npd.getResults(i));
-          }
+          pdos_ = npd.getResults();
         } catch (Exception ex) {
           uics_.getExceptionHandler().displayException(ex);
         }
@@ -355,6 +347,58 @@ public class DisplayOptionsDialog extends JDialog {
 
   /***************************************************************************
   **
+  ** Get the PerturbationDisplayOptions for each tab:
+  ** 
+  */
+  
+  private Map<String, PertDisplayOptions> getPDOPerTab() { 
+  
+    //
+    // Each tab (though shared data tabs only get one tab) needs it's own pile of data
+    //
+     
+    HashMap<String, PertDisplayOptions> retval = new HashMap<String, PertDisplayOptions>();
+    Metabase mb = dacx_.getMetabase();
+    Set<String> shar = mb.tabsSharingData();
+    Iterator<String> dbit = mb.getDBIDs();
+    boolean gotShare = false;
+    while (dbit.hasNext()) {
+      String id = dbit.next();
+      Database db = mb.getDB(id);
+      PertDisplayOptions pOptions = db.getPertData().getPertDisplayOptions();
+      if (shar.contains(id)) {
+        if (!gotShare) {
+          gotShare = true;
+          retval.put(id,  pOptions.clone());
+        }
+      } else {
+        retval.put(id,  pOptions.clone());
+      }
+    }
+    return (retval);
+  }
+   
+  /***************************************************************************
+  **
+  ** Set the PerturbationDisplayOptions for each tab. Shared data only needs to
+  ** be set for one of the tabs.
+  */
+  
+  private void setPDOPerTab(UndoSupport support) {  
+    Metabase mb = dacx_.getMetabase();
+    for (String dbid : pdos_.keySet()) {
+      Database db = mb.getDB(dbid);
+      PertDisplayOptions pdo = pdos_.get(dbid);
+      PerturbationData pd = db.getPertData();
+      TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(mb, dbid);
+      pd.setPertDisplayOptions(pdo.clone(), support, tpdacx);
+      pd.dropCachedDisplayState();
+    } 
+    return;
+  }
+ 
+  /***************************************************************************
+  **
   ** Enable the custom evidence dialog
   ** 
   */
@@ -379,9 +423,9 @@ public class DisplayOptionsDialog extends JDialog {
     //
     
     ResourceManager rMan = uics_.getRMan();
-    UndoSupport support = uFac_.provideUndoSupport("undo.displayOptions", new StaticDataAccessContext(ddacx_));     
+    UndoSupport support = uFac_.provideUndoSupport("undo.displayOptions", new StaticDataAccessContext(dacx_));     
 
-    MinimalDispOptMgr dopmgr = ddacx_.getDisplayOptsSource();
+    MinimalDispOptMgr dopmgr = dacx_.getDisplayOptsSource();
     DisplayOptions newOpts = new DisplayOptions();
 
     
@@ -474,15 +518,10 @@ public class DisplayOptionsDialog extends JDialog {
     //
     // Perturbation display options:
     //
-    
-    int np = currPDOs_.size();
-    for (int i = 0; i < np; i++) {
-      UiUtil.fixMePrintout("WRIONG! Needs to get pert data for every different tab");
-      PerturbationData pd = ddacx_.getExpDataSrc().getPertData();
-      pd.setPertDisplayOptions(currPDOs_.get(i).clone(), support);
-      pd.dropCachedDisplayState();
-    }
    
+    setPDOPerTab(support);
+    
+ 
     LayoutChangeEvent lcev = new LayoutChangeEvent(layoutKey_, LayoutChangeEvent.UNSPECIFIED_CHANGE);
     support.addEvent(lcev);
  
@@ -498,48 +537,6 @@ public class DisplayOptionsDialog extends JDialog {
     return (true);
   }
   
-  /***************************************************************************
-  **
-  ** Perturbation data display options need to be sprinked out across tabs and shared
-  ** data tabs.
-  */
-  
-  private void figureOutPerturbationSharing(DataAccessContext dacx, TabSource tSrc) {
-
-    Metabase mb = dacx.getMetabase();
-    Metabase.DataSharingPolicy dsp = mb.getDataSharingPolicy();
-    boolean isSharing = dsp.isSpecifyingSharing() & dsp.sharePerts;     
-    Set<String> sharDB = (isSharing) ? mb.tabsSharingData() : new HashSet<String>();
-     
-    TreeMap<Integer, String> ordered = new TreeMap<Integer, String>();
-    
-    List<TabSource.AnnotatedTabData> atds = tSrc.getTabs();
-    for (TabSource.AnnotatedTabData atd : atds) {
-      int indx = tSrc.getTabIndexFromId(atd.dbID);
-      if (sharDB.contains(atd.dbID)) {
-        
-      }
- 
-    }
-    /*
-    if (isSharing) {
-      Set<String> sharDB = mb.tabsSharingData();
-      for (String dbID : sharDB) {
-        int indx = tSrc.getTabIndexFromId(dbID); 
-        TabNameData tnd = mb.getDB(dbID).getTabNameData();
-        ordered.put(Integer.valueOf(indx), tnd.getTitle());
-        
-        
-        TabPinnedDynamicDataAccessContext(DynamicDataAccessContext ddacx, String currTab) {
-      }     
-      for (String modName : ordered.values()) { 
-        UiUtil.fixMePrintout("do something or ditch this");
-      }
-    }
-   */
-    return;
-  }
- 
   /***************************************************************************
   **
   ** Reset to default values

@@ -257,11 +257,11 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   
   public boolean doScalingUpdate() {
     MeasureDictionary md = pd_.getMeasureDictionary();
-    Vector scaleTypes = md.getConvertibleScaleOptions();
+    Vector<TrueObjChoiceContent> scaleTypes = md.getConvertibleScaleOptions();
     int numScaleTypes = scaleTypes.size();
     HashSet newOptions = new HashSet();
     for (int i = 0; i < numScaleTypes; i++) {
-      TrueObjChoiceContent tocc = (TrueObjChoiceContent)scaleTypes.get(i);
+      TrueObjChoiceContent tocc = scaleTypes.get(i);
       newOptions.add(tocc.val);
     }   
     boolean unchanged = true;
@@ -628,7 +628,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
   
   private void initScalingState() {
     MeasureDictionary md = pd_.getMeasureDictionary();
-    Vector scaleTypes = md.getConvertibleScaleOptions();
+    Vector<TrueObjChoiceContent> scaleTypes = md.getConvertibleScaleOptions();
     currentScaleState_ = generateScalingState(scaleTypes);
     ignoreScaleChange_ = true;
     ResourceManager rMan = uics_.getRMan();

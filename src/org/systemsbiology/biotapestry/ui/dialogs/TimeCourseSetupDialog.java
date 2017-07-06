@@ -55,6 +55,7 @@ import org.systemsbiology.biotapestry.plugin.PlugInManager;
 import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.TimeCourseChangeCmd;
@@ -97,10 +98,10 @@ public class TimeCourseSetupDialog extends JDialog implements DialogSupport.Dial
   ** time course structure.
   */ 
   
-  public static TimeCourseSetupDialog timeSourceSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
+  public static TimeCourseSetupDialog timeCourseSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, dacx.getMetabase(), tSrc, uFac, true);
       tasd.setVisible(true);
     }
     

@@ -557,7 +557,7 @@ public class CopyGenomeInstance extends AbstractControlFlow {
       NavTree.Kids kidType = (newParentID == null) ? NavTree.Kids.ROOT_INSTANCE : NavTree.Kids.STATIC_CHILD_INSTANCE;
       
       TreeNode parNode = nt.nodeForNodeIDObj(targetParent.getNodeID());
-      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, parNode, new NavTree.ModelID(gi.getID()), null, sibIndex, dacx_); 
+      NavTree.NodeAndChanges nac = nt.addNode(kidType, newName, parNode, new NavTree.ModelID(gi.getID()), null, sibIndex, uics_.getRMan()); 
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       navTreeChanges.add(nac.ntc);
       
@@ -664,9 +664,9 @@ public class CopyGenomeInstance extends AbstractControlFlow {
           throw new IllegalStateException();
         }
         String key = newNodes.iterator().next();
-        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipCopy.getProxiedInstanceName(key), parNode,new NavTree.ModelID(key), null, sibIndex, dacx_);
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SUM_INSTANCE, dipCopy.getProxiedInstanceName(key), parNode,new NavTree.ModelID(key), null, sibIndex, uics_.getRMan());
       } else {
-        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipCopy.getName(), parNode, null, dipCopy.getID(), sibIndex, dacx_);
+        nac = nt.addNode(NavTree.Kids.DYNAMIC_SLIDER_INSTANCE, dipCopy.getName(), parNode, null, dipCopy.getID(), sibIndex, uics_.getRMan());
       }
       support.addEdit(new NavTreeChangeCmd(dacx_, nac.ntc));
       navTreeChanges.add(nac.ntc);

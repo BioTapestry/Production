@@ -98,7 +98,6 @@ public class TimeCourseData implements Cloneable {
   private long serialNumber_;
   private long topoSerialNumber_;
   private long linSerialNumber_;
-  private DataAccessContext dacx_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -111,8 +110,7 @@ public class TimeCourseData implements Cloneable {
   ** Constructor
   */
 
-  public TimeCourseData(DataAccessContext dacx) {
-    dacx_ = dacx;
+  public TimeCourseData() {
     genes_ = new ArrayList<TimeCourseGene>();
     groupParents_ = new HashMap<String, String>();
     groupRoots_ = new HashSet<String>();
@@ -363,7 +361,7 @@ public class TimeCourseData implements Cloneable {
     int num = slices.size();
     for (int i = 0; i < num; i++) {
       RootInstanceSuggestions sugg = slices.get(i);
-      TopoTimeRange ttr = new TopoTimeRange(dacx_, sugg.minTime, sugg.maxTime);
+      TopoTimeRange ttr = new TopoTimeRange(sugg.minTime, sugg.maxTime);
       List<String> regs = new ArrayList<String>(sugg.regions);
       RegionTopology rt = new RegionTopology(ttr, regs, new ArrayList<TopoLink>());
       regionTopologies_.put(ttr, rt);
@@ -422,30 +420,6 @@ public class TimeCourseData implements Cloneable {
     } else {
       return (true);
     }
-  }
-  
-  /***************************************************************************
-  **
-  ** Merge with another TCD
-  */
-  
-  public Set<String> mergeData(TimeCourseData otherTCD) {
-
-    HashSet<String> retval = new HashSet<String>();
-    UiUtil.fixMePrintout("Still lots to do (bump serial no, topo, lineage,...)");
-    Iterator<TimeCourseGene> otcdgit = otherTCD.getGenes();
-    while (otcdgit.hasNext()) {
-      TimeCourseGene otherGene = otcdgit.next();
-      TimeCourseGene myGene = getTimeCourseData(otherGene.getName());
-      if (myGene == null) {
-        addGene(otherGene);       
-      } else {
-        if (!myGene.equals(otherGene)) {
-          retval.add(myGene.getName());
-        }
-      } 
-    }
-    return ((retval.isEmpty()) ? null : retval);
   }
 
   /***************************************************************************
@@ -592,9 +566,9 @@ public class TimeCourseData implements Cloneable {
   */
   
   public void exportCSV(PrintWriter out, boolean groupByTime, 
-                        boolean encodeConfidence, boolean exportInternals) { 
+                        boolean encodeConfidence, boolean exportInternals, ResourceManager rMan) { 
     out.print("\"");     
-    out.print(dacx_.getRMan().getString("csvTcdExport.geneName"));
+    out.print(rMan.getString("csvTcdExport.geneName"));
     out.print("\"");
     Iterator<GeneTemplateEntry> tempit = getGeneTemplate();
     if (tempit.hasNext()) {
@@ -637,7 +611,7 @@ public class TimeCourseData implements Cloneable {
       tg.exportCSV(out, oit, encodeConfidence, exportInternals);
     }
     
-    ExpressionEntry.expressionKeyCSV(dacx_, out, encodeConfidence);
+    ExpressionEntry.expressionKeyCSV(out, encodeConfidence, rMan);
     
     return;
   }
@@ -671,7 +645,7 @@ public class TimeCourseData implements Cloneable {
   **
   ** Answers if we have time course data for the given node
   **
-  */
+ 
   
   public boolean haveDataForNode(String nodeID) {
     if (!haveDataEntries()) {
@@ -2124,7 +2098,7 @@ public class TimeCourseData implements Cloneable {
           if (neighbors != null) {
             regions.addAll(neighbors.get(regKey));
           }
-          currRis = new RootInstanceSuggestions(dacx_, hourVal, hourVal, times, regions, regKey, false);
+          currRis = new RootInstanceSuggestions(hourVal, hourVal, times, regions, regKey, false);
           List<RootInstanceSuggestions> sugsForTime = retvalMap.get(hour);
           if (sugsForTime == null) {
             sugsForTime = new ArrayList<RootInstanceSuggestions>();
@@ -2193,7 +2167,7 @@ public class TimeCourseData implements Cloneable {
         }
         ArrayList<Integer> times = new ArrayList<Integer>();
         times.add(hourKey);
-        currRis = new RootInstanceSuggestions(dacx_, hourVal, hourVal, times, regions, null, true);
+        currRis = new RootInstanceSuggestions(hourVal, hourVal, times, regions, null, true);
       } else {
         currRis.times.add(hourKey);
         currRis.maxTime = hourVal;
@@ -2219,7 +2193,7 @@ public class TimeCourseData implements Cloneable {
     String currRegion = groupID;
     SortedSet<Integer> currTimes = DataUtil.fillOutHourly(hoursForRegion(groupID));
     while (true) {
-      retval.add(new TimeBoundedRegion(dacx_, currTimes, currRegion));
+      retval.add(new TimeBoundedRegion(currTimes, currRegion));
       if (regionIsRoot(currRegion)) {
         return (retval);
       } else {
@@ -2279,27 +2253,25 @@ public class TimeCourseData implements Cloneable {
     public SortedSet<Integer> times;
     public String region;
     private List<TimeBoundedRegion> lineage_;
-    private DataAccessContext dacx_;
     
     public static final String TBR_XML_KEY = "tcTimedRegion";
        
-    public TimeBoundedRegion(DataAccessContext dacx, SortedSet<Integer> times, String region) {
-      dacx_ = dacx;
+    public TimeBoundedRegion(SortedSet<Integer> times, String region) {
       this.times = DataUtil.fillOutHourly(times);
       this.region = region;
       this.lineage_ = null;
     }
        
-    public List<TimeBoundedRegion> getLineage() {
+    public List<TimeBoundedRegion> getLineage(TimeCourseData tcd) {
       if (lineage_ == null) {
-        lineage_ = dacx_.getExpDataSrc().getTimeCourseData().genRegionLineage(region);     
+        lineage_ = tcd.genRegionLineage(region);     
       }
       return (lineage_);
     }
     
-    public List<String> getLineageAsNames() {
+    public List<String> getLineageAsNames(TimeCourseData tcd) {
       ArrayList<String> retval = new ArrayList<String>();
-      List<TimeBoundedRegion> linTbrs = getLineage();
+      List<TimeBoundedRegion> linTbrs = getLineage(tcd);
       Iterator<TimeBoundedRegion> ltit = linTbrs.iterator();
       while (ltit.hasNext()) {
         TimeBoundedRegion ntbr = ltit.next();
@@ -2316,8 +2288,8 @@ public class TimeCourseData implements Cloneable {
       return (times.last().intValue());
     }
     
-    public TimeBoundedRegion getLineageParent() {
-      List<TimeBoundedRegion> lineage = getLineage();
+    public TimeBoundedRegion getLineageParent(TimeCourseData tcd) {
+      List<TimeBoundedRegion> lineage = getLineage(tcd);
       int numLim = lineage.size();
       if (numLim < 2) {
         return (null);
@@ -2325,8 +2297,8 @@ public class TimeCourseData implements Cloneable {
       return (lineage_.get(numLim - 2));
     }
   
-    public SortedSet<Integer> calculateLineageTimes() {
-      List<TimeBoundedRegion> myLineage = getLineage();
+    public SortedSet<Integer> calculateLineageTimes(TimeCourseData tcd) {
+      List<TimeBoundedRegion> myLineage = getLineage(tcd);
       TreeSet<Integer> retval = new TreeSet<Integer>();
       int rNum = myLineage.size();
       for (int i = 0; i < rNum; i++) {
@@ -2341,8 +2313,8 @@ public class TimeCourseData implements Cloneable {
     ** Map of region IDs to times:
     */  
 
-    public Map<String, SortedSet<Integer>> lineageRegionsToTimes() { 
-      List<TimeBoundedRegion> lineageList = getLineage();
+    public Map<String, SortedSet<Integer>> lineageRegionsToTimes(TimeCourseData tcd) { 
+      List<TimeBoundedRegion> lineageList = getLineage(tcd);
       HashMap<String, SortedSet<Integer>> retval = new HashMap<String, SortedSet<Integer>>();
       int numL = lineageList.size();
       for (int i = 0; i < numL; i++) {
@@ -2377,7 +2349,7 @@ public class TimeCourseData implements Cloneable {
       return;
     }
       
-    public static TimeBoundedRegion buildFromXML(DataAccessContext dacx, String elemName, Attributes attrs) throws IOException {          
+    public static TimeBoundedRegion buildFromXML(String elemName, Attributes attrs) throws IOException {          
       String regName = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "region", true);
       String minTime = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "minTime", true);
       String maxTime = AttributeExtractor.extractAttribute(elemName, attrs, TBR_XML_KEY, "maxTime", true); 
@@ -2392,7 +2364,7 @@ public class TimeCourseData implements Cloneable {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }  
-      return (new TimeBoundedRegion(dacx, seedSet, regName));
+      return (new TimeBoundedRegion(seedSet, regName));
     } 
   }
  
@@ -2403,19 +2375,16 @@ public class TimeCourseData implements Cloneable {
  
   public static class TimeBoundedRegionWorker extends AbstractFactoryClient {
   
-    private DataAccessContext dacx_;
-    
-    public TimeBoundedRegionWorker(DataAccessContext dacx, FactoryWhiteboard whiteboard) {
+    public TimeBoundedRegionWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add(TimeBoundedRegion.TBR_XML_KEY);
-      dacx_ = dacx;
     }
     
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals(TimeBoundedRegion.TBR_XML_KEY)) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-        board.currTimeBoundRegion = TimeBoundedRegion.buildFromXML(dacx_, elemName, attrs);
+        board.currTimeBoundRegion = TimeBoundedRegion.buildFromXML(elemName, attrs);
         retval = board.currTimeBoundRegion;
       }
       return (retval);     
@@ -2435,10 +2404,8 @@ public class TimeCourseData implements Cloneable {
     public Set<String> regions;
     public String mainRegion;
     public boolean timeSliced;
-    private DataAccessContext dacx_;
     
-    public RootInstanceSuggestions(DataAccessContext dacx, int minTime, int maxTime, List<Integer> times, Set<String> regions, String mainRegion, boolean timeSliced) {
-      dacx_ = dacx;
+    public RootInstanceSuggestions(int minTime, int maxTime, List<Integer> times, Set<String> regions, String mainRegion, boolean timeSliced) {
       this.minTime = minTime;
       this.maxTime = maxTime;      
       this.regions = regions;
@@ -2456,11 +2423,9 @@ public class TimeCourseData implements Cloneable {
       }
     } 
        
-    public String heavyToString() {
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+    public String heavyToString(TimeAxisDefinition tad, ResourceManager rMan) {
       String displayUnits = tad.unitDisplayString();
-      boolean suffixUnits = tad.unitsAreASuffix();    
-      ResourceManager rMan = dacx_.getRMan();    
+      boolean suffixUnits = tad.unitsAreASuffix();        
       String format = (suffixUnits) ? rMan.getString("timeRange.format") 
                                     : rMan.getString("timeRange.formatPrefix"); 
       String timeSpan = MessageFormat.format(format, new Object[] {new Integer(minTime), new Integer(maxTime), displayUnits});      
@@ -2660,16 +2625,14 @@ public class TimeCourseData implements Cloneable {
   public static class TopoTimeRange implements Cloneable, Comparable<TopoTimeRange> {
     public int minTime;
     public int maxTime;
-    private DataAccessContext dacx_;
     
     public static final String XML_TAG_TOPO = "tcRegionTopology";
     public static final String XML_TAG_LOC = "topoLocationsForRange";    
 
-    public TopoTimeRange(DataAccessContext dacx, int minTime, int maxTime) {
+    public TopoTimeRange(int minTime, int maxTime) {
       if (minTime > maxTime) {
         throw new IllegalArgumentException();
       }
-      dacx_ = dacx;
       this.minTime = minTime;
       this.maxTime = maxTime;      
     }
@@ -2719,9 +2682,7 @@ public class TimeCourseData implements Cloneable {
       return (this.compareTo((TopoTimeRange)other) == 0);
     }
 
-    @Override
-    public String toString() {
-      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+    public String heavyToString(TimeAxisDefinition tad, ResourceManager rMan) {
       String minStr;
       String maxStr;
       if (tad.haveNamedStages()) {
@@ -2730,8 +2691,7 @@ public class TimeCourseData implements Cloneable {
       } else {      
         minStr = Integer.toString(minTime);
         maxStr = Integer.toString(maxTime);        
-      }        
-      ResourceManager rMan = dacx_.getRMan();    
+      }          
       String format = (tad.unitsAreASuffix()) ? rMan.getString("timeRange.format") 
                                               : rMan.getString("timeRange.formatPrefix");
       String displayUnits = tad.unitDisplayAbbrev();
@@ -2759,7 +2719,7 @@ public class TimeCourseData implements Cloneable {
       return;
     }
     
-    public static TopoTimeRange buildFromXML(DataAccessContext dacx, String elemName, 
+    public static TopoTimeRange buildFromXML(String elemName, 
                                              Attributes attrs) throws IOException {
 
       if (!elemName.equals(XML_TAG_TOPO) && !elemName.equals(XML_TAG_LOC)) {
@@ -2796,7 +2756,7 @@ public class TimeCourseData implements Cloneable {
       } catch (NumberFormatException nfex) {
         throw new IOException();
       }    
-      return (new TopoTimeRange(dacx, minTime, maxTime));
+      return (new TopoTimeRange(minTime, maxTime));
     }    
   }
   
@@ -3146,7 +3106,7 @@ public class TimeCourseData implements Cloneable {
   **
   */
   
-  public static TimeCourseData buildFromXML(DataAccessContext dacx, String elemName, 
+  public static TimeCourseData buildFromXML(String elemName, 
                                             Attributes attrs, 
                                             boolean serialNumberIsIllegal) throws IOException {
     if (!elemName.equals("TimeCourseData")) {
@@ -3159,7 +3119,7 @@ public class TimeCourseData implements Cloneable {
       throw new IOException();
     }
     
-    TimeCourseData retval = new TimeCourseData(dacx);
+    TimeCourseData retval = new TimeCourseData();
   
     try {
       if (serialString != null) {

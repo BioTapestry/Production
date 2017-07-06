@@ -35,6 +35,7 @@ import java.text.MessageFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.Vector;
 import javax.swing.JCheckBox;
@@ -43,8 +44,11 @@ import javax.swing.JLabel;
 
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.IntegerEditor;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.PertDisplayOptions;
@@ -73,14 +77,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private TimeAxisDefinition tad_;
-  private TimeAxisHelper tah_;
-  private PerturbationData pd_;
-  private DataAccessContext dacx_;
   private UIComponentSource uics_;
   private UndoFactory uFac_;
+  private TabSource tSrc_;
   private ArrayList<PerTab> ptDat_;
-  private boolean namedStages_;
   
   private static final long serialVersionUID = 1L;
 
@@ -98,24 +98,17 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   
   public static QpcrSetupDialog qpcrSetupDialogWrapper(UIComponentSource uics,
                                                        DataAccessContext dacx,
-                                                       List<PertDisplayOptions> currPdos, UndoFactory uFac) {
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
-    if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
-      tasd.setVisible(true);
-    }
+                                                       Map<String, PertDisplayOptions> pdos,
+                                                       Metabase mb,
+                                                       TabSource tSrc,
+                                                       UndoFactory uFac) {
     
-    tad = dacx.getExpDataSrc().getTimeAxisDefinition();
-    if (!tad.isInitialized()) {
-      ResourceManager rMan = dacx.getRMan();
-      JOptionPane.showMessageDialog(uics.getTopFrame(), 
-                                    rMan.getString("tcsedit.noTimeDefinition"), 
-                                    rMan.getString("tcsedit.noTimeDefinitionTitle"),
-                                    JOptionPane.ERROR_MESSAGE);
+    
+    boolean okToGo = TimeAxisSetupDialog.timeAxisSetupDialogWrapperWrapper(uics, dacx, mb, tSrc, uFac, false);
+    if (!okToGo) {
       return (null);
-    }
-    
-    QpcrSetupDialog qsd = new QpcrSetupDialog(uics, dacx, currPdos, uFac);
+    }  
+    QpcrSetupDialog qsd = new QpcrSetupDialog(uics, pdos, mb, tSrc, uFac);
     return (qsd);
   }    
   
@@ -128,40 +121,59 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   /***************************************************************************
   **
   ** Constructor 
-  *List<MinMax> currColumns, Map<String, String> currColors, 
-                          String currentScale, boolean currentInvestMode, 
-                          MinMax currentNullDefaultSpan
   */ 
   
-  private QpcrSetupDialog(UIComponentSource uics, DataAccessContext dacx, List<PertDisplayOptions> currPdos, UndoFactory uFac) {
+  private QpcrSetupDialog(UIComponentSource uics, Map<String, PertDisplayOptions> pdos, Metabase mb, TabSource tSrc, UndoFactory uFac) {
     super(uics, "qsedit.title", new Dimension(900, 500), 10);
     uics_ = uics;
-    dacx_ = dacx;
-    pd_ = dacx.getExpDataSrc().getPertData();
     uFac_ = uFac;
-    tad_ = dacx_.getExpDataSrc().getTimeAxisDefinition();
-    namedStages_ = tad_.haveNamedStages();
+    tSrc_ = tSrc;
     ptDat_ = new ArrayList<PerTab>();
-    
+  
+    //
+    // Each tab (though shared data tabs only get one tab) needs it's own pile of data
+    //
+      
+    TreeMap<Integer, PerTab> ordered = new TreeMap<Integer, PerTab>();
+    Set<String> shar = mb.tabsSharingData();
+    for (String id : pdos.keySet()) {
+      Database db = mb.getDB(id);
+      int index = tSrc.getTabIndexFromId(id);
+      PertDisplayOptions pdo = pdos.get(id);
+      if (shar.contains(id)) {
+        String sharedFmt = uics_.getRMan().getString("qsedit.sharedTabFmt");
+        String otherNum = Integer.toString(shar.size() - 1);
+        String suffix = (shar.size() == 2) ? "" : "s";
+        String sharedTitle = MessageFormat.format(sharedFmt, new Object[] {db.getTabNameData().getTitle(), otherNum, suffix});
+        PerTab pt = new PerTab(pdo.clone(), sharedTitle, id);
+        pt.perTad_ = db.getTimeAxisDefinition();
+        pt.perPd_ = db.getPertData();
+        ordered.put(Integer.valueOf(index), pt);
+      } else {
+        PerTab pt = new PerTab(pdo.clone(), db.getTabNameData().getTitle(), id);
+        pt.perTad_ = db.getTimeAxisDefinition();
+        pt.perPd_ = db.getPertData();
+        ordered.put(Integer.valueOf(index), pt);
+      }
+    }
+   
     //
     // Build the tabs.
     //
-
+ 
     JTabbedPane tabPane = new JTabbedPane();
-    
-    for (PertDisplayOptions pdo : currPdos) {
-      PerTab pt = new PerTab(pdo);
+    for (PerTab pt : ordered.values()) {
       ptDat_.add(pt);
-      JPanel pan = perTabPanel(pt, tad_);
+      JPanel pan = perTabPanel(pt);
       pt.tabPanel_ = pan;
-      tabPane.addTab(rMan_.getString("propDialogs.layoutProp"), pt.tabPanel_);
+      tabPane.addTab(pt.tabName_, pt.tabPanel_);
     }
-    addTable(tabPane, 4);
-       
+    
+    addTable(tabPane, 4);      
     finishConstruction();
     
     for (PerTab pt : ptDat_) {
-      displayProperties(pt, tad_);
+      displayProperties(pt);
     }   
   }
   
@@ -177,15 +189,18 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  public PertDisplayOptions getResults(int tabNum) {
-    PerTab pt = ptDat_.get(tabNum);
-    PertDisplayOptions pdo = pt.currPdo_.clone();
-    pdo.setColumns(pt.resultCols_);         
-    pdo.setBreakOutInvestigatorMode(pt.resultInvestMode_);
-    pdo.setNullDefaultSpan(pt.resultDefaultSpan_);  
-    pdo.setPerturbDataDisplayScaleKey(pt.resultCurrentScale_); 
-    pdo.setMeasurementDisplayColors(pt.resultCurrColors_);     
-    return (pdo);
+  public Map<String, PertDisplayOptions> getResults() {
+    HashMap<String, PertDisplayOptions> retval = new HashMap<String, PertDisplayOptions>();
+    for (PerTab pt : ptDat_) {
+      PertDisplayOptions pdo = pt.currPdo_.clone();
+      pdo.setColumns(pt.resultCols_);         
+      pdo.setBreakOutInvestigatorMode(pt.resultInvestMode_);
+      pdo.setNullDefaultSpan(pt.resultDefaultSpan_);  
+      pdo.setPerturbDataDisplayScaleKey(pt.resultCurrentScale_); 
+      pdo.setMeasurementDisplayColors(pt.resultCurrColors_);
+      retval.put(pt.dbID_, pdo);
+    }
+    return (retval);
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -205,9 +220,12 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     private final static int MAX_TIME_ = 1;
     private final static int NUM_COL_  = 2;  
     private static final long serialVersionUID = 1L;
+    
+    private TimeAxisDefinition ttad_;
    
     ColumnTableModel(UIComponentSource uics, TimeAxisDefinition tad, boolean namedStages) {
       super(uics, NUM_COL_);
+      ttad_ = tad;
       String displayUnits = tad.unitDisplayString();
       ResourceManager rMan = uics_.getRMan();
       String minHeading = MessageFormat.format(rMan.getString("qsedit.minTimeUnitFormat"), new Object[] {displayUnits});
@@ -239,9 +257,9 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       while (cit.hasNext()) {
         MinMax next = cit.next();
         if (colClasses_[0].equals(String.class)) {
-          TimeAxisDefinition.NamedStage stageName = tad_.getNamedStageForIndex(next.min);
+          TimeAxisDefinition.NamedStage stageName = ttad_.getNamedStageForIndex(next.min);
           columns_[MIN_TIME_].add(stageName.name);
-          stageName = tad_.getNamedStageForIndex(next.max);
+          stageName = ttad_.getNamedStageForIndex(next.max);
           columns_[MAX_TIME_].add(stageName.name);
         } else {
           columns_[MIN_TIME_].add(new ProtoInteger(next.min));
@@ -254,7 +272,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     boolean applyValues(PerTab pt) {
     
       ResourceManager rMan = uics_.getRMan();
-      if (pd_.columnDefinitionsLocked()) { 
+      if (pt.perPd_.columnDefinitionsLocked()) { 
         pt.resultCols_ = new ArrayList<MinMax>(pt.origCols_); 
         return (true);
       }
@@ -275,11 +293,11 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
         Object[] val = (Object[])vals.get(i);
         int minTimeVal;
         int maxTimeVal;
-        if (namedStages_) {
+        if (pt.namedStages_) {
           String minStageName = (String)val[0];
           String maxStageName = (String)val[1];
-          minTimeVal = tad_.getIndexForNamedStage(minStageName);
-          maxTimeVal = tad_.getIndexForNamedStage(maxStageName);
+          minTimeVal = pt.perTad_.getIndexForNamedStage(minStageName);
+          maxTimeVal = pt.perTad_.getIndexForNamedStage(maxStageName);
           if ((minTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME) ||
               (maxTimeVal == TimeAxisDefinition.INVALID_STAGE_NAME)) {
             JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("qsedit.badStageName"),
@@ -383,13 +401,24 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     }
   }
 
+  /***************************************************************************
+  **
+  ** Per-tab elements
+  */
+  
   private static class PerTab {
+    String tabName_;
+    String dbID_;
     EditableTable est_;
     EditableTable mcet_;
     ArrayList<MinMax> origCols_;
     ArrayList<MinMax> resultCols_;
     ArrayList<EnumCell> colorList_;
-    
+    TimeAxisDefinition perTad_;
+    TimeAxisHelper perTah_;
+    PerturbationData perPd_;
+    boolean namedStages_;
+   
     TreeMap<String, MeasureColorTableModel.TableRow> origColorMap_;
     JComboBox scaleOptions_;
     JCheckBox investMode_;
@@ -404,8 +433,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     
     JPanel tabPanel_;
     
-    PerTab(PertDisplayOptions pdo) {
-      currPdo_ = pdo.clone();     
+    PerTab(PertDisplayOptions pdo,  String tabName, String dbID) {
+      currPdo_ = pdo.clone();
+      tabName_ = tabName;
+      dbID_ = dbID;
     }
   }
  
@@ -421,7 +452,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private JPanel perTabPanel(PerTab pt, TimeAxisDefinition tad) {
+  private JPanel perTabPanel(PerTab pt) {
   
     JPanel jp = new JPanel();
     jp.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -431,11 +462,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     int rowNum = 0;
     
     JLabel t1Lab = new JLabel(rMan_.getString("qsedit.setDisplayColumns"), JLabel.LEFT);
-   
-   
+    
     rowNum = ptds.addWidgetFullRow(jp, t1Lab, true, false, rowNum, 10);
     
-    pt.est_ = new EditableTable(uics_, new ColumnTableModel(uics_, tad_, namedStages_), uics_.getTopFrame());
+    pt.est_ = new EditableTable(uics_, new ColumnTableModel(uics_, pt.perTad_, pt.namedStages_), uics_.getTopFrame());
     EditableTable.TableParams etp = new EditableTable.TableParams();
     etp.addAlwaysAtEnd = true;
     etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
@@ -454,14 +484,14 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     // First time thru, we might need to grab this from the TAD:
     //
   
-    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(tad);
+    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(pt.perTad_);
     if (mm == null) {
-      mm = tad.getDefaultTimeSpan().clone();
+      mm = pt.perTad_.getDefaultTimeSpan().clone();
       pt.currPdo_.setNullDefaultSpan(mm);
     }
     
-    tah_ = new TimeAxisHelper(uics_, dacx_, this, mm.min, mm.max, uFac_);
-    JPanel helper = tah_.buildHelperPanel();
+    pt.perTah_ = new TimeAxisHelper(uics_, this, mm.min, mm.max, tSrc_, uFac_);
+    JPanel helper = pt.perTah_.buildHelperPanel(pt.perTad_);
     JLabel dLab = new JLabel(rMan_.getString("qsedit.defaultSpan"));
     rowNum = ptds.addLabeledWidget(jp, dLab, helper, true, false, rowNum, 10);
 
@@ -492,9 +522,9 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   ** 
   */
   
-  private void displayProperties(PerTab pt, TimeAxisDefinition tad) {
+  private void displayProperties(PerTab pt) {
    
-    MeasureDictionary md = pd_.getMeasureDictionary();
+    MeasureDictionary md = pt.perPd_.getMeasureDictionary();
     
     Vector<TrueObjChoiceContent> scaleTypes = md.getScaleOptions();
     UiUtil.replaceComboItems(pt.scaleOptions_, scaleTypes);   
@@ -504,10 +534,10 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
       
     pt.investMode_.setSelected(pt.currPdo_.breakOutInvestigators());
     
-    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(tad);
+    MinMax mm = pt.currPdo_.getNullPertDefaultSpan(pt.perTad_);
      
     if (mm == null) {
-      pt.currPdo_.setNullDefaultSpan(tad_.getDefaultTimeSpan());
+      pt.currPdo_.setNullDefaultSpan(pt.perTad_.getDefaultTimeSpan());
     }
     
     // Default span had to be loaded in constructor!
@@ -525,7 +555,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
     // once they are in use.
     //     
      
-    if (pd_.columnDefinitionsLocked()) {
+    if (pt.perPd_.columnDefinitionsLocked()) {
       pt.est_.setEnabled(false);   
     }
       
@@ -578,7 +608,7 @@ public class QpcrSetupDialog extends BTStashResultsDialog {
   
   private boolean stashPerTab(PerTab pt) { 
       
-    pt.resultDefaultSpan_ = tah_.getSpanResult();
+    pt.resultDefaultSpan_ = pt.perTah_.getSpanResult(pt.perTad_);
     if (pt.resultDefaultSpan_ == null) {
       return (false);
     }

@@ -345,7 +345,8 @@ public class TabOps extends AbstractControlFlow {
       Database db = mb.getDB(tSrc_.getDbIdForIndex(whichIndex_));
       String remDBID = db.getID();
       boolean amSharing = db.amUsingSharedExperimentalData();
-      
+      Set<String> origShar = mb.tabsSharingData();
+
       if (amSharing) {
         boolean sharing = mb.amSharingExperimentalData();
         if (sharing) {
@@ -360,12 +361,15 @@ public class TabOps extends AbstractControlFlow {
       }
         
       int currentCurrent = tSrc_.getCurrentTabIndex();
+      String ccDb = tSrc_.getCurrentTab();
+ 
       int newCurrent = currentCurrent;
       if (currentCurrent == whichIndex_) { // Deleting current tab
         if (currentCurrent == (numTab - 1)) { // Deleting last tab
           newCurrent = numTab - 2; // next tab down become current
         } else {
-          newCurrent = newCurrent; // next tab up becomes current (which is moving down...)
+          // DO NOTHING...
+          //newCurrent = newCurrent; // next tab up becomes current (which is moving down...)
         }
       } else if (whichIndex_ < currentCurrent) { // Deleting lower tab
         newCurrent--;
@@ -380,18 +384,28 @@ public class TabOps extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
       support.addEdit(new TabChangeCmd(ddacx_, tc));
+      
+      String ncDb = tSrc_.getCurrentTab();
+      
+      //
+      // If we move off of the current tab, we might need to shut down the perturbation window:
+      //
+      
+      if (whichIndex_ == currentCurrent) {
+        uics_.getCommonView().perturbationsManagementWindowHandleTabChange(origShar, ncDb, ccDb);    
+      }      
 
-    //
-    // Once tab is gone, we need to possibly adjust the shared data state. Though only if
-    // we were sharing. If so, and there is only one other tab out there 
-    // who was sharing, we restore ownership to that tab and stop sharing. If there are
-    // at least two remaining tabs sharing the data, nothing needs to happen. 
-    //
+      //
+      // Once tab is gone, we need to possibly adjust the shared data state. Though only if
+      // we were sharing. If so, and there is only one other tab out there 
+      // who was sharing, we restore ownership to that tab and stop sharing. If there are
+      // at least two remaining tabs sharing the data, nothing needs to happen. 
+      //
 
       if (pushSharedDataTarg != null) {
         Database shdb = mb.getDB(pushSharedDataTarg);
         Metabase.DataSharingPolicy dsp = mb.getDataSharingPolicy();
-        Metabase.DataSharingPolicy unshareDsp = new Metabase.DataSharingPolicy(false, false, false, false); 
+        Metabase.DataSharingPolicy unshareDsp = new Metabase.DataSharingPolicy(false); 
         List<DatabaseChange> dcs = shdb.modifyDataSharing(dsp, unshareDsp);
         for (DatabaseChange dc : dcs) {
           support.addEdit(new DatabaseChangeCmd(ddacx_, dc));
@@ -526,7 +540,7 @@ public class TabOps extends AbstractControlFlow {
 
       if (dataMustBePulledUp) {
         Metabase.DataSharingPolicy dsp = mb.getDataSharingPolicy();
-        Metabase.DataSharingPolicy unshareDsp = new Metabase.DataSharingPolicy(false, false, false, false); 
+        Metabase.DataSharingPolicy unshareDsp = new Metabase.DataSharingPolicy(false); 
         List<DatabaseChange> dcs = myDb.modifyDataSharing(dsp, unshareDsp);
         for (DatabaseChange dc : dcs) {
           support.addEdit(new DatabaseChangeCmd(ddacx_, dc));
@@ -663,7 +677,7 @@ public class TabOps extends AbstractControlFlow {
       //
       
       if (!sharingInEffect_) { 
-        dsp_ = new Metabase.DataSharingPolicy(scrq.shareTimeUnits, scrq.shareTimeCourses, scrq.sharePerts, scrq.sharePerEmbryoCounts);
+        dsp_ = new Metabase.DataSharingPolicy(scrq.startSharingWith != null);
         weAreSharing_ = dsp_.isSpecifyingSharing();
         if (weAreSharing_) {
           initShareDBKey_ = scrq.startSharingWith;
@@ -770,7 +784,9 @@ public class TabOps extends AbstractControlFlow {
       } else {
         support.addEdit(new TabChangeCmd(ddacx_, uiTc_));
       }
-      
+      uics_.getCommonView().perturbationsManagementWindowHandleTabChange(ddacx_.getMetabase().tabsSharingData(),
+                                                                         tSrc_.getDbIdForIndex(whichIndex_), 
+                                                                         tSrc_.getDbIdForIndex(currentIndex));    
       uics_.getZoomCommandSupportForTab(whichIndex_).tabNowVisible();
 
       uics_.getPathControls().updateUserPathActions();     
@@ -799,6 +815,8 @@ public class TabOps extends AbstractControlFlow {
     if (forLoad && (tnd != null)) {
       throw new IllegalArgumentException();
     }
+    
+    UiUtil.fixMePrintout("User not warned to save on exit after tab append operation");
     
     int currentCurrent = tSrc.getCurrentTabIndex();
     UndoSupport support = (appendTabsUndo == null) ? uFac.provideUndoSupport("undo.addATab", dacx) : appendTabsUndo;
@@ -856,7 +874,7 @@ public class TabOps extends AbstractControlFlow {
     Database newDB = mb.getDB(tabID);
     DynamicDataAccessContext ddacx = new DynamicDataAccessContext(mb.getAppState());
     if (forLoad) {
-      newDB.dropViaDACX(ddacx.getTabContext(tabID)); 
+      newDB.dropViaDACX(uics.getRMan()); 
     } else {
       newDB.newModelViaDACX(ddacx.getTabContext(tabID));
     }
@@ -866,9 +884,9 @@ public class TabOps extends AbstractControlFlow {
     //
     
     if (isSharing == null || !isSharing.booleanValue()) {
-      newDB.installDataSharing(null, ddacx.getTabContext(tabID));
+      newDB.installDataSharing(null);
     } else {
-      newDB.installDataSharing(mb.getDataSharingPolicy(), ddacx.getTabContext(tabID));
+      newDB.installDataSharing(mb.getDataSharingPolicy());
     }
     
     if (tnd != null) {
@@ -891,6 +909,10 @@ public class TabOps extends AbstractControlFlow {
       uics.getZoomCommandSupport().setCurrentZoomForNewModel();
     }
     
+    uics.getCommonView().perturbationsManagementWindowHandleTabChange(ddacx.getMetabase().tabsSharingData(),
+                                                                      tSrc.getDbIdForIndex(tc0.newChangeIndex), 
+                                                                      tSrc.getDbIdForIndex(currentCurrent));    
+    
     tc = uics.getCommonView().setVisibleTab(tc0.newChangeIndex, currentCurrent);
     if (tc != null) {
       support.addEdit(new TabChangeCmd(dacx, tc));
@@ -912,8 +934,8 @@ public class TabOps extends AbstractControlFlow {
   public static void clearOutTabs(TabSource tSrc, UIComponentSource uics, int startIndex) {       
     int numT = tSrc.getNumTab();  
     int newCurrent = startIndex - 1;
-    tSrc.setCurrentTabIndex(newCurrent);
-    for (int i = 0; i < numT; i++) {
+    tSrc.setCurrentTabIndex(newCurrent);    
+    for (int i = startIndex; i < numT; i++) {
       uics.getZoomCommandSupportForTab(i).clearHiddenView();
     }
     uics.getCommonView().setInternalVisibleTab(newCurrent, newCurrent);
@@ -921,90 +943,6 @@ public class TabOps extends AbstractControlFlow {
       uics.getCommonView().removeTabUI(i, newCurrent, newCurrent);
       tSrc.removeATab(i, newCurrent, newCurrent);
     }
-    return;
-  }
-  
-  /***************************************************************************
-  **
-  ** THIS IS USED TO TOSS TABS AFTER A FAILED IO OPERATION
-  */ 
- 
-  public static void clearATab(TabSource tSrc, UIComponentSource uics, int index, DataAccessContext dacx) {
-    int numTab = tSrc.getNumTab();
-    if (numTab == 1) {
-      throw new IllegalStateException();
-    }
- 
-    UiUtil.fixMePrintout("NO< THIS IS FOR TOSSING TABS. DON'T NEED SHARING CHANGE CODE HERE???");
-    
-    String pushSharedDataTarg = null;
-    Metabase mb = dacx.getMetabase();
-    
-    Database db = mb.getDB(tSrc.getDbIdForIndex(index));
-    String remDBID = db.getID();
-    boolean amSharing = db.amUsingSharedExperimentalData();
-    
-    if (amSharing) {
-      boolean sharing = mb.amSharingExperimentalData();
-      if (sharing) {
-        Set<String> sharDB = mb.tabsSharingData();
-        if (sharDB.contains(remDBID)) {
-          sharDB.remove(remDBID);
-          if (sharDB.size() == 1) {
-            pushSharedDataTarg = sharDB.iterator().next();
-          }
-        }
-      }
-    }
-     
-    int currentCurrent = tSrc.getCurrentTabIndex();
-    int newCurrent = currentCurrent;
-    if (newCurrent == index) { // Deleting current tab
-      if (newCurrent == (numTab - 1)) { // Deleting last tab
-        newCurrent = numTab - 2; // next tab down become current
-      } else {
-        newCurrent = newCurrent + 1; // next tab up becomes current
-      }
-    }
-    
-    if (newCurrent != currentCurrent) {
-      tSrc.setCurrentTabIndex(newCurrent);
-      uics.getCommonView().setInternalVisibleTab(currentCurrent, newCurrent);
-    }
-    
-    UiUtil.fixMePrintout("We need UNDO/REDO here! Do we? See above");
-    TabChange tc = uics.getCommonView().removeTabUI(index, currentCurrent, newCurrent);
-    TabChange tc2 = tSrc.removeATab(index, currentCurrent, newCurrent);
-    
-          
-  //    tc = appState.setCurrentTabIndex(cti);
-  //    support.addEdit(new TabChangeCmd(appState, ddacx, tc));
-    
-    
-    //
-    // But if we were not sharing, we are done
-    //
-
-    if (!amSharing) {
-      return;
-    }
-    
-    //
-    // I was sharing, but I no longer exist. If there is only one other tab out there 
-    // who was sharing, we restore ownership to that tab and stop sharing. If there are
-    // at least two remaining tabs sharing the data, nothing needs to happen. 
-    //
-    
-    if (pushSharedDataTarg != null) {
-      Database shdb = mb.getDB(pushSharedDataTarg);
-      Metabase.DataSharingPolicy dsp = mb.getDataSharingPolicy();
-      Metabase.DataSharingPolicy unshareDsp = new Metabase.DataSharingPolicy(false, false, false, false); 
-      List<DatabaseChange> dcs = shdb.modifyDataSharing(dsp, unshareDsp);
-      for (DatabaseChange dc : dcs) {
-       UiUtil.fixMePrintout("Does this need to return???");
-      //  support.addEdit(new DatabaseChangeCmd(appState, ddacx, dc));
-      }
-    }  
     return;
   }
   

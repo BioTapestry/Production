@@ -20,39 +20,51 @@
 
 package org.systemsbiology.biotapestry.ui.dialogs;
 
-import java.awt.GridBagLayout;
 import java.awt.GridBagConstraints;
-import java.awt.event.ActionListener;
+import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
-import javax.swing.JDialog;
-import javax.swing.JPanel;
-import javax.swing.JOptionPane;
-import javax.swing.border.EmptyBorder;
+import java.awt.event.ActionListener;
+import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
-import javax.swing.JCheckBox;
-import javax.swing.JLabel;
-import javax.swing.JTextField;
-import javax.swing.JComboBox;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
-import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.UiUtil;
-import org.systemsbiology.biotapestry.util.DataUtil;
-import org.systemsbiology.biotapestry.util.UndoFactory;
-import org.systemsbiology.biotapestry.db.DataAccessContext;
-import org.systemsbiology.biotapestry.db.DatabaseChange;
-import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
-import org.systemsbiology.biotapestry.util.UndoSupport;
+import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
+import javax.swing.JDialog;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JTabbedPane;
+import javax.swing.JTextField;
+import javax.swing.border.EmptyBorder;
+
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
+import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.DatabaseChangeCmd;
+import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Database;
+import org.systemsbiology.biotapestry.db.DatabaseChange;
+import org.systemsbiology.biotapestry.db.ExperimentalDataSource;
+import org.systemsbiology.biotapestry.db.Metabase;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
-import org.systemsbiology.biotapestry.ui.DisplayOptions;
-import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.DialogSupport;
 import org.systemsbiology.biotapestry.ui.dialogs.utils.EditableTable;
+import org.systemsbiology.biotapestry.util.ChoiceContent;
+import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.ResourceManager;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.UndoFactory;
+import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
 **
@@ -67,19 +79,11 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   //
   ////////////////////////////////////////////////////////////////////////////  
 
-  private EditableTable est_;
-  private TimeAxisDefinition workingCopy_;
   private UIComponentSource uics_;
   private DataAccessContext dacx_;
   private UndoFactory uFac_;
-  private JComboBox unitCombo_;
-  private JTextField customUnitsField_;
-  private JTextField customUnitsAbbrevField_;
-  private JCheckBox isSuffixCheckBox_;  
-  private JLabel customUnitsLabel_;
-  private JLabel customUnitsAbbrevLabel_;  
-  private JLabel stagesLabel_;
-  private boolean canChange_;
+  private ArrayList<PerTab> ptDat_;
+  boolean currentTabOnly_;
   
   private static final long serialVersionUID = 1L;
 
@@ -91,20 +95,59 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   
   /***************************************************************************
   **
-  ** Wrapper on wrapper on constructor.  Have to define time axis before we can define
-  ** topo structure.
+  ** Wrapper on wrapper on constructor.  Have to define time axis before we can do other
+  ** time-based operations.
   */ 
   
-  public static boolean timeAxisSetupDialogWrapperWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
-    TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
-    if (!tad.isInitialized()) {
-      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, uFac);
+  public static boolean timeAxisSetupDialogWrapperWrapper(UIComponentSource uics, DataAccessContext dacx, 
+                                                          Metabase mb, TabSource tSrc, UndoFactory uFac,
+                                                          boolean currentTabOnly) {
+    
+    Iterator<String> dbit;
+    Iterator<String> dbit2;
+    if (currentTabOnly) {
+      HashSet<String> cto = new HashSet<String>();
+      cto.add(tSrc.getCurrentTab());
+      dbit = cto.iterator();
+      dbit2 = cto.iterator();
+    } else {
+      dbit = mb.getDBIDs();
+      dbit2 = mb.getDBIDs();
+    }
+    
+    boolean needInit = false;
+    while (dbit.hasNext()) {
+      String id = dbit.next();
+      TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(mb, id);
+      TimeAxisDefinition tad = tpdacx.getExpDataSrc().getTimeAxisDefinition();
+      if ((tad == null) || !tad.isInitialized()) {
+        needInit = true;
+        break;
+      }
+    }
+    
+    if (needInit) {
+      TimeAxisSetupDialog tasd = TimeAxisSetupDialog.timeAxisSetupDialogWrapper(uics, dacx, mb, tSrc, uFac, currentTabOnly);
       tasd.setVisible(true);
     }
     
-    tad = dacx.getExpDataSrc().getTimeAxisDefinition();
-    if (!tad.isInitialized()) {
-      ResourceManager rMan = dacx.getRMan();
+    //
+    // After giving the user the chance to fix the problem, see if they did so:
+    //
+
+    needInit = false;
+    while (dbit2.hasNext()) {
+      String id = dbit2.next();
+      TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(mb, id);
+      TimeAxisDefinition tad = tpdacx.getExpDataSrc().getTimeAxisDefinition();
+      if ((tad == null) || !tad.isInitialized()) {
+        needInit = true;
+        break;
+      }
+    }
+    
+    if (needInit) {
+      ResourceManager rMan = uics.getRMan();
       JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("tcsedit.noTimeDefinition"), 
                                     rMan.getString("tcsedit.noTimeDefinitionTitle"),
@@ -119,23 +162,61 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** Wrapper on constructor.  Have to see if guts are editable first
   */ 
   
-  public static TimeAxisSetupDialog timeAxisSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
-    
+  public static TimeAxisSetupDialog timeAxisSetupDialogWrapper(UIComponentSource uics, DataAccessContext dacx, 
+                                                               Metabase mb, TabSource tSrc, UndoFactory uFac, 
+                                                               boolean currentTabOnly) {  
     //
     // Figure out if we can change the time units anymore:
     //
     
-    boolean canChange = true;
-    UiUtil.fixMePrintout("Gotta check all pert data sets");
-    PerturbationData pd = dacx.getExpDataSrc().getPertData();    
-    TimeCourseData tcdat = dacx.getExpDataSrc().getTimeCourseData();
-    TemporalInputRangeData tirdat = dacx.getTemporalRangeSrc().getTemporalInputRangeData(); 
-    if (pd.haveData() || pd.getPertDisplayOptions().hasColumns() || pd.getPertDisplayOptions().hasDefaultTimeSpan() ||
-        ((tcdat != null) && tcdat.hasGeneTemplate()) || tirdat.haveData() || dacx.getGenomeSource().modelsHaveTimeBounds()) {
-      canChange = false;
-    }    
+    Set<String> shar = mb.tabsSharingData();
+    Iterator<String> dbit;
+    if (currentTabOnly) {
+      HashSet<String> cto = new HashSet<String>();
+      String currTab = tSrc.getCurrentTab();
+      if (shar.contains(currTab)) {
+        cto.addAll(shar);
+      } else {
+        cto.add(currTab);
+      }
+      dbit = cto.iterator();
+    } else {
+      dbit = mb.getDBIDs();
+    }
     
-    if (!canChange) {
+    Map<String, Boolean> canChange = new HashMap<String, Boolean>();
+
+    boolean sharedFrozen = false;
+    boolean somebodyFrozen = false;
+    while (dbit.hasNext()) {
+      String id = dbit.next();
+      TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(mb, id);
+      ExperimentalDataSource eds = tpdacx.getExpDataSrc();
+      PerturbationData pd = eds.getPertData();    
+      TimeCourseData tcdat = eds.getTimeCourseData();
+      //
+      // Note that this is *always* per-tab (not shared). So a shared data set can be frozen if ANY tab uses
+      // the TAD:
+      //
+      TemporalInputRangeData tirdat = tpdacx.getTemporalRangeSrc().getTemporalInputRangeData();
+      if (pd.haveData() || pd.getPertDisplayOptions().hasColumns() || pd.getPertDisplayOptions().hasDefaultTimeSpan() ||
+          ((tcdat != null) && tcdat.hasGeneTemplate()) || tirdat.haveData() || dacx.getGenomeSource().modelsHaveTimeBounds()) {
+        canChange.put(id, Boolean.FALSE);
+        somebodyFrozen = true;
+        if (shar.contains(id)) {
+          sharedFrozen = true;
+        }
+      } else {
+        canChange.put(id, Boolean.TRUE);
+      }
+    }
+    if (sharedFrozen) {
+      for (String id : shar) {
+        canChange.put(id, Boolean.FALSE);
+      }
+    }
+    
+    if (somebodyFrozen) {
       ResourceManager rMan = dacx.getRMan();
       JOptionPane.showMessageDialog(uics.getTopFrame(), 
                                     rMan.getString("timeAxisDialog.cannotChange"), 
@@ -143,7 +224,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
                                     JOptionPane.WARNING_MESSAGE);
     }
     
-    TimeAxisSetupDialog qsd = new TimeAxisSetupDialog(uics, dacx, uFac, canChange);
+    TimeAxisSetupDialog qsd = new TimeAxisSetupDialog(uics, dacx, mb, tSrc, uFac, canChange, currentTabOnly);
     return (qsd);
   }  
   
@@ -158,90 +239,85 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** Constructor 
   */ 
 
-  private TimeAxisSetupDialog(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, boolean canChange) {     
-    super(uics.getTopFrame(), dacx.getRMan().getString("timeAxisDialog.title"), true);
-    canChange_ = canChange;
+  private TimeAxisSetupDialog(UIComponentSource uics, DataAccessContext dacx, Metabase mb, 
+                              TabSource tSrc, UndoFactory uFac, 
+                              Map<String, Boolean> canChange, boolean currentTabOnly) {     
+    super(uics.getTopFrame(), uics.getRMan().getString("timeAxisDialog.title"), true);
+ 
     dacx_ = dacx;
     uics_ = uics;
     uFac_ = uFac;
-    ResourceManager rMan = dacx_.getRMan();
+    currentTabOnly_ = currentTabOnly;
+    
+    ptDat_ = new ArrayList<PerTab>();
     setSize(600, 400);
     JPanel cp = (JPanel)getContentPane();
-    cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
-    GridBagConstraints gbc = new GridBagConstraints();
-    
-    workingCopy_ = dacx_.getExpDataSrc().getTimeAxisDefinition().clone();
-    if (!workingCopy_.isInitialized()) {
-      workingCopy_.setToDefault();
+    GridBagConstraints gbc = new GridBagConstraints();    
+    DialogSupport ds = new DialogSupport(this, uics_, gbc);
+
+    //
+    // Each tab (though shared data tabs only get one tab) needs it's own pile of data
+    //
+      
+    TreeMap<Integer, PerTab> ordered = new TreeMap<Integer, PerTab>();
+    Set<String> shar = mb.tabsSharingData();
+ 
+    Iterator<String> dbit;
+    if (currentTabOnly_) {
+      HashSet<String> cto = new HashSet<String>();
+      cto.add(tSrc.getCurrentTab());
+      dbit = cto.iterator();
+    } else {
+      dbit = mb.getDBIDs();
+    }
+    boolean haveShared = false;
+    while (dbit.hasNext()) {
+      String id = dbit.next();
+      Database db = mb.getDB(id);
+      int index = tSrc.getTabIndexFromId(id);
+      TimeAxisDefinition tad = db.getTimeAxisDefinition();
+      if (tad == null) {
+        tad = new TimeAxisDefinition(uics_.getRMan());     
+      }
+
+      if (shar.contains(id)) {
+        if (!haveShared) {
+          haveShared = true;
+          String sharedFmt = uics_.getRMan().getString("qsedit.sharedTabFmt");
+          String otherNum = Integer.toString(shar.size() - 1);
+          String suffix = (shar.size() == 2) ? "" : "s";
+          String sharedTitle = MessageFormat.format(sharedFmt, new Object[] {db.getTabNameData().getTitle(), otherNum, suffix});
+          PerTab pt = new PerTab(tad.clone(), sharedTitle, id, canChange.get(id).booleanValue());
+          ordered.put(Integer.valueOf(index), pt);
+        }
+      } else {
+        PerTab pt = new PerTab(tad.clone(), db.getTabNameData().getTitle(), id, canChange.get(id).booleanValue());
+        ordered.put(Integer.valueOf(index), pt);
+      }
     }
     
-    JLabel unitsLabel = new JLabel(rMan.getString("timeAxisDialog.units"));
-    unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(uics_.getRMan()));
-    unitCombo_.addActionListener(new ActionListener() {
-      public void actionPerformed(ActionEvent ev) {
-        try {
-          if (canChange_) {
-            int units = ((ChoiceContent)unitCombo_.getSelectedItem()).val;
-            enableCustomAndNamed(units);
-          }
-        } catch (Exception ex) {
-          uics_.getExceptionHandler().displayException(ex);
-        }
-        return;
-      }
-    });
-    unitCombo_.setEnabled(canChange_);
-    unitsLabel.setEnabled(canChange_);
-    
-    UiUtil.gbcSet(gbc, 0, 0, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(unitsLabel, gbc);
-    UiUtil.gbcSet(gbc, 1, 0, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(unitCombo_, gbc);
-    
-    customUnitsLabel_ = new JLabel(rMan.getString("timeAxisDialog.customUnits"));
-    customUnitsField_ = new JTextField();
-    
-    UiUtil.gbcSet(gbc, 0, 1, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(customUnitsLabel_, gbc);
-    UiUtil.gbcSet(gbc, 1, 1, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(customUnitsField_, gbc);
-
-    customUnitsAbbrevLabel_ = new JLabel(rMan.getString("timeAxisDialog.customUnitAbbrev"));
-    customUnitsAbbrevField_ = new JTextField();
-    
-    isSuffixCheckBox_ = new JCheckBox(rMan.getString("timeAxisDialog.isSuffix"));
-    
-    UiUtil.gbcSet(gbc, 0, 2, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(customUnitsAbbrevLabel_, gbc);
-    UiUtil.gbcSet(gbc, 1, 2, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(customUnitsAbbrevField_, gbc);    
-    UiUtil.gbcSet(gbc, 2, 2, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(isSuffixCheckBox_, gbc);    
+    //
+    // Build the tabs.
+    //
  
-    stagesLabel_ = new JLabel(rMan.getString("timeAxisDialog.namedStages"));
+    JTabbedPane tabPane = new JTabbedPane();
+    for (PerTab pt : ordered.values()) {
+      ptDat_.add(pt);
+      JPanel pan = perTabPanel(pt);
+      pt.tabPanel_ = pan;
+      tabPane.addTab(pt.tabName_, pt.tabPanel_);
+    }
     
-    UiUtil.gbcSet(gbc, 0, 3, 3, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
-    cp.add(stagesLabel_, gbc);    
-          
-    //
-    // Build the stages table.
-    //
+    int rowNum = 0;
     
-    est_ = new EditableTable(uics_, new TimeAxisSetupTableModel(uics_), uics_.getTopFrame());
-    EditableTable.TableParams etp = new EditableTable.TableParams();
-    etp.addAlwaysAtEnd = false;
-    etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
-    etp.singleSelectOnly = true;
-    JPanel tablePan = est_.buildEditableTable(etp);
+    rowNum = ds.addTable(cp, tabPane, 12, rowNum, 3);
+    ds.buildAndInstallButtonBox(cp, rowNum, 3, false, false);
     
-    UiUtil.gbcSet(gbc, 0, 4, 3, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);    
-    cp.add(tablePan, gbc);
-    
-    DialogSupport ds = new DialogSupport(this, uics_, gbc);
-    ds.buildAndInstallButtonBox(cp, 12, 3, false, false);
-    
-    displayProperties();
+    for (PerTab pt : ptDat_) {
+      displayProperties(pt);
+    }   
+ 
     setLocationRelativeTo(uics_.getTopFrame());
   }
   
@@ -268,7 +344,7 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   */
  
   public void okAction() {
-    if (!canChange_ || applyProperties()) {
+    if (applyProperties()) {
       setVisible(false);
       dispose();
     }
@@ -293,16 +369,94 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   //
   //////////////////////////////////////////////////////////////////////////// 
   
+  
+  /***************************************************************************
+  **
+  ** Build a per-tab panel
+  ** 
+  */
+  
+  private JPanel perTabPanel(PerTab pt) {
+    
+    JPanel jp = new JPanel();
+    jp.setBorder(new EmptyBorder(20, 20, 20, 20));
+    jp.setLayout(new GridBagLayout());
+    GridBagConstraints gbc = new GridBagConstraints();
+    DialogSupport ptds = new DialogSupport(uics_, gbc);
+    ResourceManager rMan = uics_.getRMan();
+    
+    int rowNum = 0;
+    
+    if (!pt.workingCopy_.isInitialized()) {
+      pt.workingCopy_.setToDefault();
+    }
+
+    final PerTab ftp = pt;
+    JLabel unitsLabel = new JLabel(rMan.getString("timeAxisDialog.units"));
+    pt.unitCombo_ = new JComboBox(TimeAxisDefinition.getUnitTypeChoices(uics_.getRMan()));
+    if (pt.canChange_) {
+      pt.unitCombo_.addActionListener(new ActionListener() {
+        public void actionPerformed(ActionEvent ev) {
+          try {
+            int units = ((ChoiceContent)ftp.unitCombo_.getSelectedItem()).val;
+            enableCustomAndNamed(ftp, units);
+          } catch (Exception ex) {
+            uics_.getExceptionHandler().displayException(ex);
+          }
+          return;
+        }
+      });
+    }
+    pt.unitCombo_.setEnabled(pt.canChange_);
+    unitsLabel.setEnabled(pt.canChange_);
+    
+    rowNum = ptds.addLabeledWidget(jp, unitsLabel, pt.unitCombo_, true, false, rowNum, 3);
+    
+    pt.customUnitsLabel_ = new JLabel(rMan.getString("timeAxisDialog.customUnits"));
+    pt.customUnitsField_ = new JTextField();
+    
+    rowNum = ptds.addLabeledWidget(jp, pt.customUnitsLabel_, pt.customUnitsField_, true, false, rowNum, 3);
+ 
+    pt.customUnitsAbbrevLabel_ = new JLabel(rMan.getString("timeAxisDialog.customUnitAbbrev"));
+    pt.customUnitsAbbrevField_ = new JTextField();    
+    pt.isSuffixCheckBox_ = new JCheckBox(rMan.getString("timeAxisDialog.isSuffix"));
+    
+    UiUtil.gbcSet(gbc, 0, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
+    jp.add(pt.customUnitsAbbrevLabel_, gbc);
+    UiUtil.gbcSet(gbc, 1, rowNum, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
+    jp.add(pt.customUnitsAbbrevField_, gbc);    
+    UiUtil.gbcSet(gbc, 2, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
+    jp.add(pt.isSuffixCheckBox_, gbc);    
+  
+    pt.stagesLabel_ = new JLabel(rMan.getString("timeAxisDialog.namedStages"));
+    
+    rowNum = ptds.addWidgetFullRow(jp, pt.stagesLabel_, true, false, rowNum, 3);
+    
+    //
+    // Build the stages table.
+    //
+    
+    pt.est_ = new EditableTable(uics_, new TimeAxisSetupTableModel(uics_), uics_.getTopFrame());
+    EditableTable.TableParams etp = new EditableTable.TableParams();
+    etp.addAlwaysAtEnd = false;
+    etp.buttons = EditableTable.ALL_BUT_EDIT_BUTTONS;
+    etp.singleSelectOnly = true;
+    JPanel tablePan = pt.est_.buildEditableTable(etp);
+    
+    rowNum = ptds.addTable(jp, tablePan, 8, rowNum, 3);
+    return (jp);
+  }
+ 
   /***************************************************************************
   **
   ** Enable Named Stages and/or custom units
   ** 
   */
   
-  private void enableCustomAndNamed(int units) {    
+  private void enableCustomAndNamed(PerTab pt, int units) {    
     boolean activateUnits = TimeAxisDefinition.wantsCustomUnits(units);
     boolean activateStages = TimeAxisDefinition.wantsNamedStages(units);
-    enableCustomAndNamedCore(activateUnits, activateStages);
+    enableCustomAndNamedCore(pt, activateUnits, activateStages);
     return;
   }
   
@@ -312,14 +466,14 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** 
   */
   
-  private void enableCustomAndNamedCore(boolean activateUnits, boolean activateStages) {       
-    customUnitsLabel_.setEnabled(activateUnits);
-    customUnitsField_.setEnabled(activateUnits);
-    customUnitsAbbrevLabel_.setEnabled(activateUnits);
-    customUnitsAbbrevField_.setEnabled(activateUnits);
-    isSuffixCheckBox_.setEnabled(activateUnits);
-    stagesLabel_.setEnabled(activateStages);   
-    est_.setEnabled(activateStages);
+  private void enableCustomAndNamedCore(PerTab pt, boolean activateUnits, boolean activateStages) {       
+    pt.customUnitsLabel_.setEnabled(activateUnits);
+    pt.customUnitsField_.setEnabled(activateUnits);
+    pt.customUnitsAbbrevLabel_.setEnabled(activateUnits);
+    pt.customUnitsAbbrevField_.setEnabled(activateUnits);
+    pt.isSuffixCheckBox_.setEnabled(activateUnits);
+    pt.stagesLabel_.setEnabled(activateStages);   
+    pt.est_.setEnabled(activateStages);
     return;
   }  
 
@@ -329,6 +483,35 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   //
   ////////////////////////////////////////////////////////////////////////////
   
+  /***************************************************************************
+  **
+  ** Per-tab elements
+  */
+  
+  private static class PerTab {
+    String tabName_;
+    String dbID_;
+    EditableTable est_;
+    TimeAxisDefinition workingCopy_;
+    JComboBox unitCombo_;
+    JTextField customUnitsField_;
+    JTextField customUnitsAbbrevField_;
+    JCheckBox isSuffixCheckBox_;  
+    JLabel customUnitsLabel_;
+    JLabel customUnitsAbbrevLabel_;  
+    JLabel stagesLabel_;
+    boolean canChange_;
+
+    JPanel tabPanel_;
+    
+    PerTab(TimeAxisDefinition tad, String tabName, String dbID, boolean canChange) {
+      workingCopy_ = tad.clone();
+      tabName_ = tabName;
+      dbID_ = dbID;
+      canChange_ = canChange;
+    }
+  }
+
   /***************************************************************************
   **
   ** The table
@@ -460,31 +643,32 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   ** 
   */
   
-  private void displayProperties() {
+  private void displayProperties(PerTab pt) {
 
-    int units = workingCopy_.getUnits();
-    unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(uics_.getRMan(), workingCopy_.getUnits()));
+    int units = pt.workingCopy_.getUnits();
+    pt.unitCombo_.setSelectedItem(TimeAxisDefinition.unitTypeForCombo(uics_.getRMan(), pt.workingCopy_.getUnits()));
     
-    if (workingCopy_.haveCustomUnits()) {
-      String customUnits = workingCopy_.getUserUnitName();
-      customUnitsField_.setText(customUnits);
-      String customUnitAbbrev = workingCopy_.getUserUnitAbbrev();
-      customUnitsAbbrevField_.setText(customUnitAbbrev);
-      isSuffixCheckBox_.setSelected(workingCopy_.unitsAreASuffix());
+    if (pt.workingCopy_.haveCustomUnits()) {
+      String customUnits = pt.workingCopy_.getUserUnitName();
+      pt.customUnitsField_.setText(customUnits);
+      String customUnitAbbrev = pt.workingCopy_.getUserUnitAbbrev();
+      pt.customUnitsAbbrevField_.setText(customUnitAbbrev);
+      pt.isSuffixCheckBox_.setSelected(pt.workingCopy_.unitsAreASuffix());
     } else {
-      isSuffixCheckBox_.setSelected(true);  // disabled, but default if activated
+      pt.isSuffixCheckBox_.setSelected(true);  // disabled, but default if activated
     }
       
-    List namedStages = workingCopy_.haveNamedStages() ? workingCopy_.getNamedStages() : new ArrayList();
-    est_.getModel().extractValues(namedStages) ;  
+    List namedStages = pt.workingCopy_.haveNamedStages() ? pt.workingCopy_.getNamedStages() : new ArrayList();
+    pt.est_.getModel().extractValues(namedStages) ;  
 
-    if (!canChange_) {
-      enableCustomAndNamedCore(false, false);       
+    if (!pt.canChange_) {
+      enableCustomAndNamedCore(pt, false, false);       
     } else {
-      enableCustomAndNamed(units);
+      enableCustomAndNamed(pt, units);
     }
     return;
   }  
+  
   
   /***************************************************************************
   **
@@ -492,27 +676,42 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
   */
   
   private boolean applyProperties() {
+  
+    Map<String, List<TimeAxisDefinition.NamedStage>> stageResultsMap = 
+      new HashMap<String, List<TimeAxisDefinition.NamedStage>>();
+    for (PerTab pt : ptDat_) {
+      if (!checkProperties(pt, stageResultsMap)) {
+        return (false);
+      } 
+    }
+    UndoSupport support = uFac_.provideUndoSupport("undo.timeAxisSpec", dacx_); 
+    for (PerTab pt : ptDat_) {
+      applyProperties(pt, stageResultsMap, support); 
+    }
+    support.finish();
+    return (true);
+  }
+
+  
+  /***************************************************************************
+  **
+  ** Check that our UI values for the time axis definition are OK
+  */
+  
+  private boolean checkProperties(PerTab pt, Map<String, List<TimeAxisDefinition.NamedStage>> stageResultsMap) {
     
-    if (!canChange_) {
+    if (!pt.canChange_) {
       return (true);
     }
-    ResourceManager rMan = uics_.getRMan();
     
-    //
-    // Undo/Redo support
-    //
-   
-    UndoSupport support = uFac_.provideUndoSupport("undo.timeAxisSpec", dacx_); 
-
-    int units = ((ChoiceContent)unitCombo_.getSelectedItem()).val;
+    ResourceManager rMan = uics_.getRMan();
+    int units = ((ChoiceContent)pt.unitCombo_.getSelectedItem()).val;
     
     String customUnits = null;
     String customUnitAbbrev = null;
-    boolean isSuffix = true;
     if (TimeAxisDefinition.wantsCustomUnits(units)) {
-      customUnits = customUnitsField_.getText();
-      customUnitAbbrev = customUnitsAbbrevField_.getText();
-      isSuffix = isSuffixCheckBox_.isSelected();
+      customUnits = pt.customUnitsField_.getText().trim();
+      customUnitAbbrev = pt.customUnitsAbbrevField_.getText().trim();
       if (customUnits.trim().equals("")) {
         JOptionPane.showMessageDialog(uics_.getTopFrame(), rMan.getString("timeAxisDialog.blankUnits"),
                                       rMan.getString("timeAxisDialog.blankUnitsTitle"),
@@ -529,29 +728,52 @@ public class TimeAxisSetupDialog extends JDialog implements DialogSupport.Dialog
  
     //
     // May bounce if the user specifies bad stage definitions
-    //
+    //   
     
-    List<TimeAxisDefinition.NamedStage> stageResults = null;
     if (TimeAxisDefinition.wantsNamedStages(units)) {
-      stageResults = ((TimeAxisSetupTableModel)est_.getModel()).applyValues();
+      List<TimeAxisDefinition.NamedStage> stageResults = ((TimeAxisSetupTableModel)pt.est_.getModel()).applyValues();
       if (stageResults == null) {
         return (false);
       }
-    }  
+      stageResultsMap.put(pt.dbID_, stageResults);
+    }
+ 
+    return (true);
+  } 
+  
+  /***************************************************************************
+  **
+  ** Apply our UI values to the time axis definition
+  */
+  
+  private void applyProperties(PerTab pt, Map<String, List<TimeAxisDefinition.NamedStage>> stageResultsMap, UndoSupport support) {
     
+    if (!pt.canChange_) {
+      return;
+    }
+    
+    int units = ((ChoiceContent)pt.unitCombo_.getSelectedItem()).val;
+    boolean wantCustom = TimeAxisDefinition.wantsCustomUnits(units);
+    
+    String customUnits = (wantCustom) ? pt.customUnitsField_.getText().trim() : null;
+    String customUnitAbbrev = (wantCustom) ? pt.customUnitsAbbrevField_.getText().trim() : null;
+    boolean isSuffix = (wantCustom) ? pt.isSuffixCheckBox_.isSelected() : true;
+    List<TimeAxisDefinition.NamedStage> stageResults = stageResultsMap.get(pt.dbID_);
+  
     //
     // Submit the changes:
     //
-     
+   
+    Metabase mb = dacx_.getMetabase();
+    Database db = mb.getDB(pt.dbID_);
     TimeAxisDefinition tad = new TimeAxisDefinition(uics_.getRMan());
     tad.setDefinition(units, customUnits, customUnitAbbrev, isSuffix, stageResults);
-    DatabaseChange dc = dacx_.getExpDataSrc().setTimeAxisDefinition(tad);
+    DatabaseChange dc = db.setTimeAxisDefinition(tad);
     if (dc != null) {
-      DatabaseChangeCmd dcc = new DatabaseChangeCmd(dacx_, dc);
+      TabPinnedDynamicDataAccessContext tpdacx = new TabPinnedDynamicDataAccessContext(mb, pt.dbID_);
+      DatabaseChangeCmd dcc = new DatabaseChangeCmd(tpdacx, dc);
       support.addEdit(dcc);
     }
-    
-    support.finish();
-    return (true);
-  } 
+    return;
+  }  
 }

@@ -29,7 +29,6 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import org.xml.sax.Attributes;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.genome.FactoryWhiteboard;
 import org.systemsbiology.biotapestry.parser.AbstractFactoryClient;
@@ -776,19 +775,12 @@ public class Experiment implements Cloneable, PertFilterTarget {
   */  
       
   public static class PertSourcesInfoWorker extends AbstractFactoryClient {
-   
-    private DataAccessContext dacx_;
-    
+  
     public PertSourcesInfoWorker(FactoryWhiteboard whiteboard) {
       super(whiteboard);
       myKeys_.add("experiment");
     }
-    
-    public void installContext(DataAccessContext dacx) {
-      dacx_ = dacx;
-      return;
-    }
-
+  
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
       Object retval = null;
       if (elemName.equals("experiment")) {

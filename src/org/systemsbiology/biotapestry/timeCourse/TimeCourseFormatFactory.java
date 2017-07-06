@@ -30,6 +30,7 @@ import java.io.IOException;
 import org.xml.sax.Attributes;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.parser.ParserClient;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
 
@@ -258,7 +259,7 @@ public class TimeCourseFormatFactory implements ParserClient {
     }
     
     if (dataKeys_.contains(elemName)) {
-      TimeCourseData data = TimeCourseData.buildFromXML(dacx_, elemName, attrs, serialNumberIsIllegal_);
+      TimeCourseData data = TimeCourseData.buildFromXML(elemName, attrs, serialNumberIsIllegal_);
       if (data != null) {        
         if (isForMeta_) {
           dacx_.getMetabase().setSharedTimeCourseData(data);
@@ -303,7 +304,8 @@ public class TimeCourseFormatFactory implements ParserClient {
       currSimTag_ = AttributeExtractor.extractAttribute(elemName, attrs, simDataKey_, "id", true);   
       currDataIsSim_ = true;
     } else if (exprKeys_.contains(elemName)) {
-      ExpressionEntry ee = ExpressionEntry.buildFromXML(dacx_, elemName, attrs);
+      TimeAxisDefinition tad = dacx_.getExpDataSrc().getTimeAxisDefinition();
+      ExpressionEntry ee = ExpressionEntry.buildFromXML(tad, elemName, attrs);
       if (ee != null) {
         if (currGeneIsTemplate_) {
           GeneTemplateEntry gte = new GeneTemplateEntry(ee.getTime(), ee.getRegion());
@@ -366,7 +368,7 @@ public class TimeCourseFormatFactory implements ParserClient {
       if (mapsAreIllegal_) {
         throw new IOException();
       }
-      TimeCourseData.TopoTimeRange newRange = TimeCourseData.TopoTimeRange.buildFromXML(dacx_, elemName, attrs);
+      TimeCourseData.TopoTimeRange newRange = TimeCourseData.TopoTimeRange.buildFromXML(elemName, attrs);
       currRegTopo_ = new TimeCourseData.RegionTopology(newRange);
       currTarg_.setRegionTopology(newRange, currRegTopo_);
     } else if (elemName.equals(topoRegionKey_)) {
@@ -386,7 +388,7 @@ public class TimeCourseFormatFactory implements ParserClient {
         throw new IOException();
       }
       currTarg_.prepareRegionTopologyLocatorForInput();
-      currLocRange_ = TimeCourseData.TopoTimeRange.buildFromXML(dacx_, elemName, attrs); 
+      currLocRange_ = TimeCourseData.TopoTimeRange.buildFromXML(elemName, attrs); 
     } else if (elemName.equals(topoRegionLocationKey_)) {
       if (currLocRange_ == null) {
         throw new IOException();

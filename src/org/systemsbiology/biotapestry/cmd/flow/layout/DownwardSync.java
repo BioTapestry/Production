@@ -337,7 +337,7 @@ public class DownwardSync extends AbstractControlFlow {
         // If we have been asked to save region info, gather that up now:
         //
   
-        Map<String, Rectangle> savedRegionBounds = (keepGroups) ? (new BuildSupport(uics_, rcxT, uFac_)).saveRegionBounds(rcxT) : null;
+        Map<String, Rectangle> savedRegionBounds = (keepGroups) ? (new BuildSupport(uics_, tSrc_, uFac_)).saveRegionBounds(rcxT) : null;
               
         DatabaseChange dc = rcxT.getLayoutSource().startLayoutUndoTransaction(rcxT.getCurrentLayoutID());
         

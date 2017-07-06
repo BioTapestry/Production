@@ -98,7 +98,7 @@ public class FilePreparer {
   
    /***************************************************************************
    **
-   ** Bundle up file writing error message
+   ** Bundle up file reading error message
    */ 
         
    public FileInputResultClosure getFileInputError(IOException ioex) { 

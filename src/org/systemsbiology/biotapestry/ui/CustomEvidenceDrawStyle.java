@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -93,6 +93,7 @@ public class CustomEvidenceDrawStyle implements Cloneable {
   ** Clone
   */
 
+  @Override
   public CustomEvidenceDrawStyle clone() {
     try {
       CustomEvidenceDrawStyle retval = (CustomEvidenceDrawStyle)super.clone();
@@ -101,8 +102,40 @@ public class CustomEvidenceDrawStyle implements Cloneable {
     } catch (CloneNotSupportedException cnse) {
       throw new IllegalStateException();
     }
-  }  
+  }
   
+  /***************************************************************************
+  **
+  ** Equals operator
+  */
+  @Override
+  public boolean equals(Object other) {
+    if (other == null) {
+      return (false);
+    }
+    if (other == this) {
+      return (true);
+    }
+    if (!(other instanceof CustomEvidenceDrawStyle)) {
+      return (false);
+    }
+    CustomEvidenceDrawStyle onc = (CustomEvidenceDrawStyle)other;
+    
+    if (this.showDiamonds_ != onc.showDiamonds_) {
+      return (false);
+    }
+    
+    if (this.evidenceLevel_ != onc.evidenceLevel_) {
+      return (false);
+    }
+ 
+    if (this.style_ == null) {
+      return (onc.style_ == null);
+    }  
+     
+    return (this.style_.equals(onc.style_));
+  }   
+ 
   /***************************************************************************
   **
   ** Get the core draw style  May be null.

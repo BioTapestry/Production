@@ -22,8 +22,11 @@ package org.systemsbiology.biotapestry.ui;
 import java.awt.Color;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.Vector;
@@ -763,7 +766,136 @@ public class DisplayOptions implements Cloneable {
     }
    
     return;
-  }   
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Return merge mismatches
+  */
+
+  public List<String> getMergeMismatches(DisplayOptions otherDO, ResourceManager rMan) {
+    
+    List<String> retval = new ArrayList<String>();
+    
+    if (this.renderBusBranches_ != otherDO.renderBusBranches_) {
+      String currBB = rMan.getString("displayOptions." + mapBranches(this.renderBusBranches_));
+      String mergeBB = rMan.getString("displayOptions." + mapNodeActivity(otherDO.renderBusBranches_));
+      String fmt = rMan.getString("displayOptions.mismatchBusBranches");
+      String report = MessageFormat.format(fmt, new Object[] {currBB, mergeBB, currBB});   
+      retval.add(report);
+    }
+    if (this.renderEvidence_ != otherDO.renderEvidence_) {
+      // We want to retain any custom evidence entries we are using.
+      String currRE = rMan.getString("displayOptions." + mapEvidence(this.renderEvidence_));
+      String mergeRE = rMan.getString("displayOptions." + mapEvidence(otherDO.renderEvidence_));
+      String resolvedRE = currRE;
+      if (otherDO.renderEvidence_ == EVIDENCE_IS_CUSTOM) {
+        this.renderEvidence_ = otherDO.renderEvidence_;
+        resolvedRE = mergeRE;
+      }    
+      String fmt = rMan.getString("displayOptions.mismatchRenderEvidence");
+      String report = MessageFormat.format(fmt, new Object[] {currRE, mergeRE, resolvedRE});   
+      retval.add(report);
+    }
+    if (this.repressionFootExtraSize_ != otherDO.repressionFootExtraSize_) {
+      String currRFE = Integer.toString(this.repressionFootExtraSize_);
+      String mergeRFE = Integer.toString(otherDO.repressionFootExtraSize_);
+      String fmt = rMan.getString("displayOptions.mismatchRepressionFoot");
+      String report = MessageFormat.format(fmt, new Object[] {currRFE, mergeRFE, currRFE});   
+      retval.add(report);
+    }
+    if (this.renderNodeActivity_ != otherDO.renderNodeActivity_) {
+      String currNA = rMan.getString("displayOptions." + mapNodeActivity(this.renderNodeActivity_ ));
+      String mergeNA = rMan.getString("displayOptions." + mapNodeActivity(otherDO.renderNodeActivity_ ));
+      String fmt = rMan.getString("displayOptions.mismatchNodeActivity");
+      String report = MessageFormat.format(fmt, new Object[] {currNA, mergeNA, currNA});   
+      retval.add(report);
+    }
+    if (this.renderLinkActivity_ != otherDO.renderLinkActivity_) {
+      String currLA = rMan.getString("displayOptions." + mapLinkActivity(this.renderLinkActivity_ ));
+      String mergeLA = rMan.getString("displayOptions." + mapLinkActivity(otherDO.renderLinkActivity_ ));
+      String fmt = rMan.getString("displayOptions.mismatchLinkActivity");
+      String report = MessageFormat.format(fmt, new Object[] {currLA, mergeLA, currLA});   
+      retval.add(report);
+    }
+    if (this.firstZoom_ != otherDO.firstZoom_) {
+      String currFZ = rMan.getString("displayOptions." + this.firstZoom_.getTag());
+      String mergeFZ = rMan.getString("displayOptions." + otherDO.firstZoom_.getTag());
+      String fmt = rMan.getString("displayOptions.mismatchFirstZoom");
+      String report = MessageFormat.format(fmt, new Object[] {currFZ, mergeFZ, currFZ});   
+      retval.add(report);
+    }
+    if (this.navZoom_ != otherDO.navZoom_) {
+      String currNZ = rMan.getString("displayOptions." + this.navZoom_.getTag());
+      String mergeNZ = rMan.getString("displayOptions." + otherDO.navZoom_.getTag());
+      String fmt = rMan.getString("displayOptions.mismatchSelectionZoom");
+      String report = MessageFormat.format(fmt, new Object[] {currNZ, mergeNZ, currNZ});   
+      retval.add(report);
+    }
+    if (this.weakExpressionLevel_ != otherDO.weakExpressionLevel_) {
+      String currWEL = Double.toString(this.weakExpressionLevel_);
+      String mergeWEL = Double.toString(otherDO.weakExpressionLevel_);
+      String fmt = rMan.getString("displayOptions.mismatchWeakExpression");
+      String report = MessageFormat.format(fmt, new Object[] {currWEL, mergeWEL, currWEL});   
+      retval.add(report);
+    }
+    if (this.displayExpressionTableTree_ != otherDO.displayExpressionTableTree_) {
+      String currDET = Boolean.toString(this.displayExpressionTableTree_);
+      String mergeDET = Boolean.toString(otherDO.displayExpressionTableTree_);
+      String fmt = rMan.getString("displayOptions.mismatchDisplayTree");
+      String report = MessageFormat.format(fmt, new Object[] {currDET, mergeDET, currDET});   
+      retval.add(report);
+    }
+    if (this.inactiveBright_ != otherDO.inactiveBright_) {
+      String currIB = Double.toString(this.inactiveBright_);
+      String mergeIB = Double.toString(otherDO.inactiveBright_);
+      String fmt = rMan.getString("displayOptions.mismatchInactiveBright");
+      String report = MessageFormat.format(fmt, new Object[] {currIB, mergeIB, currIB});   
+      retval.add(report);
+    }
+    
+    //
+    // PertDisplay options belong to tab, so not merged.
+    //
+    
+    //
+    // If an evidence level is defined in the append data but not in the
+    // original, we merge that in. We do not overwrite if a collision:
+    //
+    
+    if (this.renderEvidence_ == EVIDENCE_IS_CUSTOM) {
+      HashSet<Integer> mergedLevels = new HashSet<Integer>(this.customEvidence_.keySet()); 
+      mergedLevels.addAll(otherDO.customEvidence_.keySet());     
+      TreeMap<Integer, CustomEvidenceDrawStyle> mergedEvidence = new TreeMap<Integer, CustomEvidenceDrawStyle>();
+      for (Integer level : mergedLevels) {
+        CustomEvidenceDrawStyle tds = this.customEvidence_.get(level);
+        CustomEvidenceDrawStyle ods = otherDO.customEvidence_.get(level);
+        if (tds != null) {
+          if (ods != null) {
+            if (tds.equals(ods)) {
+              String fmt = rMan.getString("displayOptions.customEvidenceMatched");
+              String report = MessageFormat.format(fmt, new Object[] {level});   
+              retval.add(report);
+            } else {
+              String fmt = rMan.getString("displayOptions.customEvidenceDropped");
+              String report = MessageFormat.format(fmt, new Object[] {level});   
+              retval.add(report);
+            }
+          }
+          mergedEvidence.put(level, tds);
+        } else {
+          if (ods != null) {
+            String fmt = rMan.getString("displayOptions.customEvidenceMerged");
+            String report = MessageFormat.format(fmt, new Object[] {level});   
+            retval.add(report);
+            mergedEvidence.put(level, ods);
+          }
+        }
+      }
+      this.customEvidence_ = mergedEvidence;
+    }
+    return (retval);
+  }  
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -1072,7 +1204,6 @@ public class DisplayOptions implements Cloneable {
     public DisplayOptionsWorker(FactoryWhiteboard whiteboard, boolean isForAppend) {
       super(whiteboard);
       myKeys_.add("displayOptions");
-      UiUtil.fixMePrintout("Display options need append/merge abilities!");
       isForAppend_ = isForAppend;
       installWorker(new CustomEvidenceDrawStyle.CustomEvidenceDrawStyleWorker(whiteboard), new MyStyleGlue());
       installWorker(new ColumnWorker(whiteboard), new MyColumnGlue());
@@ -1085,19 +1216,35 @@ public class DisplayOptions implements Cloneable {
     }
        
     protected Object localProcessElement(String elemName, Attributes attrs) throws IOException {
-      UiUtil.fixMePrintout("Ignoring appended display options!");
-      if (isForAppend_) {
-        return (null);
-      }
-      
       Object retval = null;
       if (elemName.equals("displayOptions")) {
         FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
-        board.displayOptions = buildFromXML(elemName, attrs);
-        dacx_.getDisplayOptsSource().setDisplayOptionsForIO(board.displayOptions);
-        retval = board.displayOptions;
+        if (isForAppend_) {   
+          board.appendDisplayOptions = buildFromXML(elemName, attrs);
+          retval = board.appendDisplayOptions;
+        } else {
+          board.displayOptions = buildFromXML(elemName, attrs);
+          dacx_.getDisplayOptsSource().setDisplayOptionsForIO(board.displayOptions);
+          retval = board.displayOptions;
+        }     
       }
-      return (retval);     
+      return (retval);         
+    }
+    
+    @Override
+    public void localFinishElement(String elemName) throws IOException {
+      if (isForAppend_ && elemName.equals("displayOptions")) {
+        DisplayOptions existing = dacx_.getDisplayOptsSource().getDisplayOptions();
+        FactoryWhiteboard board = (FactoryWhiteboard)this.sharedWhiteboard_;
+        List<String> mm = existing.getMergeMismatches(board.appendDisplayOptions, dacx_.getRMan());
+        if (!mm.isEmpty()) {
+          if (board.mergeIssues == null) {
+            board.mergeIssues = new ArrayList<String>();
+          }  
+          board.mergeIssues.addAll(mm);
+        }
+      }
+      return;
     }
     
     private DisplayOptions buildFromXML(String elemName, Attributes attrs) throws IOException {  

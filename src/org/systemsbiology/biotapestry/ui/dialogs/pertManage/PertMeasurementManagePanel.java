@@ -31,9 +31,11 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.border.EtchedBorder;
 
+import org.systemsbiology.biotapestry.app.TabPinnedDynamicDataAccessContext;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.undo.PertDataChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.db.Metabase;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.DependencyAnalyzer;
@@ -442,7 +444,9 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     String resultKey = pendingKey_;
     pendingKey_ = null;
     support.addEdit(new PertDataChangeCmd(pdc));
-    pd_.modifyForPertDataChange(support);
+    Metabase mb = dacx.getMetabase();
+    String tab = mb.getTabForPD(pd_);
+    pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
@@ -508,7 +512,9 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     da.killOffDependencies(refs, tcd_, support);
     PertDataChange pdc2 = pd_.deleteMeasureProp(key);
     support.addEdit(new PertDataChangeCmd(pdc2));
-    pd_.modifyForPertDataChange(support);
+    Metabase mb = dacx.getMetabase();
+    String tab = mb.getTabForPD(pd_);
+    pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
