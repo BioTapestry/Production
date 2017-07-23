@@ -43,7 +43,6 @@ import javax.swing.JOptionPane;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -128,7 +127,6 @@ public class FullHierarchyCSVFormatFactory {
   private UIComponentSource uics_;
   private DataAccessContext dacx_;
   private FullHierarchyBuilder fhb_;
-  private TabSource tSrc_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -141,10 +139,9 @@ public class FullHierarchyCSVFormatFactory {
   ** Constructor
   */
 
-  public FullHierarchyCSVFormatFactory(UIComponentSource uics, TabSource tSrc, DataAccessContext dacx) {
+  public FullHierarchyCSVFormatFactory(UIComponentSource uics, DataAccessContext dacx) {
     uics_ = uics;
     dacx_ = dacx;
-    tSrc_ = tSrc;
     fhb_ = new FullHierarchyBuilder(dacx_);
   }
 
@@ -208,7 +205,6 @@ public class FullHierarchyCSVFormatFactory {
   */
 
   public LinkRouter.RoutingResult buildFromCSVBackground(UIComponentSource uics,
-                                                         TabSource tSrc, 
                                                          UndoFactory uFac, 
                                                          StaticDataAccessContext rcxR,
                                                          FullHierarchyBuilder.BIPData bipd,                                                         
@@ -231,7 +227,7 @@ public class FullHierarchyCSVFormatFactory {
                                            : LayoutOptions.NO_INHERITANCE_SQUASH;
     options.overlayOption = overlayOption;
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, rcxR, tSrc, uFac);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, rcxR, uFac);
     BuildInstructionProcessor.PIHData pihd = new BuildInstructionProcessor.PIHData(bipd.processOrder, bipd.buildCmds, 
                                                                                    bipd.regions, center, 
                                                                                    size, !doReplacement, 
@@ -380,7 +376,7 @@ public class FullHierarchyCSVFormatFactory {
         if (deadCollection.contains(deadOneID)) {
           continue;
         }
-        Set<String> deadOnes = DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, deadOneID, false, support);
+        Set<String> deadOnes = DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, deadOneID, false, support);
        
         deadCollection.addAll(deadOnes);
         TreeNode tn = nt.nodeForModel(deadOneID);

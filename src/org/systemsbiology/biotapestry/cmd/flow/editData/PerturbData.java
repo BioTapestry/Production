@@ -346,7 +346,7 @@ public class PerturbData extends AbstractControlFlow {
           PertDataChange dc = pd.dropPertDataForFilter(pfe);
           support.addEdit(new PertDataChangeCmd(dc));
         }
-        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
         support.finish();
 
       }
@@ -375,7 +375,7 @@ public class PerturbData extends AbstractControlFlow {
           support.addEdit(new PertDataChangeCmd(chg2, false));
         }
         if ((chg1 != null) || (chg1 != null)) {
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }            
       }
@@ -420,7 +420,7 @@ public class PerturbData extends AbstractControlFlow {
         pdc = pdms.setSourceMap(id, sList);
         pdcc = new PertDataChangeCmd(pdc);
         support.addEdit(pdcc);
-        GeneralChangeEvent gcev = new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
+        GeneralChangeEvent gcev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
         support.addEvent(gcev);
         support.finish();
         return (true);

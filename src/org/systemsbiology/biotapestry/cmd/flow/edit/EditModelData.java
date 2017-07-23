@@ -176,7 +176,7 @@ public class EditModelData extends AbstractControlFlow {
       
       new DataLocator(uics_.getGenomePresentation(), dacx_).setDataLocations(support, date, attrib, keys);
    
-      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       
       // Either done or looping:

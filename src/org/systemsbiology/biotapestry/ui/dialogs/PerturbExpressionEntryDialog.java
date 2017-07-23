@@ -1245,7 +1245,7 @@ public class PerturbExpressionEntryDialog extends JDialog implements DialogSuppo
       tcc = tcd_.finishGeneUndoTransaction(gName, tcc);
       support.addEdit(new TimeCourseChangeCmd(tcc));
     }
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
     support.finish();
     return (true);
   }

@@ -40,7 +40,6 @@ import org.systemsbiology.biotapestry.cmd.flow.layout.WorkspaceSupport;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
-import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
 import org.systemsbiology.biotapestry.ui.LayoutOptionsManager;
@@ -313,7 +312,7 @@ public class DialogBuild extends AbstractControlFlow {
    
     private DialogAndInProcessCmd stepLaunchDialog() {  
  
-     bip_ = new BuildInstructionProcessor(uics_, dacx_, tSrc_, uFac_);
+     bip_ = new BuildInstructionProcessor(uics_, dacx_, uFac_);
      List<BuildInstruction> instruct = bip_.getInstructions(dacx_);
       
      BuildNetworkDialogFactory.BuildArgs ba = new BuildNetworkDialogFactory.BuildArgs(dacx_.getCurrentGenome(), parent, working, instruct);
@@ -499,7 +498,7 @@ public class DialogBuild extends AbstractControlFlow {
     }
     
     public Object runCore() throws AsynchExitRequestException {
-      BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, rcxR_, tSrc_, uFac_);
+      BuildInstructionProcessor bip = new BuildInstructionProcessor(uics_, rcxR_, uFac_);
       BuildInstructionProcessor.PIData pid = new BuildInstructionProcessor.PIData(myGenomeID_, myBuildCmds_, myRegions_,
                                                                                   myCenter_, mySize_,  myKeepLayout_, false, myOptions_, 
                                                                                   support_, this, myGlobalDelete_, specLayout_, params_);

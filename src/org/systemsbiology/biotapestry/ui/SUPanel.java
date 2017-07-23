@@ -693,7 +693,7 @@ public class SUPanel implements LayoutChangeListener,
   */   
 
   public void generalChangeOccurred(GeneralChangeEvent gcev) {
-    if (gcev.getChangeType() == GeneralChangeEvent.MODEL_DATA_CHANGE) {
+    if (gcev.getChangeType() == GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE) {
       drawModel(false);
     }
     return;

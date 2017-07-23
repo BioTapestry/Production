@@ -31,7 +31,6 @@ import java.awt.Dimension;
 
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
 import org.systemsbiology.biotapestry.cmd.instruct.BuildInstructionProcessor;
@@ -97,7 +96,7 @@ public class DBGenomeSIFFormatFactory {
 
   public AugmentedResult buildFromSIF(UIComponentSource uics,
                                       StaticDataAccessContext dacx,
-                                      TabSource tSrc, UndoFactory uFac, File infile,                                                                                             
+                                      UndoFactory uFac, File infile,                                                                                             
                                       boolean doReplacement,
                                       SpecialtyLayout specLayout,
                                       SpecialtyLayoutEngineParams params,
@@ -114,46 +113,49 @@ public class DBGenomeSIFFormatFactory {
     BufferedReader in = new BufferedReader(new FileReader(infile));
     String line = null;
     boolean seenSign = false;
-    while ((line = in.readLine()) != null) {
-      String[] tokens = line.split("\\t");
-      if (tokens.length == 0) {
-        continue;
-      } else if ((tokens.length == 1) || (tokens.length == 2)) {
-        if (tokens[0].trim().equals("")) {
-          throw new IOException();
-        }
-        commands.add(processRelationToInstruction(dacx, tokens[0].trim(), null, null, Linkage.NONE));
-      } else {
-        for (int i = 2; i < tokens.length; i++) {
-          if (tokens[0].trim().equals("") || tokens[i].trim().equals("")) {
-            throw new IOException();
-          }
-
-          int sign = Linkage.POSITIVE;
-          if (tokens[1] != null) {
-            String link = tokens[1].trim();   
-            if (link.equalsIgnoreCase(POSITIVE_STR_) || link.equalsIgnoreCase(SifSupport.POSITIVE_STR_EXP)) {
-              sign = Linkage.POSITIVE;
-              seenSign = true;
-            } else if (link.equalsIgnoreCase(NEGATIVE_STR_) || link.equalsIgnoreCase(SifSupport.NEGATIVE_STR_EXP)) {
-              sign = Linkage.NEGATIVE;
-              seenSign = true;
-            } else if (link.equalsIgnoreCase(NONE_STR_) || link.equalsIgnoreCase(SifSupport.NONE_STR_EXP)) {
-              sign = Linkage.NONE;
-              seenSign = true;
-            }
-          }
-          commands.add(processRelationToInstruction(dacx, tokens[0].trim(), tokens[1], tokens[i].trim(), sign));
-        }
-      }
-    }  
-    in.close();
+    try {
+	    while ((line = in.readLine()) != null) {
+	      String[] tokens = line.split("\\t");
+	      if (tokens.length == 0) {
+	        continue;
+	      } else if ((tokens.length == 1) || (tokens.length == 2)) {
+	        if (tokens[0].trim().equals("")) {
+	          throw new IOException();
+	        }
+	        commands.add(processRelationToInstruction(dacx, tokens[0].trim(), null, null, Linkage.NONE));
+	      } else {
+	        for (int i = 2; i < tokens.length; i++) {
+	          if (tokens[0].trim().equals("") || tokens[i].trim().equals("")) {
+	            throw new IOException();
+	          }
+	
+	          int sign = Linkage.POSITIVE;
+	          if (tokens[1] != null) {
+	            String link = tokens[1].trim();   
+	            if (link.equalsIgnoreCase(POSITIVE_STR_) || link.equalsIgnoreCase(SifSupport.POSITIVE_STR_EXP)) {
+	              sign = Linkage.POSITIVE;
+	              seenSign = true;
+	            } else if (link.equalsIgnoreCase(NEGATIVE_STR_) || link.equalsIgnoreCase(SifSupport.NEGATIVE_STR_EXP)) {
+	              sign = Linkage.NEGATIVE;
+	              seenSign = true;
+	            } else if (link.equalsIgnoreCase(NONE_STR_) || link.equalsIgnoreCase(SifSupport.NONE_STR_EXP)) {
+	              sign = Linkage.NONE;
+	              seenSign = true;
+	            }
+	          }
+	          commands.add(processRelationToInstruction(dacx, tokens[0].trim(), tokens[1], tokens[i].trim(), sign));
+	        }
+	      }
+	    }
+    } finally {
+      in.close();
+    }
 
     LayoutOptions options = new LayoutOptions(dacx.getLayoutOptMgr().getLayoutOptions());
     options.optimizationPasses = (doOpts) ? 1 : 0;
     options.overlayOption = overlayOption;
     
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, dacx, tSrc, uFac);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, dacx, uFac);
     BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, dacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);
@@ -169,7 +171,6 @@ public class DBGenomeSIFFormatFactory {
 
   public LinkRouter.RoutingResult buildForGaggle(UIComponentSource uics,
                                                  DataAccessContext dacx,
-                                                 TabSource tSrc,
                                                  UndoFactory uFac,
                                                  List<BuildInstruction> commands,
                                                  boolean doReplacement,
@@ -196,7 +197,7 @@ public class DBGenomeSIFFormatFactory {
     }
     
     StaticDataAccessContext sdacx = new StaticDataAccessContext(dacx);
-    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, sdacx, tSrc, uFac);
+    BuildInstructionProcessor bip = new BuildInstructionProcessor(uics, sdacx, uFac);
     BuildInstructionProcessor.PISIFData psd = new BuildInstructionProcessor.PISIFData(uics, sdacx, uFac, commands, center, size, !doReplacement, false,
                                                                                       options, support, monitor, startFrac, endFrac, 
                                                                                       specLayout, params);

@@ -964,7 +964,7 @@ public class LoadSaveSupport {
         }
         boolean doOpt = false;
         UndoSupport support = uFac_.provideUndoSupport("undo.buildFromGaggleNetwork", dacx_);            
-        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(uics_, dacx_, tSrc_, uFac_, instruct, importMode_, doOpt, support, specLayout, params);
+        NewGaggleNetworkRunner runner = new NewGaggleNetworkRunner(uics_, dacx_, uFac_, instruct, importMode_, doOpt, support, specLayout, params);
         BackgroundWorkerClient bwc = 
           new BackgroundWorkerClient(uics_, dacx_, this, runner, "linkLayout.waitTitle", "linkLayout.wait", support, true);
         runner.setClient(bwc);
@@ -1044,7 +1044,6 @@ public class LoadSaveSupport {
  
     private UIComponentSource myUics_;
     private UndoFactory myUFac_;
-    private TabSource myTSrc_;
     private DataAccessContext myDacx_;
     private UndoSupport support_;
     private SIFImportChoicesDialogFactory.LayoutModes importMode_;
@@ -1053,7 +1052,7 @@ public class LoadSaveSupport {
     private SpecialtyLayout specLayout_;
     private SpecialtyLayoutEngineParams params_;
     
-    public NewGaggleNetworkRunner(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac, List<BuildInstruction> commands,
+    public NewGaggleNetworkRunner(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac, List<BuildInstruction> commands,
                                   SIFImportChoicesDialogFactory.LayoutModes importMode, boolean doOpts,
                                   UndoSupport support, SpecialtyLayout specLayout, SpecialtyLayoutEngineParams params) {
       super(new LinkRouter.RoutingResult());      
@@ -1061,7 +1060,6 @@ public class LoadSaveSupport {
       myUics_ = uics;
       myUFac_ = uFac;
       myDacx_ = dacx;
-      myTSrc_ = tSrc;
       importMode_ = importMode;
       doOpts_ = doOpts;
       support_ = support;
@@ -1072,7 +1070,7 @@ public class LoadSaveSupport {
     public Object runCore() throws AsynchExitRequestException {
       DBGenomeSIFFormatFactory sff = new DBGenomeSIFFormatFactory();
       try {
-        LinkRouter.RoutingResult res = sff.buildForGaggle(myUics_, myDacx_, myTSrc_, myUFac_, commands_,
+        LinkRouter.RoutingResult res = sff.buildForGaggle(myUics_, myDacx_, myUFac_, commands_,
                                                           (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), 
                                                           specLayout_, params_,
                                                           support_, doOpts_, this, 0.0, 1.0);

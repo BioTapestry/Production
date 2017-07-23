@@ -328,7 +328,7 @@ public class SimulationPropertiesDialog extends JDialog implements DialogSupport
     change = dbGenome_.finishNodeUndoTransaction(nodeID_, change);
     support.addEdit(new GenomeChangeCmd(change));
     
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
     support.finish();
     return (true);
   }

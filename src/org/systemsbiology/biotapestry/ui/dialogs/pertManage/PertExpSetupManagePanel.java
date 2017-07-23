@@ -549,7 +549,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
       da.killOffDependencies(refs, tcd_, support);
       PertDataChange pdc = pd_.deleteExperimentConditions(selKey);
       support.addEdit(new PertDataChangeCmd(pdc));
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
       pet_.editSubmissionEnds();
@@ -565,7 +565,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
       da.killOffDependencies(refs, tcd_, support);
       PertDataChange pdc = pd_.deleteExperimentControl(selKey);
       support.addEdit(new PertDataChangeCmd(pdc));
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
       pet_.editSubmissionEnds();
@@ -601,7 +601,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     for (int i = 0; i < pdc.length; i++) {
       support.addEdit(new PertDataChangeCmd(pdc[i]));
     }
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -641,7 +641,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeExprConditions(joinKeys_, pendingKey_, revisedECond);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -674,7 +674,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     }   
     PertDataChange pdc = pd_.setExperimentConditions(revisedEC);
     support.addEdit(new PertDataChangeCmd(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -707,7 +707,7 @@ public class PertExpSetupManagePanel extends AnimatedSplitManagePanel implements
     }   
     PertDataChange pdc = pd_.setExperimentControl(revisedECtrl);
     support.addEdit(new PertDataChangeCmd(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();

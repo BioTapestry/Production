@@ -415,7 +415,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeMeasureProps(joinKeys_, pendingKey_, mp);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -447,7 +447,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     Metabase mb = dacx.getMetabase();
     String tab = mb.getTabForPD(pd_);
     pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -515,7 +515,7 @@ public class PertMeasurementManagePanel extends AnimatedSplitManagePanel {
     Metabase mb = dacx.getMetabase();
     String tab = mb.getTabForPD(pd_);
     pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();

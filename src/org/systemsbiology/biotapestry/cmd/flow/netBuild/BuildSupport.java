@@ -42,7 +42,6 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.AddCommands;
 import org.systemsbiology.biotapestry.cmd.OldPadMapper;
@@ -133,7 +132,6 @@ public class BuildSupport {
   ////////////////////////////////////////////////////////////////////////////  
   
   private UIComponentSource uics_;
-  private TabSource tSrc_;
   private UndoFactory uFac_;
   private BSData bsd_;
   
@@ -148,9 +146,8 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(UIComponentSource uics, TabSource tSrc, UndoFactory uFac) {
+  public BuildSupport(UIComponentSource uics, UndoFactory uFac) {
     uics_ = uics;
-    tSrc_ = tSrc;
     uFac_ = uFac;
   }
   
@@ -159,10 +156,9 @@ public class BuildSupport {
   ** Constructor 
   */ 
   
-  public BuildSupport(UIComponentSource uics, BSData bsd, TabSource tSrc, UndoFactory uFac) {
+  public BuildSupport(UIComponentSource uics, BSData bsd, UndoFactory uFac) {
     uics_ = uics;
     bsd_ = bsd;
-    tSrc_ = tSrc;
     uFac_ = uFac;
   }
     
@@ -436,7 +432,7 @@ public class BuildSupport {
   ** Propagate a root down using instructions
   */  
  
-  public boolean propagateRootUsingInstructions(StaticDataAccessContext rcxR, StaticDataAccessContext rcxO, TabSource tSrc) throws AsynchExitRequestException {
+  public boolean propagateRootUsingInstructions(StaticDataAccessContext rcxR, StaticDataAccessContext rcxO) throws AsynchExitRequestException {
                                                                                        
     if (rcxO.getCurrentGenome().isEmpty()) {
       bsd_.keepLayout = false;
@@ -609,14 +605,14 @@ public class BuildSupport {
     iit = iis.getInstructionIterator();
     while (iit.hasNext()) {
       BuildInstructionInstance bii = iit.next();
-      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, tSrc, instanceForGroup);
+      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, instanceForGroup);
     }
     
     iit = iis.getInstructionIterator();
     pid.existingOnly = false;
     while (iit.hasNext()) {
       BuildInstructionInstance bii = iit.next();
-      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, tSrc, instanceForGroup);
+      processInstruction(bii, pid, quickMap, topLinkInstanceNums, topNodeInstanceNums, padCache, instanceForGroup);
     }    
     //
     // Build the maps we need to transfer all the overlay info across the layout, for
@@ -898,7 +894,6 @@ public class BuildSupport {
                                    Map<String, Integer> topLinkInstanceNums, 
                                    Map<String, Integer> topNodeInstanceNums, 
                                    PadCalculatorToo.PadCache padCache, 
-                                   TabSource tSrc, 
                                    Map<String, Map<String, Integer>> instanceForGroup) {  
 
     String baseID = bii.getBaseID();
@@ -917,7 +912,7 @@ public class BuildSupport {
       DialogBuiltMotifPair dbmp = ldit.next(); 
       pIGuts(bii, pid, tupleMap, srcRegionNodes, targRegionNodes, 
              linkTupleMap, dbmp, topLinkInstanceNums, 
-             topNodeInstanceNums, padCache, tSrc, instanceForGroup);
+             topNodeInstanceNums, padCache, instanceForGroup);
     }
     return;
   }
@@ -979,7 +974,6 @@ public class BuildSupport {
                              Map<String, Integer> topLinkInstanceNums, 
                              Map<String, Integer> topNodeInstanceNums,
                              PadCalculatorToo.PadCache padCache,
-                             TabSource tSrc,
                              Map<String, Map<String, Integer>> instanceForGroup) {  
 
     //
@@ -1042,7 +1036,7 @@ public class BuildSupport {
         }          
         processNode(trgNodeID, legacyInstance, pid, trgRegKey, scv, instanceForGroup, topNodeInstanceNums);
       }
-      pIGutsForLink(pid, tSrc, linkTupleMap, srcRegKey, trgRegKey, scv, topLinkInstanceNums, padCache, instanceForGroup);
+      pIGutsForLink(pid, linkTupleMap, srcRegKey, trgRegKey, scv, topLinkInstanceNums, padCache, instanceForGroup);
     }
     return;
   }
@@ -1088,7 +1082,7 @@ public class BuildSupport {
   ** Process an instruction
   */  
  
-  private void pIGutsForLink(PIData pid, TabSource tSrc, HashMap<String, Integer> linkTupleMap, 
+  private void pIGutsForLink(PIData pid, HashMap<String, Integer> linkTupleMap, 
                                     String srcRegKey, String trgRegKey, SubsetCacheValues scv, 
                                     Map<String, Integer> topInstanceNums, 
                                     PadCalculatorToo.PadCache padCache, 
@@ -1132,7 +1126,7 @@ public class BuildSupport {
       // only add it if it hasn't already been added by previous instructions
       if (linkInstanceID == null) {
         Linkage link = pid.rcxR.getCurrentGenome().getLinkage(linkID);
-        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(pid.rcxI, tSrc, pid.oldGi, (DBLinkage)link, 
+        LinkageInstance newLink = PropagateSupport.propagateOldOrNewLinkageNoLayout(pid.rcxI, pid.oldGi, (DBLinkage)link, 
                                                                                     pid.rcxR, grpTup, pid.support, legacyInstance, 
                                                                                     topInstanceNums, padCache, instanceForGroup);
         scv.links.add(newLink.getID());
@@ -1309,7 +1303,7 @@ public class BuildSupport {
     HashSet<String> deadNodes = new HashSet<String>();
     HashSet<String> deadLinks = new HashSet<String>();
     collectUnusedItems(dacx.getCurrentGenome(), protoPairs, deadNodes, deadLinks); 
-    RemoveSupport.deleteNodesAndLinksFromModel(uics_, tSrc_, deadNodes, deadLinks, dacx, bsd_.support, null, true, uFac_);
+    RemoveSupport.deleteNodesAndLinksFromModel(uics_, deadNodes, deadLinks, dacx, bsd_.support, null, true, uFac_);
       
     //
     // Get a copy of the Layout:

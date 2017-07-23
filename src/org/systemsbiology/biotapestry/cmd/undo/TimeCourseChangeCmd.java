@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseChange;
 import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
@@ -101,7 +100,7 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
       tcd.changeUndo(restore_);
     }
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
@@ -123,7 +122,7 @@ public class TimeCourseChangeCmd extends BTUndoCmd {
       tcd.changeRedo(restore_);
     }
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;

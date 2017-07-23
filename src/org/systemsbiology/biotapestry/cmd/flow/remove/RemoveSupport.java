@@ -32,7 +32,6 @@ import java.util.Set;
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
@@ -351,7 +350,7 @@ public class RemoveSupport {
   ** no reason to keep empty-member only modules
   */  
  
-  public static void fixupDeletionsInNonInstructionModels(UIComponentSource uics, TabSource tSrc, StaticDataAccessContext rcx, 
+  public static void fixupDeletionsInNonInstructionModels(UIComponentSource uics, StaticDataAccessContext rcx, 
                                                           UndoSupport support, UndoFactory uFac) {  
     //
     // Make a list of subsets needing fixup, and a done list consisting
@@ -390,7 +389,7 @@ public class RemoveSupport {
         }
         StaticDataAccessContext rcxP = new StaticDataAccessContext(rcx, gi);
         if (done.contains(parent.getID())) {
-          fixupDeletionsForSubsetModel(uics, tSrc, rcxP, parent, support, false, uFac);  
+          fixupDeletionsForSubsetModel(uics, rcxP, parent, support, false, uFac);  
           pending.remove(pendID);
           done.add(pendID);
           break;
@@ -439,7 +438,7 @@ public class RemoveSupport {
   ** parent anymore.
   */  
  
-   private static void fixupDeletionsForSubsetModel(UIComponentSource uics, TabSource tSrc, StaticDataAccessContext rcx, GenomeInstance parent, 
+   private static void fixupDeletionsForSubsetModel(UIComponentSource uics, StaticDataAccessContext rcx, GenomeInstance parent, 
                                                     UndoSupport support, boolean keepEmptyMemOnly, UndoFactory uFac) {  
 
      HashSet<String> deadLinks = new HashSet<String>();
@@ -463,7 +462,7 @@ public class RemoveSupport {
        }
      }
      
-     deleteNodesAndLinksFromModel(uics, tSrc, deadNodes, deadLinks, rcx, support, null, keepEmptyMemOnly, uFac); 
+     deleteNodesAndLinksFromModel(uics, deadNodes, deadLinks, rcx, support, null, keepEmptyMemOnly, uFac); 
      
      Iterator<Group> git = rcx.getCurrentGenomeAsInstance().getGroupIterator();
      boolean dropped = false;
@@ -540,7 +539,7 @@ public class RemoveSupport {
   ** Delete a set of nodes and links from the model
   */  
  
-  public static void deleteNodesAndLinksFromModel(UIComponentSource uics, TabSource tSrc, Set<String> nodes, Set<String> links, StaticDataAccessContext rcx,
+  public static void deleteNodesAndLinksFromModel(UIComponentSource uics, Set<String> nodes, Set<String> links, StaticDataAccessContext rcx,
                                                   UndoSupport support, Map<String, Boolean> dataDelete, 
                                                   boolean keepEmptyMemOnly, UndoFactory uFac) {  
                                             
@@ -549,7 +548,7 @@ public class RemoveSupport {
     Iterator<String> nit = nodes.iterator();
     while (nit.hasNext()) {
       String nodeID = nit.next();
-      RemoveNode.deleteNodeFromModelCore(uics, tSrc, nodeID, rcx, support, dataDelete, keepEmptyMemOnly, uFac);
+      RemoveNode.deleteNodeFromModelCore(uics, nodeID, rcx, support, dataDelete, keepEmptyMemOnly, uFac);
     }
     return;
   }

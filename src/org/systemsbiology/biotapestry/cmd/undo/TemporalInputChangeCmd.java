@@ -95,7 +95,7 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
     TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     tird.changeUndo(restore_);
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
@@ -112,7 +112,7 @@ public class TemporalInputChangeCmd extends BTUndoCmd {
     TemporalInputRangeData tird = dacx_.getTemporalRangeSrc().getTemporalInputRangeData();
     tird.changeRedo(restore_);
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;

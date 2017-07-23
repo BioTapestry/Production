@@ -394,7 +394,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
         support.addEdit(new PertDataChangeCmd(pdc));
       }
       
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
       pet_.editSubmissionEnds();
@@ -606,7 +606,7 @@ public class PertDataPointManagePanel extends AnimatedSplitManagePanel
     UndoSupport support = uFac_.provideUndoSupport("undo.deletePertDataPoint", dacx_);
     PertDataChange pdc = pd_.deleteDataPoint(delKey);
     support.addEdit(new PertDataChangeCmd(pdc));  
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();    

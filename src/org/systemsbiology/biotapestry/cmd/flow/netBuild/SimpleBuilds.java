@@ -272,7 +272,7 @@ public class SimpleBuilds extends AbstractControlFlow {
     
     private void p2RI() {
       StaticDataAccessContext rcxR = dacx_.getContextForRoot();
-      int sliceMode = (new BuildSupport(uics_, tSrc_, uFac_)).getSliceMode(uics_.getTopFrame());
+      int sliceMode = (new BuildSupport(uics_, uFac_)).getSliceMode(uics_.getTopFrame());
       if (sliceMode == TimeCourseData.NO_SLICE) {
         return;
       }  
@@ -423,7 +423,7 @@ public class SimpleBuilds extends AbstractControlFlow {
               if (trgInst == -1) {
                 continue;
               }          
-              PropagateSupport.propagateLinkageNoLayout(rcxI, tSrc_, (DBLinkage)link, rcxR, grpTup, support, null);
+              PropagateSupport.propagateLinkageNoLayout(rcxI, (DBLinkage)link, rcxR, grpTup, support, null);
             }
           }
           DatabaseChange dc = rcxI.getLayoutSource().startLayoutUndoTransaction(nextloKey);
@@ -535,7 +535,7 @@ public class SimpleBuilds extends AbstractControlFlow {
           // Build a group for each region in the current instance:
           //
           Point2D groupCenter = new Point2D.Double(400.0 * count, 500.0);
-          String regionKey = (new BuildSupport(uics_, tSrc_, uFac_)).buildRegion(rcxI, region, groupCenter, support);
+          String regionKey = (new BuildSupport(uics_, uFac_)).buildRegion(rcxI, region, groupCenter, support);
           HashSet<String> regionMembers = new HashSet<String>();        
           //
           // Create nodes in root genome:

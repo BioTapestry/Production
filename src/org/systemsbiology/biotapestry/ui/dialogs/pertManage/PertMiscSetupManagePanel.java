@@ -523,7 +523,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
       UndoSupport support = uFac_.provideUndoSupport("undo.deleteUserDataField", dacx_);
       PertDataChange pdc = pd_.deleteUserFieldName(selKey);
       support.addEdit(new PertDataChangeCmd(pdc));
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
       pet_.editSubmissionEnds();
@@ -551,7 +551,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
       Metabase mb = dacx_.getMetabase();
       String tab = mb.getTabForPD(pd_);
       pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
       pet_.editSubmissionBegins();
       support.finish();
       pet_.editSubmissionEnds();
@@ -643,7 +643,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     Metabase mb = dacx.getMetabase();
     String tab = mb.getTabForPD(pd_);
     pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -670,7 +670,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     } 
     PertDataChange pdc = pd_.setUserFieldName(pendingKey_, name);
     support.addEdit(new PertDataChangeCmd(pdc));    
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -735,7 +735,7 @@ public class PertMiscSetupManagePanel extends AnimatedSplitManagePanel implement
     Metabase mb = dacx.getMetabase();
     String tab = mb.getTabForPD(pd_);
     pd_.modifyForPertDataChange(support, new TabPinnedDynamicDataAccessContext(mb, tab));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();

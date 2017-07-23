@@ -143,7 +143,7 @@ public class RemoveGroup extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToRemove() {
       UndoSupport support = uFac_.provideUndoSupport("undo.groupDelete", dacx_);
-      if (RemoveGroupSupport.deleteGroupFromModel(groupKey_, uics_, dacx_, tSrc_, support, false, uFac_)) {
+      if (RemoveGroupSupport.deleteGroupFromModel(groupKey_, uics_, dacx_, support, false, uFac_)) {
         uics_.getGenomePresentation().clearSelections(uics_, dacx_, support);
         support.finish();
       }

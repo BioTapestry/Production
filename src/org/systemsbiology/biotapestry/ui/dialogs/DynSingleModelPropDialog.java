@@ -757,7 +757,7 @@ public class DynSingleModelPropDialog extends JDialog implements ListWidgetClien
     }    
 
     if (needGeneral) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(rcx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE);
       support.addEvent(ev);
     }
     return;

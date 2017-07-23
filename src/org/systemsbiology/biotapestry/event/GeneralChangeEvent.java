@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2008 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -57,7 +57,7 @@ public class GeneralChangeEvent implements ChangeEvent {
   ** Build the event
   */ 
   
-  public GeneralChangeEvent(int dummy, String tabID, ChangeType changeType) {
+  public GeneralChangeEvent(String tabID, ChangeType changeType) {
     tabID_ = tabID;
     changeType_ = changeType;
   }

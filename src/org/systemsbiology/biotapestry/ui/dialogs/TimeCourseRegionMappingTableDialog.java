@@ -283,7 +283,7 @@ public class TimeCourseRegionMappingTableDialog extends JDialog implements Dialo
       UndoSupport support = tuFac_.provideUndoSupport("undo.tcrmd", dacx_);
       TimeCourseChange tcc = tcdm_.setTimeCourseGroupMap(groupID_, vals, true);
       support.addEdit(new TimeCourseChangeCmd(tcc));  
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();      
       return (true);
     }

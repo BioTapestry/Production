@@ -430,7 +430,7 @@ public class ImportCSV extends AbstractControlFlow  {
       FullHierarchyBuilder.BIPData bipd;
      
       try {
-        fhcsv = new FullHierarchyCSVFormatFactory(uics_, tSrc_, rcx_);
+        fhcsv = new FullHierarchyCSVFormatFactory(uics_, rcx_);
         if (useFile != null) {
           bipd = fhcsv.buildFromCSVForeground(useFile, (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT), support);
         } else {
@@ -618,7 +618,7 @@ public class ImportCSV extends AbstractControlFlow  {
     public Object runCore() throws AsynchExitRequestException {
       // Perhaps not needed, but does allow settings to be changed without messing with myDacx_, so safer to keep for now...
       StaticDataAccessContext rcxR = new StaticDataAccessContext(myDacx_);
-      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(uics_, tSrc_, uFac_, rcxR, bipd_, 
+      LinkRouter.RoutingResult res = fhcsv_.buildFromCSVBackground(uics_, uFac_, rcxR, bipd_, 
                                                                    (importMode_ == SIFImportChoicesDialogFactory.LayoutModes.REPLACEMENT),                                                                 
                                                                    support_, doOpts_, doSquash_, overlayOption_, 
                                                                    nodeIDMap_, dbGenomeCSVName_, this, 0.0, 1.0, specLayout_, params_);

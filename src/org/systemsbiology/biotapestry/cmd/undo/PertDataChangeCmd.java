@@ -20,7 +20,6 @@
 
 package org.systemsbiology.biotapestry.cmd.undo;
 
-import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
 import org.systemsbiology.biotapestry.perturb.PertDataChange;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
@@ -103,7 +102,7 @@ public class PertDataChangeCmd extends BTUndoCmd {
       pd.changeUndo(restore_);
     }
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
@@ -126,7 +125,7 @@ public class PertDataChangeCmd extends BTUndoCmd {
       pd.changeRedo(restore_);
     }
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;

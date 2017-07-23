@@ -531,7 +531,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
         String genomeKill = tksit.next();
         // Previously made provisions for checking if data table should be deleted, but that is DBGenome only! Go with the null map instead!
         StaticDataAccessContext rcxK = new StaticDataAccessContext(rcx, genomeKill);
-        RemoveSupport.deleteNodesAndLinksFromModel(uics_, tSrc_, nodes, links, rcxK, support, null, false, uFac_); 
+        RemoveSupport.deleteNodesAndLinksFromModel(uics_, nodes, links, rcxK, support, null, false, uFac_); 
       }   
    
       
@@ -592,7 +592,7 @@ public class ChangeNodeGroup extends AbstractControlFlow {
   
       support.addEvent(new ModelChangeEvent(dacx_.getGenomeSource().getID(), rootID, ModelChangeEvent.UNSPECIFIED_CHANGE));
       // clear out the dynamic proxies!!!!
-      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();     
       return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.ACCEPT, this)); 
     }         

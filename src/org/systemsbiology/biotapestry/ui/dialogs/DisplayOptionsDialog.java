@@ -527,7 +527,7 @@ public class DisplayOptionsDialog extends JDialog {
  
     //
     // Gets dynamic proxy caches flushed (they care about weak expression level):
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));        
+    support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));        
     
     //
     // Finish undo support:

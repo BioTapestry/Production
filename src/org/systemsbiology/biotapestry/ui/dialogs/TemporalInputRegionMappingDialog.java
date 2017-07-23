@@ -282,7 +282,7 @@ public class TemporalInputRegionMappingDialog extends JDialog implements DialogS
       UndoSupport support = uFac_.provideUndoSupport("undo.tirmd", dacx_);
       TemporalInputChange tic = tird_.setTemporalRangeGroupMap(groupID_, vals);
       support.addEdit(new TemporalInputChangeCmd(dacx_, tic));  
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();   
       return (true);
     }

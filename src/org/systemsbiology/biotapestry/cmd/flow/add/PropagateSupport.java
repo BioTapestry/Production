@@ -917,7 +917,7 @@ public class PropagateSupport {
       }
     }
     if (doGeneral) { // Flushes dynamic instances
-      support.addEvent(new GeneralChangeEvent(0, rcxT.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(rcxT.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
     }
     return;
   }  

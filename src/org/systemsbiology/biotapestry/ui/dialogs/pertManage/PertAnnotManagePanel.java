@@ -310,7 +310,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     da.killOffDependencies(refs, tcd_, support);    
     PertDataChange pdc = pd_.deleteAnnotation(annotKey);
     support.addEdit(new PertDataChangeCmd(pdc));    
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -394,7 +394,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     PertDataChange pdc = pd_.mergeAnnotations(joinKeys_, currKey_, tag, msg);
    
     support.addEdit(new PertDataChangeCmd(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -431,7 +431,7 @@ public class PertAnnotManagePanel extends AnimatedSplitManagePanel {
     }
     currKey_ = null;
     support.addEdit(new PertDataChangeCmd(pdc));    
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();   

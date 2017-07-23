@@ -364,7 +364,7 @@ public class PerturbedTimeCourseGeneCSVFormatFactory {
       }
     }
     if (doit) {    
-      support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
     }
     return (true);

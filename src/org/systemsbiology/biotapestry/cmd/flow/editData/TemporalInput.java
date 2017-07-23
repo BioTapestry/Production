@@ -51,7 +51,6 @@ import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputMappingDialog;
 import org.systemsbiology.biotapestry.ui.dialogs.TemporalInputRegionMappingDialog;
 import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
 /****************************************************************************
@@ -463,7 +462,7 @@ public class TemporalInput extends AbstractControlFlow {
           UndoSupport support = uFac_.provideUndoSupport("undo.deleteTIRM", dacx_);           
           TemporalInputChangeCmd cmd = new TemporalInputChangeCmd(dacx_, tichg, false);
           support.addEdit(cmd);
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();          
         }
       }
@@ -490,7 +489,7 @@ public class TemporalInput extends AbstractControlFlow {
           support.addEdit(new TemporalInputChangeCmd(dacx_, chg2, false));
         }
         if ((chg1 != null) || (chg1 != null)) {
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }          
       }
@@ -521,7 +520,7 @@ public class TemporalInput extends AbstractControlFlow {
           TemporalInputChange tcc = tird.dropEntry(name);
           support.addEdit(new TemporalInputChangeCmd(dacx_, tcc)); 
         }
-        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
       }
       return (true);
@@ -558,7 +557,7 @@ public class TemporalInput extends AbstractControlFlow {
       tird.buildFromTCD(dacx_, hfbs);   
       dc = dacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
       support.addEdit(new DatabaseChangeCmd(dacx_, dc));
-      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       //
       // There was previously a question here about needing to clear proxy caches and
@@ -578,7 +577,7 @@ public class TemporalInput extends AbstractControlFlow {
       dacx_.getTemporalRangeSrc().setTemporalInputRangeData(new TemporalInputRangeData(dacx_));     
       dc = dacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
       support.addEdit(new DatabaseChangeCmd(dacx_, dc));
-      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       //
       // There was previously a question here about needing to clear proxy caches and

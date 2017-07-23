@@ -381,7 +381,7 @@ public class TimeCourse extends AbstractControlFlow {
           if (tcc != null) {
             support.addEdit(new TimeCourseChangeCmd(tcc));
           } 
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
           keys = tcdm.getCustomTCMTimeCourseDataKeys(id);
           waiting = ((keys == null) || keys.isEmpty());
@@ -443,7 +443,7 @@ public class TimeCourse extends AbstractControlFlow {
           TimeCourseChange tcc = tcd.dropGene(tcm.name);
           support.addEdit(new TimeCourseChangeCmd(tcc)); 
         }
-        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
       }
       return (true);
@@ -465,7 +465,7 @@ public class TimeCourse extends AbstractControlFlow {
         if (tchg != null) {
           TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
           support.addEdit(cmd);
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }
       }
@@ -494,7 +494,7 @@ public class TimeCourse extends AbstractControlFlow {
       if (tcc != null) {
         support.addEdit(new TimeCourseChangeCmd(tcc));
       } 
-      support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
       support.finish();
       return (true);
     }
@@ -514,7 +514,7 @@ public class TimeCourse extends AbstractControlFlow {
           UndoSupport support = uFac_.provideUndoSupport("undo.deleteTCRM", dacx_); 
           TimeCourseChangeCmd cmd = new TimeCourseChangeCmd(tchg, false);
           support.addEdit(cmd);
-          support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+          support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
           support.finish();
         }
       }

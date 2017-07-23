@@ -464,7 +464,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     UndoSupport support = uFac_.provideUndoSupport("undo.deleteInvestigator", dacx);
     PertDataChange pdc2 = pd_.deleteInvestigator(key);
     support.addEdit(new PertDataChangeCmd(pdc2));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -484,7 +484,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeInvestigatorNames(joinKeys_, pendingKey_, name);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -511,7 +511,7 @@ public class PertInvestManagePanel extends AnimatedSplitManagePanel implements P
     } 
     PertDataChange pdc = pd_.setInvestigator(pendingKey_, name);
     support.addEdit(new PertDataChangeCmd(pdc));    
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();

@@ -34,7 +34,6 @@ import java.util.Set;
 import java.util.TreeMap;
 
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.netBuild.BuildSupport;
@@ -93,7 +92,6 @@ public class BuildInstructionProcessor {
   private PIData pid_;
   private PIHData pihd_;
   private PISIFData pis_;
-  private TabSource tSrc_;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -106,11 +104,10 @@ public class BuildInstructionProcessor {
   ** Constructor 
   */ 
   
-  public BuildInstructionProcessor(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, UndoFactory uFac) {
+  public BuildInstructionProcessor(UIComponentSource uics, DataAccessContext dacx, UndoFactory uFac) {
     uics_ = uics;
     dacx_ = dacx;
     uFac_ = uFac;
-    tSrc_ = tSrc;
   } 
 
   ////////////////////////////////////////////////////////////////////////////
@@ -481,7 +478,7 @@ public class BuildInstructionProcessor {
     Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
     Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.getFGHO().stockUpMemberOnlyModules();
     Map<String, Layout.OverlayKeySet> allKeys = rcxR.getFGHO().fullModuleKeysPerLayout();    
-    Map<String, Layout.SupplementalDataCoords> sdcCache = new BuildSupport(uics_, tSrc_, uFac_).buildSdcCache(allKeys, rcxR);
+    Map<String, Layout.SupplementalDataCoords> sdcCache = new BuildSupport(uics_, uFac_).buildSdcCache(allKeys, rcxR);
     
     boolean doRegions = !pid_.genomeID.equals(rcxR.getDBGenome().getID());
     LinkRouter.RoutingResult result = new LinkRouter.RoutingResult();
@@ -502,7 +499,7 @@ public class BuildInstructionProcessor {
                                                         pid_.options, pid_.support, pid_.monitor, startFrac, midFrac, 
                                                         createdPairs, newNodeToOldNode, newLinksToOldLinks, 
                                                         null, null, globalPadNeeds, pid_.specLayout, pid_.params);
-      BuildSupport bs = new BuildSupport(uics_, bsd, tSrc_, uFac_);
+      BuildSupport bs = new BuildSupport(uics_, bsd, uFac_);
       result = bs.buildRootFromInstructions(rcxR);
                              
       applyRootChanges(pid_.buildCmds, rcxR, pid_.support, createdPairs, pid_.center, pid_.size,
@@ -531,7 +528,7 @@ public class BuildInstructionProcessor {
     ModificationCommands.repairEmptiedMemberOnlyModules(rcxR, emptyModNeeds, pid_.support); 
     ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, pid_.support);
 
-    (new BuildSupport(uics_, tSrc_, uFac_)).processSdcCache(sdcCache, allKeys, rcxR, pid_.support);
+    (new BuildSupport(uics_, uFac_)).processSdcCache(sdcCache, allKeys, rcxR, pid_.support);
     
     rcxR.getGenomeSource().clearAllDynamicProxyCaches();
     RemoveGroupSupport.cleanupDanglingGroupData(rcxR, pid_.support);
@@ -556,7 +553,7 @@ public class BuildInstructionProcessor {
     Map<String, Layout.PadNeedsForLayout> globalPadNeeds = rcxR.getFGHO().getGlobalNetModuleLinkPadNeeds();
     Map<String, Map<NetModule.FullModuleKey, Map<String, Rectangle>>> emptyModNeeds = rcxR.getFGHO().stockUpMemberOnlyModules(); 
     Map<String, Layout.OverlayKeySet> allKeys = rcxR.getFGHO().fullModuleKeysPerLayout();    
-    Map<String, Layout.SupplementalDataCoords> sdcCache = (new BuildSupport(uics_, tSrc_, uFac_)).buildSdcCache(allKeys, rcxR);
+    Map<String, Layout.SupplementalDataCoords> sdcCache = (new BuildSupport(uics_, uFac_)).buildSdcCache(allKeys, rcxR);
   
     double perPass = (pihd_.maxFrac - pihd_.startFrac) / pihd_.processOrder.size();
     double currStart = pihd_.startFrac;
@@ -584,7 +581,7 @@ public class BuildInstructionProcessor {
       pihd_.newNodeToOldNode = new HashMap<String, String>();
     }
     HashMap<String, String> newLinksToOldLinks = new HashMap<String, String>();
-    BuildSupport bs = new BuildSupport(uics_, tSrc_, uFac_);
+    BuildSupport bs = new BuildSupport(uics_, uFac_);
     
     List<BuildInstruction> rootCmds = pihd_.buildCmds.get(rootID);
     BuildSupport.BSData bsd = new BuildSupport.BSData(rootCmds, pihd_.center, pihd_.size, pihd_.keepLayout, pihd_.hideMinorNames,
@@ -630,7 +627,7 @@ public class BuildInstructionProcessor {
                                                            pihd_.monitor, subsetCache, subsetRegionCache, liidm, pihd_.nodeIDMap,
                                                            globalPadNeeds, pihd_.keepLayout, pihd_.hideMinorNames, currStart, currFinish); 
         bs.resetBSD(bsd2);
-        bs.propagateRootUsingInstructions(rcxR, rcxI, tSrc_);
+        bs.propagateRootUsingInstructions(rcxR, rcxI);
       } else {
         GenomeInstance pgi = rcxI.getCurrentGenomeAsInstance().getVfgParentRoot();
         BuildSupport.LegacyInstanceIdMapper liidm = liidmMap.get(pgi.getID());
@@ -644,7 +641,7 @@ public class BuildInstructionProcessor {
     }
     
      
-    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, tSrc_, rcxR, pihd_.support, uFac_);
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, pihd_.support, uFac_);
     ModificationCommands.repairEmptiedMemberOnlyModules(rcxR, emptyModNeeds, pihd_.support); 
     ModificationCommands.repairNetModuleLinkPadsGlobally(rcxR, globalPadNeeds, false, pihd_.support);    
     
@@ -676,7 +673,7 @@ public class BuildInstructionProcessor {
                                                       pis_.createdPairs, pis_.newNodeToOldNode, pis_.newLinksToOldLinks, 
                                                       null, null, pis_.globalPadNeeds, pis_.specLayout, pis_.params);
     
-    BuildSupport bs = new BuildSupport(uics_, bsd, tSrc_, uFac_);
+    BuildSupport bs = new BuildSupport(uics_, bsd, uFac_);
     LinkRouter.RoutingResult result = bs.buildRootFromInstructions(rcxR);
     if ((pis_.monitor != null) && !pis_.monitor.keepGoing()) {
       throw new AsynchExitRequestException();
@@ -878,7 +875,7 @@ public class BuildInstructionProcessor {
                                                       pid_.support, pid_.monitor, startFrac, midFrac, 
                                                       createdPairs, newNodeToOldNode,
                                                       newLinksToOldLinks, null, null, globalPadNeeds, pid_.specLayout, pid_.params);
-    BuildSupport bs = new BuildSupport(uics_, bsd, tSrc_, uFac_);   
+    BuildSupport bs = new BuildSupport(uics_, bsd, uFac_);   
     LinkRouter.RoutingResult result = bs.buildRootFromInstructionsNoRootInstall(rcxR);  
       
     //
@@ -903,7 +900,7 @@ public class BuildInstructionProcessor {
                                                              pid_.monitor, subsetCache, subsetRegionCache, liidm, null,
                                                              globalPadNeeds, pid_.keepLayout, pid_.hideNames, currStart, currFinish); 
           bs.resetBSD(bsd2);
-          bs.propagateRootUsingInstructions(rcxR, rcxITP, tSrc_);
+          bs.propagateRootUsingInstructions(rcxR, rcxITP);
         } else {
           GenomeInstance pgi =  rcxITP.getCurrentGenomeAsInstance().getVfgParentRoot();
           BuildSupport.LegacyInstanceIdMapper liidm = liidmMap.get(pgi.getID());
@@ -916,7 +913,7 @@ public class BuildInstructionProcessor {
       currFinish = currStart + perPass;
     }
         
-    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, tSrc_, rcxR, pid_.support, uFac_);
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, pid_.support, uFac_);
     
     return (result);
   }    
@@ -952,7 +949,7 @@ public class BuildInstructionProcessor {
     //
     // Go through each root instance and do a rebuild of it and kids
     //
-    BuildSupport bs = new BuildSupport(uics_, tSrc_, uFac_);
+    BuildSupport bs = new BuildSupport(uics_, uFac_);
 
     Map<String, BuildSupport.LegacyInstanceIdMapper> liidmMap = new HashMap<String, BuildSupport.LegacyInstanceIdMapper>();
     int numRoot = rootList.size();
@@ -982,7 +979,7 @@ public class BuildInstructionProcessor {
                                                                 monitor, subsetCache, subsetRegionCache, liidm, null,
                                                                 globalPadNeeds, keepLayout, hideNames, currStart, currFinish);
               bs.resetBSD(bsd);
-              bs.propagateRootUsingInstructions(rcxR, rcxITP, tSrc_);
+              bs.propagateRootUsingInstructions(rcxR, rcxITP);
               break;
             case InstanceToProcess.CHILD:
               GenomeInstance pgi = rcxITP.getCurrentGenomeAsInstance().getVfgParentRoot();
@@ -1008,7 +1005,7 @@ public class BuildInstructionProcessor {
     // instructions may have rebuilt above and introduced new changes?  Let's be safe:
     //
      
-    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, tSrc_, rcxR, support, uFac_);    
+    RemoveSupport.fixupDeletionsInNonInstructionModels(uics_, rcxR, support, uFac_);    
     
     return;
   }  
@@ -2080,7 +2077,7 @@ D D D -> D S D
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, tSrc_, support, uFac_);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
       }
     }
     return;
@@ -2118,7 +2115,7 @@ D D D -> D S D
       Iterator<String> sit = subs.iterator();
       while (sit.hasNext()) {
         String subID = sit.next();
-        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, tSrc_, support, uFac_);
+        RemoveGroupSupport.deleteSubGroupFromModel(uics_, subID, rcxS, support, uFac_);
       }
     }
     return;
@@ -2306,7 +2303,6 @@ D D D -> D S D
     Map<String, Layout.SupplementalDataCoords> sdcCache;
 
     public PISIFData(UIComponentSource uics,
-                     TabSource tSrc,
                      StaticDataAccessContext dacx,
                      UndoFactory uFac,
                      List<BuildInstruction> buildCmds, 
@@ -2341,7 +2337,7 @@ D D D -> D S D
       globalPadNeeds = dacx.getFGHO().getGlobalNetModuleLinkPadNeeds();
       emptyModNeeds = dacx.getFGHO().stockUpMemberOnlyModules();
       allKeys = dacx.getFGHO().fullModuleKeysPerLayout();    
-      sdcCache = (new BuildSupport(uics, tSrc, uFac)).buildSdcCache(allKeys, dacx);
+      sdcCache = (new BuildSupport(uics, uFac)).buildSdcCache(allKeys, dacx);
       
     }
   }

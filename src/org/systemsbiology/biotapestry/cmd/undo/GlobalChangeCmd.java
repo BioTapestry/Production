@@ -23,7 +23,6 @@ package org.systemsbiology.biotapestry.cmd.undo;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.GlobalChange;
 import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
-import org.systemsbiology.biotapestry.util.UiUtil;
 
 /****************************************************************************
 **
@@ -94,8 +93,7 @@ public class GlobalChangeCmd extends BTUndoCmd {
     super.undo();
     dacx_.getMetabase().changeUndo(restore_);
     if (doEvent_) {
-      UiUtil.fixMePrintout("WAIT what about undo when current tab not apropos?");
-      GeneralChangeEvent ev = new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;
@@ -111,7 +109,7 @@ public class GlobalChangeCmd extends BTUndoCmd {
     super.redo();
     dacx_.getMetabase().changeRedo(restore_);
     if (doEvent_) {
-      GeneralChangeEvent ev = new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE);
+      GeneralChangeEvent ev = new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE);
       uics_.getEventMgr().sendGeneralChangeEvent(ev); 
     }
     return;

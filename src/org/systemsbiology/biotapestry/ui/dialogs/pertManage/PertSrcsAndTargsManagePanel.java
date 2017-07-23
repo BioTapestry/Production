@@ -576,7 +576,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     pdatMaps.add(pdms_);
     PertDataChange[] pdc = pd_.deleteTargetName(key, pdatMaps);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -601,7 +601,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     pdms.add(pdms_);
     PertDataChange[] pdc = pd_.deleteSourceName(key, pdms);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -650,7 +650,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
       dupKey_ = null;
     }
  
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -704,7 +704,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
       dupKey_ = null;
     }
           
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -732,7 +732,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeTargetNames(joinKeys_, pendingKey_, name, annots, pdmsl, dbGenome_);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();
@@ -764,7 +764,7 @@ public class PertSrcsAndTargsManagePanel extends AnimatedSplitManagePanel implem
     da.mergeDependencies(refs, tcd_, support);
     PertDataChange[] pdc = pd_.mergeSourceNames(joinKeys_, pendingKey_, name, pdmsl, dbGenome_);
     support.addEdits(PertDataChangeCmd.wrapChanges(pdc));
-    support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.PERTURB_DATA_CHANGE));
+    support.addEvent(new GeneralChangeEvent(dacx.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.PERTURB_DATA_CHANGE));
     pet_.editSubmissionBegins();
     support.finish();
     pet_.editSubmissionEnds();

@@ -936,7 +936,7 @@ public class LoadSaveOps extends AbstractControlFlow {
         sup.parse(file);
         dc = ddacx_.getExpDataSrc().finishTimeCourseUndoTransaction(dc);
         support.addEdit(new DatabaseChangeCmd(ddacx_, dc));
-        support.addEvent(new GeneralChangeEvent(0, ddacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(ddacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
         myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", file.getAbsoluteFile().getParent());
       } catch (IOException ioe) {
@@ -1041,7 +1041,7 @@ public class LoadSaveOps extends AbstractControlFlow {
         sup.parse(myFile_);
         dc = ddacx_.getExpDataSrc().finishCopiesPerEmbryoUndoTransaction(dc);
         support.addEdit(new DatabaseChangeCmd(dacx_, dc));
-        support.addEvent(new GeneralChangeEvent(0, ddacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(ddacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
         myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
       } catch (IOException ioe) {
@@ -1099,7 +1099,7 @@ public class LoadSaveOps extends AbstractControlFlow {
         sup.parse(myFile_);
         dc = ddacx_.getTemporalRangeSrc().finishTemporalInputUndoTransaction(dc);
         support.addEdit(new DatabaseChangeCmd(dacx_, dc));
-        support.addEvent(new GeneralChangeEvent(0, dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
+        support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.MODEL_DATA_CHANGE));
         support.finish();
         myLsSup_.getFprep(ddacx_).setPreference("ImportDirectory", myFile_.getAbsoluteFile().getParent());
       } catch (IOException ioe) {

@@ -1500,7 +1500,7 @@ public class ChangeNode extends AbstractControlFlow {
       if (srcPad == null) {
         srcPad = PropagateSupport.findSourcePad(nodeID, prefPad, rcxI, rcxR, null);
         if (srcPad == null) {
-          PropagateSupport.emergencyPadForce(nodeID, rcxI, tSrc, support);  // revert to root configuration
+          PropagateSupport.emergencyPadForce(nodeID, rcxI, support);  // revert to root configuration
           srcPad = new Integer(prefPad);
         } 
       }

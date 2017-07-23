@@ -31,7 +31,6 @@ import javax.swing.tree.TreePath;
 
 import org.systemsbiology.biotapestry.app.ExpansionChange;
 import org.systemsbiology.biotapestry.app.StaticDataAccessContext;
-import org.systemsbiology.biotapestry.app.TabSource;
 import org.systemsbiology.biotapestry.app.UIComponentSource;
 import org.systemsbiology.biotapestry.app.VirtualModelTree;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
@@ -265,7 +264,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
       if (nt.isGroupNode(popupNode_)) {
         Set<String> icmis = nt.getImmediateChildModelIDs(popupNode_, false);
         for (String icmi : icmis) {
-          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, icmi, false, support);
+          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, icmi, false, support);
         }        
       } else {  
         if (rootOne == null) {
@@ -283,11 +282,11 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
             }
             GenomeInstance gi = (GenomeInstance)dacx_.getGenomeSource().getGenome(giid);
             if (gi.getVfgParent() == null) {
-              deadOnes.addAll(DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, gi.getID(), false, support));
+              deadOnes.addAll(DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, gi.getID(), false, support));
             }
           }
         } else {
-          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, tSrc_, rootOne.getID(), myKidsOnly_, support);
+          DeleteGenomeInstance.deleteGenomeInstance(uics_, dacx_, rootOne.getID(), myKidsOnly_, support);
         }
       }
       
@@ -348,7 +347,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
   ** Handles deleting a Genome Instance
   */ 
     
-  public static Set<String> deleteGenomeInstance(UIComponentSource uics, DataAccessContext dacx, TabSource tSrc, 
+  public static Set<String> deleteGenomeInstance(UIComponentSource uics, DataAccessContext dacx,
                                                  String genomeRootKey, boolean justKids, UndoSupport support) {
 
     //
@@ -471,7 +470,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
         sView = null;
       }
       NavTree.GroupNodeMapEntry gnme = 
-        new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), id, null, null, null);
+        new NavTree.GroupNodeMapEntry(null, dacx.getGenomeSource().getID(), id, null, null, null);
       List<NavTree.GroupNodeMapEntry> gnmeli = new ArrayList<NavTree.GroupNodeMapEntry>();
       gnmeli.add(gnme);
       List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(gnmeli);
@@ -497,7 +496,7 @@ public class DeleteGenomeInstance extends AbstractControlFlow {
         }
       }
       NavTree.GroupNodeMapEntry gnme = 
-        new NavTree.GroupNodeMapEntry(null, tSrc.getCurrentTab(), null, id, null, null);
+        new NavTree.GroupNodeMapEntry(null, dacx.getGenomeSource().getID(), null, id, null, null);
       List<NavTree.GroupNodeMapEntry> gnmeli = new ArrayList<NavTree.GroupNodeMapEntry>();
       gnmeli.add(gnme);
       List<NavTreeChange> ntcs = nt.dropGroupNodeModelReferences(gnmeli);

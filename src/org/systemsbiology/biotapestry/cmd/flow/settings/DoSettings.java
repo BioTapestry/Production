@@ -439,7 +439,7 @@ public class DoSettings extends AbstractControlFlow {
       GlobalChange gc = dacx_.getColorResolver().updateColors(newColors);   
       GlobalChangeCmd gcc = new GlobalChangeCmd(dacx_, gc);
       support.addEdit(gcc);
-      support.addEvent(new GeneralChangeEvent(tSrc_.getCurrentTab(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
+      support.addEvent(new GeneralChangeEvent(dacx_.getGenomeSource().getID(), GeneralChangeEvent.ChangeType.UNSPECIFIED_CHANGE));
   
       //
       // Inform listeners:

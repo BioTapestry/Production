@@ -171,11 +171,11 @@ public class RemoveSubGroup extends AbstractControlFlow {
       // If parent model has activated subgroup, then deactivating this
       // subgroup must also remove the parent group from this model.
       //
-      if (!RemoveGroupSupport.deleteSubGroupFromModel(uics_, myGroupID_, dacx_, tSrc_, support, uFac_)) {
+      if (!RemoveGroupSupport.deleteSubGroupFromModel(uics_, myGroupID_, dacx_, support, uFac_)) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));
       }
       if (parentGroup != null) {
-        RemoveGroupSupport.deleteGroupFromModel(parentGroup.getID(), uics_, dacx_, tSrc_, support, false, uFac_);        
+        RemoveGroupSupport.deleteGroupFromModel(parentGroup.getID(), uics_, dacx_, support, false, uFac_);        
       }
       support.finish();
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
