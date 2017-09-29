@@ -84,6 +84,7 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.Linkage;
@@ -808,11 +809,13 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     
     lrs.undefinedLayout(dacx_, layoutDerive_, undefNodes, undefLinks, dropFGOnly);  
 
+    // Issue #187 has to work at all levels of model hierarchy
+    Genome rootG = dacx_.getGenomeSource().getGenome();
     Iterator<String> undit = undefNodes.iterator();
     while (undit.hasNext()) {
       String nodeID = undit.next();
-      Node node = dacx_.getGenome().getNode(nodeID);
-      String display = node.getDisplayString(dacx_.getGenome(), false);
+      Node node = rootG.getNode(nodeID);
+      String display = node.getDisplayString(rootG, false);
       nodeList.add(new ObjChoiceContent(display, nodeID)); 
     }
     Collections.sort(nodeList);
@@ -820,8 +823,8 @@ public class LayoutPropagationDialog extends JDialog implements TreeSelectionLis
     Iterator<String> undlit = undefLinks.iterator();
     while (undlit.hasNext()) {
       String linkID = undlit.next();
-      Linkage link = dacx_.getGenome().getLinkage(linkID);
-      String display = link.getDisplayString(dacx_.getGenome(), false);
+      Linkage link = rootG.getLinkage(linkID);
+      String display = link.getDisplayString(rootG, false);
       linkList.add(new ObjChoiceContent(display, linkID)); 
     }
     Collections.sort(linkList);

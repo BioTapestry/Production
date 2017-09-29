@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -47,7 +47,6 @@ import org.systemsbiology.biotapestry.util.Vector2D;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.DBGene;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.ui.LayoutOptions;
 import org.systemsbiology.biotapestry.cmd.instruct.DialogBuiltGeneralMotif;
@@ -97,7 +96,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   // If every inbound link is to the core, we have no fan-in.
   // If every fan-in node has one target, and it is the core,
   // and the node is tiny (bubble, slash, intercell), and it
-  // has at most two links (one for slash), and none are from
+  // has at most two links and none are from
   // the same source, it is simple.
   // Else it is complex.
   // The simple fan-in uses the orginal halo layout fan-in strategy.
@@ -301,12 +300,13 @@ public class GeneAndSatelliteCluster implements Cloneable {
         }
       }
       
-      if (this.fanOutInboundLinkPlans_ != null) {
-        retval.fanOutInboundLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
-        for (String key : this.fanOutInboundLinkPlans_.keySet()) {
-          retval.fanOutInboundLinkPlans_.put(key, this.fanOutInboundLinkPlans_.get(key).clone());
-        }
-      }
+      // 4/22/16: This is a duplication of the above, removed:
+    //  if (this.fanOutInboundLinkPlans_ != null) {
+    //    retval.fanOutInboundLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
+    //    for (String key : this.fanOutInboundLinkPlans_.keySet()) {
+    //      retval.fanOutInboundLinkPlans_.put(key, this.fanOutInboundLinkPlans_.get(key).clone());
+    //    }
+    //  }
 
       if (this.coreJumpers_ != null) {
         retval.coreJumpers_ = new HashMap<String, List<GridLinkRouter.ClassifiedLink>>();
@@ -388,7 +388,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** Returns set of nodes (IDs) of fans
+  ** Aggregates node bounds in the given rectangle
   */
 
   private void collectFanBounds(Iterator<String> foit, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, Rectangle retval) {  
@@ -434,7 +434,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
  
   /***************************************************************************
   ** 
-  ** A function
+  ** Get the core ID for the cluster
   */
 
   public String getCoreID() {
@@ -444,7 +444,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** A function
+  ** Do we use left drops?
   */
 
   public boolean useLeftDropsForStackedCore() {
@@ -453,7 +453,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** A function
+  ** Do we need horizontal traces on the inbound side?
   */
 
   private boolean needsHorizontalTracesToFanInOrCore(SpecialtyLayoutEngine.NodePlaceSupport nps) {
@@ -468,9 +468,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
     }
   }
   
-   /***************************************************************************
+  /***************************************************************************
   ** 
-  ** A function
+  ** Do we need horizontal traces on the outbound side?
   */
 
   private boolean needsHorizontalTracesToFanOut(SpecialtyLayoutEngine.NodePlaceSupport nps) {
@@ -487,7 +487,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   /***************************************************************************
   ** 
-  ** A function
+  ** Are there links inbound to the fan OUT side?
   */
 
   public boolean hasInboundLinksToFanOut(SpecialtyLayoutEngine.NodePlaceSupport nps) {
@@ -534,7 +534,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** Locate the GASC.  Note that basePos is on the left of the cluster
+  ** Locate the GASC.  Note that basePos is on the upper left of the cluster. "As Target" means we are not doing
+  ** any fan-out placement in this routine, so it is usable for both source and target nodes; the former get an added step.
+  ** This places the nodes, based on previously calculated ClusterDims. No link routing is done here.
   */
   
   public void locateAsTarget(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, Double maxHeight) {   
@@ -544,35 +546,55 @@ public class GeneAndSatelliteCluster implements Cloneable {
     //
     
     ClusterDims oh = getClusterDims(nps, irx);
-    double useHorzTrace = oh.horizTraceAddition;
     
-    double nextHeight = oh.height + useHorzTrace;
+    //
+    // Traces needed along the top push stuff down, which is what the oh.horizTraceAddition does.
+    // 
+    //
+    // We want the bottoms of the clusters to match. So we push the cluster down (extraBump) if it is less than the
+    // maximum cluster height for a row:
+    //
+    
+    double nextHeight = oh.height + oh.horizTraceAddition;
     double extraBump = 0.0;
     if ((maxHeight != null) && (maxHeight.doubleValue() > nextHeight)) {
       extraBump = maxHeight.doubleValue() - nextHeight;
     }
     
+    //
+    // Find the rectangle needed by the core node. As a rectangle, with origin at the node placement point,
+    // extra tells us how far to the right the core is being placed.
+    //
+    
     Point2D srcPt;
     Rectangle2D useRect = TrackedGrid.layoutBounds(nps, irx, coreID_, textToo_);
     double extra = -useRect.getX();
-    
+ 
+    //
+    // Figure out where the core node is placed, using a relative offset from the basePos.
     //
     // We actually need a horizontal trace component when we are a pure target only with complex fan-ins;
     //
     
     if (fanInType_ != COMPLEX_FAN_IN_) {
-      Vector2D extraOffset = new Vector2D(extra, useHorzTrace + oh.offsetToGascPlacement + extraBump);
+      // Core node placement based on needed rect (extra for X), vertically based on needed trace height, the ClusterDim calc of
+      // core height, and the bump to make everybody even:
+      Vector2D extraOffset = new Vector2D(extra, oh.horizTraceAddition + oh.offsetToGascPlacement + extraBump);
       if (fanInType_ == SIMPLE_FAN_IN_) {
-        orderFanInOrphans(nps);
+        orderFanInOrphans(nps); // Order before placement!
         srcPt = extraOffset.add(basePos);
+        // Fan in is placed WRT the core location:
         locateSimpleFanIns(srcPt, nps, irx);
-      } else {
+      } else { // NO FAN_IN
         srcPt = extraOffset.add(basePos);                
       }
-    } else {
-      Point2D fanPos = new Point2D.Double(basePos.getX(), basePos.getY() + useHorzTrace + oh.offsetToFanInTop + extraBump);
+    } else { // COMPLEX FAN IN
+      // Fan-in Y is: (base position)
+      // Complex fan in placed WRT top left point.
+      Point2D fanPos = new Point2D.Double(basePos.getX(), basePos.getY() + oh.horizTraceAddition + oh.offsetToFanInTop + extraBump);
       placeFan(fanInTrackedGrid_, fanPos, nps);
-      Vector2D extraOffset = new Vector2D(extra + fanInTrackedGrid_.getWidth(), useHorzTrace + oh.offsetToGascPlacement + extraBump);
+      // core placement X depends on core node width (extra) plus tracked grid width:
+      Vector2D extraOffset = new Vector2D(extra + fanInTrackedGrid_.getWidth(), oh.horizTraceAddition + oh.offsetToGascPlacement + extraBump);
       srcPt = extraOffset.add(basePos);
     }
     
@@ -583,7 +605,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** Get Y needed for pen nodes  Make sure orderFanInOrphans called first!
+  ** Get Y needed for pen (penultimate) nodes, i.e. nodes in a simple fan-in.  Make sure orderFanInOrphans called first!
   */
   
   public double spaceForPenNodes(SpecialtyLayoutEngine.NodePlaceSupport nps) {
@@ -604,7 +626,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** A function
+  ** Does the node location calculations for a single node in a simple fan-in.
   */
   
   private Point2D simpleFanPosCalc(int orderNum, String penID, Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
@@ -626,7 +648,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** A function
+  ** Turns the nodes in a simple fan in (usually a bubble) to white, links to black. Currently only used in
+  ** "Halo" layout, and coloring non-bubble nodes white is not advised.
   */
   
   public void colorTheCluster(Genome genome, Map<String, String> nodeColors, Map<String, String> linkColors) {
@@ -684,11 +707,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
         currPad = calcPadChangesForCore(subset, traceOrder, nps);
       } else {      
         if (!fanInNodes_.isEmpty() && (fanInType_ == COMPLEX_FAN_IN_)) {
-          currPad = changeFanToCorePads(fanInNodes_, nps, currPad, fanInPadPlans_, true);    
+          currPad = changeFanToCorePads(fanInNodes_, nps, currPad, fanInPadPlans_, true, null, true);    
         }
       }     
     } else {
-      calcPadChangesForNonGeneCore(subset, fanInTrackedGrid_, traceOrder, nps);
+      calcPadChangesForNonGeneCore(subset, traceOrder, nps);
     }
  
     //
@@ -900,7 +923,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   /***************************************************************************
   ** 
-  ** Handle inbound link routing for the gascluster
+  ** Handle inbound link routing for the gascluster. THIS IS METHOD THAT GETS INBOUND LINKS ROUTED,
+  ** including inbound links going straight over to the fan-out.
   */
   
   public void inboundLinkRouting(String srcID, SpecialtyLayoutEngine.NodePlaceSupport nps,
@@ -1119,35 +1143,56 @@ public class GeneAndSatelliteCluster implements Cloneable {
     if (clusterDims_ != null) {
       return (clusterDims_);
     }
-    
+
     Node node = nps.getNode(coreID_);
     NodeProperties np = nps.getNodeProperties(coreID_);
     INodeRenderer rend = np.getRenderer();
     double coreHeight = rend.getGlyphHeightForLayout(node, irx);
+    
     //
     // For genes with regions, whole height increases.
     //
+    
+    boolean hasRegions = false; 
+    
+    //
+    // Top to placement says how far from the top of the core glyph do we go to get to node placement point. Note this
+    // is 0.0 for genes, since placement point is at the top left.
+    //
     double topToPlacement;
     if (node.getNodeType() == Node.GENE) {
-      if ((((Gene)node).getNumRegions() != 0) && (node.getName().length() > GeneFree.SHORTIE_CHAR)) {
+      hasRegions = ((Gene)node).getNumRegions() != 0;
+      if (hasRegions && (node.getName().length() > GeneFree.SHORTIE_CHAR)) {
         coreHeight += UiUtil.GRID_SIZE * 4.0;
       }
       topToPlacement = 0.0;
     } else {
+      // Fix for Issue #255. We need to pad the core height a tiny bit for non-gene cores
+      coreHeight += UiUtil.GRID_SIZE * 2.0;
       topToPlacement = coreHeight / 2.0;
       topToPlacement = UiUtil.forceToGridValueMax(topToPlacement, UiUtil.GRID_SIZE);
     }
     
+    //
+    // Figure out the space needed for traces going above the GAScluster, both over the
+    // fan-in and over the fan-out.
+    //
+    
     double inTraces = 0.0;
+    // I.e., a target or stacked, with a complex fan-in, OR
+    // NOT a simple fanin (includes no fan in), OR has corejumpers, OR
+    // a simple fan-in with links going to a fan-out:
     if (needsHorizontalTracesToFanInOrCore(nps)) {     
       if (fanInType_ == COMPLEX_FAN_IN_) {
         Set<String> l2fi = linksToFanin(nps);
         Set<String> l2c = linksToCore(nps);
         HashSet<String> all = new HashSet<String>(l2fi);
         all.addAll(l2c);
-        Set<String> canChopLinks = srcsForLinks(nps, canChop(nps, new ArrayList<String>(all), null));
+        // 04-22-16: Previously, we were removing choppable links from the reservation count, but this
+        // is WRONG, since the chopped links will still have empty tracks anyway (they are RESERVED after all).
+        //  Set<String> canChopLinks = srcsForLinks(nps, canChop(nps, new ArrayList<String>(all), null));
         int gottaHopIn = fanInGlr_.getTopReservations();
-        gottaHopIn -= canChopLinks.size();
+        //   gottaHopIn -= canChopLinks.size();
         inTraces = (UiUtil.GRID_SIZE * (gottaHopIn));    
       } else {
         int gottaHopIn = srcsToCore(nps).size();
@@ -1156,15 +1201,32 @@ public class GeneAndSatelliteCluster implements Cloneable {
       inTraces += traceOffset_;  // Padding...sigh...
     }
     
+    //
+    // In stacked layout cases, the outTraces is just the size of the fan out top traces. 
+    // If we need horizontal traces (e.g. diagonal layouts) we bump the traces down to below the 
+    // tracks coming in from sources. We bump it further to be below traces to fan in.
+    // 7/06/16: I think this reverse engineers what is going on in diagonal/alternating case:
+    // ---------------------------
+    // Traces from exterior sources to fan out
+    // ---------------------------
+    // Traces to fan in (in traces)
+    // ---------------------------
+    // Fan out tracks (top reservations)
+    // ---------------------------
+    //
+    
     double outTraces = 0.0;
+    double topRes = 0.0;
     if (!fanOutNodes_.isEmpty()) {
       int gottaHopOut = fanOutGlr_.getTopReservations();
       outTraces = (UiUtil.GRID_SIZE * (gottaHopOut));
+      // THIS DOES NOT APPLY TO STACKED LAYOUTS!
       if (needsHorizontalTracesToFanOut(nps)) {
+        topRes = outTraces; // Records the top reservations we need to handle ONLY diagonal, alternating (not stacked) layouts
         int gottaHopOver = srcsToFanout(nps).size();
         outTraces += (traceOffset_ * (gottaHopOver));
-        outTraces += inTraces; // First outTrace starts over top inTrace!
-        inTraces += (traceOffset_ * (gottaHopOver));  // First outTrace starts over top inTrace!
+        outTraces += inTraces;
+        inTraces += (traceOffset_ * (gottaHopOver));
       }
     }
 
@@ -1190,7 +1252,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     }
     
     //
-    // FanIn height calculation:
+    // FanIn height calculation, which is increased if we have a multi-link comb
+    // that needs its own dedicated track:
     //
     
     double fanIn = 0.0;
@@ -1201,13 +1264,13 @@ public class GeneAndSatelliteCluster implements Cloneable {
     } else {
       if (!fanInNodes_.isEmpty()) {
         fanIn = fanInTrackedGrid_.getHeight();
-      } else {
+      } else { // This is for the non-fan-in case:
         if (node.getNodeType() != Node.GENE) {
           fanIn = 20.0; // Non-gene padding!
         }
         //
         // Special case!  We need to inflate the height for stacked cases where we
-        // have multiple-link sources and nothing else (fan-in, fan-out).  This is
+        // have multiple-link sources and no fan-out.  This is
         // because they need to branch right above the gene:
         //
         if (isStacked_ && fanOutNodes_.isEmpty()) {
@@ -1219,20 +1282,60 @@ public class GeneAndSatelliteCluster implements Cloneable {
         }
       }
     }
+    
+    //
+    // Responsive to Issue 237. If a gene has regions, the final drops go willy-nilly, and
+    // we need to make sure everybody has their own track. Also need to do the extra drop 
+    // allocation with multi-link combs in a complex fan-in. COMBINE WITH ABOVE CASE?
+    //
+    
+    if (isStacked_ && ((hasRegions) || (fanInType_ == COMPLEX_FAN_IN_))) {
+      Set<String> ms2c = multiSrcsToCore(nps);
+      int multiSrcs = ms2c.size();
+      if (multiSrcs != 0) {
+        multiLink = multiSrcs * 2.0 * UiUtil.GRID_SIZE;
+      }
+    }
  
+    //
+    // Figure placement of the fan-out block. Placement here (vOffset) is with respect to core launch point.
+    //
+    
     double fanOut = 0.0;
     double vOffset = 0.0;
     if (!fanOutNodes_.isEmpty()) {
       fanOut = fanOutTrackedGrid_.getHeight();
       vOffset = fanOutTrackedGrid_.getExactVerticalOffset(nps, irx, coreID_);
-    } 
+    }
     
-    double fanInTop = 0.0;
-    double bottomOfFanIn = fanInTop + fanIn;
-    double corePlacement = bottomOfFanIn + topToPlacement;
-    double bottomOfCore = corePlacement - topToPlacement + coreHeight; //<<
-    double coreLaunch = corePlacement + gridLaunchPadOffset.getY();
-    double fanOutTop = coreLaunch - vOffset;
+    // Simple fan ins don't have a grid, will not be used!
+    // For grids, this says where to place the fan in RELATIVE TO THE CORE NODE PLACEMENT!
+    // Note that upperLeftFanInOffset is used in the ClusterDims.getFanInCorner() call, which is used to place
+    // link >>tracks<< coming in over the fan-in. HOWEVER, actual fan-in placement uses oh.horizTraceAddition + oh.offsetToFanInTop
+    
+    Vector2D upperLeftFanInOffset = (fanInTrackedGrid_ == null) ? null
+                                                                : new Vector2D(-fanInTrackedGrid_.getWidth(),
+                                                                               -fanInTrackedGrid_.getHeight());
+
+    Rectangle2D useRect = TrackedGrid.layoutBounds(nps, irx, coreID_, textToo_);
+    double width = UiUtil.forceToGridValueMax(useRect.getWidth(), UiUtil.GRID_SIZE);
+    double offsetToFanInTop = 0.0;
+    
+    //
+    // Fix for Issue #237. This gets the fan in LINKS correctly placed
+    //
+    
+    if (upperLeftFanInOffset != null) {
+      upperLeftFanInOffset = upperLeftFanInOffset.add(new Vector2D(useRect.getX(), useRect.getY()));
+    }
+
+    double bottomOfFanIn = offsetToFanInTop + fanIn;
+    double offsetToGascPlacement = bottomOfFanIn + topToPlacement;
+    double bottomOfCore = offsetToGascPlacement - topToPlacement + coreHeight;
+    double coreLaunch = offsetToGascPlacement + gridLaunchPadOffset.getY();
+    // The addition of topRes addresses Issue #249. The true fan out top needs to include the top reservations
+    // in the diagonal layout case.
+    double fanOutTop = coreLaunch - vOffset - topRes;
     double fanOutBottom = fanOutTop + fanOut;
     
     double feedTop = (needFeedMin) ? coreLaunch - STACK_Y_DELTA_ : coreLaunch;
@@ -1243,34 +1346,39 @@ public class GeneAndSatelliteCluster implements Cloneable {
     
     double downshift = 0.0;
      
-    if (fanOutTop < fanInTop) {
-      downshift = fanInTop - fanOutTop;
+    if (fanOutTop < offsetToFanInTop) {
+      downshift = offsetToFanInTop - fanOutTop;
     }
-    if (feedTop < fanInTop) {
+    if (feedTop < offsetToFanInTop) {
       if (feedTop < fanOutTop) {
-        downshift = fanInTop - feedTop;
+        downshift = offsetToFanInTop - feedTop;
       }
     }
-    
     if (downshift > 0.0) {
       feedTop += downshift;
-      fanInTop += downshift;
+      offsetToFanInTop += downshift;
       bottomOfFanIn += downshift;
-      corePlacement += downshift;
+      offsetToGascPlacement += downshift;
       bottomOfCore += downshift;
       coreLaunch += downshift;
       fanOutTop += downshift;
       fanOutBottom += downshift;
     }
-  
-    double traceTopIn = fanInTop - inTraces;
+    
+    double traceTopIn = offsetToFanInTop - inTraces;
     double traceTopOut = fanOutTop - outTraces;
     double traceTop = (traceTopIn < traceTopOut) ? traceTopIn : traceTopOut; 
     if (feedTop < traceTop) {
       traceTop = feedTop;
     }
-    double tracesY = -traceTop;     
-    double result = (bottomOfCore > fanOutBottom) ? bottomOfCore : fanOutBottom;
+
+    //
+    // Height is maximum of core bottom or fanOutBottom. *Total* height for the cluster is
+    // the height *plus* the trace addition on the top:
+    //
+    
+    double horizTraceAddition = -traceTop;
+    double height = (bottomOfCore > fanOutBottom) ? bottomOfCore : fanOutBottom;  
     
     //
     // Previously made the height divisible by 2 to still end up on grid (2.0 * GRID_SIZE)
@@ -1280,51 +1388,18 @@ public class GeneAndSatelliteCluster implements Cloneable {
     // is padded:
     //
     
-    result = UiUtil.forceToGridValueMax(result, UiUtil.GRID_SIZE);
+    height = UiUtil.forceToGridValueMax(height, UiUtil.GRID_SIZE);
    
-    // Simple fan ins don't have a grid, will not be used!
-    Vector2D upperLeftFanInOffset = (fanInTrackedGrid_ == null) ? null
-                                                                : new Vector2D(-fanInTrackedGrid_.getWidth(),
-                                                                               -fanInTrackedGrid_.getHeight());
-      
     //
     // Fan-out offset support:
     //
   
     int numRow = (fanOutTrackedGrid_ == null) ? 0 : fanOutTrackedGrid_.getNumRows();
-    double multiRowShift = UiUtil.GRID_SIZE * ((double)numFOT_ + ((coreLinkIsFanned_) ? 1.0 : 0.0));
-    Vector2D targOffset = new Vector2D(STACK_X_OFFSET_, -vOffset);  
+    double multiRowShift = UiUtil.GRID_SIZE * (numFOT_ + ((coreLinkIsFanned_) ? 1.0 : 0.0));
+    Vector2D targOffset = new Vector2D(STACK_X_OFFSET_, -vOffset);
     Vector2D fullOffset = targOffset.add(gridLaunchPadOffset);
     Vector2D linkShiftOffset = new Vector2D((numRow > 1) ? multiRowShift : 0.0, 0.0);  
       
-    //
-    // Width calculations
-    //
-    
-    //
-    // This width gets the CURRENT WIDTH!
-    //  double width = rend.getWidth(genome, node, lo, frc);
-    
-  //  double width;
-    /*
-    if (node.getNodeType() == Node.GENE) {
-      double currWidth = rend.getWidth(genome, node, lo, frc);
-      double defaultWidth = GeneFree.DEFAULT_GENE_WIDTH;
-      double extraWidth = calcExtraGeneLength(genome);
-      width = Math.max(currWidth, defaultWidth + extraWidth);
-    } else {
-      width = TrackedGrid.calcExpandedNodeWidth(node, genome, rend, lo, frc, textToo_);
-    }    
-  
-    Rectangle bigBounds = rend.getBounds(genome, node, lo, frc, null);
-    if (bigBounds.getWidth() > width) {
-      width = bigBounds.getWidth();
-    }
-     */
-   
-    Rectangle2D useRect = TrackedGrid.layoutBounds(nps, irx, coreID_, textToo_);
-    double width = UiUtil.forceToGridValueMax(useRect.getWidth(), UiUtil.GRID_SIZE);
- 
     if (!fanOutNodes_.isEmpty()) {
       width += (fanOutTrackedGrid_.getWidth() + COMPLEX_FANOUT_WIDTH_HACK_);
     }
@@ -1334,8 +1409,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
       if (fanInType_ == COMPLEX_FAN_IN_) {
         width += fanInTrackedGrid_.getWidth() + FAN_GRID_PAD_;
       }
-    }
-   
+    } 
+    
     //
     // Padding to right of gene going over to fan out grid:
     //
@@ -1345,14 +1420,19 @@ public class GeneAndSatelliteCluster implements Cloneable {
     // Make sure still end up on grid points:
     
     width = UiUtil.forceToGridValueMax(width, UiUtil.GRID_SIZE);
+  
     
-    clusterDims_ = new ClusterDims(result, fanInTop, fanOutTop, corePlacement, tracesY, 
+   // Complex Fan-in placement by: basePos.getY() + oh.horizTraceAddition + oh.offsetToFanInTop + [extraBump (to even out the bottom of the row)]
+    
+    clusterDims_ = new ClusterDims(height, offsetToFanInTop, fanOutTop, offsetToGascPlacement, horizTraceAddition, 
                                    gridLaunchPadOffset, upperLeftFanInOffset, 
                                    fullOffset, linkShiftOffset, vOffset, width);
+    
+
     return (clusterDims_);
    
   }  
-   
+  
   /***************************************************************************
   ** 
   ** Get the number of inbound links
@@ -1710,7 +1790,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
 
   public void prepPhaseTwo(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, GeneAndSatelliteCluster.DropDirectionOracle ddo) {
     
-    fanOutTrackedGrid_ = new TrackedGrid(gridFanOuts(nps), nps, irx, coreID_, textToo_);    
+    fanOutTrackedGrid_ = new TrackedGrid(gridFanOuts(nps), nps, irx, coreID_, textToo_, true);    
     fanInTrackedGrid_ = new TrackedGrid(gridFanIns(nps), nps, irx, coreID_, textToo_);
     ddo_ = ddo;
        
@@ -1753,8 +1833,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
     numFOT_ = inboundsWithFanOutTargs.size();
       
     HashMap<String, GridRouterPointSource> fanInPointSources = new HashMap<String, GridRouterPointSource>();
-    fanInTraceOrder_ = new ArrayList<GridLinkRouter.RCRowCompare>();        
-    if (fanInType_ == COMPLEX_FAN_IN_) {      
+    fanInTraceOrder_ = new ArrayList<GridLinkRouter.RCRowCompare>();
+
+    if (fanInType_ == COMPLEX_FAN_IN_) { 
+     
+      
       fanInGlr_ = new GridLinkRouter(appState_, fanInTrackedGrid_, this);
       // Note this is where fan-in to core links get handled:
       fanInLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
@@ -1767,7 +1850,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       //       
       changeInboundPadsForFan(fanInNodes_, fanInTrackedGrid_, nps, fanInPadPlans_, null, ddo != null);
  
-      inboundLinkPlans_ = fanInGlr_.layoutInboundLinks(inboundsWithFanInTargs, nps, fanInPadPlans_, fanInPointSources, null, null, null, null, true);
+      inboundLinkPlans_ = fanInGlr_.layoutInboundLinks(inboundsWithFanInTargs, nps, fanInPadPlans_, fanInPointSources, null, null, null, null, true, new ArrayList<String>());
       Collections.sort(fanInTraceOrder_);
     }
 
@@ -1808,13 +1891,15 @@ public class GeneAndSatelliteCluster implements Cloneable {
       Set<String> cjSet = coreJumpers_.keySet();
       coreJumpersAlsoToCore_.retainAll(cjSet);
       inboundsWithFanOutTargs.putAll(coreJumpers_);
-      int numCJ = cjSet.size();
-
+      List<String> bottomJumpers = (fanInType_ == COMPLEX_FAN_IN_) ? fanInGlr_.getBottomReservations() : new ArrayList<String>();
+      int numCJ = cjSet.size() - bottomJumpers.size();
+    
       HashMap<String, GridRouterPointSource> pointSources = new HashMap<String, GridRouterPointSource>();
       fanOutGlr_ = new GridLinkRouter(appState_, fanOutTrackedGrid_, this);
       fanOutLinkPlans_ = new HashMap<String, SpecialtyLayoutLinkData>();
       coreLinkIsFanned_ = fanOutGlr_.layoutInternalLinks(internalsWithFanOutSrcs, nps, fanOutPadPlans_, pointSources, 
-                                                         new ArrayList<GridLinkRouter.RCRowCompare>(), coreID_, numCJ, fanOutLinkPlans_);
+                                                         new ArrayList<GridLinkRouter.RCRowCompare>(), coreID_, numCJ, 
+                                                         fanOutLinkPlans_);
       changeInboundPadsForFan(fanOutNodes_, fanOutTrackedGrid_, nps, fanOutPadPlans_, null, true);
       changePadsForFanForJumperLinks(jumperLinks, fanOutNodes_, fanOutTrackedGrid_, nps, fanOutPadPlans_, null, true);
       // This is where core jumpers get laid out as well:
@@ -1823,7 +1908,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       // inbounds.
           
       fanOutInboundLinkPlans_ = fanOutGlr_.layoutInboundLinks(inboundsWithFanOutTargs, nps, fanOutPadPlans_, pointSources, 
-                                                              fanInGlr_, fanInPointSources, cjSet, coreJumpersAlsoToCore_, false);  // ddo not needed
+                                                              fanInGlr_, fanInPointSources, cjSet, coreJumpersAlsoToCore_, false, bottomJumpers);  // ddo not needed
       outboundLinkPlans_ = fanOutGlr_.layoutOutboundLinks(outboundLinks_, coreID_, nps, fanOutPadPlans_, pointSources, srcOrder_);
       feedbackLinkPlans_ = fanOutGlr_.feedbackRoutingForFanout(feedbacks_, nps, irx, fanOutPadPlans_, pointSources, coreID_);
       Collections.sort(srcOrder_);
@@ -1924,7 +2009,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
     }
     
     if (fanOutLinkPlans_ != null) {
-      Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+      //
+      // Issue #254: getFanOutCorner() says we want a false for the last argument for doing final link conversion:
+      // REPLACE Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+      //
+      Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, false);   
       Map<String, SpecialtyLayoutLinkData> fanOutConv = fanOutGlr_.convertInternalLinks(fanOutLinkPlans_, upperLeftFanOutPt, nps, irx, coreID_);
       retval.putAll(fanOutConv);      
       Map<String, SpecialtyLayoutLinkData> feedbackConv = fanOutGlr_.convertInternalLinks(feedbackLinkPlans_, upperLeftFanOutPt, nps, irx, coreID_);
@@ -1953,8 +2042,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
   public List<SpecialtyLayoutLinkData.TrackPos> convertDeparturePath(List<SpecialtyLayoutLinkData.TrackPos> pointList, 
                                                                      SpecialtyLayoutEngine.NodePlaceSupport nps, 
                                                                      DataAccessContext irx) {
-
-    Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+    //
+    // Issue #254: getFanOutCorner() says we want a false for the last argument for doing final link conversion:
+    // REPLACE Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+    //
+    Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, false);
     return (fanOutGlr_.convertPositionListToPoints(pointList, upperLeftFanOutPt, nps, irx, coreID_));
   }
   
@@ -1965,8 +2057,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   public Point2D convertDeparturePoint(TrackedGrid.TrackPosRC tprc, SpecialtyLayoutEngine.NodePlaceSupport nps, 
                                        DataAccessContext irx) {
-
-    Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+    //
+    // Issue #254: getFanOutCorner() says we want a false for the last argument for doing final link conversion:
+    // REPLACE Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, true);
+    //  
+    Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, false);
     return (fanOutGlr_.convertPositionToPoint(tprc, upperLeftFanOutPt, nps, irx, coreID_));
   }  
 
@@ -1989,7 +2084,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
           if (!subset.getNodeSources(nodeID).isEmpty()) {
             continue;
           }
-        }          
+        }
         retval.add(new GeneAndSatelliteCluster(appState, nodeID, false, traceOffset, true, textToo));
       }
     }
@@ -2036,7 +2131,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
                                                                          Map<String, NodeGrouper.GroupElement> groups, 
                                                                          SpecialtyLayoutEngine.NodePlaceSupport nps,
                                                                          DataAccessContext irx, 
-                                                                         double traceOffset, boolean doPhaseTwo, boolean textToo) {
+                                                                         double traceOffset, 
+                                                                         boolean doPhaseTwo, boolean textToo, boolean isStacked) {
       
     //
     // For each terminal target, find inputs that only hit
@@ -2047,7 +2143,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     ArrayList<GeneAndSatelliteCluster> retval = new ArrayList<GeneAndSatelliteCluster>();
     int num = clusters.size();
     for (int i = 0; i < num; i++) {
-      GeneAndSatelliteCluster clust = new GeneAndSatelliteCluster(appState, clusters.get(i), false, traceOffset, true, textToo);
+      GeneAndSatelliteCluster clust = new GeneAndSatelliteCluster(appState, clusters.get(i), isStacked, traceOffset, true, textToo);
       retval.add(clust);     
       clust.prepFromGroupsPhaseOne(nps, groups, nps.pureCoreNetwork);
     }
@@ -2186,7 +2282,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
  
   /***************************************************************************
   ** 
-  ** Do final inbound link routing on simple fan-in
+  ** Do final inbound link routing on simple fan-in (also no fan-in, correct??)
   */
 
   private void simpleFanInFinalLinkRoutingLinkCreation(SpecialtyLayoutLinkData sin, 
@@ -2235,6 +2331,10 @@ public class GeneAndSatelliteCluster implements Cloneable {
           }
           ic.finalPath.addAll(convertedDrops);
           int whichIndex = (isToPen) ? 0 : convertedDrops.size() - 1;
+          // Fix added to address Issue #234:
+          if (!penultimate_.isEmpty() && !isToPen) {
+            whichIndex--;
+          }
           lastForSrc = convertedDrops.get(whichIndex);
           lastForSrc = lastForSrc.clone();
         } else {
@@ -2410,8 +2510,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     //Point2D launch = getClusterDims(genome, lo, frc).getCoreLaunch(placement);
     //double multiPadY = launch.getY() - STACK_Y_DELTA_ + UiUtil.GRID_SIZE;
     //double traceY = (isStacked_) ? multiPadY : lps.getTargetTraceY();
-    double traceY = lps.getTargetTraceY();
-        
+   
+    double traceY = lps.getTargetTraceY(); 
     if (fanInType_ != SIMPLE_FAN_IN_) {
       retval.add(new Point2D.Double(targLoc.getX() + padOffset.getX(), traceY));        
       return (retval);
@@ -2462,15 +2562,13 @@ public class GeneAndSatelliteCluster implements Cloneable {
     Linkage link = nps.getLinkage(linkID);    
     int landing = getCurrentLandingPad(link, nps.getPadChanges(), false);    
     String ltrg = link.getTarget();
-    Node fanNode = nps.getNode(ltrg);
-    int fanType = fanNode.getNodeType();
         
     Point2D penLoc = nps.getPosition(ltrg);
     
     if (fanInType_ != COMPLEX_FAN_IN_) {
       Point2D targLoc = nps.getPosition(coreID_);
       int order = penToOrder(ltrg);
-      if ((landing == 0) || (fanType == Node.SLASH)) {
+      if (landing == 0) {
         return (linkToTopDropPoints(order, lps, nps, irx, penLoc, targLoc));
       } else {
         return (linkToSideDropPoints(order, lps, nps, irx, penLoc, targLoc));
@@ -3105,7 +3203,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     // If every inbound link is to the core, we have no fan-in.
     // If every fan-in node has one target, and it is the core,
     // and the node is tiny (bubble, slash, intercell), and it
-    // has at most two links (one for slash), and none are from
+    // has at most two links, and none are from
     // the same source, it is simple.
     // Else it is complex.
     //
@@ -3132,15 +3230,15 @@ public class GeneAndSatelliteCluster implements Cloneable {
       }
       seenNodes.add(lsrc);
       Node fanNode = nps.getNode(lsrc);
-      int fanType = fanNode.getNodeType();
-      if ((fanType != Node.BUBBLE) && (fanType != Node.SLASH) && (fanType != Node.INTERCELL)) {
+      INodeRenderer rend = nps.getNodeProperties(lsrc).getRenderer();
+      if (!rend.simpleFanInOK()) {
         return (COMPLEX_FAN_IN_);
       }
-      if (fanNode.getPadCount() > DBNode.getDefaultPadCount(fanType)) {
+      if (fanNode.getPadCount() > DBNode.getDefaultPadCount(fanNode.getNodeType())) {
         return (COMPLEX_FAN_IN_);  
       }
       int intoNode = nps.inboundLinkCount(lsrc);
-      if (intoNode > ((fanType == Node.SLASH) ? 1 : 2)) {
+      if (intoNode > 2) {
         return (COMPLEX_FAN_IN_);
       }
       int outOfNode = nps.outboundLinkCount(lsrc);
@@ -3255,7 +3353,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** A function
+  ** Set the node locations of the nodes in a simple fan-in.
   */
   
   private void locateSimpleFanIns(Point2D basePos, SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx) {
@@ -3540,12 +3638,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     } else {
       //
       // Get the positions:
-      //
-
-      Grid.RowAndColumn srcRC = grid.findPositionRandC(lsrc);
-      Grid.RowAndColumn trgRC = grid.findPositionRandC(ltrg);
-      
-      int linkDirection = checker.calcGridLinkType(srcRC, trgRC, nps, lsrc, ltrg); 
+      //  
+      int linkDirection = checker.calcGridLinkType(grid, nps, lsrc, ltrg); 
       launch = TrackedGrid.launchForGrid(lsrc, nps);
       boolean canGoLeft = grid.canEnterOnLeft(lsrc, ltrg, nps);
       if (leftEnterOnly && !(canGoLeft && (linkDirection == GridLinkRouter.GRID_LINK_E_ADJ))) {
@@ -3569,7 +3663,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   */
 
   private int changeFanToCorePads(Set<String> fanElements, SpecialtyLayoutEngine.NodePlaceSupport nps, int coreMin, 
-                                  Map<String, PadCalculatorToo.PadResult> oldPadPlans, boolean skipCore) {
+                                  Map<String, PadCalculatorToo.PadResult> oldPadPlans, boolean skipCore, TreeSet<Integer> usedPads, boolean forGene) {
     
     //
     // Need to know the total count from each src into the core:
@@ -3620,7 +3714,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
             
       int launch = TrackedGrid.launchForGrid(lsrc, nps);
       int landing = (skipCore) ? getCurrentLandingPad(link, oldPadPlans, false) 
-                               : getFanToCorePad(link, coreMin, totalFromSources, origLinkOrdering);
+                               : getFanToCorePad(link, nps, coreMin, totalFromSources, origLinkOrdering, usedPads, forGene);
       doPadChange(linkID, nps.getPadChanges(), launch, landing);
       if (landing < newCoreMin) {
         newCoreMin = landing;
@@ -3879,8 +3973,6 @@ public class GeneAndSatelliteCluster implements Cloneable {
     int type = genome.getNode(nodeID).getNodeType();
     if (type == Node.BUBBLE) {
       return (3);
-    } else if (type == Node.SLASH) {
-      return (1);
     } else {
       return (0);
     }    
@@ -3895,8 +3987,6 @@ public class GeneAndSatelliteCluster implements Cloneable {
     int type = genome.getNode(nodeID).getNodeType();
     if (type == Node.BUBBLE) {
       return ((highest) ? 0 : 3);
-    } else if (type == Node.SLASH) {
-      return (1);
     } else {
       return (0);
     }    
@@ -3983,7 +4073,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
   
   /***************************************************************************
   ** 
-  ** Do final inbound link routing for a simple fan-in
+  ** Do final inbound link routing for a simple fan-in (also no fan-in, correct??).
+  ** Note this handles the links to the fan-out as well (but that step is done differently
+  ** with complex fan-in).
   */
 
   private void simpleFanInInboundLinkRouting(List<String>linksPerClust, String srcID,  
@@ -4072,7 +4164,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     boolean entryFromTop = (ddo_ == null) ? true : ddo_.comingFromTop(srcID, this);   
     
     //
-    // Our destination is different if we are building for feedback:
+    // Our destination is different if we are building for feedback (i.e. "deferred"):
     //
     
     boolean isDeferred = lps.isForDeferredOnly();
@@ -4080,7 +4172,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       (isDeferred) ? lps.initInboundsPerSrcForDeferred(coreID_, srcID) : null;    
      
     Point2D upperLeftFanInPt = getClusterDims(nps, irx).getFanInCorner(nps);
-   
+       
     //
     // Get the tip to where we can use it:
     //
@@ -4090,7 +4182,6 @@ public class GeneAndSatelliteCluster implements Cloneable {
     dummySin.startNewLink(dummyLink);
     
     SpecialtyLayoutLinkData converted;
-
     //
     // First case handles a drop from a horizontal source trace:
     //
@@ -4470,8 +4561,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     Point2D upperLeftFanOutPt = getClusterDims(nps, irx).getFanOutCorner(nps, false);
     if (upperLeftFanOutPt == null) {
       return;   
-    }    
-
+    }
+    
     SpecialtyLayoutLinkData converted =
       fanOutGlr_.convertInboundLinks(srcID, fanOutInboundLinkPlans_, upperLeftFanOutPt, nps, irx, coreID_);
     if (converted == null || converted.getLinkList().isEmpty()) {
@@ -4800,7 +4891,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     //
     
     if (!fanInNodes_.isEmpty() && (fanInType_ == COMPLEX_FAN_IN_)) {
-      currPad = changeFanToCorePads(fanInNodes_, nps, currPad, fanInPadPlans_, false);    
+      currPad = changeFanToCorePads(fanInNodes_, nps, currPad, fanInPadPlans_, false, null, true);    
     }
     
     return (currPad);
@@ -4916,7 +5007,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Figure out the pad changes needed 
   */
   
-  private void calcPadChangesForNonGeneCore(GenomeSubset subset, TrackedGrid grid, 
+  private void calcPadChangesForNonGeneCore(GenomeSubset subset,
                                             List<String> sourceOrder, 
                                             SpecialtyLayoutEngine.NodePlaceSupport nps) {
        
@@ -4978,8 +5069,11 @@ public class GeneAndSatelliteCluster implements Cloneable {
         int landing = pad.intValue();
         doPadChange(linkID, nps.getPadChanges(), launch, landing);
         usedPads.add(new Integer(landing));
-      }      
-    } 
+      }
+      // Issue 217 fixed here by handling complex fan-ins:
+    } else if (fanInType_ == COMPLEX_FAN_IN_) {    
+      changeFanToCorePads(fanInNodes_, nps, currLanding, fanInPadPlans_, false, new TreeSet<Integer>(usedPads), false); 
+    }
 
     ArrayList<String> revFeed = new ArrayList<String>(feedbacks_);
     int fSize = revFeed.size();
@@ -4990,12 +5084,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       int launch = getCurrentLaunchPad(feedLink, nps.getPadChanges());
       doPadChange(linkID, nps.getPadChanges(), launch, landing); 
     } 
-      
-    //
-    // FIX ME!!!! Complex fan-ins!
-    //
-    
-    
+
     return;
   }  
   /***************************************************************************
@@ -5035,8 +5124,8 @@ public class GeneAndSatelliteCluster implements Cloneable {
     // have multiple-link sources and nothing else (fan-in, fan-out).  This is
     // because they need to branch right above the gene:
     //
-          
-    if (!toFanout && isStacked_ && fanOutNodes_.isEmpty() && fanInNodes_.isEmpty()) {
+    // Previous test included fanOutNodes_.isEmpty() but created a problem with multi-fan-in case:
+    if (!toFanout && isStacked_ && fanInNodes_.isEmpty()) {
       Set<String> multiSrc = multiSrcsToCore(nps);
       if (multiSrc.contains(srcID)) {      
         GenomeItemInstance.DBAndInstanceConsistentComparator cc = new GenomeItemInstance.DBAndInstanceConsistentComparator();
@@ -5168,7 +5257,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
       }
     }
  
-    dropY -= ((double)finalTrace * traceOffset_);
+    dropY -= (finalTrace * traceOffset_);
     dropY = UiUtil.forceToGridValue(dropY, UiUtil.GRID_SIZE);  
     return (dropY);
   }  
@@ -5414,9 +5503,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
   ** Get the fan-in to core pad
   */
 
-  private int getFanToCorePad(Linkage link, int currPad,
+  private int getFanToCorePad(Linkage link, SpecialtyLayoutEngine.NodePlaceSupport nps, int currPad,
                               Map<String, Integer> totalFromSources, 
-                              Map<String, SortedMap<TaggedComparableInteger, String>> origLinkOrdering) {   
+                              Map<String, SortedMap<TaggedComparableInteger, String>> origLinkOrdering, TreeSet<Integer> usedPads, boolean forGene) {   
     //
     // Need to reference back to the original planned order to keep correct left-to-right order.
     //
@@ -5435,9 +5524,22 @@ public class GeneAndSatelliteCluster implements Cloneable {
       count++;
     }
     
+    INodeRenderer rend = nps.getNodeProperties(coreID_).getRenderer();
+    
     if ((fanInTraceOrder_ == null) || fanInTraceOrder_.isEmpty()) {
-      return (currPad - count);
+      int pad;
+      if (forGene) {
+        pad = currPad - count;
+      } else {
+        pad = rend.getBestTopPad(nps.getNode(coreID_), usedPads, NodeProperties.HORIZONTAL_GROWTH, count, true);
+      }
+      return (pad);
     }
+    
+    //
+    // If we are working with genes, we get a nice linear order of pads. With non-genes, we need to ask the renderer, 
+    // and keep track of what pads have been handed out:
+    //
     
     List<String> ordered = getFanToCoreSourceOrder();
     int numo = ordered.size();
@@ -5446,7 +5548,14 @@ public class GeneAndSatelliteCluster implements Cloneable {
       Integer totFromSrc = totalFromSources.get(srcID);
       int tfs = totFromSrc.intValue();
       if (srcID.equals(lsource)) {
-        return (currPad - tfs + count);
+        int pad;
+        if (forGene) {
+          pad = currPad - tfs + count;
+        } else {
+          pad = rend.getBestTopPad(nps.getNode(coreID_), usedPads, NodeProperties.HORIZONTAL_GROWTH, count, true);
+          usedPads.add(Integer.valueOf(pad));
+        }
+        return (pad);
       }
       currPad -= tfs;
     }
@@ -5472,6 +5581,7 @@ public class GeneAndSatelliteCluster implements Cloneable {
     public double offsetToGascPlacement;
     public double launchToFanOutTop;
     public Vector2D gridLaunchPadOffset;
+    // How to get to the fan-in from the core placement point:
     public Vector2D upperLeftFanInOffset;
     private Vector2D fullOffset_;
     private Vector2D linkShiftOffset_;
@@ -5528,8 +5638,9 @@ public class GeneAndSatelliteCluster implements Cloneable {
     }     
     
     public Point2D getFanInCorner(SpecialtyLayoutEngine.NodePlaceSupport nps) {
-      Point2D corePt = nps.getPosition(coreID_);     
+      Point2D corePt = nps.getPosition(coreID_);
       Point2D upperLeftFanInPt = upperLeftFanInOffset.add(corePt);
+      upperLeftFanInPt.setLocation(upperLeftFanInPt.getX(), upperLeftFanInPt.getY());
       return (upperLeftFanInPt);
     } 
     

@@ -59,6 +59,7 @@ import javax.swing.text.PlainDocument;
 
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
+import org.systemsbiology.biotapestry.cmd.flow.edit.ActivityLevelSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.DBNode;
@@ -227,62 +228,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   
   boolean checkActivityBounds(GenomeItemInstance.ActivityTracking actTrack, GenomeItemInstance.ActivityState nias) {
   
-    ResourceManager rMan = appState_.getRMan();
-    
-    int newActivity = nias.activityState;
-            
-    //
-    // Make sure we are OK wrt our parent (if we have one):
-    //
+    ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(actTrack, nias);
+    if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
+      ActivityLevelSupport.showForNode(check, appState_);
+      return (false);
+    }
    
-    if (actTrack.parentActivity != null) {
-      int parentNodeActivityVal = actTrack.parentActivity.intValue();
-      if (!NodeInstance.activityLevelAllowedInChild(parentNodeActivityVal, newActivity)) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                      rMan.getString("nodeProp.badActivityValViaParent"), 
-                                      rMan.getString("nodeProp.badActivityTitle"),
-                                      JOptionPane.ERROR_MESSAGE);         
-        return (false);
-      }
-      if ((actTrack.parentActivityLevel != Double.NEGATIVE_INFINITY) && (newActivity == GenomeItemInstance.VARIABLE)) {
-        if (nias.activityLevel.doubleValue() > actTrack.parentActivityLevel) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("nodeProp.badActivityLevelViaParent"), 
-                                        rMan.getString("nodeProp.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);               
-        }
-      }
-    }
-    
-    //
-    // Make sure we are OK wrt our children:
-    //
-    
-    if (actTrack.childActivities != null) {
-      Iterator cait = actTrack.childActivities.iterator();
-      while (cait.hasNext()) {
-        Integer childActivity = (Integer)cait.next();
-        int childActivityVal = childActivity.intValue();        
-        if (!NodeInstance.activityLevelAllowedInChild(newActivity, childActivityVal)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("nodeProp.badActivityValViaChild"), 
-                                        rMan.getString("nodeProp.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);
-        }       
-      }
-      if ((actTrack.maxChildLevel != Double.NEGATIVE_INFINITY) && (newActivity == GenomeItemInstance.VARIABLE)) {
-        if (nias.activityLevel.doubleValue() < actTrack.maxChildLevel) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("nodeProp.badActivityLevelViaChild"), 
-                                        rMan.getString("nodeProp.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);               
-        }
-      }     
-    }
-    
     return (true);
   }
   
@@ -292,61 +243,13 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   */
   
   boolean checkActivityBounds(GenomeItemInstance.ActivityTracking trackInfo, int newActivity, double newLevel) {
-  
-    ResourceManager rMan = appState_.getRMan();
-    
-    //
-    // Make sure we are OK wrt our parent (if we have one):
-    //
+
+    ActivityLevelSupport.Results check = ActivityLevelSupport.checkActivityBounds(trackInfo, newActivity, newLevel);
+    if (check != ActivityLevelSupport.Results.VALID_ACTIVITY) {
+      ActivityLevelSupport.showForLink(check, appState_);
+      return (false);
+    }
    
-    if (trackInfo.parentActivity != null) {
-      int parentActivityVal = trackInfo.parentActivity.intValue();
-      if (!LinkageInstance.activityLevelAllowedInChild(parentActivityVal, newActivity)) {
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                      rMan.getString("lprop.badActivityValViaParent"), 
-                                      rMan.getString("lprop.badActivityTitle"),
-                                      JOptionPane.ERROR_MESSAGE);         
-        return (false);
-      }
-      if ((trackInfo.parentActivityLevel != Double.NEGATIVE_INFINITY) && (newActivity == LinkageInstance.VARIABLE)) {
-        if (newLevel > trackInfo.parentActivityLevel) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("lprop.badActivityLevelViaParent"), 
-                                        rMan.getString("lprop.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);               
-        }
-      }
-    }
-    
-    //
-    // Make sure we are OK wrt our children:
-    //
-    
-    if (trackInfo.childActivities != null) {
-      Iterator cait = trackInfo.childActivities.iterator();
-      while (cait.hasNext()) {
-        Integer childActivity = (Integer)cait.next();
-        int childActivityVal = childActivity.intValue();
-        if (!LinkageInstance.activityLevelAllowedInChild(newActivity, childActivityVal)) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("lprop.badActivityValViaChild"), 
-                                        rMan.getString("lprop.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);
-        }       
-      }
-      if ((trackInfo.maxChildLevel != Double.NEGATIVE_INFINITY) && (newActivity == LinkageInstance.VARIABLE)) {
-        if (newLevel < trackInfo.maxChildLevel) {
-          JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                        rMan.getString("lprop.badActivityLevelViaChild"), 
-                                        rMan.getString("lprop.badActivityTitle"),
-                                        JOptionPane.ERROR_MESSAGE);         
-          return (false);               
-        }
-      }     
-    }
-    
     return (true);
   } 
  
@@ -1744,14 +1647,14 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Used to handle extra pad settings
   */
   
-  public JPanel extraPadsUI(boolean forMulti, SortedSet padOptions, boolean isPartial, ImageIcon warnIcon) {
+  public JPanel extraPadsUI(boolean forMulti, List<ChoiceContent> padOptions, boolean isPartial, ImageIcon warnIcon) {
   
     JPanel retval = new JPanel();
     retval.setLayout(new GridBagLayout());
     GridBagConstraints gbc = new GridBagConstraints(); 
     ResourceManager rMan = appState_.getRMan();
     Vector pads = new Vector(padOptions);
-    
+  
     //
     // Big size box and pad setter:
     //
@@ -1822,12 +1725,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Used to set extra pads (and extra growth)
   */
   
-  public void setExtraPads(int pads, boolean amBig, int extraGrowthDirection) { 
+  public void setExtraPads(ChoiceContent padVal, boolean amBig, int extraGrowthDirection) { 
     if (bigBox_ != null) {
       bigBox_.setSelected(amBig);
       extraPadLabel_.setEnabled(amBig);
       extraPadCombo_.setEnabled(amBig);
-      extraPadCombo_.setSelectedItem(new Integer(pads));       
+      extraPadCombo_.setSelectedItem(padVal);       
       if (extraGrowthLabel_ != null) {
         extraGrowthLabel_.setEnabled(amBig);
         extraGrowthCombo_.setEnabled(amBig);
@@ -1842,12 +1745,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Used to set extra pads (and extra growth)
   */
   
-  public void setExtraPadsForMulti(int pads, int consensusBig, int extraGrowthDirection) { 
+  public void setExtraPadsForMulti(ChoiceContent padVal, int consensusBig, int extraGrowthDirection) { 
     if (bigBoxMultiCombo_ != null) {
       bigBoxMultiCombo_.setSetting(consensusBig);
       extraPadLabel_.setEnabled(consensusBig == TriStateJComboBox.TRUE);
       extraPadCombo_.setEnabled(consensusBig == TriStateJComboBox.TRUE);
-      extraPadCombo_.setSelectedItem(new Integer(pads));       
+      extraPadCombo_.setSelectedItem(padVal);       
       if (extraGrowthLabel_ != null) {
         extraGrowthLabel_.setEnabled(consensusBig == TriStateJComboBox.TRUE);
         extraGrowthCombo_.setEnabled(consensusBig == TriStateJComboBox.TRUE);   
@@ -1886,7 +1789,12 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       
     int newPads;
     if (wantBig) {
-      newPads = ((Integer)extraPadCombo_.getSelectedItem()).intValue();
+      int useVal = ((ChoiceContent)extraPadCombo_.getSelectedItem()).val;
+      if (useVal == -1) {
+        return (true);
+      } else {
+        newPads = useVal;
+      }
     } else {
       newPads = DBNode.getDefaultPadCount(node.getNodeType());
     }
@@ -1935,7 +1843,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
       throw new IllegalStateException();
     }
     if (triVal == TriStateJComboBox.TRUE) {
-      return ((Integer)extraPadCombo_.getSelectedItem());
+      int myVal = ((ChoiceContent)extraPadCombo_.getSelectedItem()).val;
+      return ((myVal == ConsensusNodeProps.NO_PAD_CHANGE) ? null : Integer.valueOf(myVal));
     } else {
       return (null);
     }
@@ -1954,8 +1863,8 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     if (!wantBig) {
       return (null);
     }
-    Integer newPads = (Integer)extraPadCombo_.getSelectedItem();
-    return (newPads);
+    ChoiceContent newPads = (ChoiceContent)extraPadCombo_.getSelectedItem();
+    return (Integer.valueOf(newPads.val));
   }
   
   /***************************************************************************
@@ -2433,6 +2342,24 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
   ** Generate pad options
   */
   
+  public Vector<ChoiceContent> padsToCC(SortedSet<Integer> padOptions, boolean forMulti) {
+    Vector<ChoiceContent> forExtra = new Vector<ChoiceContent>();
+    if (forMulti) {
+      forExtra.add(new ChoiceContent(appState_.getRMan().getString("multiSelProps.various"), ConsensusNodeProps.NO_PAD_CHANGE));
+    }
+    Iterator<Integer> pit = padOptions.iterator();
+    while (pit.hasNext()) {
+      Integer p = pit.next();
+      forExtra.add(new ChoiceContent(p.toString(), p.intValue()));    
+    }
+    return (forExtra);
+  }
+ 
+  /***************************************************************************
+  **
+  ** Generate pad options
+  */
+  
   public static SortedSet<Integer> generatePadChoices(Node node) {
   
     TreeSet<Integer> pads = new TreeSet<Integer>();  
@@ -2440,10 +2367,17 @@ public class NodeAndLinkPropertiesSupport implements DocumentListener {
     int padInc = DBNode.getPadIncrement(nodeType);
     if (padInc == 0) {
       return (null);
-    }       
+    }
     int padCount = node.getPadCount();
     int minPad = DBNode.getDefaultPadCount(nodeType);
     int maxPad = DBNode.getMaxPadCount(nodeType);
+    
+    // Only want to offer this if we are forced to. Slashes will only have this
+    // option if they are extended by autolayout:
+    if (DBNode.onlyOfferForcedPadCount(nodeType) && (padCount == minPad)) {
+      return (null);
+    }
+
     // Autolayout algorithms can blow away the UI-offered maximum pad count:
     maxPad = (padCount > maxPad) ? padCount + 10 : maxPad;      
     for (int i = minPad; i <= maxPad; i += padInc) {

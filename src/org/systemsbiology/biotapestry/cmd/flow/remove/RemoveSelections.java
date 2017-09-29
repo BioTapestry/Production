@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,7 +19,6 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -27,17 +26,17 @@ import java.util.Map;
 import java.util.TreeSet;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
 import org.systemsbiology.biotapestry.cmd.flow.AbstractControlFlow;
 import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
+import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
 import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
-import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
@@ -75,6 +74,9 @@ public class RemoveSelections extends AbstractControlFlow {
   
   public RemoveSelections(BTState appState) {
     super(appState);
+    name =  "command.DeleteSelections";
+    desc = "command.DeleteSelections";
+    mnem =  "command.DeleteSelectionsMnem"; 
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -82,6 +84,17 @@ public class RemoveSelections extends AbstractControlFlow {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////    
+
+  /***************************************************************************
+  **
+  ** Answer if we are enabled
+  ** 
+  */
+  
+  @Override
+   public boolean isEnabled(CheckGutsCache cache) {
+     return (cache.haveASelection());
+   }
 
   /***************************************************************************
   **
@@ -126,11 +139,8 @@ public class RemoveSelections extends AbstractControlFlow {
     private DataAccessContext rcxT_;
     private String nextStep_;    
     private BTState appState_;
-    private Map<String, Boolean> dataDelete_;
-    private ArrayList<String> deadList_;
-    private int deadCheck_;
     private HashMap<String, Intersection> linkInter_;
-    private UserDataChoice.Delete multiDelete_;
+    private RemoveSupport.DataDeleteQueryState ddqs_;
    
     public String getNextStep() {
       return (nextStep_);
@@ -154,6 +164,11 @@ public class RemoveSelections extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToWarn() {
      
+      // RE: Issue 163. Cut this off right at the start
+      if (rcxT_.getGenome() instanceof DynamicGenomeInstance) {
+        return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.HAVE_ERROR, this));       
+      }
+      
       Map<String, Intersection> selmap = appState_.getGenomePresentation().getSelections();
 
       //
@@ -191,7 +206,7 @@ public class RemoveSelections extends AbstractControlFlow {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
       }
 
-      deadList_ = new ArrayList<String>(deadSet);
+      ArrayList<String> deadList = new ArrayList<String>(deadSet);
       DialogAndInProcessCmd daipc;
       SimpleUserFeedback suf = RemoveSupport.deleteWarningHelperNew(appState_, rcxT_);
       if (suf != null) {
@@ -200,80 +215,43 @@ public class RemoveSelections extends AbstractControlFlow {
         daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
       }
       
-      if (!rcxT_.genomeIsRootGenome() || (deadList_.size() == 0)) {
-        dataDelete_ = null;
-        nextStep_ = "stepToRemove";
+      if (!rcxT_.genomeIsRootGenome() || (deadList.size() == 0)) {
+        ddqs_ = new RemoveSupport.DataDeleteQueryState(deadList, daipc, rcxT_.genomeIsRootGenome());
+        nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
       } else {
-        multiDelete_ = (deadList_.size() == 1) ? UserDataChoice.Delete.SINGLE_DELETE : UserDataChoice.Delete.ASK_FOR_ALL;
-        deadCheck_ = 0;
-        dataDelete_ = new HashMap<String, Boolean>();
-        nextStep_ = "stepToCheckDataDelete";
+        ddqs_ = new RemoveSupport.DataDeleteQueryState(deadList, daipc);
+        nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
       }
       return (daipc); 
     }
     
     /***************************************************************************
     **
+    ** Mapping function
+    */ 
+       
+    private String mapNextStepToFunction(RemoveSupport.DataDeleteQueryState.NextStep next) {
+      switch (next) {
+        case GO_DELETE:
+          return ("stepToRemove");
+        case CHECK_DATA_DELETE:
+          return ("stepToCheckDataDelete");
+        case REGISTER_DATA_DELETE:
+          return ("registerCheckDataDelete");
+        default:
+          throw new IllegalArgumentException();
+      }
+    } 
+    
+    /***************************************************************************
+    **
     ** Do the step
     */ 
        
-    private DialogAndInProcessCmd stepToCheckDataDelete() {
-  
-      String deadID = deadList_.get(deadCheck_);
-      String deadName = rcxT_.getGenome().getNode(deadID).getRootName();
-  
-      //
-      // Under all circumstances, we delete associated mappings to data.
-      // We also give the user the option to delete the underlying data
-      // tables, unless previously specified
-      //
-    
-      TimeCourseData tcd = rcxT_.getExpDataSrc().getTimeCourseData();
-      TemporalInputRangeData tird = rcxT_.getExpDataSrc().getTemporalInputRangeData();
-      
-      if (((tcd != null) && tcd.haveDataForNodeOrName(deadID, deadName)) ||
-          ((tird != null) && tird.haveDataForNodeOrName(deadID, deadName))) {    
-        if (multiDelete_ == UserDataChoice.Delete.PREVIOUS_YES) {
-          dataDelete_.put(deadList_.get(deadCheck_), Boolean.valueOf(true));
-          DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
-          deadCheck_++;
-          nextStep_ = (deadCheck_ >= deadList_.size()) ? "stepToRemove" : "stepToCheckDataDelete";
-          return (retval);
-        } else if (multiDelete_ == UserDataChoice.Delete.PREVIOUS_NO) {
-          dataDelete_.put(deadList_.get(deadCheck_), Boolean.valueOf(false));
-          DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
-          deadCheck_++;
-          nextStep_ = (deadCheck_ >= deadList_.size()) ? "stepToRemove" : "stepToCheckDataDelete";
-          return (retval);
-        } else if (multiDelete_ == UserDataChoice.Delete.SINGLE_DELETE) {
-          String daString = MessageFormat.format(rcxT_.rMan.getString("nodeDelete.doDataMessage"), new Object[] {deadName});
-          SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, daString, rcxT_.rMan.getString("nodeDelete.messageTitle"));
-          DialogAndInProcessCmd daipc = new DialogAndInProcessCmd(suf, this);     
-          nextStep_ = "registerCheckDataDelete";   
-          return (daipc);  
-        } else if (multiDelete_ == UserDataChoice.Delete.ASK_FOR_ALL) {       
-          String doData = rcxT_.rMan.getString("nodeDelete.doDataMessage");
-          String msg = MessageFormat.format(doData, new Object[] {deadName});
-          Object[] args = new Object[] {
-                                        rcxT_.rMan.getString("dialogs.yesToAll"),
-                                        rcxT_.rMan.getString("dialogs.noToAll"),
-                                        rcxT_.rMan.getString("dialogs.yes"),
-                                        rcxT_.rMan.getString("dialogs.no"),
-                                        rcxT_.rMan.getString("dialogs.cancel")
-                                       };
-          SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.OPTION_OPTION, 
-                                                          msg, 
-                                                          rcxT_.rMan.getString("nodeDelete.messageTitle"),
-                                                          args, rcxT_.rMan.getString("dialogs.no"));
-          DialogAndInProcessCmd daipc = new DialogAndInProcessCmd(suf, this);     
-          nextStep_ = "registerCheckDataDelete";   
-          return (daipc);  
-        }          
-      }
-      deadCheck_++;
-      DialogAndInProcessCmd daipc = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
-      nextStep_ = (deadCheck_ >= deadList_.size()) ? "stepToRemove" : "stepToCheckDataDelete";
-      return (daipc);
+    private DialogAndInProcessCmd stepToCheckDataDelete() {    
+      RemoveSupport.stepToCheckDataDelete(rcxT_, ddqs_, this);
+      nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
+      return (ddqs_.retval);
     } 
   
     /***************************************************************************
@@ -282,37 +260,9 @@ public class RemoveSelections extends AbstractControlFlow {
     */ 
        
     private DialogAndInProcessCmd registerCheckDataDelete(DialogAndInProcessCmd daipc) {
-      if (multiDelete_ == UserDataChoice.Delete.PREVIOUS_YES) {
-        throw new IllegalStateException();    
-      } else if (multiDelete_ == UserDataChoice.Delete.PREVIOUS_NO) {
-        throw new IllegalStateException();
-      } else if (multiDelete_ == UserDataChoice.Delete.SINGLE_DELETE) {
-        int result = daipc.suf.getIntegerResult();
-        if (result == SimpleUserFeedback.CANCEL) {
-          return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
-        }     
-        dataDelete_.put(deadList_.get(deadCheck_), Boolean.valueOf(result == SimpleUserFeedback.YES));
-        DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
-        nextStep_ = "stepToRemove";
-        return (retval);  
-      } else if (multiDelete_ == UserDataChoice.Delete.ASK_FOR_ALL) {
-        int result = daipc.suf.getIntegerResult();
-        if ((result == 4) || (result == SimpleUserFeedback.CANCEL)) {
-          return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, this));
-        }  
-        dataDelete_.put(deadList_.get(deadCheck_), Boolean.valueOf((result == 0) || (result == 2)));
-        if (result == 0) {
-          multiDelete_ = UserDataChoice.Delete.PREVIOUS_YES;
-        } else if (result == 1) {
-          multiDelete_ = UserDataChoice.Delete.PREVIOUS_NO;
-        }
-      } else {
-        throw new IllegalStateException();
-      }
-      DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, this); // Keep going
-      deadCheck_++;
-      nextStep_ = (deadCheck_ >= deadList_.size()) ? "stepToRemove" : "stepToCheckDataDelete";
-      return (retval);
+      RemoveSupport.registerCheckDataDelete(daipc, ddqs_, this);
+      nextStep_ = mapNextStepToFunction(ddqs_.nextStep);
+      return (ddqs_.retval);
     } 
     
     /***************************************************************************
@@ -333,10 +283,10 @@ public class RemoveSelections extends AbstractControlFlow {
         didDelete = true;
       }
   
-      Iterator<String> dsit = deadList_.iterator();
+      Iterator<String> dsit = ddqs_.deadList.iterator();
       while (dsit.hasNext()) {
         String deadID = dsit.next();
-        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(appState_, deadID, rcxT_, support, dataDelete_, true);
+        boolean nodeRemoved = RemoveNode.deleteNodeFromModelCore(appState_, deadID, rcxT_, support, ddqs_.dataDelete, true);
         didDelete |= nodeRemoved;
       }
       
@@ -353,35 +303,4 @@ public class RemoveSelections extends AbstractControlFlow {
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));  
     }
   }
-    
-  /***************************************************************************
-  **
-  ** User data choice
-  */
-        
-  public static class UserDataChoice  {
-    
-    public enum Delete {
-      SINGLE_DELETE,
-      ASK_FOR_ALL,
-      PREVIOUS_NO,
-      PREVIOUS_YES,
-      OFFLINE_NO;
-    }
-   
-    public enum Decision {
-      NO_DELETION,
-      NO_DECISION, 
-      YES_FOR_ALL,  
-      NO_FOR_ALL;  
-    }
- 
-    Decision decide;  
-    boolean deleteUnderlyingTables;
-     
-    UserDataChoice(Decision decide, boolean deleteUnderlyingTables) {
-      this.decide = decide;
-      this.deleteUnderlyingTables = deleteUnderlyingTables;
-    }   
-  } 
 }

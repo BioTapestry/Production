@@ -210,6 +210,15 @@ public interface NetOverlayOwner {
   
   public Map<String, Set<String>> findMatchingNetworkModules(int searchMode, String key, NameValuePair nvPair);  
  
+  
+  /***************************************************************************
+  **
+  ** Return network modules that a node belongs to (Net Overlay keys map to sets of matching module keys in return map)
+  **
+  */
+    
+  public Map<String, Set<String>> getModuleMembership(String nodeID);
+ 
   /***************************************************************************
   **
   ** Get the firstView preference

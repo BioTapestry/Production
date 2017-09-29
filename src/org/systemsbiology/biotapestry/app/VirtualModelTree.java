@@ -34,6 +34,7 @@ import java.util.Map;
 
 import javax.swing.AbstractAction;
 import javax.swing.Action;
+import javax.swing.Icon;
 import javax.swing.ImageIcon;
 import javax.swing.JMenu;
 import javax.swing.JPopupMenu;
@@ -131,7 +132,7 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
   
   public VirtualModelTree(BTState appState, JTree myTree, DefaultTreeModel model) {
     appState_ = appState.setVmTree(this);
-
+  
     myTree_ = myTree;
     virtualModel_ = model;
     
@@ -166,16 +167,16 @@ public class VirtualModelTree implements TreeSelectionListener, TreeExpansionLis
     
     if (myTree_ == null) {
       return;
-    }
-   
+    } 
+    
     if (appState_.doBig()) {
-      DefaultTreeCellRenderer renderer = new DefaultTreeCellRenderer();
+      PopupCellRenderer renderer = (PopupCellRenderer)myTree_.getCellRenderer();
       Font drFont = myTree_.getFont();
       String fontName = (drFont == null) ? "arial" : drFont.getName();
       int fontType = (drFont == null) ? Font.PLAIN : drFont.getStyle();
       renderer.setFont(new Font(fontName, fontType, 20));
-      myTree_.setCellRenderer(renderer);
     }
+
     ResourceManager rMan = appState_.getRMan();
     currModMenu_ = new JMenu(rMan.getString("command.currentModelMenu"));
     currModMenu_.setMnemonic(rMan.getChar("command.currentModelMenuMnem"));

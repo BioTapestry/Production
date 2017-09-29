@@ -81,7 +81,7 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
   
   private JFrame parent_;
   private JList colorListing_;
-  private HashSet<String> origKeys_;
+  private HashMap<String, NamedColor> origColors_;
   private ArrayList<ColorListRenderer.ColorSource> colorList_;  
   private ColorListRenderer renderer_;
   private JScrollPane jsp_;
@@ -374,13 +374,13 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
     
     Iterator<String> cit = dacx_.cRes.getColorKeys();
     colorList_ = new ArrayList<ColorListRenderer.ColorSource>();
-    origKeys_ = new HashSet<String>();
+    origColors_ = new HashMap<String, NamedColor>();
     
     while (cit.hasNext()) {
       String colorKey = cit.next();
       NamedColor col = dacx_.cRes.getNamedColor(colorKey);
       colorList_.add(new NamedColor(col));
-      origKeys_.add(colorKey);
+      origColors_.put(colorKey, new NamedColor(col));
     }
     Collections.sort(colorList_);
     
@@ -438,9 +438,9 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
    
     Set<String> newKeys = newColors.keySet();
     HashSet<String> intersect = new HashSet<String>(newKeys);
-    intersect.retainAll(origKeys_);
+    intersect.retainAll(origColors_.keySet());
     
-    HashSet<String> deleted = new HashSet<String>(origKeys_);
+    HashSet<String> deleted = new HashSet<String>(origColors_.keySet());
     deleted.removeAll(intersect);
     
     //
@@ -462,7 +462,6 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
           support.addEdit(pcc);
         }
       }
-
       LayoutChangeEvent lcev = new LayoutChangeEvent(lo.getID(), LayoutChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(lcev);      
     }
@@ -471,7 +470,7 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
     // Update the color map:
     //
     
-    GlobalChange gc = dacx_.cRes.updateColors(newColors);   
+    GlobalChange gc = dacx_.cRes.updateColors(newColors);  
     GlobalChangeCmd gcc = new GlobalChangeCmd(appState_, dacx_, gc);
     support.addEdit(gcc);
     support.addEvent(new GeneralChangeEvent(GeneralChangeEvent.UNSPECIFIED_CHANGE));
@@ -487,6 +486,19 @@ public class ColorEditorDialog extends JDialog implements ListSelectionListener 
         String key = delit.next();
         colorMap.put(key, "black");
       }
+      Iterator<String> ocksit = origColors_.keySet().iterator();
+      while (ocksit.hasNext()) {
+        String key = ocksit.next();
+        if (deleted.contains(key)) {
+          continue;
+        }
+        NamedColor nnc = newColors.get(key);
+        NamedColor onc = origColors_.get(key);
+        if (!onc.equals(nnc)) {
+          colorMap.put(key, key); // Not deleted, but changed.
+        }
+      }
+
       Iterator<ColorDeletionListener> cdlit = cdls_.iterator();
       while (cdlit.hasNext()) {
         ColorDeletionListener cdl = cdlit.next();

@@ -70,6 +70,7 @@ import org.systemsbiology.biotapestry.ui.LinkRouter;
 import org.systemsbiology.biotapestry.ui.NetModuleShapeFixer;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
+import org.systemsbiology.biotapestry.ui.NodeRenderBase;
 import org.systemsbiology.biotapestry.ui.RectangularTreeEngine;
 import org.systemsbiology.biotapestry.ui.SpecialSegmentTracker;
 import org.systemsbiology.biotapestry.ui.layouts.ColorTypes;
@@ -1119,7 +1120,7 @@ public class LayoutLinkSupport {
       if (sle.doHideNames()) {
         rcx.getLayout().hideAllMinorNodeNames(rcx);     
       }
- 
+      
       //
       // Finish up undo transaction:
       //    
@@ -1246,6 +1247,7 @@ public class LayoutLinkSupport {
       InvertedSrcTrg ist = gss.getInvertedSrcTrg();
       Iterator<Node> nit = genome.getAllNodeIterator();
       int count = 0;
+      HashMap<Integer, INodeRenderer> renderCache = new HashMap<Integer, INodeRenderer>();
       while (nit.hasNext()) {
         Node node = nit.next();
         String srcID = node.getID();
@@ -1255,7 +1257,18 @@ public class LayoutLinkSupport {
             allNodeColors.put(srcID, color);
             count = (count + 1) % numCol;
           } else {
-            allNodeColors.put(srcID, "black");
+            //
+            // Code for Issue #244. Set targets to their preferred color, which is usually black
+            // except for tablet nodes.
+            // 
+            int nodeType = node.getNodeType();
+            Integer key = Integer.valueOf(nodeType);
+            INodeRenderer ir =  renderCache.get(key);
+            if (ir == null) {
+              ir = NodeProperties.buildRenderer(nodeType);
+              renderCache.put(key, ir);
+            }
+            allNodeColors.put(srcID, ir.getTargetColor());
           }
         }
       }

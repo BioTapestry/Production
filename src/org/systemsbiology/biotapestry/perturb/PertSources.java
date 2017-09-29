@@ -335,7 +335,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   */
   
   public PertSource getSource(int i, SourceSrc ss) {
-    String srcID = (String)sources_.get(i);
+    String srcID = sources_.get(i);
     PertSource ps = ss.getSourceDef(srcID);
     return (ps);
   }
@@ -358,7 +358,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
     if (sources_.size() != 1) {
       throw new IllegalStateException();
     }
-    String srcID = (String)sources_.get(0);
+    String srcID = sources_.get(0);
     return (ss.getSourceDef(srcID));
   }
  
@@ -396,7 +396,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
   public void getAnnotationIDs(Set<String> usedIDs, SourceSrc ss) {
     int numSrc = sources_.size();
     for (int i = 0; i < numSrc; i++) {
-      String srcID = (String)sources_.get(i);
+      String srcID = sources_.get(i);
       PertSource pSrc = ss.getSourceDef(srcID);
       usedIDs.addAll(pSrc.getAnnotationIDs());
     }
@@ -434,7 +434,7 @@ public class PertSources implements Comparable<PertSources>, Cloneable, PertFilt
     TreeSet<String> retval = new TreeSet<String>();
     int numSrc = sources_.size();
     for (int i = 0; i < numSrc; i++) {
-      String srcID = (String)sources_.get(i);
+      String srcID = sources_.get(i);
       PertSource pSrc = ss.getSourceDef(srcID);
       String disp = pSrc.getDisplayValue(ss);
       if (normalized) {

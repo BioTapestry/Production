@@ -100,6 +100,7 @@ public class PopControl {
   private BasicPopup noPop_;
   
   private PopCommands.PopAction emsa_;
+  private PopCommands.PopAction mergeNodes_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -124,6 +125,7 @@ public class PopControl {
     if (appState_.getIsEditor()) {
       if (!isHeadless) {
         emsa_ = appState_.getPopCmds().getAction(FlowMeister.PopFlow.EDIT_MULTI_SELECTIONS, null);
+        mergeNodes_ =  appState_.getPopCmds().getAction(FlowMeister.PopFlow.MERGE_NODES, null);
       }
     }
     if (!isHeadless) {
@@ -311,6 +313,13 @@ public class PopControl {
     popCmds.setPopup(new Point2D.Float(x, y));
     popCmds.setIntersection(aug.intersect);
     popCmds.setAbsScreenPoint(screenAbs);
+    HashSet<String> genes = new HashSet<String>();
+    HashSet<String> nodes = new HashSet<String>();
+    HashSet<String> links = new HashSet<String>();
+    Genome genome = rcx.getGenome();
+    Layout layout = rcx.getLayout();
+    appState_.getSUPanel().getDividedSelections(genome, layout, genes, nodes, links); 
+    popCmds.setMultiSelections(genes, nodes, links);
 
     //
     // Double-checking that we have something is probably overkill, but that's how it

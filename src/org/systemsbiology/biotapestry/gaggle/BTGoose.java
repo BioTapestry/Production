@@ -21,18 +21,6 @@
 // Ported to Gaggle 2007-4 by Dan Tenenbaum <dtenenbaum@systemsbiology.org>
 // in September 2007
 //
-
-package org.systemsbiology.biotapestry.gaggle;
-
-///****************************************************************************
-//**
-//** Used for gaggle communication.
-//
-
-public class BTGoose {
-
-}
-
 /* START HIDE GAGGLE CODE */  /*
 package org.systemsbiology.biotapestry.gaggle;
 

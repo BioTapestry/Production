@@ -1092,13 +1092,18 @@ public class LinkBundleSplicer {
     public void updateInterfaceCoord(Rectangle2D rect) {
       if (side_ == TOP) {
         int altIC = (int)rect.getMinY();
+        //
+        // Treating Issue #212. Previously, added or subtracted UiUtil.GRID_SIZE_INT, i.e. 10. But these units are in grid
+        // counts, so 10 should be one. Furthermore, the offset needs to be based on half the size of the bundle. Thus, 
+        // these fixes. What is strange is that 10 was "too big", but ultimately lead to the overlap. Unclear why...
+        //
         if (interfaceCoord_ > altIC) {
-          interfaceCoord_ = altIC - UiUtil.GRID_SIZE_INT;
+          interfaceCoord_ = altIC - ((internalBundle_.size() / 2) + 1); //NO! UiUtil.GRID_SIZE_INT;
         }
       } else if (side_ == BOTTOM) {
         int altIC = (int)rect.getMaxY();
         if (interfaceCoord_ < altIC) {
-          interfaceCoord_ = altIC + UiUtil.GRID_SIZE_INT;
+          interfaceCoord_ = altIC + (internalBundle_.size() / 2) + 1; // NO! UiUtil.GRID_SIZE_INT;
         }
       }
       return;

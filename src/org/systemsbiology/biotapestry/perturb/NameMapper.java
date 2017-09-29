@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -249,7 +249,7 @@ public class NameMapper implements Cloneable {
       String mapKey = mit.next();
       List<String> targList = mapToData_.get(mapKey);
       if (targList.contains(existingID)) {
-        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);
+        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);
         pdc.nameMapperKey = mapKey;
         pdc.nameMapperMode = usage_;
         pdc.nameMapperListOrig = new ArrayList<String>(targList);
@@ -260,7 +260,7 @@ public class NameMapper implements Cloneable {
         break;
       }
     }   
-    return ((PertDataChange[])retvalList.toArray(new PertDataChange[retvalList.size()]));
+    return (retvalList.toArray(new PertDataChange[retvalList.size()]));
   }  
 
   /***************************************************************************
@@ -274,13 +274,13 @@ public class NameMapper implements Cloneable {
     // copy avoids concurrent modification:
     Iterator<String> mit = new HashSet<String>(mapToData_.keySet()).iterator();
     while (mit.hasNext()) {
-      String mapKey = (String)mit.next();
+      String mapKey = mit.next();
       List<String> targList = mapToData_.get(mapKey);
       int tlSize = targList.size();
       for (int i = 0; i < tlSize; i++) {
-        String targ = (String)targList.get(i);
+        String targ = targList.get(i);
         if (deadID.equals(targ)) {
-          PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);
+          PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);
           pdc.nameMapperKey = mapKey;
           pdc.nameMapperMode = usage_;
           pdc.nameMapperListOrig = new ArrayList<String>(targList);
@@ -297,7 +297,7 @@ public class NameMapper implements Cloneable {
         }
       }
     }   
-    return ((PertDataChange[])retvalList.toArray(new PertDataChange[retvalList.size()]));
+    return (retvalList.toArray(new PertDataChange[retvalList.size()]));
   }  
   
   /***************************************************************************
@@ -317,7 +317,7 @@ public class NameMapper implements Cloneable {
       boolean changed = false;
       boolean gotKeepID = false;
       for (int i = 0; i < numTarg; i++) {
-        String targ = (String)targList.get(i);
+        String targ = targList.get(i);
         if (!allIDs.contains(targ)) {
           newList.add(targ);
         } else if (keepID.equals(targ)) {
@@ -331,7 +331,7 @@ public class NameMapper implements Cloneable {
         newList.add(keepID);
       }
       if (changed) {
-        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);
+        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);
         pdc.nameMapperKey = mapKey;
         pdc.nameMapperMode = usage_;
         pdc.nameMapperListOrig = new ArrayList<String>(targList);
@@ -342,7 +342,7 @@ public class NameMapper implements Cloneable {
         retvalList.add(pdc);
       }
     }   
-    return ((PertDataChange[])retvalList.toArray(new PertDataChange[retvalList.size()]));
+    return (retvalList.toArray(new PertDataChange[retvalList.size()]));
   } 
   
   /***************************************************************************
@@ -373,7 +373,7 @@ public class NameMapper implements Cloneable {
         }
       }
       if (changed) {
-        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);
+        PertDataChange pdc = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);
         pdc.nameMapperKey = nodeID;
         pdc.nameMapperMode = usage_;
         pdc.nameMapperListOrig = new ArrayList<String>(targList);
@@ -389,7 +389,7 @@ public class NameMapper implements Cloneable {
         retvalList.add(pdc);
       }
     }   
-    return ((PertDataChange[])retvalList.toArray(new PertDataChange[retvalList.size()]));
+    return (retvalList.toArray(new PertDataChange[retvalList.size()]));
   }
 
   /***************************************************************************
@@ -398,7 +398,7 @@ public class NameMapper implements Cloneable {
   */
   
   public PertDataChange setDataMap(String key, List<String> entries) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);    
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);    
     retval.nameMapperKey = key;
     retval.nameMapperMode = usage_;
     List<String> orig = mapToData_.get(key);
@@ -585,7 +585,7 @@ public class NameMapper implements Cloneable {
   */
   
   public PertDataChange dropDataKeys(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.NAME_MAPPER);    
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.NAME_MAPPER);    
     retval.nameMapperKey = key;
     retval.nameMapperMode = usage_;
     List<String> orig = mapToData_.get(key);

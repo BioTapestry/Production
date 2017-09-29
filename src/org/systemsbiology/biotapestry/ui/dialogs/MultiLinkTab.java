@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -83,7 +83,7 @@ public class MultiLinkTab implements ColorDeletionListener {
   private JComboBox evidenceCombo_;
   private JComboBox signCombo_;
   private Set<String> links_;
-  private ArrayList<ColorDeletionListener> deletionListeners_;
+  private List<ColorDeletionListener> colorListeners_;
   private SuggestedDrawStyle changedProps_;
   private BTState appState_;
   
@@ -99,13 +99,14 @@ public class MultiLinkTab implements ColorDeletionListener {
   ** 
   */
   
-  public MultiLinkTab(BTState appState, DataAccessContext dacx, Set<String> links) {
+  public MultiLinkTab(BTState appState, DataAccessContext dacx, Set<String> links, 
+                      List<ColorDeletionListener> cdls) {
     links_ = links;
     appState_ = appState;
     dacx_ = dacx;
     nps_ = new NodeAndLinkPropertiesSupport(appState_, dacx_);
-    deletionListeners_ = new ArrayList<ColorDeletionListener>();
-    deletionListeners_.add(this);
+    colorListeners_ = cdls;
+    colorListeners_.add(this);
     changedProps_ = new SuggestedDrawStyle("red");
   }
 
@@ -212,7 +213,7 @@ public class MultiLinkTab implements ColorDeletionListener {
     // Draw Style:
     //
            
-    sdsPan_ = new SuggestedDrawStylePanel(appState_, dacx_, true, false, true, deletionListeners_);          
+    sdsPan_ = new SuggestedDrawStylePanel(appState_, dacx_, true, false, true, colorListeners_);          
     UiUtil.gbcSet(gbc, 0, layoutRownum, 8, 8, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);    
     layoutPanel.add(sdsPan_, gbc);   
     layoutRownum += 8;
@@ -303,8 +304,14 @@ public class MultiLinkTab implements ColorDeletionListener {
       GenomeInstance gi = dacx_.getGenomeAsInstance();
       Iterator<String> nit = links_.iterator();
       while (nit.hasNext()) {
-        String linkID = nit.next();
+        String linkID = nit.next();     
         LinkageInstance li = (LinkageInstance)dacx_.getGenome().getLinkage(linkID);
+        //
+        // Same problem as Issue #167: VFNs can have null entries here:
+        //
+        if (li == null) {
+          continue;
+        }
         GenomeItemInstance.ActivityState newLiAs = nps_.getActivityLevel();
         if (newLiAs == null) {
           throw new IllegalStateException();
@@ -343,6 +350,13 @@ public class MultiLinkTab implements ColorDeletionListener {
     while (nit.hasNext()) {
       String linkID = nit.next();
       Linkage link = dacx_.getGenome().getLinkage(linkID);
+        //
+        // Same problem as Issue #167: VFNs can have null entries here:
+        //
+        if (link == null) {
+          continue;
+        }
+      
       int evidence = link.getTargetLevel(); 
       if (evidenceCombo_ != null) {
         int newEvidence = (evidenceCombo_ != null) ? ((ChoiceContent)evidenceCombo_.getSelectedItem()).val : evidence;
@@ -386,7 +400,12 @@ public class MultiLinkTab implements ColorDeletionListener {
     while (nit.hasNext()) {
       String linkID = nit.next();
       Linkage link = dacx_.getGenome().getLinkage(linkID);
- 
+      //
+      // Same problem as Issue #167: VFNs can have null entries here:
+      //
+      if (link == null) {
+        continue;
+      }
       //
       // Activity:
       //

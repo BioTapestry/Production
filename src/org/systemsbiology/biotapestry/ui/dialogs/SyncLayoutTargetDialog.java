@@ -488,7 +488,7 @@ public class SyncLayoutTargetDialog extends JDialog {
         if (contents.isSelected()) {
           String modelID = contents.getModelID();
           String groupID = contents.getGroupID();
-          SuperAdd.SuperAddPair sap = new SuperAdd.SuperAddPair(modelID, groupID);
+          SuperAdd.SuperAddPair sap = new SuperAdd.SuperAddPair(modelID, groupID, null, null);
           saps_.add(sap);
         }
       }

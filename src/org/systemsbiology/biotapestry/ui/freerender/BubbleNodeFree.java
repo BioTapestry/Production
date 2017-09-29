@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -97,7 +97,7 @@ public class BubbleNodeFree extends AbstractTabletNodeFree {
   	
   	BasicStroke line_stroke = new BasicStroke((int)LINE_WIDTH_);
   	Color vac = getVariableActivityColor(item, Color.BLACK, false, dopt);
-  	Color draw_col = (isGhosted) ? Color.LIGHT_GRAY : vac;
+  	Color draw_col = (isGhosted) ? dopt.getInactiveGray() : vac;
   	
   	if (extraPad == null) {
       x = origin.getX();
@@ -230,7 +230,7 @@ public class BubbleNodeFree extends AbstractTabletNodeFree {
       g2.fill(circ); 
       g2.setStroke(new BasicStroke((int)LINE_WIDTH_));
       Color vac = getVariableActivityColor(item, Color.BLACK, false, dopt);
-      g2.setPaint((isGhosted) ? Color.LIGHT_GRAY : vac);
+      g2.setPaint((isGhosted) ? dopt.getInactiveGray() : vac);
       g2.draw(circ);
       return;
     }
@@ -275,7 +275,7 @@ public class BubbleNodeFree extends AbstractTabletNodeFree {
     g2.fill(extraPad);
     g2.setStroke(new BasicStroke((int)LINE_WIDTH_));
     Color vac = getVariableActivityColor(item, Color.BLACK, false, dopt);
-    g2.setPaint((isGhosted) ? Color.LIGHT_GRAY : vac);    
+    g2.setPaint((isGhosted) ? dopt.getInactiveGray() : vac);    
     g2.draw(arc1);
     g2.draw(line1);    
     g2.draw(arc2); 

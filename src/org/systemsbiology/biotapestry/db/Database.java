@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,63 +19,68 @@
 
 package org.systemsbiology.biotapestry.db;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ArrayList;
 import java.awt.Color;
+import java.awt.font.FontRenderContext;
+import java.awt.geom.AffineTransform;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.text.MessageFormat;
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
-import java.awt.geom.AffineTransform;
-import java.awt.font.FontRenderContext;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 
-import org.xml.sax.Attributes;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
 
-import org.systemsbiology.biotapestry.util.Indenter;
-import org.systemsbiology.biotapestry.util.UniqueLabeller;
-import org.systemsbiology.biotapestry.util.ResourceManager;
-import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
-import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.Gene;
-import org.systemsbiology.biotapestry.genome.Node;
+import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
+import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
+import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
+import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
+import org.systemsbiology.biotapestry.event.GeneralChangeListener;
+import org.systemsbiology.biotapestry.event.ModelChangeEvent;
+import org.systemsbiology.biotapestry.event.ModelChangeListener;
+import org.systemsbiology.biotapestry.genome.DBGene;
+import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DBGenome;
-import org.systemsbiology.biotapestry.genome.Group;
 import org.systemsbiology.biotapestry.genome.DBInternalLogic;
+import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
+import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
+import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
+import org.systemsbiology.biotapestry.genome.Gene;
+import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
 import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
-import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
+import org.systemsbiology.biotapestry.genome.Group;
+import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
+import org.systemsbiology.biotapestry.genome.Node;
+import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.genome.XPlatDisplayText;
-import org.systemsbiology.biotapestry.event.ModelChangeListener;
-import org.systemsbiology.biotapestry.event.ModelChangeEvent;
-import org.systemsbiology.biotapestry.event.GeneralChangeListener;
-import org.systemsbiology.biotapestry.event.GeneralChangeEvent;
-import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
+import org.systemsbiology.biotapestry.nav.NavTree;
+import org.systemsbiology.biotapestry.parser.NewerVersionIOException;
+import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
+import org.systemsbiology.biotapestry.ui.GroupProperties;
 import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NamedColor;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
-import org.systemsbiology.biotapestry.ui.GroupProperties;
-import org.systemsbiology.biotapestry.nav.NavTree;
-import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
-import org.systemsbiology.biotapestry.timeCourse.CopiesPerEmbryoData;
-import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
-import org.systemsbiology.biotapestry.cmd.instruct.BuildInstruction;
-import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
 import org.systemsbiology.biotapestry.util.AttributeExtractor;
+import org.systemsbiology.biotapestry.util.DataUtil;
+import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.MultiLineRenderSupport;
-import org.systemsbiology.biotapestry.genome.NetOverlayOwner;
-import org.systemsbiology.biotapestry.genome.Note;
-import org.systemsbiology.biotapestry.perturb.PerturbationData;
+import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.TaggedSet;
-
+import org.systemsbiology.biotapestry.util.TrueObjChoiceContent;
+import org.systemsbiology.biotapestry.util.UniqueLabeller;
+import org.xml.sax.Attributes;
 
 /****************************************************************************
 **
@@ -98,8 +103,9 @@ public class Database implements GenomeSource, LayoutSource,
   private static final String PREVIOUS_IO_VERSION_A_ = "2.0"; 
   private static final String PREVIOUS_IO_VERSION_B_ = "2.1"; // Actually for version 3.0 too....
   private static final String PREVIOUS_IO_VERSION_C_ = "3.1"; // Actually for version 4.0 too....
+  private static final String PREVIOUS_IO_VERSION_D_ = "5.0"; // 5, 6, and 7.0
   
-  private static final String CURRENT_IO_VERSION_    = "5.0";
+  private static final String CURRENT_IO_VERSION_    = "7.1";
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -372,7 +378,7 @@ public class Database implements GenomeSource, LayoutSource,
   */
 
   public void legacyIOFixup(JFrame topWindow) {
-    
+
     appState_.getFontMgr().fixupLegacyIO();  // Need this starting version 3.1
     ResourceManager rMan = appState_.getRMan();
     String message = rMan.getString("legacyIOFixup.baseChange");
@@ -422,6 +428,63 @@ public class Database implements GenomeSource, LayoutSource,
     }
     
     //
+    // Slash Node pads have been overhauled in Version 7.0.1. 
+    //
+    
+    if (iOVersion_.equals("1.0") || 
+        iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || 
+        iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
+        iOVersion_.equals(PREVIOUS_IO_VERSION_C_) || 
+        iOVersion_.equals(PREVIOUS_IO_VERSION_D_)) { 
+      PadCalculatorToo pcalc = new PadCalculatorToo();
+      pcalc.legacyIOFixupForSlashNodes(this, this);
+      
+      //
+      // Gene length must now match link usage:
+      //
+      FullGenomeHierarchyOracle fgho = new FullGenomeHierarchyOracle(appState_);
+      Map<String, Integer> repairs = new HashMap<String, Integer>();
+      Map<String, Map<String, Set<Integer>>> padsForModGenes = new HashMap<String, Map<String, Set<Integer>>>();
+      fgho.legacyIOGeneLengthFixup(repairs, padsForModGenes);
+      if (!repairs.isEmpty()) {
+        message = message + msgDiv + rMan.getString("legacyIOFixup.geneLengthErrors");
+        legacyIOFixupForGeneLength(repairs);
+        doit = true;
+      }
+      //
+      // We have tweaked how gene cis-reg domains are modeled and displayed:
+      //
+      List<String> errs = DBGeneRegion.legacyIOFixup(this, rMan, padsForModGenes);
+      if (!errs.isEmpty()) {
+        message = message + msgDiv + rMan.getString("legacyIOFixup.moduleErrors");
+        for (String msg : errs) {
+          message = message + msgDiv + msg;
+        }
+        doit = true;
+      }
+      
+      //
+      // Links into child models must now respect gene cis-reg modules if they are present, so
+      // we may need to move link landings. NOTE: Example SpEndomes into Delta, I messed up and
+      // landed the r11 VfG link into the pm link. This fixup moves the link target to r11 and issues
+      // a warning: it DOES NOT find a VfG link that could fit the bill and replace the existing link.
+      //
+      
+      Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = fgho.fullyAnalyzeLinksIntoModules();
+      if (FullGenomeHierarchyOracle.hasModuleProblems(gla)) {
+        message = message + msgDiv + rMan.getString("legacyIOFixup.moduleLinkErrors");
+        Set<String> toFix = FullGenomeHierarchyOracle.geneModsNeedFixing(gla);
+        for (String geneID : toFix) {
+          List<String> lerrs = LinkSupport.fixCisModLinks(null, gla, appState_, new DataAccessContext(appState_), geneID, true);
+          for (String msg : lerrs) {
+            message = message + msgDiv + msg;
+          }
+        }
+        doit = true;
+      }
+    }
+
+    //
     // Turns out V3.0 had potential errors with pad assignments in root when
     // drawing bottom-up.  For kicks, let's _always_ look out for these problems:
     //
@@ -434,7 +497,7 @@ public class Database implements GenomeSource, LayoutSource,
       doit = true;
     }
     
-    List<String> srcErrors = pcalc.checkForGeneSrcPadErrors(this);
+    List<String> srcErrors = pcalc.checkForGeneSrcPadErrors(this, this);
     if (!srcErrors.isEmpty()) {
       message = message + msgDiv + rMan.getString("legacyIOFixup.srcPadErrors");
       doit = true;
@@ -487,6 +550,9 @@ public class Database implements GenomeSource, LayoutSource,
       pertData_.transferFromLegacy();
     }
     
+    
+
+    
     //
     // Finish assembling the message:
     //
@@ -505,7 +571,8 @@ public class Database implements GenomeSource, LayoutSource,
 
     return;
   }
-    
+ 
+
   /***************************************************************************
   ** 
   ** We need to install hour bounds on parent models of child dynamic models
@@ -584,6 +651,22 @@ public class Database implements GenomeSource, LayoutSource,
         GroupProperties gpropParent = layout.getGroupProperties(parentID);
         gprop.setOrder(gpropParent.getOrder());
       }
+    }
+    return;
+  } 
+  
+  
+  /***************************************************************************
+  ** 
+  ** We need to fix genes that are too short
+  */
+
+  private void legacyIOFixupForGeneLength(Map<String, Integer> changes) {
+
+    DBGenome genome = (DBGenome)getGenome();
+    for (String geneKey : changes.keySet()) {
+      DBGene gene = (DBGene)genome.getGene(geneKey);
+      gene.setPadCount(changes.get(geneKey).intValue()); 
     }
     return;
   } 
@@ -2356,8 +2439,18 @@ public class Database implements GenomeSource, LayoutSource,
   **
   */
   
-  public void setIOVersion(String version) {
+  public void setIOVersion(String version) throws IOException {
     iOVersion_ = version;
+    // Issue 240 FIX: Must not be too new:
+    boolean notTooNew = (iOVersion_.equals("1.0") || 
+                         iOVersion_.equals(PREVIOUS_IO_VERSION_A_) || 
+                         iOVersion_.equals(PREVIOUS_IO_VERSION_B_) || 
+                         iOVersion_.equals(PREVIOUS_IO_VERSION_C_) || 
+                         iOVersion_.equals(PREVIOUS_IO_VERSION_D_) ||
+                         iOVersion_.equals(CURRENT_IO_VERSION_));
+    if (!notTooNew) {
+      throw new NewerVersionIOException(iOVersion_);
+    }  
     return;
   }   
    

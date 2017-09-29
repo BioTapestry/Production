@@ -251,7 +251,7 @@ public class AllPathsLayoutBuilder {
       GenomeSubset subset = new GenomeSubset(appState_, src, rcx.getGenomeID(), center);
       ArrayList<GenomeSubset> sList = new ArrayList<GenomeSubset>();
       sList.add(subset);
-      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null);
+      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null, null);
       SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(appState_, sList, rcx, wlo, sa, center, sbParams, false, false);   
       sle.specialtyLayout(null, null, 0.0, 0.0);
     } catch (AsynchExitRequestException aerex) {

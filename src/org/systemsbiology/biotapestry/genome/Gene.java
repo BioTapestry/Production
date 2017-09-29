@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -55,6 +55,13 @@ public interface Gene extends Node, Cloneable {
   */
   
   public int getNumRegions(); 
+  
+  /***************************************************************************
+  **
+  ** Get the region holding a pad. May be null:
+  */
+  
+  public DBGeneRegion getRegionForPad(int padNum);
   
   /***************************************************************************
   **

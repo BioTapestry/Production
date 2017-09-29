@@ -266,8 +266,11 @@ public class Mover extends AbstractControlFlow {
   @Override
   public DialogAndInProcessCmd processClick(Point theClick, boolean isShifted, double pixDiam, DialogAndInProcessCmd.CmdState cmds) {
     StepState ans = (StepState)cmds;
-    ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
-    ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
+    // ISSUE #216: Previously, we forced the incoming value to the grid right here. But the final delta is forced to
+    // the grid in the final placement step. This double-force causes rounding differences between the visualization and the 
+    // placement. Keep the raw position up until the final step.
+    ans.x = theClick.x; //UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
+    ans.y = theClick.y; //UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);
     DialogAndInProcessCmd retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans);
     if (action_ == Action.MODULES) {
       ans.nextStep_ = "stepPlaceModule" ;
@@ -463,7 +466,7 @@ public class Mover extends AbstractControlFlow {
       end_ = new Point2D.Double();
       UiUtil.forceToGrid((int)end.getX(), (int)end.getY(), end_, UiUtil.GRID_SIZE);
       start_ = new Point2D.Double();
-      UiUtil.forceToGrid((int)start.getX(), (int)start.getY(), start_, UiUtil.GRID_SIZE);  
+      UiUtil.forceToGrid((int)start.getX(), (int)start.getY(), start_, UiUtil.GRID_SIZE);
       List<RunningMove> newMoves = (new RunningMoveGenerator(appState_.getGenomePresentation())).getRunningMove(start_, rcxT_);
       rmov_ = (new IntersectionChooser(false, rcxT_)).runningMoveRanker(newMoves);
     }       
@@ -612,14 +615,16 @@ public class Mover extends AbstractControlFlow {
       // Current group move semantics.  If we are already selected, then move all selected items
       // as a group.  If not, we just move the current item.  This might change to having the
       // drag click adopt selection semantics (see above).
-      //    
-      
+      //
+       
+      // ISSUE #216 This is where we get the final grid forcing, by insuring a gridded delta is added to
+      // the existing gridded position. 
       double dx = end.getX() - mov.start.getX();
       double dy = end.getY() - mov.start.getY();    
       dx = Math.round(dx / 10.0) * 10.0;
       dy = Math.round(dy / 10.0) * 10.0;
-            
-          
+
+
       switch (mov.type) {
         case LINK_LABEL:
           BusProperties lp = rcxO.getLayout().getLinkProperties(mov.linkID);
@@ -663,7 +668,7 @@ public class Mover extends AbstractControlFlow {
     */     
     
     public void handleMouseMotion(Point pt, DataAccessContext rcxO) {
- 
+
       if (multiMov_ != null) {
         // Make the first cursor pos after we start the start point
         if (multiMovStartPt_ == null) {

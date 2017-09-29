@@ -61,8 +61,8 @@ public class TemporalInputRangeData {
 
   private ArrayList<TemporalRange> entries_;
   private HashMap<String, List<String>> trEntryMap_;
-  private HashMap trSourceMap_;  
-  private HashMap groupMap_;
+  private HashMap<String, List<String>> trSourceMap_;  
+  private HashMap<String, List<GroupUsage>> groupMap_;
   private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -80,8 +80,8 @@ public class TemporalInputRangeData {
     appState_ = appState;
     entries_ = new ArrayList<TemporalRange>();
     trEntryMap_ = new HashMap<String, List<String>>();
-    trSourceMap_ = new HashMap();    
-    groupMap_ = new HashMap();
+    trSourceMap_ = new HashMap<String, List<String>>();    
+    groupMap_ = new HashMap<String, List<GroupUsage>>();
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -132,7 +132,7 @@ public class TemporalInputRangeData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = (List)groupMap_.get(groupId);
+    List<GroupUsage> mapped = groupMap_.get(groupId);
     if ((mapped == null) || (mapped.size() == 0))  {
       return (false);
     }
@@ -166,7 +166,7 @@ public class TemporalInputRangeData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = (List)trSourceMap_.get(nodeID);
+    List<String> mapped = trSourceMap_.get(nodeID);
     if ((mapped == null) || (mapped.size() == 0))  {
       return (false);
     }
@@ -183,13 +183,13 @@ public class TemporalInputRangeData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = getTemporalInputRangeEntryKeysWithDefault(nodeID);
+    List<String> mapped = getTemporalInputRangeEntryKeysWithDefault(nodeID);
     if (mapped == null) {
       return (false);
     }
-    Iterator mit = mapped.iterator();
+    Iterator<String> mit = mapped.iterator();
     while (mit.hasNext()) {
-      String name = (String)mit.next();
+      String name = mit.next();
       if (getRange(name) != null) {
         return (true);
       }
@@ -207,13 +207,13 @@ public class TemporalInputRangeData {
     if (!haveData()) {
       return (false);
     }
-    List mapped = getTemporalInputRangeEntryKeysWithDefaultGivenName(nodeID, nodeName);
+    List<String> mapped = getTemporalInputRangeEntryKeysWithDefaultGivenName(nodeID, nodeName);
     if (mapped == null) {
       return (false);
     }
-    Iterator mit = mapped.iterator();
+    Iterator<String> mit = mapped.iterator();
     while (mit.hasNext()) {
-      String name = (String)mit.next();
+      String name = mit.next();
       if (getRange(name) != null) {
         return (true);
       }
@@ -273,9 +273,9 @@ public class TemporalInputRangeData {
   ** Get the node IDs mapped to the given perturbation source name
   */
 
-  public Set getTemporalInputSourceKeyInverse(String name) {
+  public Set<String> getTemporalInputSourceKeyInverse(String name) {
     name = DataUtil.normKey(name);
-    HashSet retval = new HashSet();
+    HashSet<String> retval = new HashSet<String>();
     //
     // Blank names cannot be inverted, and blank names are handed to us when
     // new entries are added to the tables. (Bug BT-08-18-04:1)
@@ -296,24 +296,24 @@ public class TemporalInputRangeData {
       }
     }
     
-    Set nodes = genome.getNodesWithName(name);
+    Set<Node> nodes = genome.getNodesWithName(name);
     if (!nodes.isEmpty()) {
-      Iterator sit = nodes.iterator();
+      Iterator<Node> sit = nodes.iterator();
       while (sit.hasNext()) {
-        node = (Node)sit.next();
+        node = sit.next();
         if (!haveCustomSourceMapForNode(node.getID())) {
           retval.add(node.getID());
         }
       }
     }
 
-    Iterator kit = trSourceMap_.keySet().iterator();
+    Iterator<String> kit = trSourceMap_.keySet().iterator();
     while (kit.hasNext()) {
-      String key = (String)kit.next();
-      List targs = ((List)trSourceMap_.get(key));
-      Iterator trit = targs.iterator();
+      String key = kit.next();
+      List<String> targs = trSourceMap_.get(key);
+      Iterator<String> trit = targs.iterator();
       while (trit.hasNext()) {
-        String testName = (String)trit.next();
+        String testName = trit.next();
         if (DataUtil.keysEqual(testName, name)) {
           retval.add(key);
         }
@@ -327,9 +327,9 @@ public class TemporalInputRangeData {
   ** Gets input sources that do not appear as targets
   */
   
-  public Set getNonTargetSources() {
-    HashSet retval = new HashSet();
-    HashSet targetNames = new HashSet();
+  public Set<String> getNonTargetSources() {
+    HashSet<String> retval = new HashSet<String>();
+    HashSet<String> targetNames = new HashSet<String>();
     int size = entries_.size();
     for (int i = 0; i < size; i++) {
       TemporalRange trg = entries_.get(i);
@@ -337,9 +337,9 @@ public class TemporalInputRangeData {
     }
     for (int i = 0; i < size; i++) {
       TemporalRange trg = entries_.get(i);
-      Iterator itrs = trg.getTimeRanges();
+      Iterator<InputTimeRange> itrs = trg.getTimeRanges();
       while (itrs.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)itrs.next();
+        InputTimeRange itr = itrs.next();
         String itrName = itr.getName();
         if (!DataUtil.containsKey(targetNames, itrName)) {
           retval.add(itrName);
@@ -355,14 +355,14 @@ public class TemporalInputRangeData {
   ** Gets all input sources
   */
   
-  public Set getAllSources() {
-    HashSet retval = new HashSet();
+  public Set<String> getAllSources() {
+    HashSet<String> retval = new HashSet<String>();
     int size = entries_.size();
     for (int i = 0; i < size; i++) {
       TemporalRange trg = entries_.get(i);
-      Iterator itrs = trg.getTimeRanges();
+      Iterator<InputTimeRange> itrs = trg.getTimeRanges();
       while (itrs.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)itrs.next();
+        InputTimeRange itr = itrs.next();
         String itrName = itr.getName();
         if (!DataUtil.containsKey(retval, itrName)) {
           retval.add(itrName);
@@ -381,9 +381,9 @@ public class TemporalInputRangeData {
     int size = entries_.size();
     for (int i = 0; i < size; i++) {
       TemporalRange trg = entries_.get(i);
-      Iterator itrs = trg.getTimeRanges();
+      Iterator<InputTimeRange> itrs = trg.getTimeRanges();
       while (itrs.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)itrs.next();
+        InputTimeRange itr = itrs.next();
         String itrName = itr.getName();
         if (DataUtil.keysEqual(name, itrName)) {
           return (true);
@@ -513,7 +513,7 @@ public class TemporalInputRangeData {
     ArrayList<TemporalInputChange> retvalList = new ArrayList<TemporalInputChange>();
     Iterator<String> mit = new HashSet<String>(trEntryMap_.keySet()).iterator();
     while (mit.hasNext()) {
-      String mapKey = (String)mit.next();
+      String mapKey = mit.next();
       List<String> targList = trEntryMap_.get(mapKey);
       int tlSize = targList.size();
       for (int i = 0; i < tlSize; i++) {
@@ -534,7 +534,7 @@ public class TemporalInputRangeData {
         }
       }
     }
-    return ((TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]));
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));
   }
  
   /***************************************************************************
@@ -587,22 +587,22 @@ public class TemporalInputRangeData {
   */
   
   public TemporalInputChange[] changeDataMapsToName(String oldName, String newName) {
-    ArrayList retvalList = new ArrayList();
-    Iterator tmit = trEntryMap_.keySet().iterator();
+    ArrayList<TemporalInputChange> retvalList = new ArrayList<TemporalInputChange>();
+    Iterator<String> tmit = trEntryMap_.keySet().iterator();
     while (tmit.hasNext()) {
-      String mkey = (String)tmit.next();
-      List keys = (List)trEntryMap_.get(mkey);
+      String mkey = tmit.next();
+      List<String> keys = trEntryMap_.get(mkey);
       if (DataUtil.containsKey(keys, oldName)) {
         TemporalInputChange retval = new TemporalInputChange();
         retval.mapKey = mkey;
-        retval.entryMapListOrig = (ArrayList)((ArrayList)keys).clone();
+        retval.entryMapListOrig = new ArrayList<String>(keys);
         keys.remove(oldName);        
         keys.add(newName);
-        retval.entryMapListNew = (ArrayList)((ArrayList)keys).clone();
+        retval.entryMapListNew = new ArrayList<String>(keys);
         retvalList.add(retval);
       }
     }
-    return ((TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]));
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));
   }
 
   /***************************************************************************
@@ -613,7 +613,7 @@ public class TemporalInputRangeData {
   */
   
   public TemporalInputChange[] changeName(String oldName, String newName) {
-    ArrayList retvalList = new ArrayList();
+    ArrayList<TemporalInputChange> retvalList = new ArrayList<TemporalInputChange>();
     
     if (!DataUtil.keysEqual(oldName, newName)) {
       if ((getRange(newName) != null) || isPerturbationSourceName(newName)) {
@@ -628,9 +628,9 @@ public class TemporalInputRangeData {
     int size = entries_.size();
     for (int i = 0; i < size; i++) {
       TemporalRange tr = entries_.get(i);
-      Iterator perts = tr.getTimeRanges();
+      Iterator<InputTimeRange> perts = tr.getTimeRanges();
       while (perts.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)perts.next();
+        InputTimeRange itr = perts.next();
         String pertName = itr.getName();
         if (DataUtil.keysEqual(oldName, pertName)) {
           TemporalInputChange tic = startRangeUndoTransaction(tr.getName());
@@ -657,17 +657,17 @@ public class TemporalInputRangeData {
     // Fix any custom entry maps
     //
     
-    Iterator dmit = trEntryMap_.keySet().iterator();
+    Iterator<String> dmit = trEntryMap_.keySet().iterator();
     while (dmit.hasNext()) {
-      String mkey = (String)dmit.next();
-      List keys = (List)trEntryMap_.get(mkey);
+      String mkey = dmit.next();
+      List<String> keys = trEntryMap_.get(mkey);
       if (DataUtil.containsKey(keys, oldName)) {
         TemporalInputChange retval = new TemporalInputChange();
         retval.mapKey = mkey;
-        retval.entryMapListOrig = (ArrayList)((ArrayList)keys).clone();
+        retval.entryMapListOrig = new ArrayList<String>(keys);
         keys.remove(oldName);
         keys.add(newName);
-        retval.entryMapListNew = (ArrayList)((ArrayList)keys).clone();
+        retval.entryMapListNew = new ArrayList<String>(keys);
         retvalList.add(retval);
       }
     }
@@ -678,20 +678,20 @@ public class TemporalInputRangeData {
     
     dmit = trSourceMap_.keySet().iterator();
     while (dmit.hasNext()) {
-      String mkey = (String)dmit.next();
-      List keys = (List)trSourceMap_.get(mkey);
+      String mkey = dmit.next();
+      List<String> keys = trSourceMap_.get(mkey);
       if (DataUtil.containsKey(keys, oldName)) {
         TemporalInputChange retval = new TemporalInputChange();
         retval.mapKey = mkey;
-        retval.sourceMapListOrig = (ArrayList)((ArrayList)keys).clone();
+        retval.sourceMapListOrig = new ArrayList<String>(keys);
         keys.remove(oldName);
         keys.add(newName);
-        retval.sourceMapListNew = (ArrayList)((ArrayList)keys).clone();
+        retval.sourceMapListNew = new ArrayList<String>(keys);
         retvalList.add(retval);
       }
     }
 
-    return (TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]);
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));
   } 
   
   /***************************************************************************
@@ -710,12 +710,12 @@ public class TemporalInputRangeData {
     int size = entries_.size();
     for (int i = 0; i < size; i++) {
       TemporalRange tr = entries_.get(i);
-      Iterator perts = tr.getTimeRanges();
+      Iterator<InputTimeRange> perts = tr.getTimeRanges();
       while (perts.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)perts.next();
-        Iterator rit = itr.getRanges();
+        InputTimeRange itr = perts.next();
+        Iterator<RegionAndRange> rit = itr.getRanges();
         while (rit.hasNext()) {
-          RegionAndRange rar = (RegionAndRange)rit.next();
+          RegionAndRange rar = rit.next();
           boolean regionMatch = (rar.getRegion() != null) && DataUtil.keysEqual(rar.getRegion(), oldName);
           boolean sourceMatch = (rar.getRestrictedSource() != null) && DataUtil.keysEqual(rar.getRestrictedSource(), oldName);
           if (regionMatch || sourceMatch) {
@@ -737,15 +737,15 @@ public class TemporalInputRangeData {
     // Fix any custom entry maps
     //
     
-    Iterator dmit = groupMap_.keySet().iterator();
+    Iterator<String> dmit = groupMap_.keySet().iterator();
     while (dmit.hasNext()) {
-      String mkey = (String)dmit.next();
-      List currentMap = (List)groupMap_.get(mkey);
-      List newMap = new ArrayList();
+      String mkey = dmit.next();
+      List<GroupUsage> currentMap = groupMap_.get(mkey);
+      List<GroupUsage> newMap = new ArrayList<GroupUsage>();
       boolean haveChange = false;
       int csize = currentMap.size();
       for (int i = 0; i < csize; i++) {
-        GroupUsage gu = (GroupUsage)currentMap.get(i);
+        GroupUsage gu = currentMap.get(i);
         GroupUsage newgu  = new GroupUsage(gu);
         if (DataUtil.keysEqual(gu.mappedGroup, oldName)) {
           haveChange = true;
@@ -762,7 +762,7 @@ public class TemporalInputRangeData {
         tic.groupMapListNew = deepCopyGroupMap(newMap);      
       }  
     }
-    return (TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]);
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));
   }
  
   /***************************************************************************
@@ -884,23 +884,13 @@ public class TemporalInputRangeData {
   **
   */
   
-  public Set getInterestingTimes() {
-    HashSet retval = new HashSet();
-    Iterator eit = getEntries();
+  public Set<Integer> getInterestingTimes() {
+    HashSet<Integer> retval = new HashSet<Integer>();
+    Iterator<TemporalRange> eit = getEntries();
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       tr.getInterestingTimes(retval);
     }
-    return (retval);
-  }
-  
-  /***************************************************************************
-  **
-  ** Get a set of hour values that are covered by the data
-  */
-  
-  public Set getHours() {
-    HashSet retval = new HashSet();
     return (retval);
   }
   
@@ -909,28 +899,28 @@ public class TemporalInputRangeData {
   ** Add source and target maps
   */
 
-  public TemporalInputChange[] addTemporalInputRangeMaps(String key, List entries, List sources) {
-    ArrayList retvalList = new ArrayList();
+  public TemporalInputChange[] addTemporalInputRangeMaps(String key, List<String> entries, List<String> sources) {
+    ArrayList<TemporalInputChange> retvalList = new ArrayList<TemporalInputChange>();
     TemporalInputChange retval;
     if ((entries != null) && (entries.size() > 0)) {
       retval = new TemporalInputChange();
       retval.mapKey = key;
-      retval.entryMapListNew = new ArrayList(entries);
-      ArrayList orig = (ArrayList)trEntryMap_.get(key);
-      retval.entryMapListOrig = (orig == null) ? null : new ArrayList(orig);
+      retval.entryMapListNew = new ArrayList<String>(entries);
+      List<String> orig = trEntryMap_.get(key);
+      retval.entryMapListOrig = (orig == null) ? null : new ArrayList<String>(orig);
       trEntryMap_.put(key, entries);
       retvalList.add(retval);
     }
     if ((sources != null) && (sources.size() > 0)) {    
       retval = new TemporalInputChange(); 
       retval.mapKey = key;    
-      retval.sourceMapListNew = new ArrayList(sources);
-      ArrayList orig = (ArrayList)trSourceMap_.get(key);
-      retval.sourceMapListOrig = (orig == null) ? null : new ArrayList(orig);
+      retval.sourceMapListNew = new ArrayList<String>(sources);
+      List<String> orig = trSourceMap_.get(key);
+      retval.sourceMapListOrig = (orig == null) ? null : new ArrayList<String>(orig);
       trSourceMap_.put(key, sources);
       retvalList.add(retval);
     }
-    return (TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]);    
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));    
   }  
 
   /***************************************************************************
@@ -938,12 +928,12 @@ public class TemporalInputRangeData {
   ** Add combined source and target maps
   */
   
-  public void addCombinedTemporalInputRangeMaps(String key, List mapSets) {
-    ArrayList sourceList = new ArrayList();
-    ArrayList entryList = new ArrayList();
-    Iterator mit = mapSets.iterator();
+  public void addCombinedTemporalInputRangeMaps(String key, List<TirMapResult> mapSets) {
+    ArrayList<String> sourceList = new ArrayList<String>();
+    ArrayList<String> entryList = new ArrayList<String>();
+    Iterator<TirMapResult> mit = mapSets.iterator();
     while (mit.hasNext()) {
-      TirMapResult res = (TirMapResult)mit.next();
+      TirMapResult res = mit.next();
       if (res.type == TirMapResult.ENTRY_MAP) {
         entryList.add(res.name);
       } else {
@@ -965,9 +955,9 @@ public class TemporalInputRangeData {
   */
   
   public List<String> getTemporalInputRangeEntryKeysWithDefault(String nodeId) {
-    List retval = (List)trEntryMap_.get(nodeId);
+    List<String> retval = trEntryMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
+      retval = new ArrayList<String>();
       Node node = appState_.getDB().getGenome().getNode(nodeId);      
       if (node == null) { // for when node has been already deleted...
         throw new IllegalStateException();
@@ -987,9 +977,9 @@ public class TemporalInputRangeData {
   */
   
   public List<String> getTemporalInputRangeEntryKeysWithDefaultGivenName(String nodeId, String nodeName) {
-    List retval = (List)trEntryMap_.get(nodeId);
+    List<String> retval = trEntryMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
+      retval = new ArrayList<String>();
       if ((nodeName == null) || (nodeName.trim().equals(""))) {
         return (retval);
       }
@@ -1013,20 +1003,33 @@ public class TemporalInputRangeData {
   */
   
   public List<String> getTemporalInputRangeSourceKeysWithDefault(String nodeId) {
-    List retval = (List)trSourceMap_.get(nodeId);
+    List<String> retval = trSourceMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);      
-      if (node == null) { // for when node has been already deleted...
-        throw new IllegalStateException();
-      }      
-      String nodeName = node.getRootName();
-      if ((nodeName == null) || (nodeName.trim().equals(""))) {
+      retval = new ArrayList<String>();
+      String defMap = getTemporalInputRangeDefaultMap(nodeId);
+      if (defMap == null) {
         return (retval);
       }
-      retval.add(nodeName);
+      retval.add(defMap);
     }    
     return (retval);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get the default target name for the node ID.  May be null.
+  */
+  
+  public String getTemporalInputRangeDefaultMap(String nodeId) {
+    Node node = appState_.getDB().getGenome().getNode(nodeId);      
+    if (node == null) { // for when node has been already deleted...
+      throw new IllegalStateException();
+    }      
+    String nodeName = node.getRootName();
+    if ((nodeName == null) || (nodeName.trim().equals(""))) {
+      return (null);
+    } 
+    return (nodeName);
   }
   
   /***************************************************************************
@@ -1034,10 +1037,10 @@ public class TemporalInputRangeData {
   ** Get the list of source names for the node ID.  May be empty.
   */
   
-  public List getTemporalInputRangeSourceKeysWithDefaultGivenName(String nodeId, String nodeName) {
-    List retval = (List)trSourceMap_.get(nodeId);
+  public List<String> getTemporalInputRangeSourceKeysWithDefaultGivenName(String nodeId, String nodeName) {
+    List<String> retval = trSourceMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
+      retval = new ArrayList<String>();
       if ((nodeName == null) || (nodeName.trim().equals(""))) {
         return (retval);
       }
@@ -1051,8 +1054,8 @@ public class TemporalInputRangeData {
   ** Get the list of source names for the node ID.  May be null.
   */
   
-  public List getCustomTemporalInputRangeSourceKeys(String nodeId) {
-    return ((List)trSourceMap_.get(nodeId));
+  public List<String> getCustomTemporalInputRangeSourceKeys(String nodeId) {
+    return (trSourceMap_.get(nodeId));
   }  
 
   /***************************************************************************
@@ -1068,7 +1071,7 @@ public class TemporalInputRangeData {
     retval.mapKey = geneId;
     retval.entryMapListNew = null;
     // FIX ME!!!! Clone
-    retval.entryMapListOrig = (List)trEntryMap_.remove(geneId);
+    retval.entryMapListOrig = trEntryMap_.remove(geneId);
     return (retval);
   }
   
@@ -1085,7 +1088,7 @@ public class TemporalInputRangeData {
     retval.mapKey = geneId;
     retval.sourceMapListNew = null;
     // FIX ME!!!! Clone
-    retval.sourceMapListOrig = (List)trSourceMap_.remove(geneId);
+    retval.sourceMapListOrig = trSourceMap_.remove(geneId);
     return (retval);
   }  
    
@@ -1158,11 +1161,11 @@ public class TemporalInputRangeData {
   ** Add a map from a group to a list of target groups
   */
   
-  public TemporalInputChange setTemporalRangeGroupMap(String key, List mapSets) {
+  public TemporalInputChange setTemporalRangeGroupMap(String key, List<GroupUsage> mapSets) {
     TemporalInputChange retval = new TemporalInputChange();
     retval.mapKey = key;
     retval.groupMapListNew = deepCopyGroupMap(mapSets);
-    retval.groupMapListOrig = deepCopyGroupMap((List)groupMap_.get(key));
+    retval.groupMapListOrig = deepCopyGroupMap(groupMap_.get(key));
     groupMap_.put(key, mapSets);
     return (retval);
   }
@@ -1172,8 +1175,8 @@ public class TemporalInputRangeData {
   ** Duplicate a map for genome duplications
   */
   
-  public TemporalInputChange copyTemporalRangeGroupMapForDuplicateGroup(String oldKey, String newKey, Map modelMap) {
-    List oldMapList = (List)groupMap_.get(oldKey);
+  public TemporalInputChange copyTemporalRangeGroupMapForDuplicateGroup(String oldKey, String newKey, Map<String, String> modelMap) {
+    List<GroupUsage> oldMapList = groupMap_.get(oldKey);
     if (oldMapList == null) {
       return (null);
     }
@@ -1192,9 +1195,9 @@ public class TemporalInputRangeData {
   */
   
   public List<GroupUsage> getTemporalRangeGroupKeysWithDefault(String groupId, String groupName) {
-    List retval = (List)groupMap_.get(groupId);
+    List<GroupUsage> retval = groupMap_.get(groupId);
     if ((retval == null) || (retval.size() == 0)) {
-      retval = new ArrayList();
+      retval = new ArrayList<GroupUsage>();
       if ((groupName == null) || (groupName.trim().equals(""))) {
         return (retval);
       }
@@ -1209,7 +1212,7 @@ public class TemporalInputRangeData {
   */
   
   public List<GroupUsage> getCustomTemporalRangeGroupKeys(String groupId) {
-    return ((List)groupMap_.get(groupId));
+    return (groupMap_.get(groupId));
   }
   
   /***************************************************************************
@@ -1224,7 +1227,7 @@ public class TemporalInputRangeData {
     TemporalInputChange retval = new TemporalInputChange();
     retval.mapKey = groupId;
     retval.groupMapListNew = null;
-    retval.groupMapListOrig = deepCopyGroupMap((List)groupMap_.remove(groupId));
+    retval.groupMapListOrig = deepCopyGroupMap(groupMap_.remove(groupId));
     return (retval);
   }
   
@@ -1244,15 +1247,15 @@ public class TemporalInputRangeData {
 
   public TemporalInputChange[] dropGroupMapsForProxy(String proxyId) {
 
-    ArrayList retvalList = new ArrayList();
-    Iterator gmit = new HashSet(groupMap_.keySet()).iterator();
+    ArrayList<TemporalInputChange> retvalList = new ArrayList<TemporalInputChange>();
+    Iterator<String> gmit = new HashSet<String>(groupMap_.keySet()).iterator();
     while (gmit.hasNext()) {
-      String key = (String)gmit.next();
-      List currentMap = (List)groupMap_.get(key);
+      String key = gmit.next();
+      List<GroupUsage> currentMap = groupMap_.get(key);
       int mSize = currentMap.size();
-      ArrayList newMap = new ArrayList();
+      ArrayList<GroupUsage> newMap = new ArrayList<GroupUsage>();
       for (int i = 0; i < mSize; i++) {
-        GroupUsage gu = (GroupUsage)currentMap.get(i);
+        GroupUsage gu = currentMap.get(i);
         if ((gu.usage == null) || (!gu.usage.equals(proxyId))) {
           newMap.add(gu);
         }
@@ -1272,7 +1275,7 @@ public class TemporalInputRangeData {
       }
     }
     
-    return ((TemporalInputChange[])retvalList.toArray(new TemporalInputChange[retvalList.size()]));
+    return (retvalList.toArray(new TemporalInputChange[retvalList.size()]));
   }
   
   /***************************************************************************
@@ -1280,14 +1283,14 @@ public class TemporalInputRangeData {
   ** Deep copy a group mapping
   */
   
-  private List deepCopyGroupMap(List oldMap) {
+  private List<GroupUsage> deepCopyGroupMap(List<GroupUsage> oldMap) {
     if (oldMap == null) {
       return (null);
     }
-    ArrayList retval = new ArrayList();
+    ArrayList<GroupUsage> retval = new ArrayList<GroupUsage>();
     int size = oldMap.size();
     for (int i = 0; i < size; i++) {
-      retval.add(((GroupUsage)oldMap.get(i)).clone());
+      retval.add(oldMap.get(i).clone());
     }
     return (retval);
   }
@@ -1297,19 +1300,19 @@ public class TemporalInputRangeData {
   ** Deep copy a group mapping, mapping model usage as we go
   */
   
-  private List deepCopyGroupMapMappingUsage(List oldMap, Map modelMaps, boolean append) {
+  private List<GroupUsage> deepCopyGroupMapMappingUsage(List<GroupUsage> oldMap, Map<String, String> modelMaps, boolean append) {
     if (oldMap == null) {
       return (null);
     }
-    ArrayList retval = new ArrayList();
+    ArrayList<GroupUsage> retval = new ArrayList<GroupUsage>();
     int size = oldMap.size();
     for (int i = 0; i < size; i++) {
-      GroupUsage copied = (GroupUsage)((GroupUsage)oldMap.get(i)).clone();
-      String modelID = (String)modelMaps.get(copied.usage);
+      GroupUsage copied = oldMap.get(i).clone();
+      String modelID = modelMaps.get(copied.usage);
       if (modelID != null) {
         if (append) {
           retval.add(copied);
-          copied = (GroupUsage)copied.clone();
+          copied = copied.clone();
         }
         copied.usage = modelID;
       }
@@ -1355,25 +1358,25 @@ public class TemporalInputRangeData {
   ** Get the list of all regions used in the range data.
   */
   
-  public Set getAllRegions() {
-    TreeSet retval = new TreeSet();
+  public Set<String> getAllRegions() {
+    TreeSet<String> retval = new TreeSet<String>();
     //
     // Get regions present in entries, but maybe not mapped:
     //
-    Iterator eit = getEntries();
+    Iterator<TemporalRange> eit = getEntries();
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       tr.getAllRegions(retval);
     }
     //
     // Get regions in maps, but maybe not in entries:
     
-    Iterator gmit = groupMap_.values().iterator();
+    Iterator<List<GroupUsage>> gmit = groupMap_.values().iterator();
     while (gmit.hasNext()) {
-      ArrayList groupsUsed = (ArrayList)gmit.next();
-      Iterator guit = groupsUsed.iterator();
+      List<GroupUsage> groupsUsed = gmit.next();
+      Iterator<GroupUsage> guit = groupsUsed.iterator();
       while (guit.hasNext()) {
-        GroupUsage groupUse = (GroupUsage)guit.next();
+        GroupUsage groupUse = guit.next();
         retval.add(groupUse.mappedGroup);
       }
     }
@@ -1385,32 +1388,32 @@ public class TemporalInputRangeData {
   ** Get the set of all current map targets
   */
   
-  public Set getAllIdentifiers() {
-    TreeSet retval = new TreeSet();
+  public Set<String> getAllIdentifiers() {
+    TreeSet<String> retval = new TreeSet<String>();
     //
     // Get regions present in entries, but maybe not mapped:
     //
-    Iterator eit = getEntries();
+    Iterator<TemporalRange> eit = getEntries();
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       retval.add(tr.getName());
-      Iterator pit = tr.getTimeRanges();
+      Iterator<InputTimeRange> pit = tr.getTimeRanges();
       while (pit.hasNext()) {
-        InputTimeRange itr = (InputTimeRange)pit.next();
+        InputTimeRange itr = pit.next();
         retval.add(itr.getName());
       }
     }
     //
     // Get targets in maps:
     //
-    Iterator tmit = trEntryMap_.values().iterator();
+    Iterator<List<String>> tmit = trEntryMap_.values().iterator();
     while (tmit.hasNext()) {
-      List idsUsed = (List)tmit.next();
+      List<String> idsUsed = tmit.next();
       retval.addAll(idsUsed);
     }
     tmit = trSourceMap_.values().iterator();
     while (tmit.hasNext()) {
-      List idsUsed = (List)tmit.next();
+      List<String> idsUsed = tmit.next();
       retval.addAll(idsUsed);
     }    
     return (retval);
@@ -1422,9 +1425,9 @@ public class TemporalInputRangeData {
   */
   
   public boolean nameIsUnique(String targName) {
-    Iterator eit = getEntries();  
+    Iterator<TemporalRange> eit = getEntries();  
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       if (DataUtil.keysEqual(tr.getName(), targName)) {
         return (false);
       }
@@ -1440,9 +1443,9 @@ public class TemporalInputRangeData {
   
   public boolean nameAppearsZeroOrOne(String targName) {
     int hitCount = 0;
-    Iterator eit = getEntries();  
+    Iterator<TemporalRange> eit = getEntries();  
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       if (DataUtil.keysEqual(tr.getName(), targName)) {
         if (++hitCount > 1) {
           return (false);
@@ -1459,9 +1462,9 @@ public class TemporalInputRangeData {
   
   public boolean nameAppearsOnce(String targName) {
     int hitCount = 0;
-    Iterator eit = getEntries();  
+    Iterator<TemporalRange> eit = getEntries();  
     while (eit.hasNext()) {
-      TemporalRange tr = (TemporalRange)eit.next();
+      TemporalRange tr = eit.next();
       if (DataUtil.keysEqual(tr.getName(), targName)) {
         if (++hitCount > 1) {
           return (false);
@@ -1481,10 +1484,10 @@ public class TemporalInputRangeData {
     ind.indent();    
     out.println("<TemporalInputRangeData>");
     if (entries_.size() > 0) {
-      Iterator eit = getEntries();
+      Iterator<TemporalRange> eit = getEntries();
       ind.up();    
       while (eit.hasNext()) {
-        TemporalRange tr = (TemporalRange)eit.next();
+        TemporalRange tr = eit.next();
         tr.writeXML(out, ind);
       }
       ind.down(); 
@@ -1505,7 +1508,7 @@ public class TemporalInputRangeData {
   ** Get an HTML inputs table suitable for display.
   */
   
-  public String getInputsTable(String targetName, Set srcNames) {
+  public String getInputsTable(String targetName, Set<String> srcNames) {
     StringWriter sw = new StringWriter();
     PrintWriter out = new PrintWriter(sw);    
     Iterator<TemporalRange> trit = entries_.iterator();  // FIX ME: use a hash map
@@ -1580,6 +1583,7 @@ public class TemporalInputRangeData {
   **
   */
   
+  @SuppressWarnings("unused")
   public static TemporalInputRangeData buildFromXML(BTState appState, String elemName, 
                                                     Attributes attrs) throws IOException {
     if (!elemName.equals("TemporalInputRangeData")) {
@@ -1699,24 +1703,24 @@ public class TemporalInputRangeData {
   private void writeTrMap(PrintWriter out, Indenter ind) {
     ind.up().indent();    
     out.println("<trMaps>");
-    TreeSet sorted = new TreeSet();
+    TreeSet<String> sorted = new TreeSet<String>();
     sorted.addAll(trEntryMap_.keySet());
     sorted.addAll(trSourceMap_.keySet());    
-    Iterator mapKeys = sorted.iterator();
+    Iterator<String> mapKeys = sorted.iterator();
     ind.up();    
     while (mapKeys.hasNext()) {
-      String key = (String)mapKeys.next();     
-      List elist = (List)trEntryMap_.get(key);
-      List slist = (List)trSourceMap_.get(key);
+      String key = mapKeys.next();     
+      List<String> elist = trEntryMap_.get(key);
+      List<String> slist = trSourceMap_.get(key);
       ind.indent();
       out.print("<trMap key=\"");
       out.print(key);
       out.println("\">");
       ind.up();
       if (elist != null) {
-        Iterator lit = elist.iterator();
+        Iterator<String> lit = elist.iterator();
         while (lit.hasNext()) {
-          String useTr = (String)lit.next();      
+          String useTr = lit.next();      
           ind.indent();
           out.print("<useTr type=\"entry\" name=\"");
           out.print(useTr);
@@ -1724,9 +1728,9 @@ public class TemporalInputRangeData {
         }
       }
       if (slist != null) {
-        Iterator lit = slist.iterator(); 
+        Iterator<String> lit = slist.iterator(); 
         while (lit.hasNext()) {
-          String useTr = (String)lit.next();      
+          String useTr = lit.next();      
           ind.indent();
           out.print("<useTr type=\"source\" name=\"");
           out.print(useTr);
@@ -1750,21 +1754,21 @@ public class TemporalInputRangeData {
   private void writeGroupMap(PrintWriter out, Indenter ind) {
     ind.up().indent();    
     out.println("<trGroupMaps>");
-    TreeSet sorted = new TreeSet();
+    TreeSet<String> sorted = new TreeSet<String>();
     sorted.addAll(groupMap_.keySet());
-    Iterator mapKeys = sorted.iterator();
+    Iterator<String> mapKeys = sorted.iterator();
     ind.up();    
     while (mapKeys.hasNext()) {
-      String key = (String)mapKeys.next();     
-      List list = (List)groupMap_.get(key);
+      String key = mapKeys.next();     
+      List<GroupUsage> list = groupMap_.get(key);
       ind.indent();
       out.print("<trGroupMap key=\"");
       out.print(key);
       out.println("\">");
-      Iterator lit = list.iterator();
+      Iterator<GroupUsage> lit = list.iterator();
       ind.up();
       while (lit.hasNext()) {
-        GroupUsage usegr = (GroupUsage)lit.next();      
+        GroupUsage usegr = lit.next();      
         ind.indent();
         out.print("<trUseGroup name=\"");
         out.print(usegr.mappedGroup);

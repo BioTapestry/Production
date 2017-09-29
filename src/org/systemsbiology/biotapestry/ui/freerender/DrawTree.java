@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -216,7 +216,8 @@ public class DrawTree {
     boolean isGhosted = rcx.isGhosted();
     BasicStroke branchStroke = new BasicStroke(1);
     BasicStroke padStroke = new BasicStroke(1);
-    Color basePadCol = (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK;
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color basePadCol = (isGhosted) ? dop.getInactiveGray() : Color.BLACK;
     Color padCol = applyAlphaToColor(basePadCol, rcx.oso);
     GeneralPath currPath = new GeneralPath();
     DrawTreeSegment lastDts = null;
@@ -233,7 +234,7 @@ public class DrawTree {
     //
 
     HashMap<LinkSegmentID, List<LinkSegmentID>> kiddies = new HashMap<LinkSegmentID, List<LinkSegmentID>>();
-    LinkSegmentID rootSegID = resolveDrawStyles(lp, isGhosted, kiddies, lsMod.linkModulation, lsMod.forModules, rcx.cRes);
+    LinkSegmentID rootSegID = resolveDrawStyles(lp, isGhosted, kiddies, lsMod.linkModulation, lsMod.forModules, rcx.cRes, dop);
     clearTags();
 
     //
@@ -519,7 +520,7 @@ public class DrawTree {
 
   private LinkSegmentID resolveDrawStyles(LinkProperties lp, boolean isGhosted,
                                           Map<LinkSegmentID, List<LinkSegmentID>> kiddies, 
-                                          int activityDrawChange, boolean forModules, ColorResolver cRes) {
+                                          int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {
     LinkSegmentID retval = null;
     clearTags();
     Iterator<String> kit = startForLink_.keySet().iterator();
@@ -545,7 +546,7 @@ public class DrawTree {
         } else {
           lsid = currDts.getParent();
         }
-        currDts.setResolvedStyle(currDts.resolveDrawStyle(lp, isGhosted, activityDrawChange, forModules, cRes));
+        currDts.setResolvedStyle(currDts.resolveDrawStyle(lp, isGhosted, activityDrawChange, forModules, cRes, dopt));
         currDts.setTag();
         lastDts = currDts;
         if (lsid == null) {
@@ -784,7 +785,7 @@ public class DrawTree {
 		// forModules!
 		// 11/25/09: Now the info is embedded in the tip data!
 		if (tipData.hasDiamond) {
-			renderEvidenceGlyphToCache(group, icx.getGenome(), dts, linkID, isGhosted, tipData);
+			renderEvidenceGlyphToCache(group, icx.getGenome(), dts, linkID, isGhosted, tipData, icx);
 		}
 
 		return;
@@ -824,7 +825,7 @@ public class DrawTree {
     // which isn't true for diamond-only. But dropping that req'd us to check forModules!
     // 11/25/09: Now the info is embedded in the tip data!
     if (tipData.hasDiamond) {
-      renderEvidenceGlyphToCache(cache, icx.getGenome(), dts, linkID, isGhosted, tipData);
+      renderEvidenceGlyphToCache(cache, icx.getGenome(), dts, linkID, isGhosted, tipData, icx);
     }
 
     return;
@@ -996,7 +997,7 @@ public class DrawTree {
 
 	private void renderEvidenceGlyphToCache(ModalShapeContainer group, Genome genome,
 			DrawTreeSegment dts, String linkID, boolean isGhosted,
-			DrawTreeModelDataSource.ModelDataForTip mdt) {
+			DrawTreeModelDataSource.ModelDataForTip mdt, DataAccessContext rcx) {
 
 		Vector2D arrival = mdt.arrival;
 		Point2D lanLoc = mdt.lanLoc;
@@ -1042,10 +1043,11 @@ public class DrawTree {
 		float glyphBaseY = (float) (end.getY() + (run.getY() * lf));
 		GeneralPath glyphPath = new GeneralPath();
 		EvidenceGlyph.addGlyphToPath(glyphPath, glyphBaseX, glyphBaseY);
+		DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
 
 		Integer pathLayer = (isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-		Color col = (isGhosted || !isActive) ? Color.LIGHT_GRAY
-				: evidenceToGlyphColor(level);
+		Color col = (isGhosted || !isActive) ? dop.getInactiveGray()
+				: evidenceToGlyphColor(level, dop);
 		BasicStroke tagStroke = new BasicStroke(REG_THICK, BasicStroke.CAP_BUTT,
 				BasicStroke.JOIN_ROUND);
 
@@ -1059,7 +1061,7 @@ public class DrawTree {
   private void renderEvidenceGlyphToCache(RenderObjectCache cache, Genome genome,
                                           DrawTreeSegment dts, String linkID,
                                           boolean isGhosted,
-                                          DrawTreeModelDataSource.ModelDataForTip mdt) {
+                                          DrawTreeModelDataSource.ModelDataForTip mdt, DataAccessContext rcx) {
 
     Vector2D arrival = mdt.arrival;
     Point2D lanLoc = mdt.lanLoc;
@@ -1104,8 +1106,9 @@ public class DrawTree {
     GeneralPath glyphPath = new GeneralPath();
     EvidenceGlyph.addGlyphToPath(glyphPath, glyphBaseX, glyphBaseY);
 
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
     Integer pathLayer = (isActive) ? ACTIVE_PATH_LAYER : INACTIVE_PATH_LAYER;
-    Color col = (isGhosted || !isActive) ? Color.LIGHT_GRAY : evidenceToGlyphColor(level);
+    Color col = (isGhosted || !isActive) ? dop.getInactiveGray() : evidenceToGlyphColor(level, dop);
     BasicStroke tagStroke = new BasicStroke(REG_THICK, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
     RenderObjectCache.ModalShape ms =
       new RenderObjectCache.ModalShape(RenderObjectCache.ModalShape.FILL, col, tagStroke, glyphPath);
@@ -1181,7 +1184,7 @@ public class DrawTree {
   ** Map to evidence glyph color
   */
 
-  private Color evidenceToGlyphColor(int level) {
+  private Color evidenceToGlyphColor(int level, DisplayOptions dop) {
     switch (level) {
       case Linkage.LEVEL_1:
         return (Color.blue);
@@ -1204,7 +1207,7 @@ public class DrawTree {
       case Linkage.LEVEL_10:
         return (Color.getHSBColor(0.283F, 0.5F, 0.8F)); // pale green       
       default:
-        return (Color.LIGHT_GRAY);
+        return (dop.getInactiveGray());
     }
   }
 
@@ -1271,7 +1274,8 @@ public class DrawTree {
     }
 
     DrawTreeSegment answerDts = segments.get(getID);
-    return (answerDts.resolveDrawStyle(lp, true, lsMod.linkModulation, lsMod.forModules, icx.cRes).getThickness());
+    return (answerDts.resolveDrawStyle(lp, true, lsMod.linkModulation, lsMod.forModules, icx.cRes, 
+                                       icx.getDisplayOptsSource().getDisplayOptions()).getThickness());
   }
 
   /***************************************************************************

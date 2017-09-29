@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -46,6 +46,7 @@ import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeItem;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.ui.AnnotatedFont;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.Layout;
@@ -147,7 +148,51 @@ public class GeneFree extends NodeRenderBase {
   // PUBLIC METHODS
   //
   ////////////////////////////////////////////////////////////////////////////
+
+  //
+  // Following only make sense in the context of non-gene nodes:
+  //
   
+  /***************************************************************************
+  ** 
+  ** Answer if we can be in a simple fan in
+  */
+ 
+  @Override
+  public boolean simpleFanInOK() {
+    throw new UnsupportedOperationException();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Answer if assigning landing is consistent with direct landing:
+  */
+    
+  @Override
+  public boolean landOKForDirect(int landing) {
+    throw new UnsupportedOperationException();
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Answer if node ignores force top directive
+  */
+
+  @Override  
+  public boolean ignoreForceTop() {
+    throw new UnsupportedOperationException();
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Get the left pad number
+  */
+
+  @Override
+  public int getLeftPad() {
+    throw new UnsupportedOperationException();
+  }
+
   /***************************************************************************
   **
   ** Get the Y offset needed to line up nodes with a through link in a straight line
@@ -312,9 +357,10 @@ public class GeneFree extends NodeRenderBase {
       isGhosted = isGhosted || (activityLevel == GeneInstance.VESTIGIAL) || (activityLevel == GeneInstance.INACTIVE);
       textGhosted = isGhosted && (activityLevel != GeneInstance.VESTIGIAL);
     }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.getDisplayOptsSource().getDisplayOptions());
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, rcx.getDisplayOptsSource().getDisplayOptions());    
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);    
     
     int orient = np.getOrientation();   
     float x = (float)origin.getX();
@@ -385,7 +431,7 @@ public class GeneFree extends NodeRenderBase {
     // Draw the evidence glyph:
     //
     
-    renderEvidenceGlyphForGene(group, (Gene)item, origin, isGhosted);  
+    renderEvidenceGlyphForGene(group, (Gene)item, origin, isGhosted, dop);  
     
     ModelObjectCache.PopTransformOperation popTrans = new ModelObjectCache.PopTransformOperation();
     group.addShape(popTrans, majorLayer, minorLayer);
@@ -397,25 +443,33 @@ public class GeneFree extends NodeRenderBase {
     }
     
     if (rcx.showBubbles || rcx.forWeb) {
-      renderPads(group, (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK, item, rcx);
+      renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, rcx);
     }    
          
-    textCol = (textGhosted) ? Color.LIGHT_GRAY : textCol;
+    textCol = (textGhosted) ? dop.getInactiveGray() : textCol;
 
     //
     // Draw region labels:
     // 
-    
-    Iterator<DBGeneRegion> rit = ((Gene)item).regionIterator();
-    boolean hasARegion = rit.hasNext();
-    if (hasARegion) {
+  
+    List<DBGeneRegion> glist = null;
+    if (((Gene)item).getNumRegions() > 0) {
+      glist = DBGeneRegion.initTheList((Gene)item);
+    }
+  
+    if (glist != null) {
       Font rFont = rcx.fmgr.getFont(FontManager.MODULE_NAME);
       // g2.setFont(rFont);
       BasicStroke divStroke = new BasicStroke(LINE_THIN_, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
       // g2.setStroke(divStroke);
       DBGeneRegion lastRegion = null;
-      while (rit.hasNext()) {
-        DBGeneRegion region = rit.next();
+      int numReg = glist.size();
+      for (int i = 0; i < numReg; i++) {
+        DBGeneRegion region = glist.get(i);
+        // Skip rendering leftmost holder:
+        if ((lastRegion == null) && region.isHolder()) {
+          continue;
+        }
         String label = region.getName();
         int startPad = region.getStartPad();
         int endPad = region.getEndPad();
@@ -426,29 +480,53 @@ public class GeneFree extends NodeRenderBase {
         Rectangle2D bounds = rFont.getStringBounds(label, rcx.getFrc());
         float width = (float)bounds.getWidth() / 2.0F;
         
-        ModalShape ts = textFactory.buildTextShape(label, mFontAnn, textCol, xLabel - width, (float)(yLabel + DIV_LINE_LEN_ + bounds.getHeight()), new AffineTransform());
+        AnnotatedFont rFontAnn = new AnnotatedFont(rFont, false);
+        ModalShape ts = textFactory.buildTextShape(label, rFontAnn, textCol, xLabel - width, (float)(yLabel + DIV_LINE_LEN_ + bounds.getHeight()), new AffineTransform());
         
         group.addShape(ts, majorLayer, minorLayer);        
         
         //
         // Draw the bars separating regions
         //
-        if (lastRegion != null) {
+        
+        if ((i == (numReg - 1)) && !glist.get(i).isHolder()) {
+          float divY = y + GENE_HEIGHT_ + (float)(LINE_THICK / 2.0);
+          Vector2D divOffR = getLandingPadOffset(endPad, item, Linkage.NONE, rcx);
+          float divX = x + (float)(divOffR.getX() + (PAD_WIDTH_ / 2.0));  
+          ModelObjectCache.Line divLine = new Line(divX, divY, divX, divY + DIV_LINE_LEN_,
+              DrawMode.DRAW, textCol, divStroke);    
+          group.addShape(divLine, majorLayer, minorLayer);
+        }
+        
+        if (lastRegion == null) {
+          float divY = y + GENE_HEIGHT_ + (float)(LINE_THICK / 2.0);
+          Vector2D divOffR = getLandingPadOffset(startPad, item, Linkage.NONE, rcx);
+          float divX = x + (float)(divOffR.getX() - (PAD_WIDTH_ / 2.0));
+          ModelObjectCache.Line divLine = new Line(divX, divY, divX, divY + DIV_LINE_LEN_,
+              DrawMode.DRAW, textCol, divStroke);         
+          group.addShape(divLine, majorLayer, minorLayer);       
+        } else {
           //BAR ON RIGHT SIDE IF REGION IS SHORT - CENTERING ISSUES?  FIX ME
           int lrEndPad = lastRegion.getEndPad();
           Vector2D divOffL = getLandingPadOffset(lrEndPad, item, Linkage.NONE, rcx);
           Vector2D divOffR = getLandingPadOffset(startPad, item, Linkage.NONE, rcx);
           float divY = y + GENE_HEIGHT_ + (float)(LINE_THICK / 2.0);
-          float divX = x + (float)((divOffL.getX() + divOffR.getX()) / 2.0);
-          
-          // Line2D divLine = new Line2D.Float(divX, divY, divX, divY + DIV_LINE_LEN_);
-          // g2.setPaint(textCol);// col); 
-          // g2.draw(divLine);
-          
+          boolean noGap = (startPad == (lrEndPad + 1));
+          float divX;
+          if (noGap) {
+            divX = x + (float)((divOffL.getX() + divOffR.getX()) / 2.0);
+          } else {
+            divX = x + (float)(divOffL.getX() + (PAD_WIDTH_ / 2.0));
+          }
           ModelObjectCache.Line divLine = new Line(divX, divY, divX, divY + DIV_LINE_LEN_,
-              DrawMode.DRAW, textCol, divStroke);
-          
+                                                   DrawMode.DRAW, textCol, divStroke);  
           group.addShape(divLine, majorLayer, minorLayer);
+          if (!noGap) {
+            divX = x + (float)(divOffR.getX() - (PAD_WIDTH_ / 2.0));
+            divLine = new Line(divX, divY, divX, divY + DIV_LINE_LEN_,
+                               DrawMode.DRAW, textCol, divStroke);  
+            group.addShape(divLine, majorLayer, minorLayer);  
+          }
         }
 
         renderEvidenceGlyphForRegion(group, (Gene)item, region, origin, isGhosted, rcx);
@@ -468,7 +546,7 @@ public class GeneFree extends NodeRenderBase {
     //   
     
     String name = item.getName();
-    Point2D nStart = getNameStart(item, name, mFontAnn.getFont(), rcx.getFrc(), orient, hasARegion, origin, np.getHideName(), np.getLineBreakDef(), rcx.fmgr);
+    Point2D nStart = getNameStart(item, name, mFontAnn.getFont(), rcx.getFrc(), orient, (glist != null), origin, np.getHideName(), np.getLineBreakDef(), rcx.fmgr);
     // Good for debug:g2.draw(new Rectangle2D.Double(nStart.getX() - 5.0, nStart.getY() - 5.0, 10.0, 10.0));
     renderText(group, (float)nStart.getX(), (float)nStart.getY(), name, textCol, np.getHideName(), mFontAnn, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr, textFactory);
     
@@ -482,186 +560,13 @@ public class GeneFree extends NodeRenderBase {
     Vector2D pieOff = getLaunchPadOffset(0, item, rcx); 
     double xOff = (orient == NodeProperties.LEFT) ? -5.0 : 5.0;
     Point2D pieCenter = new Point2D.Double(x + pieOff.getX() + xOff, y + pieOff.getY() + 20.0);
-    drawVariableActivityPie(group, item, col, pieCenter, rcx.getDisplayOptsSource().getDisplayOptions());    
+    drawVariableActivityPie(group, item, col, pieCenter, dop);    
     
     setGroupBounds(group, rcx.getGenome(), item, rcx.getLayout(), rcx.getFrc(), rcx.fmgr);
     
     cache.addGroup(group);
   }
   
-  // TODO remove old implementation
-  public void renderOld(Graphics2D g2, RenderObjectCache cache, GenomeItem item, 
-                    Intersection selected, 
-                    DataAccessContext rcx,                   
-                     Object miscInfo, ModelObjectCache moc) {
-    NodeProperties np = rcx.getLayout().getNodeProperties(item.getID());
-    Point2D origin = np.getLocation();
-    Font mFont = rcx.fmgr.getOverrideFont(FontManager.GENE_NAME, np.getFontOverride()).getFont();
-        
-    //
-    // Figure out the length of the gene line:
-    //
-    
-    int padCount = ((Gene)item).getPadCount();
-    boolean defaultLength = (padCount == DBGene.DEFAULT_PAD_COUNT);
-    int extraPads = (defaultLength) ? 0 : padCount - MAX_PADS_;    
-    float extraLen = (float)extraPads * PAD_WIDTH_;    
-   
-    //
-    // Modify the ghosted state to include inactive genes:
-    //
-    
-    boolean isGhosted = rcx.isGhosted();
-    boolean textGhosted = isGhosted;
-    if (item instanceof GeneInstance) {
-      int activityLevel = ((GeneInstance)item).getActivity();
-      isGhosted = isGhosted || (activityLevel == GeneInstance.VESTIGIAL) || (activityLevel == GeneInstance.INACTIVE);
-      textGhosted = isGhosted && (activityLevel != GeneInstance.VESTIGIAL);
-    }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.getDisplayOptsSource().getDisplayOptions());
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, rcx.getDisplayOptsSource().getDisplayOptions());        
-
-    int orient = np.getOrientation();   
-    float x = (float)origin.getX();
-    float y = (float)origin.getY();
-    
-    AffineTransform trans = new AffineTransform();
-    AffineTransform saveTrans = g2.getTransform();
-    if (orient == NodeProperties.LEFT) {
-      trans.translate(x + GENE_WIDTH_, 0.0);
-      trans.scale(-1.0, 1.0);
-      trans.translate(-x, 0.0);
-    }
-    
-    g2.transform(trans);
-    
-    // selectionSupport(g2, cache, selected, (int)(x - extraLen), (int)y, (int)(GENE_WIDTH_ + extraLen), (int)GENE_HEIGHT_);
-       
-    g2.setPaint(col);        
-    g2.setStroke(new BasicStroke(BRANCH_THICK_, BasicStroke.CAP_BUTT, 
-                                 BasicStroke.JOIN_ROUND));
-   
-    //
-    // Draw the branch
-    //
-    
-    GeneralPath path = new GeneralPath(); 
-    path.moveTo(x + LINE_LENGTH_ - BRANCH_OFFSET_, y + GENE_HEIGHT_);
-    path.lineTo(x + LINE_LENGTH_ - BRANCH_OFFSET_, y + ARROW_HALF_HEIGHT_);
-    path.lineTo(x + GENE_WIDTH_ - ARROW_LENGTH_ + 2, y + ARROW_HALF_HEIGHT_);    
-    g2.draw(path);
-    
-    //
-    // Draw the baseline:
-    //
-    
-    g2.setStroke(new BasicStroke(LINE_THICK, BasicStroke.CAP_BUTT, 
-                                 BasicStroke.JOIN_ROUND));
-       
-    Line2D line = new Line2D.Float(x - extraLen, y + GENE_HEIGHT_, 
-                                   x + LINE_LENGTH_, y + GENE_HEIGHT_);
-    g2.draw(line);
-    
-    //
-    // Draw the arrow:
-    //
-    
-    path.reset();
-    path.moveTo(x + GENE_WIDTH_ - ARROW_LENGTH_, y);    
-    path.lineTo(x + GENE_WIDTH_, y + ARROW_HALF_HEIGHT_);
-    path.lineTo(x + GENE_WIDTH_ - ARROW_LENGTH_, y + (2.0F * ARROW_HALF_HEIGHT_));
-    path.closePath();
-    g2.fill(path);
-    
-    //
-    // Draw the evidence glyph:
-    //
-    
-    // renderEvidenceGlyphForGene(g2, (Gene)item, origin, isGhosted);  
-    
-   
-    g2.setTransform(saveTrans);
-    
-    if (rcx.showBubbles) {
-      // renderPads(group, (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK, item, layout, frc);
-    }    
-         
-    textCol = (textGhosted) ? Color.LIGHT_GRAY : textCol;    
-    g2.setPaint(textCol);    
-    
-    //
-    // Draw region labels:
-    // 
-    
-    Iterator<DBGeneRegion> rit = ((Gene)item).regionIterator();
-    boolean hasARegion = rit.hasNext();
-    if (hasARegion) {
-      Font rFont = rcx.fmgr.getFont(FontManager.MODULE_NAME);
-      g2.setFont(rFont);
-      BasicStroke divStroke = new BasicStroke(LINE_THIN_, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
-      g2.setStroke(divStroke);
-      DBGeneRegion lastRegion = null;
-      while (rit.hasNext()) {
-        DBGeneRegion region = rit.next();
-        String label = region.getName();
-        int startPad = region.getStartPad();
-        int endPad = region.getEndPad();
-        int midPad = (startPad + endPad) / 2;
-        Vector2D off = getLandingPadOffset(midPad, item, Linkage.NONE, rcx);      
-        float xLabel = x + (float)off.getX();
-        float yLabel = y + (float)off.getY();
-        Rectangle2D bounds = rFont.getStringBounds(label, rcx.getFrc());
-        float width = (float)bounds.getWidth() / 2.0F;      
-        g2.drawString(label, xLabel - width, (float)(yLabel + DIV_LINE_LEN_ + bounds.getHeight()));
-        //
-        // Draw the bars separating regions
-        //
-        if (lastRegion != null) {
-          //BAR ON RIGHT SIDE IF REGION IS SHORT - CENTERING ISSUES?  FIX ME
-          int lrEndPad = lastRegion.getEndPad();
-          Vector2D divOffL = getLandingPadOffset(lrEndPad, item, Linkage.NONE, rcx);
-          Vector2D divOffR = getLandingPadOffset(startPad, item, Linkage.NONE, rcx);
-          float divY = y + GENE_HEIGHT_ + (float)(LINE_THICK / 2.0);
-          float divX = x + (float)((divOffL.getX() + divOffR.getX()) / 2.0);
-          Line2D divLine = new Line2D.Float(divX, divY, divX, divY + DIV_LINE_LEN_);
-          g2.setPaint(textCol);// col); 
-          g2.draw(divLine);
-        }
-        // renderEvidenceGlyphForRegion(g2, (Gene)item, layout, frc, region, origin, isGhosted);
-        lastRegion = region;
-        g2.setPaint(textCol);        
-      }
-    }
-    
-    // Good for debug:
-    //Rectangle2D rect4Reg = regionBounds(item, origin, layout, frc);
-    //if (rect4Reg != null) {
-    //  g2.draw(rect4Reg);
-    //}
-    
-    //
-    // Draw the gene name:
-    //   
-    
-    String name = item.getName();
-    Point2D nStart = getNameStart(item, name, mFont, rcx.getFrc(), orient, hasARegion, origin, np.getHideName(), np.getLineBreakDef(), rcx.fmgr);
-    // Good for debug:g2.draw(new Rectangle2D.Double(nStart.getX() - 5.0, nStart.getY() - 5.0, 10.0, 10.0));
-    //renderText(g2, cache, (float)nStart.getX(), (float)nStart.getY(), name, np.getHideName(), mFont, np.getLineBreakDef());
-    // Good for debug:g2.draw(getTextBounds(frc, (float)nStart.getX(), (float)nStart.getY(), name, np.getHideName(), mFont, np.getLineBreakDef()));
-    
-    //
-    // Draw activity pie:
-    //
-    
-    Vector2D pieOff = getLaunchPadOffset(0, item, rcx); 
-    double xOff = (orient == NodeProperties.LEFT) ? -5.0 : 5.0;
-    Point2D pieCenter = new Point2D.Double(x + pieOff.getX() + xOff, y + pieOff.getY() + 20.0);
-    drawVariableActivityPie(null, item, col, pieCenter, rcx.getDisplayOptsSource().getDisplayOptions());    
-      
-    return;
-  }
-
  /***************************************************************************
   **
   ** Figure out the name string start
@@ -1504,7 +1409,7 @@ public class GeneFree extends NodeRenderBase {
   */
 
   @Override
-  public List<Integer> getNearbyPads(GenomeItem item, int startPad, Layout layout) {
+  public List<Integer> getNearbyPads(GenomeItem item, int startPad, NodeProperties np) {
 
     MinMax range = getTargetPadRange(item);    
     int count = 0;
@@ -1619,7 +1524,7 @@ public class GeneFree extends NodeRenderBase {
   ** Figure out which pads we intersect
   */
   
-  private List<Intersection.PadVal> calcPadIntersects(GenomeItem item,  Point2D pt, DataAccessContext irx) {
+  public List<Intersection.PadVal> calcPadIntersects(GenomeItem item,  Point2D pt, DataAccessContext irx) {
 
     ArrayList<Intersection.PadVal> retval = new ArrayList<Intersection.PadVal>();
  
@@ -1673,7 +1578,7 @@ public class GeneFree extends NodeRenderBase {
   */
   
   private void renderEvidenceGlyphForGene(ModalShapeContainer group, Gene gene,
-                                          Point2D origin, boolean isGhosted) {  
+                                          Point2D origin, boolean isGhosted, DisplayOptions dop) {  
 
     int evidence = gene.getEvidenceLevel();
     if (evidence == Gene.LEVEL_NONE) {
@@ -1685,7 +1590,7 @@ public class GeneFree extends NodeRenderBase {
     
     float glyphBaseX = (float)(x + LINE_LENGTH_ - BRANCH_OFFSET_);
     float glyphBaseY = (float)(y + GENE_HEIGHT_ + (LINE_THICK / 2.0) + 1.0);
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : Color.red;
+    Color col = (isGhosted) ? dop.getInactiveGray() : Color.red;
     EvidenceGlyph.renderEvidenceGlyph(group, col, glyphBaseX, glyphBaseY);
     return;
   }
@@ -1704,7 +1609,8 @@ public class GeneFree extends NodeRenderBase {
     }
     float x = (float)origin.getX();
     float y = (float)origin.getY();
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : Color.red;    
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color col = (isGhosted) ? dop.getInactiveGray() : Color.red;    
     int endPad = region.getEndPad();
     Vector2D off = getLandingPadOffset(endPad, item, Linkage.NONE, rcx);      
     float glyphBaseY = y + GENE_HEIGHT_ + (float)(LINE_THICK / 2.0) + GLYPH_HACK_;

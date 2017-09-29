@@ -136,19 +136,19 @@ public class PerturbedTimeCourseDisplayPlugIn implements InternalNodeDataDisplay
     buf.append("</h1>\n");
     
     boolean gotData = false;
-    List dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(nodeID);
+    List<TimeCourseData.TCMapping> dataKeys = tcd.getTimeCourseTCMDataKeysWithDefault(nodeID);
     if (dataKeys != null) {
-      Iterator dkit = dataKeys.iterator();
+      Iterator<TimeCourseData.TCMapping> dkit = dataKeys.iterator();
       int needKey = TimeCourseTableDrawer.NO_TABLE_KEY;
       while (dkit.hasNext()) {
-        TimeCourseData.TCMapping tcm = (TimeCourseData.TCMapping)dkit.next();
+        TimeCourseData.TCMapping tcm = dkit.next();
         TimeCourseGene tcg = tcd.getTimeCourseDataCaseInsensitive(tcm.name);
         if (tcg == null) {  // If no table at all, still get back default name...
           continue;
         }
-        Iterator pkit = tcg.getPertKeys();
+        Iterator<PertSources> pkit = tcg.getPertKeys();
         while (pkit.hasNext()) {
-          PertSources pss = (PertSources)pkit.next();
+          PertSources pss = pkit.next();
           StringWriter sw = new StringWriter();
           PrintWriter out = new PrintWriter(sw);
           PerturbedTimeCourseGene pertGene = tcg.getPerturbedState(pss);

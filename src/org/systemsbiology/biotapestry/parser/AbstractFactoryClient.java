@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -169,13 +169,13 @@ public abstract class AbstractFactoryClient implements ParserClient {
       return (currWorker_.processElement(elemName, attrs));
     }
      
-    AbstractFactoryClient assignedWorker = (AbstractFactoryClient)workerMap_.get(elemName);
+    AbstractFactoryClient assignedWorker = workerMap_.get(elemName);
     if (assignedWorker != null) {
       currElem_ = elemName;
       currWorker_ = assignedWorker;
       Object createdElement = currWorker_.processElement(elemName, attrs);
       if (createdElement != null) {
-        GlueStick glue = (GlueStick)glueStickMap_.get(elemName);
+        GlueStick glue = glueStickMap_.get(elemName);
         if (glue != null) {
           glue.glueKidToParent(createdElement, this, sharedWhiteboard_);
         }
@@ -220,6 +220,7 @@ public abstract class AbstractFactoryClient implements ParserClient {
   **
   */
   
+  @SuppressWarnings("unused")
   protected void localFinishElement(String elemName) throws IOException {
     return;
   }
@@ -230,6 +231,7 @@ public abstract class AbstractFactoryClient implements ParserClient {
   **
   */
   
+  @SuppressWarnings("unused")
   protected void localProcessCharacters(char[] chars, int start, int length) {
     return;
   }  

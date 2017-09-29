@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -52,10 +52,10 @@ public class ConditionDictionary implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////
 
-  private HashMap cond_;
+  private HashMap<String, ExperimentConditions> cond_;
   private UniqueLabeller labels_;
   private String defaultCond_;
-  private HashMap controls_;
+  private HashMap<String, ExperimentControl> controls_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -69,8 +69,8 @@ public class ConditionDictionary implements Cloneable {
   */
 
   public ConditionDictionary() {
-    cond_ = new HashMap();
-    controls_ = new HashMap();
+    cond_ = new HashMap<String, ExperimentConditions>();
+    controls_ = new HashMap<String, ExperimentControl>();
     labels_ = new UniqueLabeller();
     defaultCond_ = createDefaultCondition(); 
   }
@@ -113,22 +113,23 @@ public class ConditionDictionary implements Cloneable {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public ConditionDictionary clone() {
     try {
       ConditionDictionary newVal = (ConditionDictionary)super.clone();   
-      newVal.cond_ = new HashMap();
-      Iterator psit = this.cond_.keySet().iterator();
+      newVal.cond_ = new HashMap<String, ExperimentConditions>();
+      Iterator<String> psit = this.cond_.keySet().iterator();
       while (psit.hasNext()) {
-        String psKey = (String)psit.next();
-        newVal.cond_.put(psKey, ((ExperimentConditions)this.cond_.get(psKey)).clone());
+        String psKey = psit.next();
+        newVal.cond_.put(psKey, this.cond_.get(psKey).clone());
       }
-      newVal.controls_ = new HashMap();
-      Iterator conit = this.controls_.keySet().iterator();
+      newVal.controls_ = new HashMap<String, ExperimentControl>();
+      Iterator<String> conit = this.controls_.keySet().iterator();
       while (conit.hasNext()) {
-        String contKey = (String)conit.next();
-        newVal.controls_.put(contKey, ((ExperimentControl)this.controls_.get(contKey)).clone());
+        String contKey = conit.next();
+        newVal.controls_.put(contKey, this.controls_.get(contKey).clone());
       }   
-      newVal.labels_ = (UniqueLabeller)this.labels_.clone();
+      newVal.labels_ = this.labels_.clone();
       return (newVal);
     } catch (CloneNotSupportedException ex) {
       throw new IllegalStateException();     
@@ -153,11 +154,11 @@ public class ConditionDictionary implements Cloneable {
   ** Get all the condition names
   */
   
-  public Set getConditionNameSet() {
-    HashSet retval = new HashSet();
-    Iterator ckit = cond_.values().iterator();
+  public Set<String> getConditionNameSet() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<ExperimentConditions> ckit = cond_.values().iterator();
     while (ckit.hasNext()) {
-      ExperimentConditions ec = (ExperimentConditions)ckit.next();
+      ExperimentConditions ec = ckit.next();
       retval.add(ec.getDescription());        
     }
     return (retval);
@@ -168,9 +169,9 @@ public class ConditionDictionary implements Cloneable {
   ** Get an iterator over the keys
   */
 
-  public Iterator getKeys() {
-    TreeSet ordered = new TreeSet(cond_.keySet());
-    Iterator oit = ordered.iterator();
+  public Iterator<String> getKeys() {
+    TreeSet<String> ordered = new TreeSet<String>(cond_.keySet());
+    Iterator<String> oit = ordered.iterator();
     return (oit);
   }
   
@@ -180,7 +181,7 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public ExperimentConditions getExprConditions(String key) {
-    return ((ExperimentConditions)cond_.get(key));
+    return (cond_.get(key));
   }
   
   /***************************************************************************
@@ -223,10 +224,10 @@ public class ConditionDictionary implements Cloneable {
   
   public String getConditionKeyFromName(String name) {
     String normName = DataUtil.normKey(name);
-    Iterator ckit = cond_.keySet().iterator();
+    Iterator<String> ckit = cond_.keySet().iterator();
     while (ckit.hasNext()) {
-      String cKey = (String)ckit.next();
-      ExperimentConditions cond = (ExperimentConditions)cond_.get(cKey);
+      String cKey = ckit.next();
+      ExperimentConditions cond = cond_.get(cKey);
       if (DataUtil.normKey(cond.getDescription()).equals(normName)) {
         return (cKey);
       }
@@ -239,9 +240,9 @@ public class ConditionDictionary implements Cloneable {
   ** Get an iterator over the control keys
   */
 
-  public Iterator getControlKeys() {
-    TreeSet ordered = new TreeSet(controls_.keySet());
-    Iterator oit = ordered.iterator();
+  public Iterator<String> getControlKeys() {
+    TreeSet<String> ordered = new TreeSet<String>(controls_.keySet());
+    Iterator<String> oit = ordered.iterator();
     return (oit);
   }
   
@@ -259,11 +260,11 @@ public class ConditionDictionary implements Cloneable {
   ** Get all the control names
   */
   
-  public Set getControlNameSet() {
-    HashSet retval = new HashSet();
-    Iterator ckit = controls_.values().iterator();
+  public Set<String> getControlNameSet() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<ExperimentControl> ckit = controls_.values().iterator();
     while (ckit.hasNext()) {
-      ExperimentControl ec = (ExperimentControl)ckit.next();
+      ExperimentControl ec = ckit.next();
       retval.add(ec.getDescription());        
     }
     return (retval);
@@ -275,7 +276,7 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public ExperimentControl getExprControl(String key) {
-    return ((ExperimentControl)controls_.get(key));
+    return (controls_.get(key));
   }
   
   /***************************************************************************
@@ -321,10 +322,10 @@ public class ConditionDictionary implements Cloneable {
       return (null);
     }
     String normName = DataUtil.normKey(name);
-    Iterator ckit = controls_.keySet().iterator();
+    Iterator<String> ckit = controls_.keySet().iterator();
     while (ckit.hasNext()) {
-      String cKey = (String)ckit.next();
-      ExperimentControl ctrl = (ExperimentControl)controls_.get(cKey);
+      String cKey = ckit.next();
+      ExperimentControl ctrl = controls_.get(cKey);
       if (DataUtil.normKey(ctrl.getDescription()).equals(normName)) {
         return (cKey);
       }
@@ -344,11 +345,11 @@ public class ConditionDictionary implements Cloneable {
     ind.up().indent();
     out.println("<conditions>");
     ind.up();
-    TreeSet ordered = new TreeSet(cond_.keySet());
-    Iterator oit = ordered.iterator();
+    TreeSet<String> ordered = new TreeSet<String>(cond_.keySet());
+    Iterator<String> oit = ordered.iterator();
     while (oit.hasNext()) {
-      String key = (String)oit.next();
-      ExperimentConditions pp = (ExperimentConditions)cond_.get(key);
+      String key = oit.next();
+      ExperimentConditions pp = cond_.get(key);
       pp.writeXML(out, ind);
     }
     ind.down().indent();
@@ -357,11 +358,11 @@ public class ConditionDictionary implements Cloneable {
       ind.indent(); 
       out.println("<controls>"); 
       ind.up();
-      ordered = new TreeSet(controls_.keySet());
+      ordered = new TreeSet<String>(controls_.keySet());
       oit = ordered.iterator();
       while (oit.hasNext()) {
-        String key = (String)oit.next();
-        ExperimentControl pp = (ExperimentControl)controls_.get(key);
+        String key = oit.next();
+        ExperimentControl pp = controls_.get(key);
         pp.writeXML(out, ind);
       }
       ind.down().indent();
@@ -378,10 +379,10 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public Vector getExprConditionsOptions() { 
-    TreeSet sorted = new TreeSet();
-    Iterator oit = cond_.keySet().iterator();
+    TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
+    Iterator<String> oit = cond_.keySet().iterator();
     while (oit.hasNext()) {
-      String key = (String)oit.next();
+      String key = oit.next();
       sorted.add(getExprConditionsChoice(key));
     }
     return (new Vector(sorted));
@@ -393,7 +394,7 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public TrueObjChoiceContent getExprConditionsChoice(String key) {
-    ExperimentConditions mp = (ExperimentConditions)cond_.get(key);
+    ExperimentConditions mp = cond_.get(key);
     return (new TrueObjChoiceContent(mp.getDisplayString(), key));
   }  
 
@@ -403,10 +404,10 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public Vector getExprControlOptions() { 
-    TreeSet sorted = new TreeSet();
-    Iterator oit = controls_.keySet().iterator();
+    TreeSet<TrueObjChoiceContent> sorted = new TreeSet<TrueObjChoiceContent>();
+    Iterator<String> oit = controls_.keySet().iterator();
     while (oit.hasNext()) {
-      String key = (String)oit.next();
+      String key = oit.next();
       sorted.add(getExprControlChoice(key));
     }
     return (new Vector(sorted));
@@ -418,7 +419,7 @@ public class ConditionDictionary implements Cloneable {
   */
   
   public TrueObjChoiceContent getExprControlChoice(String key) {
-    ExperimentControl mp = (ExperimentControl)controls_.get(key);
+    ExperimentControl mp = controls_.get(key);
     return (new TrueObjChoiceContent(mp.getDisplayString(), key));
   }  
   
@@ -452,7 +453,8 @@ public class ConditionDictionary implements Cloneable {
       }
       return (retval);     
     }  
-        
+    
+    @SuppressWarnings("unused")
     private ConditionDictionary buildFromXML(String elemName, Attributes attrs) throws IOException {
       ConditionDictionary cDict = new ConditionDictionary();
       return (cDict);

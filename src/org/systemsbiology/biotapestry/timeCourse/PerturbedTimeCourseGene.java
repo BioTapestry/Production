@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -45,7 +45,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   
   ////////////////////////////////////////////////////////////////////////////
   //
-  // PUBLIC CONSTANTS
+  // PUBLIC CONSTANTS  @SuppressWarnings("unused")
   //
   //////////////////////////////////////////////////////////////////////////// 
 
@@ -91,7 +91,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
 
   public PerturbedTimeCourseGene(PerturbedTimeCourseGene other, boolean doData) {
     this.appState_ = other.appState_;
-    this.sources_ = (PertSources)other.sources_.clone();
+    this.sources_ = other.sources_.clone();
     this.timeCourseNote_ = other.timeCourseNote_;  
     this.confidence_ = other.confidence_;
     this.internalOnly_ = other.internalOnly_;
@@ -461,7 +461,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
   */
   
   public ExpressionEntry getExpression(int n) {
-    return ((ExpressionEntry)pertData_.get(n));
+    return (pertData_.get(n));
   }    
   
   /***************************************************************************
@@ -473,7 +473,7 @@ public class PerturbedTimeCourseGene implements Cloneable, TimeCourseTableDrawer
     if (controlData_ == null) {
       throw new IllegalStateException();
     }
-    return ((ExpressionEntry)controlData_.get(n));
+    return (controlData_.get(n));
   }    
   
   /***************************************************************************

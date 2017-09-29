@@ -47,6 +47,7 @@ public class TemporalInputRangeFormatFactory implements ParserClient {
   private Set<String> trKeys_;
   private Set<String> itKeys_;
   private Set<String> rarKeys_;
+  @SuppressWarnings("unused")
   private Object container_;
   private TemporalInputRangeData currTarg_;
   private TemporalRange currTemporalRange_;
@@ -56,9 +57,9 @@ public class TemporalInputRangeFormatFactory implements ParserClient {
   private String gmKey_; 
   private String useGroupKey_;
   private String currTrMapKey_;
-  private ArrayList currTrMapList_;
+  private ArrayList<TemporalInputRangeData.TirMapResult> currTrMapList_;
   private String currGroupMapKey_;
-  private ArrayList currGroupMapList_;
+  private ArrayList<GroupUsage> currGroupMapList_;
   private boolean mapsAreIllegal_;
   private BTState appState_;
   
@@ -193,7 +194,7 @@ public class TemporalInputRangeFormatFactory implements ParserClient {
         throw new IOException();
       }
       currTrMapKey_ = TemporalInputRangeData.extractTrMapKey(elemName, attrs);
-      currTrMapList_ = new ArrayList();
+      currTrMapList_ = new ArrayList<TemporalInputRangeData.TirMapResult>();
     } else if (elemName.equals(useTrKey_)) {
       if (mapsAreIllegal_) {
         throw new IOException();
@@ -204,7 +205,7 @@ public class TemporalInputRangeFormatFactory implements ParserClient {
         throw new IOException();
       }
       currGroupMapKey_ = TemporalInputRangeData.extractGroupMapKey(elemName, attrs);
-      currGroupMapList_ = new ArrayList();        
+      currGroupMapList_ = new ArrayList<GroupUsage>();        
     } else if (elemName.equals(useGroupKey_)) {
       if (mapsAreIllegal_) {
         throw new IOException();

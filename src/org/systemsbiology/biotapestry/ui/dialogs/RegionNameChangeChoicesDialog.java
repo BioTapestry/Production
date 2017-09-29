@@ -340,13 +340,11 @@ public class RegionNameChangeChoicesDialog extends JDialog {
     if (DataUtil.containsKey(tcd.getRegions(), newName_) ||
         DataUtil.containsKey(tird.getRegions(), newName_)) {
       ResourceManager rMan = appState_.getRMan();
-      String desc = MessageFormat.format(rMan.getString("regionNameChange.nameCollision"), new Object[] {newName_});      
-      int result = JOptionPane.showConfirmDialog(appState_.getTopFrame(), desc,
-                                                rMan.getString("regionNameChange.nameCollisionTitle"),
-                                                JOptionPane.YES_NO_OPTION);
-      if (result != 0) {
-        return (false);
-      }
+      String desc = MessageFormat.format(rMan.getString("regionNameChange.nameCollision"), new Object[] {newName_});    
+      JOptionPane.showMessageDialog(appState_.getTopFrame(), desc,
+                                    rMan.getString("regionNameChange.nameCollisionTitle"),
+                                    JOptionPane.WARNING_MESSAGE);
+      return (false);
     }
     
     //

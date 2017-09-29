@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -35,6 +35,7 @@ import org.xml.sax.Attributes;
 import org.systemsbiology.biotapestry.util.Indenter;
 import org.systemsbiology.biotapestry.util.UniqueLabeller;
 import org.systemsbiology.biotapestry.util.CharacterEntityMapper;
+import org.systemsbiology.biotapestry.analysis.SignedTaggedLink;
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.util.DataUtil;
 
@@ -983,7 +984,9 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
     out.print("<genome ");
     out.print("name=\"");
     out.print(CharacterEntityMapper.mapEntities(name_, false));
-    out.print("\" id=\"");
+    // Added as part of 7.0.1 (Issue #240): change from id -> gid. This will 
+    // cause versions older than 7.0.1 to refuse to read 7.0.1+ files.
+    out.print("\" gid=\"");
     out.print(id_);
     if (imgKey_ != null) {
       out.print("\" image=\"");
@@ -1020,6 +1023,63 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
     return;
   }  
 
+  /***************************************************************************
+  **
+  ** Analyzes DBGenome for duplicated links between same source and target, same sign, same evidence:
+  **
+  */
+  
+  public Set<String> mergeableLinks(String linkID) {
+    HashSet<String> retval = new HashSet<String>();
+    Linkage link = getLinkage(linkID);
+    String targID = link.getTarget();
+    Node targNode = getNode(targID);
+    
+    //
+    // Links into genes with defined regions can only be merged if
+    // they are in the same region, or both in holders.
+    //
+    
+    Gene gene = null;
+    DBGeneRegion targRegLink = null;
+    if (targNode.getNodeType() == Node.GENE) {
+      gene = (Gene)targNode;
+      if (gene.getNumRegions() > 0) {
+        targRegLink = gene.getRegionForPad(link.getLandingPad());
+      }
+    }
+    
+    //
+    // We want EVIDENCE LEVELS to be kept distinct, so we use the tagged version:
+    //
+    
+    SignedTaggedLink key = new SignedTaggedLink(link.getSource(), targID, link.getSign(), Integer.toString(link.getTargetLevel()));
+    Iterator<Linkage> lit = getLinkageIterator();
+    while (lit.hasNext()) {
+      Linkage nlink = lit.next();
+      String nID = nlink.getID();
+      if (linkID.equals(nID)) {
+        continue;
+      }
+      SignedTaggedLink nkey = new SignedTaggedLink(nlink.getSource(), nlink.getTarget(), nlink.getSign(), Integer.toString(nlink.getTargetLevel()));
+      if (!nkey.equals(key)) {
+        continue;
+      }
+      if (targRegLink != null) {
+        DBGeneRegion targRegCheck = gene.getRegionForPad(nlink.getLandingPad());
+        if (targRegLink.isHolder() && targRegCheck.isHolder()) {
+          retval.add(nID);
+        } else if (targRegLink.getKey().equals(targRegCheck.getKey())) {
+          retval.add(nID);
+        }
+      } else {
+        retval.add(nID);
+      }
+    }
+    return (retval);
+  }
+  
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE METHODS
@@ -1145,7 +1205,9 @@ public class DBGenome extends AbstractGenome implements Genome, Cloneable {
         String val = attrs.getValue(i);
         if (key.equals("name")) {
           name = CharacterEntityMapper.unmapEntities(val, false);
-        } else if (key.equals("id")) {
+          // Added as part of 7.0.1 (Issue #240): change from id -> gid. This will 
+          // cause versions older than 7.0.1 to refuse to read 7.0.1+ files.
+        } else if (key.equals("gid") || key.equals("id")) {
           id = val;
         } else if (key.equals("image")) {
           imgKey = val;          

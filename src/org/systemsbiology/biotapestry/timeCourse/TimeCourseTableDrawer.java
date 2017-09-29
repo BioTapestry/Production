@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -183,14 +183,14 @@ public class TimeCourseTableDrawer {
     out.println("\" border=\"0\" cellpadding=\"0\" cellspacing=\"0\">");
     out.println("<tr>");
     
-    List reducedReg = new ArrayList();
-    HashSet usedRegions = new HashSet();
+    List<RegionData> reducedReg = new ArrayList<RegionData>();
+    HashSet<String> usedRegions = new HashSet<String>();
     int numRegions1 = regions.size();
     for (int i = 0; i < numRegions1; i++) {
-      RegionData reg = (RegionData)regions.get(i);
-      Iterator tmit = times.iterator();
+      RegionData reg = regions.get(i);
+      Iterator<Integer> tmit = times.iterator();
       while (tmit.hasNext()) {
-        Integer timeObj = (Integer)tmit.next();
+        Integer timeObj = tmit.next();
         TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
         int level = pertClient_.getExpressionLevelForSource(reg.region, timeObj.intValue(), 
                                                             ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
@@ -229,7 +229,7 @@ public class TimeCourseTableDrawer {
     // Regions
     int numRegions = regions.size();
     for (int i = 0; i < numRegions; i++) {
-      RegionData reg = (RegionData)regions.get(i);
+      RegionData reg = regions.get(i);
       if (!usedRegions.contains(reg.region)) {
         continue;
       }
@@ -247,9 +247,9 @@ public class TimeCourseTableDrawer {
     pertBigVert(out, BIG_VERT_COLOR_);
 
     // Heading
-    Iterator tmit = times.iterator();
+    Iterator<Integer> tmit = times.iterator();
     while (tmit.hasNext()) {
-      Integer timeObj = (Integer)tmit.next();
+      Integer timeObj = tmit.next();
       out.println("<td valign=\"center\">");
       out.print("<table border=\"0\" cellpadding=\"0\" cellspacing=\"0\">");
       pertHoriz(out, 5, MID_GREY_COLOR);
@@ -278,7 +278,7 @@ public class TimeCourseTableDrawer {
       pertHoriz(out, 5, MID_GREY_COLOR);
       // Regions
       for (int i = 0; i < numRegions; i++) {
-        RegionData reg = (RegionData)regions.get(i);
+        RegionData reg = regions.get(i);
         if (!usedRegions.contains(reg.region)) {
           continue;
         }
@@ -375,16 +375,16 @@ public class TimeCourseTableDrawer {
       out.println("</tr>");
       
       // data
-      Iterator regIt = regions.iterator();
+      Iterator<RegionData> regIt = regions.iterator();
       while (regIt.hasNext()) {
-        RegionData reg = (RegionData)regIt.next();
+        RegionData reg = regIt.next();
         out.println("<tr>");
         out.println("<td width=\"130\" align=\"center\" valign=\"center\"><b>");
         out.println(reg.region);
         out.println("</b></td>");
         tmit = times.iterator();
         while (tmit.hasNext()) {
-          Integer hour = (Integer)tmit.next();
+          Integer hour = tmit.next();
           buildCell(out, reg.region, hour.intValue(), client_);
         }
         out.println("</tr>");
@@ -448,15 +448,15 @@ public class TimeCourseTableDrawer {
   ** Answer if we need to show the confidence key
   */
   
-  private int needKey(List regions, SortedSet times, Client client) {
+  private int needKey(List<RegionData> regions, SortedSet<Integer> times, Client client) {
     int retval = BASIC_TABLE_KEY;
     int numRegions = regions.size();
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
     for (int i = 0; i < numRegions; i++) {
-      RegionData reg = (RegionData)regions.get(i);
-      Iterator tmit = times.iterator();
+      RegionData reg = regions.get(i);
+      Iterator<Integer> tmit = times.iterator();
       while (tmit.hasNext()) {
-        Integer hourObj = (Integer)tmit.next();
+        Integer hourObj = tmit.next();
         int hour = hourObj.intValue();
         int level = client.getExpressionLevelForSource(reg.region, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
         if ((level == ExpressionEntry.NO_REGION) || (level == ExpressionEntry.NO_DATA)) {
@@ -480,14 +480,14 @@ public class TimeCourseTableDrawer {
   ** Get an HTML expression table suitable for display.
   */
   
-  private void drawTableWithLineage(PrintWriter out, TreeModel rawHierTree, List regions, TreeSet times) {
+  private void drawTableWithLineage(PrintWriter out, TreeModel rawHierTree, List<RegionData> regions, TreeSet<Integer> times) {
   
     DefaultMutableTreeNode rawRootNode = (DefaultMutableTreeNode)rawHierTree.getRoot();
     DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode();
     DefaultTreeModel hierTree = new DefaultTreeModel(rootNode); 
     stockRegionTree(rawHierTree, rawRootNode, hierTree, rootNode, regions);
      
-    HashSet rawtimes = new HashSet();
+    HashSet<Integer> rawtimes = new HashSet<Integer>();
     client_.getInterestingTimes(rawtimes);
     times.addAll(rawtimes);
      
@@ -507,9 +507,9 @@ public class TimeCourseTableDrawer {
     out.println(client_.getName());
     out.println("</td>");
     vert(out, null);
-    Iterator tmit = times.iterator();
+    Iterator<Integer> tmit = times.iterator();
     while (tmit.hasNext()) {
-      Integer timeObj = (Integer)tmit.next();
+      Integer timeObj = tmit.next();
       out.println("<td width=\"70\" align=\"center\" valign=\"center\"><b>");
       String timeStr = TimeAxisDefinition.getTimeDisplay(appState_, timeObj, true, false);      
       out.print(timeStr);
@@ -523,7 +523,7 @@ public class TimeCourseTableDrawer {
     TreeInTable trit = new TreeInTable(appState_, hierTree, times, numRegions);
    
     for (int i = 0; i < numRegions; i++) {
-      RegionData reg = (RegionData)regions.get(i);
+      RegionData reg = regions.get(i);
       RowColorSpec rcs = trit.getTopColor(i);
       horiz(out, numTimes + 1, (rcs == null) ? 0 : rcs.startCol, (rcs == null) ? null : rcs.color);
       out.println("<tr>");
@@ -532,14 +532,14 @@ public class TimeCourseTableDrawer {
       out.println(reg.region);
       out.println("</b></td>");
       int currTime = 0;
-      Map colCols = trit.getColumnColors(i);
-      String col = (String)colCols.get(new Integer(-1));  // may be null
+      Map<Integer, String> colCols = trit.getColumnColors(i);
+      String col = colCols.get(new Integer(-1));  // may be null
       vert(out, col);
       tmit = times.iterator();
       while (tmit.hasNext()) {
-        Integer hour = (Integer)tmit.next();
+        Integer hour = tmit.next();
         buildCell(out, reg.region, hour.intValue(), client_);
-        col = (String)colCols.get(new Integer(currTime++));  // may be null
+        col = colCols.get(new Integer(currTime++));  // may be null
         vert(out, col);
       }
       out.println("</tr>");
@@ -834,7 +834,8 @@ public class TimeCourseTableDrawer {
   **
   */
   
-  private void buildCellWithQPCR(PrintWriter out, String reg, Set sources, int hour) {
+  @SuppressWarnings("unused")
+  private void buildCellWithQPCR(PrintWriter out, String reg, Set<PerturbationData.SourceInfo> sources, int hour) {
     TimeCourseGene.VariableLevel varLev = new TimeCourseGene.VariableLevel();
     int level = client_.getExpressionLevelForSource(reg, hour, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
     out.println("<td WIDTH=\"70\" "); 
@@ -1007,15 +1008,15 @@ public class TimeCourseTableDrawer {
   **
   */
 
-  private void buildQPCRList(PrintWriter out, Set sources) {
+  private void buildQPCRList(PrintWriter out, Set<PerturbationData.SourceInfo> sources) {
     int size = sources.size();
     if (size == 0) {
       return;
     }
     boolean first = true;
-    Iterator sit = sources.iterator();
+    Iterator<PerturbationData.SourceInfo> sit = sources.iterator();
     while (sit.hasNext()) {
-      PerturbationData.SourceInfo source = (PerturbationData.SourceInfo)sit.next();
+      PerturbationData.SourceInfo source = sit.next();
       if (source.sign == PertProperties.NO_LINK) {
         continue;
       }
@@ -1180,11 +1181,11 @@ public class TimeCourseTableDrawer {
     retval.minHour = 10000;
     retval.maxHour = -1;
     retval.region = region;
-    HashSet times = new HashSet();
+    HashSet<Integer> times = new HashSet<Integer>();
     client_.getInterestingTimes(times);
-    Iterator tmit = times.iterator();
+    Iterator<Integer> tmit = times.iterator();
     while (tmit.hasNext()) {
-      Integer hour = (Integer)tmit.next();
+      Integer hour = tmit.next();
       int hr = hour.intValue();
       int level = client_.getExpressionLevelForSource(region, hr, ExpressionEntry.NO_SOURCE_SPECIFIED, varLev);
       if (level != ExpressionEntry.NO_REGION) {
@@ -1222,7 +1223,7 @@ public class TimeCourseTableDrawer {
       ArrayList<RegionData> retval = new ArrayList<RegionData>();
       int numRO = regionOrder.size();
       for (int i = 0; i < numRO; i++) {
-        String region = (String)regionOrder.get(i);
+        String region = regionOrder.get(i);
         RegionData rd = buildRegionData(region);
         retval.add(rd);
       }
@@ -1238,13 +1239,13 @@ public class TimeCourseTableDrawer {
   */
   
   private void stockRegionTree(TreeModel hierTree, DefaultMutableTreeNode currNode, 
-                               DefaultTreeModel newTree, DefaultMutableTreeNode newNode, List depthFirstList) {  
+                               DefaultTreeModel newTree, DefaultMutableTreeNode newNode, List<RegionData> depthFirstList) {  
     
     //
     // Get original order:
     //
-    ArrayList origOrder = new ArrayList();
-    HashMap regToKid = new HashMap();
+    ArrayList<String> origOrder = new ArrayList<String>();
+    HashMap<String, DefaultMutableTreeNode> regToKid = new HashMap<String, DefaultMutableTreeNode>();
     int kidCount = hierTree.getChildCount(currNode);
     for (int i = 0; i < kidCount; i++) {
       DefaultMutableTreeNode kidNode = (DefaultMutableTreeNode)hierTree.getChild(currNode, i);
@@ -1252,7 +1253,7 @@ public class TimeCourseTableDrawer {
       origOrder.add(regID);
       regToKid.put(regID, kidNode);
     }
-    TreeSet sorted = new TreeSet(new PreservingRegionComparator(origOrder));
+    TreeSet<RegionData> sorted = new TreeSet<RegionData>(new PreservingRegionComparator(origOrder));
     
     //
     // Sorted List:
@@ -1264,13 +1265,13 @@ public class TimeCourseTableDrawer {
       sorted.add(rd);
     }
     
-    Iterator sit = sorted.iterator();
+    Iterator<RegionData> sit = sorted.iterator();
     while (sit.hasNext()) {
-      RegionData rd = (RegionData)sit.next();
+      RegionData rd = sit.next();
       depthFirstList.add(rd);
       DefaultMutableTreeNode mtn = new DefaultMutableTreeNode(rd);
       newTree.insertNodeInto(mtn, newNode, newNode.getChildCount());
-      DefaultMutableTreeNode kidNode = (DefaultMutableTreeNode)regToKid.get(rd.region);
+      DefaultMutableTreeNode kidNode = regToKid.get(rd.region);
       stockRegionTree(hierTree, kidNode, newTree, mtn, depthFirstList);
     }
   
@@ -1315,17 +1316,15 @@ public class TimeCourseTableDrawer {
   **
   */
   
-  private class PreservingRegionComparator implements Comparator {
+  private class PreservingRegionComparator implements Comparator<RegionData> {
     
-    private List origOrder_;
+    private List<String> origOrder_;
     
-    PreservingRegionComparator(List origOrder) {
+    PreservingRegionComparator(List<String> origOrder) {
       origOrder_ = origOrder;  
     }
     
-    public int compare(Object o1, Object o2) {
-      RegionData rd1 = (RegionData)o1;
-      RegionData rd2 = (RegionData)o2;
+    public int compare(RegionData rd1, RegionData rd2) {
       if (rd1.minHour > rd2.minHour) {
         return (-1);
       }
@@ -1358,36 +1357,36 @@ public class TimeCourseTableDrawer {
   */
   
   private static class TreeInTable {
-    private ArrayList list_;
+    private ArrayList<RowData> list_;
     private int maxCols_;
     private int colCount_;
     private BTState appState_;
     
-    TreeInTable(BTState appState, DefaultTreeModel hierTree, SortedSet times, int numRows) {
+    TreeInTable(BTState appState, DefaultTreeModel hierTree, SortedSet<Integer> times, int numRows) {
       appState_ = appState;
       colCount_ = 0;
       maxCols_ = appState_.getDB().getNumColors();
-      list_ = new ArrayList();
+      list_ = new ArrayList<RowData>();
       for (int i = 0; i < numRows; i++) {
         list_.add(new RowData());
       }
-      ArrayList timeList = new ArrayList(times);
+      ArrayList<Integer> timeList = new ArrayList<Integer>(times);
       DefaultMutableTreeNode rootNode = (DefaultMutableTreeNode)hierTree.getRoot(); 
       stockTheList(hierTree, rootNode, timeList, -1);
     }
       
     void addBlock(TreeInTableBlock block, int startRow) {
-      Set times = block.branches.keySet();
-      Iterator timit = times.iterator();
+      Set<Integer> times = block.branches.keySet();
+      Iterator<Integer> timit = times.iterator();
       int srFloor = (startRow < 0) ? 0 : startRow;
       while (timit.hasNext()) {
-        Integer time = (Integer)timit.next();
-        TreeBranch tb = (TreeBranch)block.branches.get(time);
-        Integer hiRow = (Integer)tb.rows.last();
+        Integer time = timit.next();
+        TreeBranch tb = block.branches.get(time);
+        Integer hiRow = tb.rows.last();
         int lastRow = hiRow.intValue();
         for (int i = srFloor; i <= lastRow; i++) {
-          RowData rd = (RowData)list_.get(i);
-          Integer tm1 = new Integer(time.intValue() - 1);
+          RowData rd = list_.get(i);
+          Integer tm1 = Integer.valueOf(time.intValue() - 1);
           rd.vertColors.put(tm1, block.color);
           Integer checkRow = new Integer(i);
           if (tb.rows.contains(checkRow)) {
@@ -1398,13 +1397,13 @@ public class TimeCourseTableDrawer {
       return;
     }  
     
-    Map getColumnColors(int row) {
-      RowData rd = (RowData)list_.get(row);
+    Map<Integer, String> getColumnColors(int row) {
+      RowData rd = list_.get(row);
       return (rd.vertColors);
     }
   
     RowColorSpec getTopColor(int row) {
-      RowData rd = (RowData)list_.get(row);
+      RowData rd = list_.get(row);
       return (rd.rcs);
     }
     
@@ -1424,10 +1423,10 @@ public class TimeCourseTableDrawer {
       return (db.getColor(colTag));
     }
     
-    void stockTheList(DefaultTreeModel hierTree, DefaultMutableTreeNode currNode, List timeList, int startRow) { 
+    void stockTheList(DefaultTreeModel hierTree, DefaultMutableTreeNode currNode, List<Integer> timeList, int startRow) { 
       int kidCount = hierTree.getChildCount(currNode);
       
-      TreeMap kidBranches = new TreeMap();
+      TreeMap<Integer, TreeBranch> kidBranches = new TreeMap<Integer, TreeBranch>();
       int sibStart = startRow;
       int lastRow = startRow + 1;
       int kidStart = startRow + 1;
@@ -1447,9 +1446,9 @@ public class TimeCourseTableDrawer {
         int decCount = getDecendantCount(hierTree, kidNode);
         lastRow += (decCount + 1); // add kid too
         RegionData regKid = (RegionData)kidNode.getUserObject();
-        int minTimeIndex = timeList.indexOf(new Integer(regKid.minHour));
-        Integer minTimeIndexObj = new Integer(minTimeIndex);
-        TreeBranch bra = (TreeBranch)kidBranches.get(minTimeIndexObj);
+        int minTimeIndex = timeList.indexOf(Integer.valueOf(regKid.minHour));
+        Integer minTimeIndexObj = Integer.valueOf(minTimeIndex);
+        TreeBranch bra = kidBranches.get(minTimeIndexObj);
         if (bra == null) {
           bra = new TreeBranch(minTimeIndexObj);
           kidBranches.put(minTimeIndexObj, bra);
@@ -1487,10 +1486,10 @@ public class TimeCourseTableDrawer {
   */
   
   private static class TreeInTableBlock {
-    TreeMap branches;
+    TreeMap<Integer, TreeBranch> branches;
     String color;
     
-    TreeInTableBlock(TreeMap branches, Color color) {
+    TreeInTableBlock(TreeMap<Integer, TreeBranch> branches, Color color) {
       this.branches = branches;
       this.color = "#" + (Integer.toHexString(color.getRGB())).substring(2);
     }
@@ -1503,12 +1502,13 @@ public class TimeCourseTableDrawer {
   */
   
   private static class TreeBranch {
-    Integer time;
-    TreeSet rows;
-     
+    //Integer time;
+    TreeSet<Integer> rows;
+    
+    @SuppressWarnings("unused")    
     TreeBranch(Integer time) {
-      this.time = time;
-      this.rows = new TreeSet();
+      //this.time = time;
+      this.rows = new TreeSet<Integer>();
     } 
   }
   
@@ -1536,11 +1536,11 @@ public class TimeCourseTableDrawer {
   
   private static class RowData {
     RowColorSpec rcs;
-    HashMap vertColors;
+    HashMap<Integer, String> vertColors;
      
     RowData() {
       this.rcs = null;
-      vertColors = new HashMap();
+      vertColors = new HashMap<Integer, String>();
     } 
   }  
 }

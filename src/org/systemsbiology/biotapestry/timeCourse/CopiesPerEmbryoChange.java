@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2007 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,11 +30,11 @@ import java.util.SortedSet;
   
 public class CopiesPerEmbryoChange {
   public String mapKey;
-  public List mapListOrig;
-  public List mapListNew;
+  public List<String> mapListOrig;
+  public List<String> mapListNew;
   public CopiesPerEmbryoGene gOrig;
   public CopiesPerEmbryoGene gNew;
   public int genePos;
-  public SortedSet oldDefaultTimes;
-  public SortedSet newDefaultTimes;  
+  public SortedSet<Integer> oldDefaultTimes;
+  public SortedSet<Integer> newDefaultTimes;  
 }

@@ -205,14 +205,15 @@ public class NetModuleLinkExtractor {
   */
   
   public SubsetAnalysis analyzeForMods(List<GenomeSubset> subsetList, // of GenomeSubset
-                                       Map<String, ExtractResultForSource> interModPaths) {
+                                       Map<String, ExtractResultForSource> interModPaths, 
+                                       Set<String> needExpansion) {
 
     int numSub = subsetList.size();   
     if (numSub == 0) {
       return (null);
     }
     
-    SubsetAnalysis sa = new SubsetAnalysis(interModPaths);
+    SubsetAnalysis sa = new SubsetAnalysis(interModPaths, needExpansion);
     
     //
     // Needed to easily interpret the inter-module path map:
@@ -1204,12 +1205,14 @@ public class NetModuleLinkExtractor {
     private Map<Integer, Integer> topoIndexReorder_;
     private List<GenomeSubset> topoOrderedSubsets_;
     private HashMap<String, FullBorderOrder> modNameToBorderOrderedInbounds_;
+    private HashSet<String> needExpansion_;
     
-    SubsetAnalysis(Map<String, NetModuleLinkExtractor.ExtractResultForSource> interModPaths) {
+    SubsetAnalysis(Map<String, NetModuleLinkExtractor.ExtractResultForSource> interModPaths, Set<String> needExpansion) {
       indexToModName_ = new HashMap<Integer, String>();
       srcToIndex_ = new HashMap<String, PrimaryAndOthers>();
       interModPaths_ = interModPaths;
-      partialOrder_ = null; 
+      partialOrder_ = null;
+      needExpansion_ = (needExpansion == null) ? null : new HashSet<String>(needExpansion);
     }
     
     public void mapIndexToModName(int i, String modName) {
@@ -1286,7 +1289,11 @@ public class NetModuleLinkExtractor {
       }
       Integer mapped = topoIndexReorder_.get(which);
       return (mapped.intValue());
-    }    
+    }
+    
+    public Set<String> needExpansion() {     
+      return (needExpansion_);
+    }
     
    /***************************************************************************
    **

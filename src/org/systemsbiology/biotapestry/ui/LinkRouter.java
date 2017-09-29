@@ -928,7 +928,7 @@ public class LinkRouter {
 
     boolean isSource = (siPlace == null);
     SpecialtyLayoutLinkData si = (siPlace == null) ? siSrc : siPlace;
-    
+ 
     //
     // Gotta do this before getting the cleaned position list.   Also, note
     // that the link ordering we are about to use will be changed!

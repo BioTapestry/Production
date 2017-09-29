@@ -48,8 +48,6 @@ public class NetOverlayCacheGroup extends CacheGroup implements ModalShapeContai
 			label_ = label;
 			
 			quickFade_ = nmp.getNameFadeMode();
-			
-			linkages_ = new ArrayList<NetModuleLinkageCacheGroup>();
 		}
 		
 		public NetModuleCacheGroup getFills() {
@@ -74,6 +72,7 @@ public class NetOverlayCacheGroup extends CacheGroup implements ModalShapeContai
 		
 		modules_ = new ArrayList<ModuleEntry>();
 		children_ = new ArrayList<CacheGroupItem>();
+		linkages_ = new ArrayList<NetModuleLinkageCacheGroup>();
 		
 		overlayType_ = overlayType;
 	}

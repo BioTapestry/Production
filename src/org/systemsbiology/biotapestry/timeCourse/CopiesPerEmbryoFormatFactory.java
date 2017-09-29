@@ -45,6 +45,7 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   private HashSet<String> allKeys_;  
   private Set<String> dataKeys_;
   private Set<String> geneKeys_;
+  @SuppressWarnings("unused")
   private Object container_;
   private CopiesPerEmbryoData currTarg_;
   private CopiesPerEmbryoGene currGene_;
@@ -55,7 +56,7 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   private String cAtTimeKey_;
 
   private String currCpeMapKey_;
-  private ArrayList currCpeMapList_;
+  private ArrayList<String> currCpeMapList_;
   private boolean mapsAreIllegal_;
   private BTState appState_;
   
@@ -140,7 +141,7 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
   **
   */
   
-  public Set keywordsOfInterest() {
+  public Set<String> keywordsOfInterest() {
     return (allKeys_);
   }
   
@@ -173,7 +174,7 @@ public class CopiesPerEmbryoFormatFactory implements ParserClient {
         throw new IOException();
       }
       currCpeMapKey_ = CopiesPerEmbryoData.extractCpeMapKey(elemName, attrs);
-      currCpeMapList_ = new ArrayList();
+      currCpeMapList_ = new ArrayList<String>();
       
     } else if (elemName.equals(useCpeKey_)) {
       if (mapsAreIllegal_) {

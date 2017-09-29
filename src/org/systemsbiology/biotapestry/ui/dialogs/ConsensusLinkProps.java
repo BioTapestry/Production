@@ -143,7 +143,12 @@ public class ConsensusLinkProps implements ConsensusProps {
     while (nit.hasNext()) {
       String linkID = nit.next();
       LinkProperties lp = layout.getLinkProperties(linkID);
+      // IF THIS IS A VFN, link COULD BE NULL (Issue #167):
       Linkage link = genome.getLinkage(linkID);
+      
+      if (link == null) {
+        continue;
+      }
 
       PerLinkDrawStyle plds = lp.getDrawStyleForLinkage(linkID);
       SuggestedDrawStyle linkBase = lp.getDrawStyle();

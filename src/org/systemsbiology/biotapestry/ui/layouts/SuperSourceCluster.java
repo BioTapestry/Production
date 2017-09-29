@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -38,7 +38,6 @@ import org.systemsbiology.biotapestry.analysis.CycleFinder;
 import org.systemsbiology.biotapestry.analysis.GraphSearcher;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.genome.Genome;
-import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.util.Bounds;
@@ -925,8 +924,8 @@ public class SuperSourceCluster {
         //
       
         double oldColX = colX;
-        double rightColX = colX + ((double)maxAssign * traceDistance);      
-        colX += ((double)maxAssign * traceDistance) + ((isStacked_) ? 0.0 : RIGHT_X_PAD_FOR_INTERNAL_TRACES_);
+        double rightColX = colX + (maxAssign * traceDistance);      
+        colX += (maxAssign * traceDistance) + ((isStacked_) ? 0.0 : RIGHT_X_PAD_FOR_INTERNAL_TRACES_);
 
         pcit = perCol.keySet().iterator();
         while (pcit.hasNext()) {
@@ -1002,7 +1001,6 @@ public class SuperSourceCluster {
     //
         
     Map<String, Integer> outTraces = outTraceOrder(nps, baseAtTop, las);    
-    
     HashMap<String, Double> prelimTraces = new HashMap<String, Double>();   
     double maxX = colX;
     
@@ -1015,7 +1013,21 @@ public class SuperSourceCluster {
       // of a complex fanout origin if the width value for the cluster is undervalued!
       // Outbound feeds would then have a slight backup overlap.
       //
-      double traceX = colX + (count.doubleValue() * traceDistance);
+      //
+      // Issue #243:
+      // Outbound link correctly located in the internal traces, so use that if it has 
+      // already been assigned.
+      //
+      // This fix caused regression Error #248, with diagonal layouts no longer 
+      // routing links correctly. Handle non-stacked correctly:
+      
+      double traceX;
+      Double pit = prelimInternalTraces.get(srcID);
+      if ((pit != null) && isStacked_) {
+        traceX = pit.doubleValue();
+      } else {
+        traceX = colX + (count.doubleValue() * traceDistance);
+      }
       prelimTraces.put(srcID, new Double(traceX));
       if (traceX > maxX) {
         maxX = traceX;
@@ -1721,7 +1733,7 @@ public class SuperSourceCluster {
     //
 
     if (inOffs.highestInbound != null) {
-      Integer highestInboundTrace = (Integer)inboundTraces_.get(inOffs.highestInbound); 
+      Integer highestInboundTrace = inboundTraces_.get(inOffs.highestInbound); 
       double baseDelta = traceDistance * highestInboundTrace.doubleValue();
       retval.baseX = inOffs.highestInboundX.doubleValue() - baseDelta;
     //
@@ -1731,9 +1743,9 @@ public class SuperSourceCluster {
     } else if ((inOffs.highestPrevious != null) && (allFeeds > 0)) { 
       double feedShift;
       if (baseAtTop) {
-        feedShift = (double)(allFeedGap.max - allFeedGap.min + 1) * traceDistance;
+        feedShift = (allFeedGap.max - allFeedGap.min + 1) * traceDistance;
       } else {
-        feedShift = (double)feedbacksFromBottom * traceDistance;
+        feedShift = feedbacksFromBottom * traceDistance;
       }
       retval.baseX = inOffs.highestPreviousX.doubleValue() - retval.leftShift + feedShift;
     //

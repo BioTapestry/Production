@@ -386,8 +386,12 @@ public class PathDisplayFrameFactory extends DialogFactory {
             pd_.unregister();
           }
         }
-        public void windowOpened(WindowEvent e) {   
-          pd_.updateNetworkDisplay();
+        public void windowOpened(WindowEvent e) { 
+          try {
+            pd_.updateNetworkDisplay();
+          } catch (Exception ex) {
+            appState_.getExceptionHandler().displayException(ex);
+          }
         }
       });
 

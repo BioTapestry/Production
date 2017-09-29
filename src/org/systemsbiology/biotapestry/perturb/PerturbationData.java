@@ -74,10 +74,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   // Collapse modes:
   //
   
-  public final static int NO_COLLAPSE             = 0;
-  public final static int DISTINCT_PLUS_MINUS     = 1;  
-  public final static int FULL_COLLAPSE_DROP_SIGN = 2; 
-  public final static int FULL_COLLAPSE_KEEP_SIGN = 3;  
+  public enum CollapseMode {NO_COLLAPSE,
+                            DISTINCT_PLUS_MINUS,
+                            FULL_COLLAPSE_DROP_SIGN,
+                            FULL_COLLAPSE_KEEP_SIGN};  
   
   
   //
@@ -170,10 +170,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   private List<PertDataPoint> sigPertCache_;  
   
   private long invertSrcNameCacheVersionSN_;
-  private HashMap invertSrcNameCache_;  
+  private HashMap<String, String> invertSrcNameCache_;  
   
   private long invertTargNameCacheVersionSN_;
-  private HashMap invertTargNameCache_;
+  private HashMap<String, String> invertTargNameCache_;
   
   private BTState appState_;
   
@@ -415,7 +415,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the names of the user-defined data fields:
   */
   
-  public Iterator getUserFieldNames() {
+  public Iterator<String> getUserFieldNames() {
     return (userFields_.iterator());
   } 
   
@@ -424,8 +424,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the set of names of the user-defined data fields:
   */
   
-  public Set getUserFieldNameSet() {
-    return (new HashSet(userFields_));
+  public Set<String> getUserFieldNameSet() {
+    return (new HashSet<String>(userFields_));
   } 
 
   /***************************************************************************
@@ -443,7 +443,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public String getUserFieldName(int index) {
-    return ((String)userFields_.get(index));
+    return (userFields_.get(index));
   }
     
   /***************************************************************************
@@ -455,7 +455,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     String normName = DataUtil.normKey(name);
     int numf = userFields_.size();
     for (int i = 0; i < numf; i++) {
-      String ufn = (String)userFields_.get(i);
+      String ufn = userFields_.get(i);
       if (DataUtil.normKey(ufn).equals(normName)) {
         return (new Integer(i));
       }
@@ -479,14 +479,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public String getUserFieldValue(String pdpID, int index) {
-    ArrayList list = (ArrayList)userData_.get(pdpID);
+    List<String> list = userData_.get(pdpID);
     if (list == null) {
       return (null);
     }
     if (index >= list.size()) {
       return (null);
     }
-    return ((String)list.get(index));
+    return (list.get(index));
   } 
  
   /***************************************************************************
@@ -502,7 +502,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       throw new IllegalArgumentException();
     }
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.USER_FIELD_VALS);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.USER_FIELD_VALS);
     retval.userDataKey = pdpID;
     retval.userDataOrig = userData_.get(pdpID);  // may be null
     if ((values == null) || values.isEmpty()) {
@@ -615,7 +615,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setUserFieldName(String indexStr, String name) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.USER_FIELD_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.USER_FIELD_NAME);
     int index;
     try {
       index = Integer.parseInt(indexStr);
@@ -650,7 +650,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public PertDataChange deleteUserFieldName(String indexStr) { 
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.USER_FIELD_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.USER_FIELD_NAME);
 
     // Stash original user data:
     retval.userDataSubsetOrig = new HashMap<String, List<String>>();
@@ -731,7 +731,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get all the annotations:
   */
   
-  public SortedMap getPertAnnotationsMap() {
+  public SortedMap<String, String> getPertAnnotationsMap() {
     return (pertAnnot_.getFullMap());
   }
   
@@ -840,9 +840,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
   
     StringBuffer buf = new StringBuffer();
-    TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
-    
-    String units = tad.unitDisplayString();
+    //TimeAxisDefinition tad = appState_.getDB().getTimeAxisDefinition();
+    //String units = tad.unitDisplayString();
        
     TreeMap<String, SortedSet<String>> expKeys = new TreeMap<String, SortedSet<String>>();
     
@@ -872,13 +871,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
       while (exksit.hasNext()) {
         String expKey = exksit.next();
         Experiment exp = experiments_.get(expKey);
-        TreeSet dates = new TreeSet();
-        TreeSet measureScales = new TreeSet();
-        TreeSet measureProps = new TreeSet();
-        TreeMap pointKeys = new TreeMap();
-        TreeSet controls = new TreeSet();
+        TreeSet<String> dates = new TreeSet<String>();
+        TreeSet<String> measureScales = new TreeSet<String>();
+        TreeSet<String> measureProps = new TreeSet<String>();
+        TreeMap<String, SortedSet<String>> pointKeys = new TreeMap<String, SortedSet<String>>();
+        TreeSet<String> controls = new TreeSet<String>();
        
-        TreeSet used = new TreeSet();
+        TreeSet<String> used = new TreeSet<String>();
 
         Iterator<String> dpit = dataPoints_.keySet().iterator();
         while (dpit.hasNext()) {
@@ -893,9 +892,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
             buf.append("::--------BT---------::");
             buf.append(bid);
             String ord = buf.toString();
-            TreeSet hs = (TreeSet)pointKeys.get(ord);
+            SortedSet<String> hs = pointKeys.get(ord);
             if (hs == null) {
-              hs = new TreeSet();
+              hs = new TreeSet<String>();
               pointKeys.put(ord, hs);     
             }
             hs.add(dpKey);
@@ -977,9 +976,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
         out.println("\"");
         */
         
-        Iterator uit = used.iterator();
+        Iterator<String> uit = used.iterator();
         while (uit.hasNext()) {
-          String aKey = (String)uit.next(); 
+          String aKey = uit.next(); 
           out.print("\"Annot\",\"");      
           out.print(pertAnnot_.getTag(aKey));
           out.print("\",\"");
@@ -1048,12 +1047,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
        out.println("\"BatchID\",\"PerturbationAgent\",\"MeasuredGene\",\"Time\",\"Measurement\",\"MeasureType\",\"ExpControl\",\"ForceSignificance\",\"Date\",\"Comments\",\"Annot\",\"RegRestrict\"");
     //   out.println("\"BatchID\",\"PerturbationAgent\",\"MeasuredGene\",\"Time\",\"Measurement\",\"ForceSignificance\",\"Comments\",\"Annot\"");
 
-        Iterator pkit = pointKeys.values().iterator();
+        Iterator<SortedSet<String>> pkit = pointKeys.values().iterator();
         while (pkit.hasNext()) {
-          TreeSet dpKeySet = (TreeSet)pkit.next();
-          Iterator dpksit = dpKeySet.iterator();
+          SortedSet<String> dpKeySet = pkit.next();
+          Iterator<String> dpksit = dpKeySet.iterator();
           while (dpksit.hasNext()) {
-            String dpKey = (String)dpksit.next();
+            String dpKey = dpksit.next();
             PertDataPoint pdp = dataPoints_.get(dpKey);
             RegionRestrict rr = getRegionRestrictionForDataPoint(dpKey);
             pdp.publishAsCSV(out, this, exp, condDict_, measureDict_, pertAnnot_, rr, invests);         
@@ -1080,7 +1079,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get a sorted, comma separated string of footnote numbers for the note IDs:
   */
   
-  public String getFootnoteListAsString(List noteIDs) {
+  public String getFootnoteListAsString(List<String> noteIDs) {
     return (pertAnnot_.getFootnoteListAsString(noteIDs));   
   }
   
@@ -1089,7 +1088,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get a sorted, comma separated string of "footnote numbers = text" for the note IDs:
   */
   
-  public String getFootnoteListAsNVString(List noteIDs) {
+  public String getFootnoteListAsNVString(List<String> noteIDs) {
     return (pertAnnot_.getFootnoteListAsNVString(noteIDs));   
   }
    
@@ -1098,7 +1097,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get a sorted list of footnote numbers for the note IDs:
   */
   
-  public List getFootnoteList(List noteIDs) {
+  public List<String> getFootnoteList(List<String> noteIDs) {
     return (pertAnnot_.getFootnoteList(noteIDs));   
   } 
   
@@ -1170,8 +1169,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get all the targets
   */
   
-  public Set getTargetSet() {
-    return (new HashSet(targets_.values()));
+  public Set<String> getTargetSet() {
+    return (new HashSet<String>(targets_.values()));
   }
 
   /***************************************************************************
@@ -1180,7 +1179,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public Set<String> getSourceNameSet() {
-    return (new HashSet(sourceNames_.values()));
+    return (new HashSet<String>(sourceNames_.values()));
   }  
   
   /***************************************************************************
@@ -1207,7 +1206,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public String getSourceOrTarget(String key) {
-    String retval = (String)targets_.get(key);
+    String retval = targets_.get(key);
     if (retval == null) {
       retval = sourceNames_.get(key);
     }
@@ -1221,7 +1220,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public boolean sourceTargetEquivalent(String sKey, String tKey) {
-    String tName = (String)targets_.get(tKey);
+    String tName = targets_.get(tKey);
     String sName = sourceNames_.get(sKey);
     return (DataUtil.keysEqual(tName, sName));
   }
@@ -1233,10 +1232,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public String getInvestKeyFromName(String name) {
     String normName = DataUtil.normKey(name);
-    Iterator ikit = investigators_.keySet().iterator();
+    Iterator<String> ikit = investigators_.keySet().iterator();
     while (ikit.hasNext()) {
-      String iKey = (String)ikit.next();
-      String inv = (String)investigators_.get(iKey);
+      String iKey = ikit.next();
+      String inv = investigators_.get(iKey);
       if (DataUtil.normKey(inv).equals(normName)) {
         return (iKey);
       }
@@ -1251,8 +1250,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public String getSourceKeyFromName(String name) {
     String normName = DataUtil.normKey(name);
-    Map isnc = buildInvertSrcNameCache(); 
-    return ((String)isnc.get(normName));
+    Map<String, String> isnc = buildInvertSrcNameCache(); 
+    return (isnc.get(normName));
   }  
   
   /***************************************************************************
@@ -1260,9 +1259,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Gotta be able to invert:
   */
   
-  private Map buildInvertSrcNameCache() {
+  private Map<String, String> buildInvertSrcNameCache() {
     if ((invertSrcNameCache_ == null) || (invertSrcNameCacheVersionSN_ != serialNumber_)) {
-      invertSrcNameCache_ = new HashMap();
+      invertSrcNameCache_ = new HashMap<String, String>();
       Iterator<String> ikit = sourceNames_.keySet().iterator();
       while (ikit.hasNext()) {
         String srcKey = ikit.next();
@@ -1281,8 +1280,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public String getTargKeyFromName(String name) {
     String normName = DataUtil.normKey(name);
-    Map itnc = buildInvertTrgNameCache();
-    return ((String)itnc.get(normName));
+    Map<String, String> itnc = buildInvertTrgNameCache();
+    return (itnc.get(normName));
   }  
   
   /***************************************************************************
@@ -1290,13 +1289,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Gotta be able to invert:
   */
   
-  private Map buildInvertTrgNameCache() {
+  private Map<String, String> buildInvertTrgNameCache() {
     if ((invertTargNameCache_ == null) || (invertTargNameCacheVersionSN_ != serialNumber_)) {
-      invertTargNameCache_ = new HashMap();
-      Iterator ikit = targets_.keySet().iterator();
+      invertTargNameCache_ = new HashMap<String, String>();
+      Iterator<String> ikit = targets_.keySet().iterator();
       while (ikit.hasNext()) {
-        String trgKey = (String)ikit.next();
-        String trg = (String)targets_.get(trgKey);
+        String trgKey = ikit.next();
+        String trg = targets_.get(trgKey);
         invertTargNameCache_.put(DataUtil.normKey(trg), trgKey);
       }
       invertTargNameCacheVersionSN_ = serialNumber_;
@@ -1328,10 +1327,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public boolean isTargetName(String geneName) {
     String normName = DataUtil.normKey(geneName);
-    Iterator ikit = targets_.keySet().iterator();
+    Iterator<String> ikit = targets_.keySet().iterator();
     while (ikit.hasNext()) {
-      String trgKey = (String)ikit.next();
-      String trg = (String)targets_.get(trgKey);
+      String trgKey = ikit.next();
+      String trg = targets_.get(trgKey);
       if (normName.equals(DataUtil.normKey(trg))) {
         return (true);
       }
@@ -1344,12 +1343,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Set user data for a data point:
   */
   
-  public void setUserDataForIO(String pdID, Map indexToVals) {
-    ArrayList myData = new ArrayList();
+  public void setUserDataForIO(String pdID, Map<String, String> indexToVals) {
+    ArrayList<String> myData = new ArrayList<String>();
     int numVals = userFields_.size();
     for (int i = 0; i < numVals; i++) {
       String strIndx = Integer.toString(i);
-      String val = (String)indexToVals.get(strIndx);
+      String val = indexToVals.get(strIndx);
       if (val == null) {
         val = "";
       }
@@ -1378,20 +1377,20 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (pdpID == null) {
       throw new IllegalArgumentException();
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.REG_RESTRICT);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.REG_RESTRICT);
     retval.dataRegResKey = pdpID;
-    retval.dataRegResOrig = (RegionRestrict)regionRestrictions_.get(pdpID);  // may be null
+    retval.dataRegResOrig = regionRestrictions_.get(pdpID);  // may be null
     if (regReg == null) {
       if (retval.dataRegResOrig == null) {  // no change...
         return (null);
       }
-      retval.dataRegResOrig = (RegionRestrict)retval.dataRegResOrig.clone();
+      retval.dataRegResOrig = retval.dataRegResOrig.clone();
       regionRestrictions_.remove(pdpID);
       retval.dataRegResNew = null;
     } else {
       retval.dataRegResOrig = (retval.dataRegResOrig == null) ? null : (RegionRestrict)retval.dataRegResOrig.clone();
       regionRestrictions_.put(pdpID, regReg.clone());
-      retval.dataRegResNew = (RegionRestrict)regReg.clone();
+      retval.dataRegResNew = regReg.clone();
     }   
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
@@ -1406,10 +1405,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (undo.dataRegResOrig == null) { // Undo an add
       regionRestrictions_.remove(undo.dataRegResKey);
     } else if (undo.dataRegResNew == null) {  // Undo a delete
-      RegionRestrict rro = (RegionRestrict)undo.dataRegResOrig.clone();
+      RegionRestrict rro = undo.dataRegResOrig.clone();
       regionRestrictions_.put(undo.dataRegResKey, rro);
     } else {  // Change data
-      RegionRestrict rro = (RegionRestrict)undo.dataRegResOrig.clone();
+      RegionRestrict rro = undo.dataRegResOrig.clone();
       regionRestrictions_.put(undo.dataRegResKey, rro);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -1422,12 +1421,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public void regRestrictRedo(PertDataChange redo) { 
     if (redo.dataRegResOrig == null) { // Redo an add
-      RegionRestrict rrn = (RegionRestrict)redo.dataRegResNew.clone();
+      RegionRestrict rrn = redo.dataRegResNew.clone();
       regionRestrictions_.put(redo.dataRegResKey, rrn);
     } else if (redo.dataRegResNew == null) {  // Redo a delete
       regionRestrictions_.remove(redo.dataRegResKey);
     } else {  // Change data
-      RegionRestrict rrn = (RegionRestrict)redo.dataRegResNew.clone();
+      RegionRestrict rrn = redo.dataRegResNew.clone();
       regionRestrictions_.put(redo.dataRegResKey, rrn);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -1440,7 +1439,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public RegionRestrict getRegionRestrictionForDataPoint(String pdID) {
-    return ((RegionRestrict)regionRestrictions_.get(pdID));
+    return (regionRestrictions_.get(pdID));
   }
   
   /***************************************************************************
@@ -1449,23 +1448,23 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] changeRegionNameForRegionRestrictions(String oldName, String newName) {
-    ArrayList allRets = new ArrayList();
-    Iterator rrit = regionRestrictions_.keySet().iterator();
+    ArrayList<PertDataChange> allRets = new ArrayList<PertDataChange>();
+    Iterator<String> rrit = regionRestrictions_.keySet().iterator();
     while (rrit.hasNext()) {
-      String key = (String)rrit.next();
-      RegionRestrict regReg = (RegionRestrict)regionRestrictions_.get(key);
+      String key = rrit.next();
+      RegionRestrict regReg = regionRestrictions_.get(key);
       RegionRestrict changed = regReg.changeRegionName(oldName, newName);
       if (changed != null) {
-        PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.REG_RESTRICT);
+        PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.REG_RESTRICT);
         retval.dataRegResKey = key;
-        retval.dataRegResOrig = (RegionRestrict)regReg.clone();
+        retval.dataRegResOrig = regReg.clone();
         regionRestrictions_.put(key, changed);
-        retval.dataRegResNew = (RegionRestrict)changed.clone();
+        retval.dataRegResNew = changed.clone();
         retval.serialNumberNew = ++serialNumber_;
         allRets.add(retval);
       }
     }
-    PertDataChange[] changes = (PertDataChange[])allRets.toArray(new PertDataChange[allRets.size()]);
+    PertDataChange[] changes = allRets.toArray(new PertDataChange[allRets.size()]);
     return (changes);
   }  
   
@@ -1475,31 +1474,31 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] dropRegionNameForRegionRestrictions(String dropName) {
-    ArrayList allRets = new ArrayList();
-    HashSet testSet = new HashSet();
+    ArrayList<PertDataChange> allRets = new ArrayList<PertDataChange>();
+    HashSet<String> testSet = new HashSet<String>();
     testSet.add(dropName);
-    Iterator rrit = new HashSet(regionRestrictions_.keySet()).iterator();
+    Iterator<String> rrit = new HashSet<String>(regionRestrictions_.keySet()).iterator();
     while (rrit.hasNext()) {
-      String key = (String)rrit.next();
-      RegionRestrict regReg = (RegionRestrict)regionRestrictions_.get(key);
+      String key = rrit.next();
+      RegionRestrict regReg = regionRestrictions_.get(key);
       if (!regReg.containsRegionName(testSet)) {
         continue;
       } 
       RegionRestrict dropped = regReg.dropRegionName(dropName);
-      PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.REG_RESTRICT);
+      PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.REG_RESTRICT);
       retval.dataRegResKey = key;
-      retval.dataRegResOrig = (RegionRestrict)regReg.clone();
+      retval.dataRegResOrig = regReg.clone();
       if (dropped == null) {
         regionRestrictions_.remove(key);
         retval.dataRegResNew = null;
       } else {
         regionRestrictions_.put(key, dropped);
-        retval.dataRegResNew = (RegionRestrict)dropped.clone();
+        retval.dataRegResNew = dropped.clone();
       }
       retval.serialNumberNew = ++serialNumber_;
       allRets.add(retval);
     }
-    PertDataChange[] changes = (PertDataChange[])allRets.toArray(new PertDataChange[allRets.size()]);
+    PertDataChange[] changes = allRets.toArray(new PertDataChange[allRets.size()]);
     return (changes);
   }  
   
@@ -1508,11 +1507,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Find region name in region restrictions 
   */
   
-  public boolean haveRegionNameInRegionRestrictions(Set dropNames) {
-    Iterator rrit = regionRestrictions_.keySet().iterator();
+  public boolean haveRegionNameInRegionRestrictions(Set<String> dropNames) {
+    Iterator<String> rrit = regionRestrictions_.keySet().iterator();
     while (rrit.hasNext()) {
-      String key = (String)rrit.next();
-      RegionRestrict regReg = (RegionRestrict)regionRestrictions_.get(key);
+      String key = rrit.next();
+      RegionRestrict regReg = regionRestrictions_.get(key);
       if (regReg.containsRegionName(dropNames)) {
         return (true);
       }
@@ -1535,24 +1534,24 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Set footnotes for a data point
   */
   
-  public PertDataChange setFootnotesForDataPoint(String pdpID, List noteMsgIDs) {
+  public PertDataChange setFootnotesForDataPoint(String pdpID, List<String> noteMsgIDs) {
     if (pdpID == null) {
       throw new IllegalArgumentException();
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_ANNOTS);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_ANNOTS);
     retval.dataAnnotsKey = pdpID;
-    retval.dataAnnotsOrig = (ArrayList)dataPointNotes_.get(pdpID);  // may be null
+    retval.dataAnnotsOrig = dataPointNotes_.get(pdpID);  // may be null
     if ((noteMsgIDs == null) || noteMsgIDs.isEmpty()) {
       if (retval.dataAnnotsOrig == null) {  // no change...
         return (null);
       }
-      retval.dataAnnotsOrig = (ArrayList)retval.dataAnnotsOrig.clone();
+      retval.dataAnnotsOrig = new ArrayList<String>(retval.dataAnnotsOrig);
       dataPointNotes_.remove(pdpID);
       retval.dataAnnotsNew = null;
     } else {
-      retval.dataAnnotsOrig = (retval.dataAnnotsOrig == null) ? null : (ArrayList)retval.dataAnnotsOrig.clone();
-      dataPointNotes_.put(pdpID, new ArrayList(noteMsgIDs));
-      retval.dataAnnotsNew = new ArrayList(noteMsgIDs);
+      retval.dataAnnotsOrig = (retval.dataAnnotsOrig == null) ? null : new ArrayList<String>(retval.dataAnnotsOrig);
+      dataPointNotes_.put(pdpID, new ArrayList<String>(noteMsgIDs));
+      retval.dataAnnotsNew = new ArrayList<String>(noteMsgIDs);
     }   
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
@@ -1567,10 +1566,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (undo.dataAnnotsOrig == null) { // Undo an add
       dataPointNotes_.remove(undo.dataAnnotsKey);
     } else if (undo.dataAnnotsNew == null) {  // Undo a delete
-      ArrayList dao = (ArrayList)undo.dataAnnotsOrig.clone();
+      ArrayList<String> dao = new ArrayList<String>(undo.dataAnnotsOrig);
       dataPointNotes_.put(undo.dataAnnotsKey, dao);
     } else {  // Change data
-      ArrayList dao = (ArrayList)undo.dataAnnotsOrig.clone();
+      ArrayList<String> dao = new ArrayList<String>(undo.dataAnnotsOrig);
       dataPointNotes_.put(undo.dataAnnotsKey, dao);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -1584,12 +1583,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public void dataAnnotRedo(PertDataChange redo) { 
     if (redo.dataAnnotsOrig == null) { // Redo an add
-      ArrayList dan = (ArrayList)redo.dataAnnotsNew.clone();
+      ArrayList<String> dan = new ArrayList<String>(redo.dataAnnotsNew);
       dataPointNotes_.put(redo.dataAnnotsKey, dan);
     } else if (redo.dataAnnotsNew == null) {  // Redo a delete
       dataPointNotes_.remove(redo.dataAnnotsKey);
     } else {  // Change data
-      ArrayList dan = (ArrayList)redo.dataAnnotsNew.clone();
+      ArrayList<String> dan = new ArrayList<String>(redo.dataAnnotsNew);
       dataPointNotes_.put(redo.dataAnnotsKey, dan);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -1611,21 +1610,21 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Set footnotes for a target (now only used internally)
   */
   
-  private PertDataChange setFootnotesForTarget(String targKey, List noteMsgIDs) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARGET_ANNOTS);
+  private PertDataChange setFootnotesForTarget(String targKey, List<String> noteMsgIDs) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_ANNOTS);
     retval.targetAnnotKey = targKey;
-    retval.targetAnnotOrig = (ArrayList)targetGeneNotes_.get(targKey);  // may be null
+    retval.targetAnnotOrig = targetGeneNotes_.get(targKey);  // may be null
     if ((noteMsgIDs == null) || noteMsgIDs.isEmpty()) {
       if (retval.targetAnnotOrig == null) {  // no change...
         return (null);
       }
-      retval.targetAnnotOrig = (ArrayList)retval.targetAnnotOrig.clone();
+      retval.targetAnnotOrig = new ArrayList<String>(retval.targetAnnotOrig);
       targetGeneNotes_.remove(targKey);
       retval.targetAnnotNew = null;
     } else {
-      retval.targetAnnotOrig = (retval.targetAnnotOrig == null) ? null : (ArrayList)retval.targetAnnotOrig.clone();
-      targetGeneNotes_.put(targKey, new ArrayList(noteMsgIDs));
-      retval.targetAnnotNew = new ArrayList(noteMsgIDs);
+      retval.targetAnnotOrig = (retval.targetAnnotOrig == null) ? null : new ArrayList<String>(retval.targetAnnotOrig);
+      targetGeneNotes_.put(targKey, new ArrayList<String>(noteMsgIDs));
+      retval.targetAnnotNew = new ArrayList<String>(noteMsgIDs);
     }   
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
@@ -1640,10 +1639,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (undo.targetAnnotOrig == null) { // Undo an add
       targetGeneNotes_.remove(undo.targetAnnotKey);
     } else if (undo.targetAnnotNew == null) {  // Undo a delete
-      ArrayList tao = (ArrayList)undo.targetAnnotOrig.clone();
+      ArrayList<String> tao = new ArrayList<String>(undo.targetAnnotOrig);
       targetGeneNotes_.put(undo.targetAnnotKey, tao);
     } else {  // Change data
-      ArrayList tao = (ArrayList)undo.targetAnnotOrig.clone();
+      ArrayList<String> tao = new ArrayList<String>(undo.targetAnnotOrig);
       targetGeneNotes_.put(undo.targetAnnotKey, tao);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -1657,12 +1656,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public void targetAnnotRedo(PertDataChange redo) { 
     if (redo.targetAnnotOrig == null) { // Redo an add
-      ArrayList tan = (ArrayList)redo.targetAnnotNew.clone();
+      ArrayList<String> tan = new ArrayList<String>(redo.targetAnnotNew);
       targetGeneNotes_.put(redo.targetAnnotKey, tan);
     } else if (redo.targetAnnotNew == null) {  // Redo a delete
       targetGeneNotes_.remove(redo.targetAnnotKey);
     } else {  // Change data
-      ArrayList tan = (ArrayList)redo.targetAnnotNew.clone();
+      ArrayList<String> tan = new ArrayList<String>(redo.targetAnnotNew);
       targetGeneNotes_.put(redo.targetAnnotKey, tan);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -1674,8 +1673,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get footnotes for a target
   */
   
-  public List getFootnotesForTarget(String targKey) {
-    return ((List)targetGeneNotes_.get(targKey));
+  public List<String> getFootnotesForTarget(String targKey) {
+    return (targetGeneNotes_.get(targKey));
   }
   
   /***************************************************************************
@@ -1684,8 +1683,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public String getAnnotatedTargetDisplay(String targKey) {
-    List foots = (List)targetGeneNotes_.get(targKey);
-    String targ = (String)targets_.get(targKey);
+    List<String> foots = targetGeneNotes_.get(targKey);
+    String targ = targets_.get(targKey);
     if ((foots == null) || foots.isEmpty()) {
       return (targ);
     }
@@ -1711,24 +1710,24 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Return, or create and return, a PertSourcesInfo that matches:
   */
   
-  public KeyAndDataChange provideExperiment(PertSources srcs, int time, int legacyMax, List investList, String condKey) {
+  public KeyAndDataChange provideExperiment(PertSources srcs, int time, int legacyMax, List<String> investList, String condKey) {
     Experiment prs = new Experiment(appState_, "", srcs, time, investList, condKey);
     if (legacyMax != Experiment.NO_TIME) {
       prs.setLegacyMaxTime(legacyMax);
     }    
-    Iterator prsit = experiments_.values().iterator();
+    Iterator<Experiment> prsit = experiments_.values().iterator();
     while (prsit.hasNext()) {
-      Experiment chk = (Experiment)prsit.next();
+      Experiment chk = prsit.next();
       if (chk.equalsMinusID(prs)) {
         return (new KeyAndDataChange(chk.getID(), null));
       }
     }
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT);
     retval.expOrig = null;    
     String nextID = labels_.getNextLabel();
     prs.setID(nextID);
-    retval.expNew = (Experiment)prs.clone();    
+    retval.expNew = prs.clone();    
     experiments_.put(nextID, prs);
     retval.serialNumberNew = ++serialNumber_;
     return (new KeyAndDataChange(nextID, retval));
@@ -1772,7 +1771,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       return (new KeyAndDataChange(foundID, null));
     }
 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_NAME);
     retval.srcNameOrig = null;
     retval.srcNameKey = labels_.getNextLabel();
     retval.srcNameNew = srcName;
@@ -1864,15 +1863,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public KeyAndDataChange providePertSrc(String srcNameKey, String typeKey, 
                                          String proxyForKey, String proxySign, 
-                                         List annotations, boolean justSrcAndType) {
+                                         List<String> annotations, boolean justSrcAndType) {
     PertSource ps = new PertSource("", srcNameKey, typeKey, annotations);
     if (!proxySign.equals(PertSource.NO_PROXY)) {
       ps.setProxiedSpeciesKey(proxyForKey);
       ps.setProxySign(proxySign);
     }
-    Iterator sdit = sourceDefs_.values().iterator();
+    Iterator<PertSource> sdit = sourceDefs_.values().iterator();
     while (sdit.hasNext()) {
-      PertSource chk = (PertSource)sdit.next();
+      PertSource chk = sdit.next();
       if (justSrcAndType) {
         if (chk.compareSrcAndType(ps) == 0) {
           return (new KeyAndDataChange(chk.getID(), null));
@@ -1884,12 +1883,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
     }
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF);
     retval.srcDefOrig = null;  
     String nextID = labels_.getNextLabel();
     ps.setID(nextID);
     sourceDefs_.put(nextID, ps);
-    retval.srcDefNew = (PertSource)ps.clone();
+    retval.srcDefNew = ps.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (new KeyAndDataChange(nextID, retval));
   }
@@ -1931,12 +1930,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEAS_SCALE);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEAS_SCALE);
     retval.mScaleOrig = null;
     String nextID = measureDict_.getNextDataKey();  
     MeasureScale scale = new MeasureScale(nextID, scaleDesc, convToFold, illegal, unchanged);
     measureDict_.setMeasureScale(scale);
-    retval.mScaleNew = (MeasureScale)scale.clone();
+    retval.mScaleNew = scale.clone();
     return (new KeyAndDataChange(nextID, retval));
   }
   
@@ -1959,12 +1958,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEASURE_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEASURE_PROP);
     retval.mpOrig = null;
     String nextID = measureDict_.getNextDataKey();  
     MeasureProps mProps = new MeasureProps(nextID, measName, scaleKey, negThresh, posThresh);
     measureDict_.setMeasureProp(mProps);
-    retval.mpNew = (MeasureProps)mProps.clone();
+    retval.mpNew = mProps.clone();
     return (new KeyAndDataChange(nextID, retval));
   }
   
@@ -1986,12 +1985,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.PERT_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.PERT_PROP);
     retval.ppOrig = null;
     String nextID = pertDict_.getNextDataKey(); 
     PertProperties pProps = new PertProperties(nextID, propName, abbrev, linkRelation);
     pertDict_.setPerturbProp(pProps);
-    retval.ppNew = (PertProperties)pProps.clone();
+    retval.ppNew = pProps.clone();
     return (new KeyAndDataChange(nextID, retval));
   }
   
@@ -2005,10 +2004,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
       String rescueID = undo.ppNew.getID();
       pertDict_.dropPerturbProp(rescueID);
     } else if (undo.ppNew == null) {  // Undo a delete
-      PertProperties ppr = (PertProperties)undo.ppOrig.clone();
+      PertProperties ppr = undo.ppOrig.clone();
       pertDict_.addPerturbPropForIO(ppr);  // Handles ID accounting
     } else {  // Change data
-      PertProperties ppr = (PertProperties)undo.ppOrig.clone();
+      PertProperties ppr = undo.ppOrig.clone();
       pertDict_.setPerturbProp(ppr);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -2022,13 +2021,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void pertPropRedo(PertDataChange redo) { 
     if (redo.ppOrig == null) { // Redo an add
-      PertProperties ppr = (PertProperties)redo.ppNew.clone();
+      PertProperties ppr = redo.ppNew.clone();
       pertDict_.addPerturbPropForIO(ppr);  // Handles ID accounting
     } else if (redo.ppNew == null) {  // Redo a delete
       String rescueID = redo.ppOrig.getID();
       pertDict_.dropPerturbProp(rescueID);
     } else {  // Change data
-      PertProperties ppr = (PertProperties)redo.ppNew.clone();
+      PertProperties ppr = redo.ppNew.clone();
       pertDict_.setPerturbProp(ppr); 
     }
     serialNumber_ = redo.serialNumberNew;
@@ -2067,12 +2066,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (exist != null) {
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_CONTROL);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_CONTROL);
     retval.ectrlOrig = null;
     String nextID = condDict_.getNextDataKey();  
     ExperimentControl ctrl = new ExperimentControl(nextID, ctrlDesc);
     condDict_.setExprControl(ctrl);
-    retval.ectrlNew = (ExperimentControl)ctrl.clone();
+    retval.ectrlNew = ctrl.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (new KeyAndDataChange(nextID, retval));
   } 
@@ -2090,12 +2089,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (exist != null) {
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_COND);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_COND);
     retval.ecOrig = null;
     String nextID = condDict_.getNextDataKey();  
     ExperimentConditions eCond = new ExperimentConditions(nextID, condDesc);
     condDict_.setExprCondition(eCond);
-    retval.ecNew = (ExperimentConditions)eCond.clone();
+    retval.ecNew = eCond.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (new KeyAndDataChange(nextID, retval));
   } 
@@ -2110,7 +2109,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (exist != null) {
       return (new KeyAndDataChange(exist, null));
     }   
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.INVEST);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.INVEST);
     retval.investOrig = null;
     String nextID = labels_.getNextLabel();
     retval.investKey = nextID;
@@ -2164,8 +2163,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setInvestigator(String key, String investName) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.INVEST);
-    retval.investOrig = (String)investigators_.get(key);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.INVEST);
+    retval.investOrig = investigators_.get(key);
     retval.investKey = key;
     retval.investNew = investName;
     investigators_.put(key, investName);
@@ -2178,20 +2177,20 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all investigator refs to a single one
   */
   
-  public PertDataChange mergeInvestigatorRefs(Set expsToMerge, String investKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT_SET);
-    retval.expSubsetOrig = new HashMap();
-    retval.expSubsetNew = new HashMap();
-    Iterator k2dit = expsToMerge.iterator();
+  public PertDataChange mergeInvestigatorRefs(Set<String> expsToMerge, String investKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);
+    retval.expSubsetOrig = new HashMap<String, Experiment>();
+    retval.expSubsetNew = new HashMap<String, Experiment>();
+    Iterator<String> k2dit = expsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      Experiment exp = (Experiment)experiments_.get(key);
-      List investList = exp.getInvestigators();
+      String key = k2dit.next();
+      Experiment exp = experiments_.get(key);
+      List<String> investList = exp.getInvestigators();
       boolean haveAChange = false;
       int numInv = investList.size();
-      ArrayList replaceInvest = new ArrayList();
+      ArrayList<String> replaceInvest = new ArrayList<String>();
       for (int i = 0; i < numInv; i++) {
-        String chkKey = (String)investList.get(i);
+        String chkKey = investList.get(i);
         boolean iChange = abandonKeys.contains(chkKey) && !chkKey.equals(investKey);
         if (iChange) {
           if (!replaceInvest.contains(investKey)) {
@@ -2219,20 +2218,20 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all source def refs to a single one
   */
   
-  public PertDataChange mergeSourceDefRefs(Set expsToMerge, String sdefKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT_SET);
-    retval.expSubsetOrig = new HashMap();
-    retval.expSubsetNew = new HashMap();
-    Iterator k2dit = expsToMerge.iterator();
+  public PertDataChange mergeSourceDefRefs(Set<String> expsToMerge, String sdefKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);
+    retval.expSubsetOrig = new HashMap<String, Experiment>();
+    retval.expSubsetNew = new HashMap<String, Experiment>();
+    Iterator<String> k2dit = expsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      Experiment exp = (Experiment)experiments_.get(key);
-      ArrayList replaceSources = new ArrayList();
+      String key = k2dit.next();
+      Experiment exp = experiments_.get(key);
+      ArrayList<String> replaceSources = new ArrayList<String>();
       boolean haveAChange = false;
       PertSources pss = exp.getSources();
-      Iterator pssit = pss.getSources();
+      Iterator<String> pssit = pss.getSources();
       while (pssit.hasNext()) {
-        String psid =(String)pssit.next();
+        String psid = pssit.next();
         boolean iChange = abandonKeys.contains(psid) && !psid.equals(sdefKey);
         if (iChange) {
           if (!replaceSources.contains(sdefKey)) {
@@ -2261,14 +2260,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all experimental condition refs into one
   */
   
-  public PertDataChange mergeExperimentCondRefs(Set expsToMerge, String condKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT_SET);
-    retval.expSubsetOrig = new HashMap();
-    retval.expSubsetNew = new HashMap();
-    Iterator k2dit = expsToMerge.iterator();
+  public PertDataChange mergeExperimentCondRefs(Set<String> expsToMerge, String condKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);
+    retval.expSubsetOrig = new HashMap<String, Experiment>();
+    retval.expSubsetNew = new HashMap<String, Experiment>();
+    Iterator<String> k2dit = expsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      Experiment exp = (Experiment)experiments_.get(key);
+      String key = k2dit.next();
+      Experiment exp = experiments_.get(key);
       String currCond = exp.getConditionKey();
       if (!condKey.equals(currCond)) {
         retval.expSubsetOrig.put(key, exp.clone());
@@ -2285,19 +2284,19 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all data point annotations to a single one
   */
   
-  public PertDataChange mergeDataPointAnnotRefs(Set dpToMerge, String annotKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_ANNOTS_SET);
-    retval.dataPtNotesSubsetOrig = new HashMap();
-    retval.dataPtNotesSubsetNew = new HashMap();
-    Iterator dpkit = dpToMerge.iterator();
+  public PertDataChange mergeDataPointAnnotRefs(Set<String> dpToMerge, String annotKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_ANNOTS_SET);
+    retval.dataPtNotesSubsetOrig = new HashMap<String, List<String>>();
+    retval.dataPtNotesSubsetNew = new HashMap<String, List<String>>();
+    Iterator<String> dpkit = dpToMerge.iterator();
     while (dpkit.hasNext()) {
-      String key = (String)dpkit.next();
-      ArrayList annots = (ArrayList)dataPointNotes_.get(key);
+      String key = dpkit.next();
+      List<String> annots = dataPointNotes_.get(key);
       boolean haveAChange = false;
       int numA = annots.size();
-      ArrayList replaceAnnots = new ArrayList();
+      ArrayList<String> replaceAnnots = new ArrayList<String>();
       for (int i = 0; i < numA; i++) {
-        String chkKey = (String)annots.get(i);
+        String chkKey = annots.get(i);
         boolean iChange = abandonKeys.contains(chkKey) && !chkKey.equals(annotKey);
         if (iChange) {
           if (!replaceAnnots.contains(annotKey)) {
@@ -2311,9 +2310,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
         haveAChange = haveAChange || iChange;
       } 
       if (haveAChange) {
-        retval.dataPtNotesSubsetOrig.put(key, annots.clone());
+        retval.dataPtNotesSubsetOrig.put(key, new ArrayList<String>(annots));
         dataPointNotes_.put(key, replaceAnnots);
-        retval.dataPtNotesSubsetNew.put(key, replaceAnnots.clone()); 
+        retval.dataPtNotesSubsetNew.put(key, new ArrayList<String>(replaceAnnots)); 
       }
     }
     retval.serialNumberNew = ++serialNumber_;
@@ -2325,19 +2324,19 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all target annotations to a single one
   */
   
-  public PertDataChange mergeTargetAnnotRefs(Set trgToMerge, String annotKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARG_ANNOTS_SET);
-    retval.targetNotesSubsetOrig = new HashMap();
-    retval.targetNotesSubsetNew = new HashMap();
-    Iterator trgkit = trgToMerge.iterator();
+  public PertDataChange mergeTargetAnnotRefs(Set<String> trgToMerge, String annotKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARG_ANNOTS_SET);
+    retval.targetNotesSubsetOrig = new HashMap<String, List<String>>();
+    retval.targetNotesSubsetNew = new HashMap<String, List<String>>();
+    Iterator<String> trgkit = trgToMerge.iterator();
     while (trgkit.hasNext()) {
-      String key = (String)trgkit.next();
-      ArrayList annots = (ArrayList)targetGeneNotes_.get(key);
+      String key = trgkit.next();
+      List<String> annots = targetGeneNotes_.get(key);
       boolean haveAChange = false;
       int numA = annots.size();
-      ArrayList replaceAnnots = new ArrayList();
+      ArrayList<String> replaceAnnots = new ArrayList<String>();
       for (int i = 0; i < numA; i++) {
-        String chkKey = (String)annots.get(i);
+        String chkKey = annots.get(i);
         boolean iChange = abandonKeys.contains(chkKey) && !chkKey.equals(annotKey);
         if (iChange) {
           if (!replaceAnnots.contains(annotKey)) {
@@ -2351,9 +2350,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
         haveAChange = haveAChange || iChange;
       } 
       if (haveAChange) {
-        retval.targetNotesSubsetOrig.put(key, annots.clone());
+        retval.targetNotesSubsetOrig.put(key, new ArrayList<String>(annots));
         targetGeneNotes_.put(key, replaceAnnots);
-        retval.targetNotesSubsetNew.put(key, replaceAnnots.clone()); 
+        retval.targetNotesSubsetNew.put(key, new ArrayList<String>(replaceAnnots)); 
       }
     }
     retval.serialNumberNew = ++serialNumber_;
@@ -2366,11 +2365,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void targetAnnotSetUndo(PertDataChange undo) {
-    Iterator dpnkit = undo.targetNotesSubsetOrig.keySet().iterator();
+    Iterator<String> dpnkit = undo.targetNotesSubsetOrig.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      ArrayList dpn = (ArrayList)undo.targetNotesSubsetOrig.get(key);
-      ArrayList dpnc = (ArrayList)dpn.clone();
+      String key = dpnkit.next();
+      List<String> dpn = undo.targetNotesSubsetOrig.get(key);
+      List<String> dpnc =  new ArrayList<String>(dpn);
       targetGeneNotes_.put(key, dpnc);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -2383,11 +2382,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void targetAnnotSetRedo(PertDataChange redo) {
-    Iterator dpnkit = redo.targetNotesSubsetNew.keySet().iterator();
+    Iterator<String> dpnkit = redo.targetNotesSubsetNew.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      ArrayList dpn = (ArrayList)redo.targetNotesSubsetNew.get(key);
-      ArrayList dpnc = (ArrayList)dpn.clone();
+      String key = dpnkit.next();
+      List<String> dpn = redo.targetNotesSubsetNew.get(key);
+      List<String> dpnc = new ArrayList<String>(dpn);
       if (dpnc.isEmpty()) {  // Empty list means delete
         targetGeneNotes_.remove(key);
       } else {
@@ -2403,21 +2402,21 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all source def annotations to a single one
   */
   
-  public PertDataChange mergeSourceDefAnnotRefs(Set sdToMerge, String annotKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF_SET);
-    retval.srcDefsSubsetOrig = new HashMap();
-    retval.srcDefsSubsetNew = new HashMap();
+  public PertDataChange mergeSourceDefAnnotRefs(Set<String> sdToMerge, String annotKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF_SET);
+    retval.srcDefsSubsetOrig = new HashMap<String, PertSource>();
+    retval.srcDefsSubsetNew = new HashMap<String, PertSource>();
  
-    Iterator sdit = sdToMerge.iterator();
+    Iterator<String> sdit = sdToMerge.iterator();
     while (sdit.hasNext()) {
-      String psdKey = (String)sdit.next();
-      PertSource chk = (PertSource)sourceDefs_.get(psdKey);
-      List annots = chk.getAnnotationIDs();
+      String psdKey = sdit.next();
+      PertSource chk = sourceDefs_.get(psdKey);
+      List<String> annots = chk.getAnnotationIDs();
       boolean haveAChange = false;
       int numA = annots.size();
-      ArrayList replaceAnnots = new ArrayList();
+      ArrayList<String> replaceAnnots = new ArrayList<String>();
       for (int i = 0; i < numA; i++) {
-        String chkKey = (String)annots.get(i);
+        String chkKey = annots.get(i);
         boolean iChange = abandonKeys.contains(chkKey) && !chkKey.equals(annotKey);
         if (iChange) {
           if (!replaceAnnots.contains(annotKey)) {
@@ -2445,19 +2444,19 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge investigators.  Caller must handle merged references first!
   */
   
-  public PertDataChange[] mergeInvestigatorNames(List keyIDs, String useKey, String newName) {
-    ArrayList allRets = new ArrayList();
+  public PertDataChange[] mergeInvestigatorNames(List<String> keyIDs, String useKey, String newName) {
+    ArrayList<PertDataChange> allRets = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.INVEST);
-      String keyID = (String)keyIDs.get(i);
+      PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.INVEST);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
-        retval.investOrig = (String)investigators_.get(keyID);
+        retval.investOrig = investigators_.get(keyID);
         retval.investKey = keyID;
         retval.investNew = newName;
         investigators_.put(keyID, newName);
       } else {
-        retval.investOrig = (String)investigators_.get(keyID);
+        retval.investOrig = investigators_.get(keyID);
         retval.investKey = keyID;
         retval.investNew = null;
         investigators_.remove(keyID);
@@ -2466,7 +2465,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retval.serialNumberNew = ++serialNumber_;
       allRets.add(retval);
     }    
-    PertDataChange[] changes = (PertDataChange[])allRets.toArray(new PertDataChange[allRets.size()]);
+    PertDataChange[] changes = allRets.toArray(new PertDataChange[allRets.size()]);
     return (changes);
   }
 
@@ -2477,9 +2476,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteInvestigator(String keyID) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.INVEST);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.INVEST);
     retval.investKey = keyID;
-    retval.investOrig = (String)investigators_.get(keyID);
+    retval.investOrig = investigators_.get(keyID);
     investigators_.remove(keyID);
     labels_.removeLabel(keyID);
     retval.investNew = null;
@@ -2527,7 +2526,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange addAnnotation(String tag, String message) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.ANNOTATION);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.ANNOTATION);
     retval.annotMsgOrig = null;
     retval.annotTagOrig = null;
     retval.annotKey = pertAnnot_.addMessage(tag, message);
@@ -2543,7 +2542,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange editAnnotation(String id, String tag, String message) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.ANNOTATION);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.ANNOTATION);
     retval.annotKey = id;
     retval.annotMsgOrig = pertAnnot_.getMessage(id);
     retval.annotTagOrig = pertAnnot_.getTag(id);
@@ -2560,7 +2559,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteAnnotation(String id) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.ANNOTATION);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.ANNOTATION);
     retval.annotKey = id;
     retval.annotMsgOrig = pertAnnot_.getMessage(id);
     retval.annotTagOrig = pertAnnot_.getTag(id);
@@ -2576,11 +2575,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge annotations. Caller must insure we have uniqueness first!
   */
   
-  public PertDataChange mergeAnnotations(List joinKeys, String commonKey, String tag, String message) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.ANNOT_MODULE);
-    retval.pAnnotOrig = (PertAnnotations)pertAnnot_.clone();
+  public PertDataChange mergeAnnotations(List<String> joinKeys, String commonKey, String tag, String message) { 
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.ANNOT_MODULE);
+    retval.pAnnotOrig = pertAnnot_.clone();
     pertAnnot_.mergeAnnotations(joinKeys, commonKey, tag, message);
-    retval.pAnnotNew = (PertAnnotations)pertAnnot_.clone();
+    retval.pAnnotNew = pertAnnot_.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -2623,10 +2622,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public String getTargetFromName(String targName) {
     String normName = DataUtil.normKey(targName);
-    Iterator ikit = targets_.keySet().iterator();
+    Iterator<String> ikit = targets_.keySet().iterator();
     while (ikit.hasNext()) {
-      String trgKey = (String)ikit.next();
-      String trg = (String)targets_.get(trgKey);
+      String trgKey = ikit.next();
+      String trg = targets_.get(trgKey);
       if (normName.equals(DataUtil.normKey(trg))) {
         return (trgKey);
       }
@@ -2644,7 +2643,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (foundTarg != null) {
       return (new KeyAndDataChange(foundTarg, null));
     }
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARGET_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
     retval.targetOrig = null;
     String nextID = labels_.getNextLabel();   
     retval.targetKey = nextID;
@@ -2717,7 +2716,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add or replace a target name, along with annotations
   */
   
-  public PertDataChange[] setTargetName(String keyID, String name, List annots) {
+  public PertDataChange[] setTargetName(String keyID, String name, List<String> annots) {
     return (setTargetNameManageIdents(keyID, name, annots, true));
   }
   
@@ -2726,12 +2725,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add or replace a target name, along with annotations
   */
   
-  private PertDataChange[] setTargetNameManageIdents(String keyID, String name, List annots, boolean doIdents) {
-    ArrayList retlist = new ArrayList();
+  private PertDataChange[] setTargetNameManageIdents(String keyID, String name, List<String> annots, boolean doIdents) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARGET_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
     retval.targetKey = keyID;
-    retval.targetOrig = (String)targets_.get(keyID);
+    retval.targetOrig = targets_.get(keyID);
     targets_.put(keyID, name); 
     retval.targetNew = name;
     retval.serialNumberNew = ++serialNumber_;
@@ -2746,7 +2745,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retlist.addAll(Arrays.asList(entryMap_.dropIdentityMaps(targets_)));
     }
         
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -2755,17 +2754,17 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private PertDataChange[] changeTargetNameManageIdents(String keyID, String name) {
-    ArrayList retlist = new ArrayList();
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARGET_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
     retval.targetKey = keyID;
-    retval.targetOrig = (String)targets_.get(keyID);
+    retval.targetOrig = targets_.get(keyID);
     targets_.put(keyID, name); 
     retval.targetNew = name;
     retval.serialNumberNew = ++serialNumber_;
     retlist.add(retval);      
     retlist.addAll(Arrays.asList(entryMap_.dropIdentityMaps(targets_)));        
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
 
   /***************************************************************************
@@ -2775,7 +2774,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] deleteTargetName(String keyID) {
-    ArrayList retlist = new ArrayList();
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
      
     PertDataChange fnpdc = setFootnotesForTarget(keyID, null);
     if (fnpdc != null) {
@@ -2787,16 +2786,16 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retlist.add(vals[i]);
     } 
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.TARGET_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARGET_NAME);
     retval.targetKey = keyID;
-    retval.targetOrig = (String)targets_.get(keyID);
+    retval.targetOrig = targets_.get(keyID);
     targets_.remove(keyID);
     labels_.removeLabel(keyID);
     retval.targetNew = null;
     retval.serialNumberNew = ++serialNumber_;
     retlist.add(retval);
    
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   
@@ -2805,14 +2804,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of target names.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeTargetNames(List keyIDs, String useKey, String newName, List newFoots) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeTargetNames(List<String> keyIDs, String useKey, String newName, List<String> newFoots) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     
     retlist.addAll(Arrays.asList(entryMap_.mergeMapsFor(useKey, keyIDs)));
 
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.addAll(Arrays.asList(setTargetNameManageIdents(useKey, newName, newFoots, false)));
       } else {
@@ -2822,7 +2821,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     retlist.addAll(Arrays.asList(entryMap_.dropIdentityMaps(targets_)));
      
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -2830,18 +2829,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of experimental controls.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeExprControls(List keyIDs, String useKey, ExperimentControl revisedECtrl) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeExprControls(List<String> keyIDs, String useKey, ExperimentControl revisedECtrl) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setExperimentControl(revisedECtrl));
       } else {
         retlist.add(deleteExperimentControl(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -2849,18 +2848,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of measurement props.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeMeasureProps(List keyIDs, String useKey, MeasureProps revisedMp) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeMeasureProps(List<String> keyIDs, String useKey, MeasureProps revisedMp) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setMeasureProp(revisedMp));        
       } else {
         retlist.add(deleteMeasureProp(keyID));    
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -2868,18 +2867,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of perturbation properties.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergePertProps(List keyIDs, String useKey, PertProperties revisedPp) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergePertProps(List<String> keyIDs, String useKey, PertProperties revisedPp) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setPerturbationProp(revisedPp));  
       } else {
         retlist.add(deletePerturbationProp(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -2887,18 +2886,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of experimental conditions.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeExprConditions(List keyIDs, String useKey, ExperimentConditions revisedECond) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeExprConditions(List<String> keyIDs, String useKey, ExperimentConditions revisedECond) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setExperimentConditions(revisedECond));
       } else {
         retlist.add(deleteExperimentConditions(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
 
   /***************************************************************************
@@ -2906,8 +2905,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge a bunch of source names.  Caller must have fixed up the refs first!
   */
   
-  public PertDataChange[] mergeSourceNames(List keyIDs, String useKey, String newName) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeSourceNames(List<String> keyIDs, String useKey, String newName) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
      
     // All nodes that have a custom map to one of the merged sources will now
     // map to the single merged source:
@@ -2917,7 +2916,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.addAll(Arrays.asList(setSourceNameManageIdents(useKey, newName, false)));
       } else {
@@ -2927,7 +2926,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     retlist.addAll(Arrays.asList(sourceMap_.dropIdentityMaps(sourceNames_)));
     
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
 
   
@@ -2946,9 +2945,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private PertDataChange[] setSourceNameManageIdents(String keyID, String name, boolean dropIdent) {
-    ArrayList retlist = new ArrayList();
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_NAME);
     retval.srcNameKey = keyID;
     retval.srcNameOrig = sourceNames_.get(keyID);
     sourceNames_.put(keyID, name); 
@@ -2960,7 +2959,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retlist.addAll(Arrays.asList(sourceMap_.dropIdentityMaps(sourceNames_)));
     }
     
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
    
   /***************************************************************************
@@ -3006,14 +3005,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] deleteSourceName(String keyID) {
-    ArrayList retlist = new ArrayList();
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
      
     PertDataChange[] vals = sourceMap_.dropDanglingMapsFor(keyID);
     for (int i = 0; i < vals.length; i++) {
       retlist.add(vals[i]);
     } 
 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_NAME);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_NAME);
     retval.srcNameKey = keyID;
     retval.srcNameOrig = sourceNames_.get(keyID);
     sourceNames_.remove(keyID);
@@ -3022,7 +3021,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     retval.serialNumberNew = ++serialNumber_;
     retlist.add(retval);
     
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -3031,12 +3030,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setMeasureProp(MeasureProps mprops) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEASURE_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEASURE_PROP);
     String key = mprops.getID();  
     MeasureProps orig = measureDict_.getMeasureProps(key);
     retval.mpOrig = (orig == null) ? null : (MeasureProps)orig.clone();
     measureDict_.setMeasureProp(mprops);
-    retval.mpNew = (MeasureProps)mprops.clone();
+    retval.mpNew = mprops.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -3048,9 +3047,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteMeasureProp(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEASURE_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEASURE_PROP);
     MeasureProps orig = measureDict_.getMeasureProps(key);
-    retval.mpOrig = (MeasureProps)orig.clone();
+    retval.mpOrig = orig.clone();
     measureDict_.dropMeasureProp(key);
     retval.mpNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -3067,10 +3066,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
       String rescueID = undo.mpNew.getID();
       measureDict_.dropMeasureProp(rescueID);
     } else if (undo.mpNew == null) {  // Undo a delete
-      MeasureProps mpo = (MeasureProps)undo.mpOrig.clone();
+      MeasureProps mpo = undo.mpOrig.clone();
       measureDict_.addMeasurePropForIO(mpo);  // Handles ID accounting
     } else {  // Change data
-      MeasureProps mpo = (MeasureProps)undo.mpOrig.clone();
+      MeasureProps mpo = undo.mpOrig.clone();
       measureDict_.setMeasureProp(mpo);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -3084,13 +3083,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void measurePropRedo(PertDataChange redo) { 
     if (redo.mpOrig == null) { // Redo an add
-      MeasureProps mpn = (MeasureProps)redo.mpNew.clone();
+      MeasureProps mpn = redo.mpNew.clone();
       measureDict_.addMeasurePropForIO(mpn);  // Handles ID accounting
     } else if (redo.mpNew == null) {  // Redo a delete
       String rescueID = redo.mpOrig.getID();
       measureDict_.dropMeasureProp(rescueID);
     } else {  // Change data
-      MeasureProps mpn = (MeasureProps)redo.mpNew.clone();
+      MeasureProps mpn = redo.mpNew.clone();
       measureDict_.setMeasureProp(mpn); 
     }
     serialNumber_ = redo.serialNumberNew;
@@ -3103,12 +3102,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setExperimentConditions(ExperimentConditions expCond) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_COND);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_COND);
     String key = expCond.getID();  
     ExperimentConditions orig = condDict_.getExprConditions(key);
     retval.ecOrig = (orig == null) ? null : (ExperimentConditions)orig.clone();
     condDict_.setExprCondition(expCond);
-    retval.ecNew = (ExperimentConditions)expCond.clone();
+    retval.ecNew = expCond.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -3120,9 +3119,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteExperimentConditions(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_COND);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_COND);
     ExperimentConditions orig = condDict_.getExprConditions(key);
-    retval.ecOrig = (ExperimentConditions)orig.clone();
+    retval.ecOrig = orig.clone();
     condDict_.dropExprConditions(key);
     retval.ecNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -3139,10 +3138,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
       String rescueID = undo.ecNew.getID();
       condDict_.dropExprConditions(rescueID);
     } else if (undo.ecNew == null) {  // Undo a delete
-      ExperimentConditions eco = (ExperimentConditions)undo.ecOrig.clone();
+      ExperimentConditions eco = undo.ecOrig.clone();
       condDict_.addExprConditionsForIO(eco);  // Handles ID accounting
     } else {  // Change data
-      ExperimentConditions eco = (ExperimentConditions)undo.ecOrig.clone();
+      ExperimentConditions eco = undo.ecOrig.clone();
       condDict_.setExprCondition(eco);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -3156,13 +3155,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void expCondRedo(PertDataChange redo) { 
     if (redo.ecOrig == null) { // Redo an add
-      ExperimentConditions ecn = (ExperimentConditions)redo.ecNew.clone();
+      ExperimentConditions ecn = redo.ecNew.clone();
       condDict_.addExprConditionsForIO(ecn);  // Handles ID accounting
     } else if (redo.ecNew == null) {  // Redo a delete
       String rescueID = redo.ecOrig.getID();
       condDict_.dropExprConditions(rescueID);
     } else {  // Change data
-      ExperimentConditions ecn = (ExperimentConditions)redo.ecNew.clone();
+      ExperimentConditions ecn = redo.ecNew.clone();
       condDict_.setExprCondition(ecn); 
     }
     serialNumber_ = redo.serialNumberNew;
@@ -3175,12 +3174,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setExperimentControl(ExperimentControl expCtrl) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_CONTROL);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_CONTROL);
     String key = expCtrl.getID();  
     ExperimentControl orig = condDict_.getExprControl(key);
     retval.ectrlOrig = (orig == null) ? null : (ExperimentControl)orig.clone();
     condDict_.setExprControl(expCtrl);
-    retval.ectrlNew = (ExperimentControl)expCtrl.clone();
+    retval.ectrlNew = expCtrl.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -3192,9 +3191,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteExperimentControl(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXP_CONTROL);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXP_CONTROL);
     ExperimentControl orig = condDict_.getExprControl(key);
-    retval.ectrlOrig = (ExperimentControl)orig.clone();
+    retval.ectrlOrig = orig.clone();
     condDict_.dropExprControl(key);
     retval.ectrlNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -3211,10 +3210,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
       String rescueID = undo.ectrlNew.getID();
       condDict_.dropExprControl(rescueID);
     } else if (undo.ectrlNew == null) {  // Undo a delete
-      ExperimentControl eco = (ExperimentControl)undo.ectrlOrig.clone();
+      ExperimentControl eco = undo.ectrlOrig.clone();
       condDict_.addExprControlForIO(eco);  // Handles ID accounting
     } else {  // Change data
-      ExperimentControl eco = (ExperimentControl)undo.ectrlOrig.clone();
+      ExperimentControl eco = undo.ectrlOrig.clone();
       condDict_.setExprControl(eco);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -3228,13 +3227,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void expControlRedo(PertDataChange redo) { 
     if (redo.ectrlOrig == null) { // Redo an add
-      ExperimentControl ecn = (ExperimentControl)redo.ectrlNew.clone();
+      ExperimentControl ecn = redo.ectrlNew.clone();
       condDict_.addExprControlForIO(ecn);  // Handles ID accounting
     } else if (redo.ectrlNew == null) {  // Redo a delete
       String rescueID = redo.ectrlOrig.getID();
       condDict_.dropExprControl(rescueID);
     } else {  // Change data
-      ExperimentControl ecn = (ExperimentControl)redo.ectrlNew.clone();
+      ExperimentControl ecn = redo.ectrlNew.clone();
       condDict_.setExprControl(ecn); 
     }
     serialNumber_ = redo.serialNumberNew;
@@ -3247,12 +3246,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setMeasureScale(MeasureScale mScale) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEAS_SCALE);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEAS_SCALE);
     String key = mScale.getID();  
     MeasureScale orig = measureDict_.getMeasureScale(key);
     retval.mScaleOrig = (orig == null) ? null : (MeasureScale)orig.clone();
     measureDict_.setMeasureScale(mScale);
-    retval.mScaleNew = (MeasureScale)mScale.clone();
+    retval.mScaleNew = mScale.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -3264,9 +3263,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteMeasureScale(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEAS_SCALE);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEAS_SCALE);
     MeasureScale orig = measureDict_.getMeasureScale(key);
-    retval.mScaleOrig = (MeasureScale)orig.clone();
+    retval.mScaleOrig = orig.clone();
     measureDict_.dropMeasureScale(key);
     retval.mScaleNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -3283,10 +3282,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
       String rescueID = undo.mScaleNew.getID();
       measureDict_.dropMeasureScale(rescueID);
     } else if (undo.mScaleNew == null) {  // Undo a delete
-      MeasureScale mso = (MeasureScale)undo.mScaleOrig.clone();
+      MeasureScale mso = undo.mScaleOrig.clone();
       measureDict_.addMeasureScaleForIO(mso);  // Handles ID accounting
     } else {  // Change data
-      MeasureScale mso = (MeasureScale)undo.mScaleOrig.clone();
+      MeasureScale mso = undo.mScaleOrig.clone();
       measureDict_.setMeasureScale(mso);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -3300,13 +3299,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void measureScaleRedo(PertDataChange redo) { 
     if (redo.mScaleOrig == null) { // Redo an add
-      MeasureScale msn = (MeasureScale)redo.mScaleNew.clone();
+      MeasureScale msn = redo.mScaleNew.clone();
       measureDict_.addMeasureScaleForIO(msn);  // Handles ID accounting
     } else if (redo.mScaleNew == null) {  // Redo a delete
       String rescueID = redo.mScaleOrig.getID();
       measureDict_.dropMeasureScale(rescueID);
     } else {  // Change data
-      MeasureScale msn = (MeasureScale)redo.mScaleNew.clone();
+      MeasureScale msn = redo.mScaleNew.clone();
       measureDict_.setMeasureScale(msn); 
     }
     serialNumber_ = redo.serialNumberNew;
@@ -3318,17 +3317,17 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all measurement scales refs to a single one
   */
   
-  public PertDataChange mergeMeasureScaleRefs(Set mPropsToMerge, String scaleKey) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.MEASURE_PROP_SET);
-    retval.mPropsSubsetOrig = new HashMap();
-    retval.mPropsSubsetNew = new HashMap();
-    Iterator k2dit = mPropsToMerge.iterator();
+  public PertDataChange mergeMeasureScaleRefs(Set<String> mPropsToMerge, String scaleKey) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.MEASURE_PROP_SET);
+    retval.mPropsSubsetOrig = new HashMap<String, MeasureProps>();
+    retval.mPropsSubsetNew = new HashMap<String, MeasureProps>();
+    Iterator<String> k2dit = mPropsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
+      String key = k2dit.next();
       MeasureProps mp = measureDict_.getMeasureProps(key);
       if (!scaleKey.equals(mp.getScaleKey())) {
         retval.mPropsSubsetOrig.put(key, mp.clone());
-        mp = (MeasureProps)mp.clone();
+        mp = mp.clone();
         mp.setScaleKey(scaleKey);
         measureDict_.setMeasureProp(mp);
         retval.mPropsSubsetNew.put(key, mp.clone());
@@ -3345,11 +3344,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void measurePropSetUndo(PertDataChange undo) {
-    Iterator dpnkit = undo.mPropsSubsetOrig.keySet().iterator();
+    Iterator<String> dpnkit = undo.mPropsSubsetOrig.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      MeasureProps mp = (MeasureProps)undo.mPropsSubsetOrig.get(key);
-      MeasureProps mpc = (MeasureProps)mp.clone();
+      String key = dpnkit.next();
+      MeasureProps mp = undo.mPropsSubsetOrig.get(key);
+      MeasureProps mpc = mp.clone();
       measureDict_.setMeasureProp(mpc);
     }    
     serialNumber_ = undo.serialNumberOrig;
@@ -3362,11 +3361,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void measurePropSetRedo(PertDataChange redo) {
-    Iterator dpnkit = redo.mPropsSubsetNew.keySet().iterator();
+    Iterator<String> dpnkit = redo.mPropsSubsetNew.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      MeasureProps mp = (MeasureProps)redo.mPropsSubsetNew.get(key);
-      MeasureProps mpc = (MeasureProps)mp.clone();
+      String key = dpnkit.next();
+      MeasureProps mp = redo.mPropsSubsetNew.get(key);
+      MeasureProps mpc = mp.clone();
       measureDict_.setMeasureProp(mpc);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -3378,21 +3377,21 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge measurement scales.  Caller must handle merged references first!
   */
   
-  public PertDataChange[] mergeMeasureScales(List keyIDs, String useKey, MeasureScale scale) {
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeMeasureScales(List<String> keyIDs, String useKey, MeasureScale scale) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         if (!scale.getID().equals(useKey)) {
           throw new IllegalArgumentException();
         }
-        retlist.add(setMeasureScale((MeasureScale)scale.clone()));
+        retlist.add(setMeasureScale(scale.clone()));
       } else {
         retlist.add(deleteMeasureScale(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
 
   /***************************************************************************
@@ -3401,12 +3400,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setPerturbationProp(PertProperties pprops) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.PERT_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.PERT_PROP);
     String key = pprops.getID();  
     PertProperties orig = pertDict_.getPerturbProps(key);
     retval.ppOrig = (orig == null) ? null : (PertProperties)orig.clone();
     pertDict_.setPerturbProp(pprops);
-    retval.ppNew = (PertProperties)pprops.clone();
+    retval.ppNew = pprops.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -3418,9 +3417,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deletePerturbationProp(String key) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.PERT_PROP);
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.PERT_PROP);
     PertProperties orig = pertDict_.getPerturbProps(key);
-    retval.ppOrig = (PertProperties)orig.clone();
+    retval.ppOrig = orig.clone();
     pertDict_.dropPerturbProp(key);
     retval.ppNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -3432,67 +3431,68 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public PerturbationData clone() {
     try {
       PerturbationData newVal = (PerturbationData)super.clone();
       
-      newVal.dataPoints_ = new HashMap();
-      Iterator dpit = this.dataPoints_.keySet().iterator();
+      newVal.dataPoints_ = new HashMap<String, PertDataPoint>();
+      Iterator<String> dpit = this.dataPoints_.keySet().iterator();
       while (dpit.hasNext()) {
-        String dpKey = (String)dpit.next();
+        String dpKey = dpit.next();
         newVal.dataPoints_.put(dpKey, this.dataPoints_.get(dpKey).clone());
       }
       
-      newVal.sourceDefs_ = new HashMap();
-      Iterator sdit = this.sourceDefs_.keySet().iterator();
+      newVal.sourceDefs_ = new HashMap<String, PertSource>();
+      Iterator<String> sdit = this.sourceDefs_.keySet().iterator();
       while (sdit.hasNext()) {
-        String sdKey = (String)sdit.next();
-        newVal.sourceDefs_.put(sdKey, ((PertSource)this.sourceDefs_.get(sdKey)).clone());
+        String sdKey = sdit.next();
+        newVal.sourceDefs_.put(sdKey, this.sourceDefs_.get(sdKey).clone());
       }
       
-      newVal.experiments_ = new HashMap();
-      Iterator psit = this.experiments_.keySet().iterator();
+      newVal.experiments_ = new HashMap<String, Experiment>();
+      Iterator<String> psit = this.experiments_.keySet().iterator();
       while (psit.hasNext()) {
-        String psKey = (String)psit.next();
+        String psKey = psit.next();
         newVal.experiments_.put(psKey, this.experiments_.get(psKey).clone());
       }
       
-      newVal.dataPointNotes_ = new HashMap();
-      Iterator dpnit = this.dataPointNotes_.keySet().iterator();
+      newVal.dataPointNotes_ = new HashMap<String, List<String>>();
+      Iterator<String> dpnit = this.dataPointNotes_.keySet().iterator();
       while (dpnit.hasNext()) {
-        String dpKey = (String)dpnit.next();
+        String dpKey = dpnit.next();
         newVal.dataPointNotes_.put(dpKey, new ArrayList<String>(this.dataPointNotes_.get(dpKey)));
       } 
       
-      newVal.userData_ = new HashMap();
-      Iterator udit = this.userData_.keySet().iterator();
+      newVal.userData_ = new HashMap<String, List<String>>();
+      Iterator<String> udit = this.userData_.keySet().iterator();
       while (udit.hasNext()) {
-        String udKey = (String)udit.next();
+        String udKey = udit.next();
         // Data is immutable, shallow copy is OK:
         newVal.userData_.put(udKey, new ArrayList<String>(this.dataPointNotes_.get(udKey)));
       } 
  
-      newVal.pertAnnot_ = (PertAnnotations)this.pertAnnot_.clone();
-      newVal.labels_ = (UniqueLabeller)this.labels_.clone();
+      newVal.pertAnnot_ = this.pertAnnot_.clone();
+      newVal.labels_ = this.labels_.clone();
       
-      newVal.entryMap_ = (NameMapper)this.entryMap_.clone();
-      newVal.sourceMap_ = (NameMapper)this.sourceMap_.clone();
+      newVal.entryMap_ = this.entryMap_.clone();
+      newVal.sourceMap_ = this.sourceMap_.clone();
       
-      newVal.investigators_ = (HashMap)this.investigators_.clone();
-      newVal.targets_ = (HashMap)this.targets_.clone();
-      newVal.sourceNames_ = (HashMap)this.sourceNames_.clone();
+      newVal.investigators_ = new HashMap<String, String>(this.investigators_);
+      newVal.targets_ = new HashMap<String, String>(this.targets_);
+      newVal.sourceNames_ = new HashMap<String, String>(this.sourceNames_);
 
-      newVal.regionRestrictions_ = new HashMap();
-      Iterator rrit = this.regionRestrictions_.keySet().iterator();
+      newVal.regionRestrictions_ = new HashMap<String, RegionRestrict>();
+      Iterator<String> rrit = this.regionRestrictions_.keySet().iterator();
       while (rrit.hasNext()) {
-        String rKey = (String)rrit.next();
+        String rKey = rrit.next();
         newVal.regionRestrictions_.put(rKey, this.regionRestrictions_.get(rKey).clone());
       }
   
-      newVal.pertDict_ = (PertDictionary)this.pertDict_.clone();
-      newVal.measureDict_ = (MeasureDictionary)this.measureDict_.clone();
-      newVal.condDict_ = (ConditionDictionary)this.condDict_.clone();
-      newVal.userFields_ = (ArrayList)this.userFields_.clone();
+      newVal.pertDict_ = this.pertDict_.clone();
+      newVal.measureDict_ = this.measureDict_.clone();
+      newVal.condDict_ = this.condDict_.clone();
+      newVal.userFields_ = new ArrayList<String>(this.userFields_);
  
       return (newVal);
     } catch (CloneNotSupportedException ex) {
@@ -3526,7 +3526,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public TrueObjChoiceContent getInvestigatorChoiceContent(String key) {
-    String invest = (String)investigators_.get(key);
+    String invest = investigators_.get(key);
     return (new TrueObjChoiceContent(invest, key));    
   }
   
@@ -3536,34 +3536,34 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** just those present in a given set of data points)
   */
   
-  public SortedSet getAllAvailableCandidates(int filterCat) {
-    TreeSet retval = new TreeSet();
+  public SortedSet<TrueObjChoiceContent> getAllAvailableCandidates(int filterCat) {
+    TreeSet<TrueObjChoiceContent> retval = new TreeSet<TrueObjChoiceContent>();
     switch (filterCat) {
       case PertFilter.EXPERIMENT:
-        Iterator prsit = experiments_.values().iterator();
+        Iterator<Experiment> prsit = experiments_.values().iterator();
         while (prsit.hasNext()) {
-          Experiment chk = (Experiment)prsit.next();
+          Experiment chk = prsit.next();
           chk.addToExperimentSet(retval, this);
         }
         return (retval);
       case PertFilter.TARGET:
-        Iterator tkit = targets_.keySet().iterator();
+        Iterator<String> tkit = targets_.keySet().iterator();
         while (tkit.hasNext()) {
-          String tkey = (String)tkit.next();
+          String tkey = tkit.next();
           retval.add(getTargetChoiceContent(tkey, true));
         }
         return (retval);    
       case PertFilter.SOURCE_OR_PROXY_NAME:
-        Iterator snkit = sourceNames_.keySet().iterator();
+        Iterator<String> snkit = sourceNames_.keySet().iterator();
         while (snkit.hasNext()) {
-          String snkey = (String)snkit.next();
+          String snkey = snkit.next();
           retval.add(getSourceOrProxyNameChoiceContent(snkey));
         }
         return (retval);      
       case PertFilter.INVEST:
-        Iterator invkit = investigators_.keySet().iterator();
+        Iterator<String> invkit = investigators_.keySet().iterator();
         while (invkit.hasNext()) {
-          String ikey = (String)invkit.next();
+          String ikey = invkit.next();
           retval.add(getInvestigatorChoiceContent(ikey));
         }
         return (retval); 
@@ -3588,14 +3588,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the candidate values for the given single filter category
   */
   
-  public SortedSet getCandidates(List chooseFrom, int filterCat) {
-    TreeSet retval = new TreeSet();
+  public SortedSet<TrueObjChoiceContent> getCandidates(List<PertDataPoint> chooseFrom, int filterCat) {
+    TreeSet<TrueObjChoiceContent> retval = new TreeSet<TrueObjChoiceContent>();
     if (chooseFrom == null) {
-      chooseFrom = new ArrayList(dataPoints_.values());
+      chooseFrom = new ArrayList<PertDataPoint>(dataPoints_.values());
     }
     int numRs = chooseFrom.size();
     for (int i = 0; i < numRs; i++) {
-      PertDataPoint pdp = (PertDataPoint)chooseFrom.get(i);
+      PertDataPoint pdp = chooseFrom.get(i);
       pdp.getCandidates(appState_, filterCat, retval, this);
     }
     return (retval);
@@ -3606,7 +3606,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the candidate values for the given single filter category
   */
   
-  public SortedSet getCandidates(int filterCat) {
+  public SortedSet<TrueObjChoiceContent> getCandidates(int filterCat) {
     return (getCandidates(null, filterCat));
   }
    
@@ -3616,15 +3616,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public List<PertDataPoint> getPerturbations(PertFilterExpression pfe) {
-    TreeMap<String, PertFilterTarget> sorted = new TreeMap<String, PertFilterTarget>(dataPoints_);
-    TreeSet sortedKeys = new TreeSet(sorted.keySet());
+    TreeMap<String, PertDataPoint> sorted = new TreeMap<String, PertDataPoint>(dataPoints_);
+    TreeSet<String> sortedKeys = new TreeSet<String>(sorted.keySet());
     
     ArrayList<PertDataPoint> retval = new ArrayList<PertDataPoint>();
     SortedSet<String> result = pfe.getFilteredResult(sortedKeys, sorted, this);
-    Iterator resIt = result.iterator();
+    Iterator<String> resIt = result.iterator();
     while (resIt.hasNext()) {
-      String pdpID = (String)resIt.next();
-      retval.add((PertDataPoint)sorted.get(pdpID));
+      String pdpID = resIt.next();
+      retval.add(sorted.get(pdpID));
     }
     return (retval);
   }
@@ -3644,7 +3644,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */ 
   
   public PertSource getSourceDef(String key) {
-    return ((PertSource)sourceDefs_.get(key));
+    return (sourceDefs_.get(key));
   }
 
   /***************************************************************************
@@ -3652,8 +3652,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the annotations for a data point
   */ 
   
-  public List getDataPointNotes(String dpkey) {
-    return ((List)dataPointNotes_.get(dpkey));
+  public List<String> getDataPointNotes(String dpkey) {
+    return (dataPointNotes_.get(dpkey));
   }
   
   /***************************************************************************
@@ -3661,7 +3661,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get all keys for dp notes
   */ 
   
-  public Iterator getDataPointNoteKeys() {
+  public Iterator<String> getDataPointNoteKeys() {
     return (dataPointNotes_.keySet().iterator());
   }
   
@@ -3681,7 +3681,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get an iterator over the data points
   */
   
-  public Iterator getDataPoints() {
+  public Iterator<PertDataPoint> getDataPoints() {
     return (dataPoints_.values().iterator());
   }
   
@@ -3703,51 +3703,51 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (undo.dataPtsSubsetOrig == null) {
       throw new IllegalStateException();
     } else if (undo.dataPtsSubsetNew == null) {  // Undo a delete
-      Iterator kit = undo.dataPtsSubsetOrig.keySet().iterator();
+      Iterator<String> kit = undo.dataPtsSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        PertDataPoint pdp = (PertDataPoint)undo.dataPtsSubsetOrig.get(key);
-        PertDataPoint pdpc = (PertDataPoint)pdp.clone();
+        String key = kit.next();
+        PertDataPoint pdp = undo.dataPtsSubsetOrig.get(key);
+        PertDataPoint pdpc = pdp.clone();
         dataPoints_.put(key, pdpc);
         labels_.addExistingLabel(key);
       }
       // Restore region restrictions:
       if (undo.dataPtRegResSubsetOrig != null) {
-        Iterator rrkit = undo.dataPtRegResSubsetOrig.keySet().iterator();
+        Iterator<String> rrkit = undo.dataPtRegResSubsetOrig.keySet().iterator();
         while (rrkit.hasNext()) {
-          String key = (String)rrkit.next();
-          RegionRestrict rr = (RegionRestrict)undo.dataPtRegResSubsetOrig.get(key);
-          RegionRestrict rrc = (RegionRestrict)rr.clone();
+          String key = rrkit.next();
+          RegionRestrict rr = undo.dataPtRegResSubsetOrig.get(key);
+          RegionRestrict rrc = rr.clone();
           regionRestrictions_.put(key, rrc);
         }
       }
       // Restore user data:
       if (undo.userDataSubsetOrig != null) {
-        Iterator udkit = undo.userDataSubsetOrig.keySet().iterator();
+        Iterator<String> udkit = undo.userDataSubsetOrig.keySet().iterator();
         while (udkit.hasNext()) {
-          String key = (String)udkit.next();
-          ArrayList ud = (ArrayList)undo.userDataSubsetOrig.get(key);
-          ArrayList udc = (ArrayList)ud.clone();
+          String key = udkit.next();
+          List<String> ud = undo.userDataSubsetOrig.get(key);
+          List<String> udc = new ArrayList<String>(ud);
           userData_.put(key, udc);
         }
       }
       //  Restore note list:
       if (undo.dataPtNotesSubsetOrig != null) {
-        Iterator dpnkit = undo.dataPtNotesSubsetOrig.keySet().iterator();
+        Iterator<String> dpnkit = undo.dataPtNotesSubsetOrig.keySet().iterator();
         while (dpnkit.hasNext()) {
-          String key = (String)dpnkit.next();
-          ArrayList dpn = (ArrayList)undo.dataPtNotesSubsetOrig.get(key);
-          ArrayList dpnc = (ArrayList)dpn.clone();
+          String key = dpnkit.next();
+          List<String> dpn = undo.dataPtNotesSubsetOrig.get(key);
+          List<String> dpnc = new ArrayList<String>(dpn);
           dataPointNotes_.put(key, dpnc);
         }
       }
   
     } else {  // Change data
-      Iterator kit = undo.dataPtsSubsetOrig.keySet().iterator();
+      Iterator<String> kit = undo.dataPtsSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        PertDataPoint pdp = (PertDataPoint)undo.dataPtsSubsetOrig.get(key);
-        PertDataPoint pdpc = (PertDataPoint)pdp.clone();
+        String key = kit.next();
+        PertDataPoint pdp = undo.dataPtsSubsetOrig.get(key);
+        PertDataPoint pdpc = pdp.clone();
         dataPoints_.put(key, pdpc);
       }
     }
@@ -3764,42 +3764,42 @@ public class PerturbationData implements Cloneable, SourceSrc {
      if (redo.dataPtsSubsetOrig == null) {
       throw new IllegalStateException();
     } else if (redo.dataPtsSubsetNew == null) {  // redo a delete
-      Iterator kit = redo.dataPtsSubsetOrig.keySet().iterator();
+      Iterator<String> kit = redo.dataPtsSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
+        String key = kit.next();
         dataPoints_.remove(key);
         labels_.removeLabel(key);
       }
       // Delete region restrictions:
       if (redo.dataPtRegResSubsetOrig != null) {
-        Iterator rrkit = redo.dataPtRegResSubsetOrig.keySet().iterator();
+        Iterator<String> rrkit = redo.dataPtRegResSubsetOrig.keySet().iterator();
         while (rrkit.hasNext()) {
-          String key = (String)rrkit.next();
+          String key = rrkit.next();
           regionRestrictions_.remove(key);
         }
       }
       // Delete user data:
       if (redo.userDataSubsetOrig != null) {
-        Iterator udkit = redo.userDataSubsetOrig.keySet().iterator();
+        Iterator<String> udkit = redo.userDataSubsetOrig.keySet().iterator();
         while (udkit.hasNext()) {
-          String key = (String)udkit.next();
+          String key = udkit.next();
           userData_.remove(key);
         }
       }
       //  Delete note list:
       if (redo.dataPtNotesSubsetOrig != null) {
-        Iterator dpnkit = redo.dataPtNotesSubsetOrig.keySet().iterator();
+        Iterator<String> dpnkit = redo.dataPtNotesSubsetOrig.keySet().iterator();
         while (dpnkit.hasNext()) {
-          String key = (String)dpnkit.next();
+          String key = dpnkit.next();
           dataPointNotes_.remove(key);
         }
       } 
     } else {  // Redo Change data
-      Iterator kit = redo.dataPtsSubsetNew.keySet().iterator();
+      Iterator<String> kit = redo.dataPtsSubsetNew.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        PertDataPoint pdp = (PertDataPoint)redo.dataPtsSubsetNew.get(key);
-        PertDataPoint pdpc = (PertDataPoint)pdp.clone();
+        String key = kit.next();
+        PertDataPoint pdp = redo.dataPtsSubsetNew.get(key);
+        PertDataPoint pdpc = pdp.clone();
         dataPoints_.put(key, pdpc);
       }
     }
@@ -3812,41 +3812,41 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop a bunch of data points
   */
   
-  public PertDataChange deleteDataPoints(Set keysToDrop) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);
-    retval.dataPtsSubsetOrig = new HashMap();
-    Iterator k2dit = keysToDrop.iterator();
+  public PertDataChange deleteDataPoints(Set<String> keysToDrop) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
+    retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+    Iterator<String> k2dit = keysToDrop.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
+      String key = k2dit.next();
       // Delete region restrict:
-      RegionRestrict regReg = (RegionRestrict)regionRestrictions_.get(key); 
+      RegionRestrict regReg = regionRestrictions_.get(key); 
       if (regReg != null) {
         if (retval.dataPtRegResSubsetOrig == null) {
-          retval.dataPtRegResSubsetOrig = new HashMap();
+          retval.dataPtRegResSubsetOrig = new HashMap<String, RegionRestrict>();
         }
         retval.dataPtRegResSubsetOrig.put(key, regReg.clone());
         regionRestrictions_.remove(key);
       }
       // Delete user data:
-      ArrayList userDataList = (ArrayList)userData_.get(key); 
+      List<String> userDataList = userData_.get(key); 
       if (userDataList != null) {
         if (retval.userDataSubsetOrig == null) {
-          retval.userDataSubsetOrig = new HashMap();
+          retval.userDataSubsetOrig = new HashMap<String, List<String>>();
         }
         retval.userDataSubsetOrig.put(key, new ArrayList<String>(userDataList));
         userData_.remove(key);
       }
       // Delete note list:
-      ArrayList noteList = (ArrayList)dataPointNotes_.get(key); 
+      List<String> noteList = dataPointNotes_.get(key); 
       if (noteList != null) {
         if (retval.dataPtNotesSubsetOrig == null) {
-          retval.dataPtNotesSubsetOrig = new HashMap();
+          retval.dataPtNotesSubsetOrig = new HashMap<String, List<String>>();
         }
-        retval.dataPtNotesSubsetOrig.put(key, noteList.clone());
+        retval.dataPtNotesSubsetOrig.put(key, new ArrayList<String>(noteList));
         dataPointNotes_.remove(key);
       }
       // Delete the data:  
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(key);
+      PertDataPoint pdp = dataPoints_.get(key);
       retval.dataPtsSubsetOrig.put(key, pdp.clone());
       dataPoints_.remove(key);
       labels_.removeLabel(key);
@@ -3860,14 +3860,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all data points to a single target
   */
   
-  public PertDataChange mergeDataPointTargetRefs(Set pointsToMerge, String targKey) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);
-    retval.dataPtsSubsetOrig = new HashMap();
-    retval.dataPtsSubsetNew = new HashMap();
-    Iterator k2dit = pointsToMerge.iterator();
+  public PertDataChange mergeDataPointTargetRefs(Set<String> pointsToMerge, String targKey) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
+    retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+    retval.dataPtsSubsetNew = new HashMap<String, PertDataPoint>();
+    Iterator<String> k2dit = pointsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(key);
+      String key = k2dit.next();
+      PertDataPoint pdp = dataPoints_.get(key);
       if (!pdp.getTargetKey().equals(targKey)) {
         retval.dataPtsSubsetOrig.put(key, pdp.clone());
         pdp.setTargetKey(targKey);
@@ -3883,14 +3883,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all data points to a single control
   */
   
-  public PertDataChange mergeDataPointControlRefs(Set pointsToMerge, String ctrlKey) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);
-    retval.dataPtsSubsetOrig = new HashMap();
-    retval.dataPtsSubsetNew = new HashMap();
-    Iterator k2dit = pointsToMerge.iterator();
+  public PertDataChange mergeDataPointControlRefs(Set<String> pointsToMerge, String ctrlKey) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
+    retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+    retval.dataPtsSubsetNew = new HashMap<String, PertDataPoint>();
+    Iterator<String> k2dit = pointsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(key);
+      String key = k2dit.next();
+      PertDataPoint pdp = dataPoints_.get(key);
       if (!pdp.getControl().equals(ctrlKey)) {
         retval.dataPtsSubsetOrig.put(key, pdp.clone());
         pdp.setControl(ctrlKey);
@@ -3906,14 +3906,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all data points to a measurement prop
   */
   
-  public PertDataChange mergeMeasurePropRefs(Set pointsToMerge, String mpKey) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);
-    retval.dataPtsSubsetOrig = new HashMap();
-    retval.dataPtsSubsetNew = new HashMap();
-    Iterator k2dit = pointsToMerge.iterator();
+  public PertDataChange mergeMeasurePropRefs(Set<String> pointsToMerge, String mpKey) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
+    retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+    retval.dataPtsSubsetNew = new HashMap<String, PertDataPoint>();
+    Iterator<String> k2dit = pointsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(key);
+      String key = k2dit.next();
+      PertDataPoint pdp = dataPoints_.get(key);
       if (!pdp.getMeasurementTypeKey().equals(mpKey)) {
         retval.dataPtsSubsetOrig.put(key, pdp.clone());
         pdp.setMeasurementTypeKey(mpKey);
@@ -3929,13 +3929,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop a bunch of experiments
   */
   
-  public PertDataChange deleteExperiments(Set keysToDrop) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT_SET);    
-    retval.expSubsetOrig = new HashMap();
-    Iterator k2dit = keysToDrop.iterator();
+  public PertDataChange deleteExperiments(Set<String> keysToDrop) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);    
+    retval.expSubsetOrig = new HashMap<String, Experiment>();
+    Iterator<String> k2dit = keysToDrop.iterator();
     while (k2dit.hasNext()) {
-      String dropkey = (String)k2dit.next();
-      Experiment psi = (Experiment)experiments_.get(dropkey);
+      String dropkey = k2dit.next();
+      Experiment psi = experiments_.get(dropkey);
       retval.expSubsetOrig.put(dropkey, psi.clone());      
       experiments_.remove(dropkey);
       labels_.removeLabel(dropkey);
@@ -3949,14 +3949,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop an investigator from a set of experiments
   */
   
-  public PertDataChange dropInvestigator(String investID, Set keysToPrune) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT_SET);   
-    retval.expSubsetOrig = new HashMap();
-    retval.expSubsetNew = new HashMap();
-    Iterator k2dit = keysToPrune.iterator();
+  public PertDataChange dropInvestigator(String investID, Set<String> keysToPrune) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT_SET);   
+    retval.expSubsetOrig = new HashMap<String, Experiment>();
+    retval.expSubsetNew = new HashMap<String, Experiment>();
+    Iterator<String> k2dit = keysToPrune.iterator();
     while (k2dit.hasNext()) {
-      String pruneKey = (String)k2dit.next();
-      Experiment psi = (Experiment)experiments_.get(pruneKey);
+      String pruneKey = k2dit.next();
+      Experiment psi = experiments_.get(pruneKey);
       retval.expSubsetOrig.put(pruneKey, psi.clone());
       psi.deleteInvestigator(investID);
       retval.expSubsetNew.put(pruneKey, psi.clone());
@@ -3971,25 +3971,25 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** those that are relevant!
   */
   
-  public PertDataChange dropDataPointAnnotations(String annotID, Set keysToPrune) {
+  public PertDataChange dropDataPointAnnotations(String annotID, Set<String> keysToPrune) {
     PertDataChange retval = null;
-    Iterator kpit = keysToPrune.iterator();
+    Iterator<String> kpit = keysToPrune.iterator();
     while (kpit.hasNext()) {
-      String dpkey = (String)kpit.next();
-      ArrayList noteList = (ArrayList)dataPointNotes_.get(dpkey); 
+      String dpkey = kpit.next();
+      List<String> noteList = dataPointNotes_.get(dpkey); 
       if (noteList != null) {
         if (retval == null) {
-          retval = new PertDataChange(serialNumber_, PertDataChange.DATA_ANNOTS_SET);  
-          retval.dataPtNotesSubsetOrig = new HashMap();
-          retval.dataPtNotesSubsetNew = new HashMap();
+          retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_ANNOTS_SET);  
+          retval.dataPtNotesSubsetOrig = new HashMap<String, List<String>>();
+          retval.dataPtNotesSubsetNew = new HashMap<String, List<String>>();
         }
-        retval.dataPtNotesSubsetOrig.put(dpkey, noteList.clone());
+        retval.dataPtNotesSubsetOrig.put(dpkey, new ArrayList<String>(noteList));
         noteList.remove(annotID);
         if (noteList.isEmpty()) {
           dataPointNotes_.remove(dpkey); 
         }
         // Empty list MUST cause deletion on redo
-        retval.dataPtNotesSubsetNew.put(dpkey, noteList.clone()); 
+        retval.dataPtNotesSubsetNew.put(dpkey,  new ArrayList<String>(noteList)); 
       }
     }
     if (retval != null) {
@@ -4004,11 +4004,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void dataPointAnnotSetUndo(PertDataChange undo) {
-    Iterator dpnkit = undo.dataPtNotesSubsetOrig.keySet().iterator();
+    Iterator<String> dpnkit = undo.dataPtNotesSubsetOrig.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      ArrayList dpn = (ArrayList)undo.dataPtNotesSubsetOrig.get(key);
-      ArrayList dpnc = (ArrayList)dpn.clone();
+      String key = dpnkit.next();
+      List<String> dpn = undo.dataPtNotesSubsetOrig.get(key);
+      List<String> dpnc = new ArrayList<String>(dpn);
       dataPointNotes_.put(key, dpnc);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -4021,11 +4021,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void dataPointAnnotSetRedo(PertDataChange redo) {
-    Iterator dpnkit = redo.dataPtNotesSubsetNew.keySet().iterator();
+    Iterator<String> dpnkit = redo.dataPtNotesSubsetNew.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      ArrayList dpn = (ArrayList)redo.dataPtNotesSubsetNew.get(key);
-      ArrayList dpnc = (ArrayList)dpn.clone();
+      String key = dpnkit.next();
+      List<String> dpn = redo.dataPtNotesSubsetNew.get(key);
+      ArrayList<String> dpnc = new ArrayList<String>(dpn);
       if (dpnc.isEmpty()) {  // Empty list means delete
         dataPointNotes_.remove(key);
       } else {
@@ -4041,16 +4041,16 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop data point controls.
   */
   
-  public PertDataChange dropDataPointControls(String annotID, Set keysToPrune) {
+  public PertDataChange dropDataPointControls(String annotID, Set<String> keysToPrune) {
     PertDataChange retval = null;
-    Iterator kpit = keysToPrune.iterator();
+    Iterator<String> kpit = keysToPrune.iterator();
     while (kpit.hasNext()) {
-      String dpkey = (String)kpit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(dpkey); 
+      String dpkey = kpit.next();
+      PertDataPoint pdp = dataPoints_.get(dpkey); 
       if (retval == null) {
-        retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);  
-        retval.dataPtsSubsetOrig = new HashMap();
-        retval.dataPtsSubsetNew = new HashMap();
+        retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);  
+        retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+        retval.dataPtsSubsetNew = new HashMap<String, PertDataPoint>();
       }
       retval.dataPtsSubsetOrig.put(dpkey, pdp.clone());
       pdp.setControl(null);
@@ -4067,31 +4067,31 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop annotation from source definitions
   */
   
-  public PertDataChange dropSourceDefAnnotations(String annotID, Set keysToPrune) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF_SET);
+  public PertDataChange dropSourceDefAnnotations(String annotID, Set<String> keysToPrune) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF_SET);
     
-    retval.srcDefsSubsetOrig = new HashMap();
-    Iterator psdit = keysToPrune.iterator();
+    retval.srcDefsSubsetOrig = new HashMap<String, PertSource>();
+    Iterator<String> psdit = keysToPrune.iterator();
     while (psdit.hasNext()) {
-      String sdkey = (String)psdit.next();
-      PertSource ps = (PertSource)sourceDefs_.get(sdkey);
+      String sdkey = psdit.next();
+      PertSource ps = sourceDefs_.get(sdkey);
       retval.srcDefsSubsetOrig.put(sdkey, ps.clone());
     }
     
-    Iterator k2dit = keysToPrune.iterator();
+    Iterator<String> k2dit = keysToPrune.iterator();
     while (k2dit.hasNext()) {
-      String pruneKey = (String)k2dit.next();
-      PertSource ps = (PertSource)sourceDefs_.get(pruneKey);
-      List psan = new ArrayList(ps.getAnnotationIDs());
+      String pruneKey = k2dit.next();
+      PertSource ps = sourceDefs_.get(pruneKey);
+      List<String> psan = new ArrayList<String>(ps.getAnnotationIDs());
       psan.remove(annotID);    
       ps.setAnnotationIDs(psan);
     }
     
-    retval.srcDefsSubsetNew = new HashMap();
+    retval.srcDefsSubsetNew = new HashMap<String, PertSource>();
     psdit = keysToPrune.iterator();
     while (psdit.hasNext()) {
-      String sdkey = (String)psdit.next();
-      PertSource ps = (PertSource)sourceDefs_.get(sdkey);
+      String sdkey = psdit.next();
+      PertSource ps = sourceDefs_.get(sdkey);
       retval.srcDefsSubsetNew.put(sdkey, ps.clone());
     }
     retval.serialNumberNew = ++serialNumber_;
@@ -4104,11 +4104,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void sourceDefSetUndo(PertDataChange undo) {
-    Iterator dpnkit = undo.srcDefsSubsetOrig.keySet().iterator();
+    Iterator<String> dpnkit = undo.srcDefsSubsetOrig.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      PertSource ps = (PertSource)undo.srcDefsSubsetOrig.get(key);
-      PertSource psc = (PertSource)ps.clone();
+      String key = dpnkit.next();
+      PertSource ps = undo.srcDefsSubsetOrig.get(key);
+      PertSource psc = ps.clone();
       sourceDefs_.put(key, psc);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -4121,11 +4121,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   private void sourceDefSetRedo(PertDataChange redo) {
-    Iterator dpnkit = redo.srcDefsSubsetNew.keySet().iterator();
+    Iterator<String> dpnkit = redo.srcDefsSubsetNew.keySet().iterator();
     while (dpnkit.hasNext()) {
-      String key = (String)dpnkit.next();
-      PertSource ps = (PertSource)redo.srcDefsSubsetNew.get(key);
-      PertSource psc = (PertSource)ps.clone();
+      String key = dpnkit.next();
+      PertSource ps = redo.srcDefsSubsetNew.get(key);
+      PertSource psc = ps.clone();
       sourceDefs_.put(key, psc);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -4138,25 +4138,25 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** those that are relevant!
   */
   
-  public PertDataChange dropTargetAnnotations(String annotID, Set keysToPrune) {
+  public PertDataChange dropTargetAnnotations(String annotID, Set<String> keysToPrune) {
     PertDataChange retval = null;
-    Iterator kpit = keysToPrune.iterator();
+    Iterator<String> kpit = keysToPrune.iterator();
     while (kpit.hasNext()) {
-      String dpkey = (String)kpit.next();
-      ArrayList noteList = (ArrayList)targetGeneNotes_.get(dpkey); 
+      String dpkey = kpit.next();
+      List<String> noteList = targetGeneNotes_.get(dpkey); 
       if (noteList != null) {
         if (retval == null) {
-          retval = new PertDataChange(serialNumber_, PertDataChange.TARG_ANNOTS_SET);  
-          retval.targetNotesSubsetOrig = new HashMap();
-          retval.targetNotesSubsetNew = new HashMap();
+          retval = new PertDataChange(serialNumber_, PertDataChange.Mode.TARG_ANNOTS_SET);  
+          retval.targetNotesSubsetOrig = new HashMap<String, List<String>>();
+          retval.targetNotesSubsetNew = new HashMap<String, List<String>>();
         }
-        retval.targetNotesSubsetOrig.put(dpkey, noteList.clone());
+        retval.targetNotesSubsetOrig.put(dpkey, new ArrayList<String>(noteList));
         noteList.remove(annotID);
         if (noteList.isEmpty()) {
           targetGeneNotes_.remove(dpkey); 
         }
         // Empty list MUST cause deletion on redo!!!!      
-        retval.targetNotesSubsetNew.put(dpkey, noteList.clone());
+        retval.targetNotesSubsetNew.put(dpkey, new ArrayList<String>(noteList));
       }
     }
     if (retval != null) {
@@ -4170,14 +4170,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Drop a bunch of Pert source definitions
   */
   
-  public PertDataChange[] deletePertSourceDefs(Set keysToDrop) {
-    ArrayList retlist = new ArrayList();
-    Iterator kit = keysToDrop.iterator();
+  public PertDataChange[] deletePertSourceDefs(Set<String> keysToDrop) {
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
+    Iterator<String> kit = keysToDrop.iterator();
     while (kit.hasNext()) {
-      String keyID = (String)kit.next();
+      String keyID = kit.next();
       retlist.add(deleteSourceDef(keyID));
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -4185,14 +4185,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all source names to a single one
   */
   
-  public PertDataChange mergePertSourceNameRefs(Set defsToMerge, String srcKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF_SET);
-    retval.srcDefsSubsetOrig = new HashMap();
-    retval.srcDefsSubsetNew = new HashMap();
-    Iterator k2dit = defsToMerge.iterator();
+  public PertDataChange mergePertSourceNameRefs(Set<String> defsToMerge, String srcKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF_SET);
+    retval.srcDefsSubsetOrig = new HashMap<String, PertSource>();
+    retval.srcDefsSubsetNew = new HashMap<String, PertSource>();
+    Iterator<String> k2dit = defsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertSource psd = (PertSource)sourceDefs_.get(key);
+      String key = k2dit.next();
+      PertSource psd = sourceDefs_.get(key);
       boolean replaceProx = false;
       boolean replaceSrc = false;
       if (psd.isAProxy()) {
@@ -4221,14 +4221,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge pert properties refs
   */
   
-  public PertDataChange mergePertPropRefs(Set defsToMerge, String typeKey) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF_SET);
-    retval.srcDefsSubsetOrig = new HashMap();
-    retval.srcDefsSubsetNew = new HashMap();
-    Iterator k2dit = defsToMerge.iterator();
+  public PertDataChange mergePertPropRefs(Set<String> defsToMerge, String typeKey) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF_SET);
+    retval.srcDefsSubsetOrig = new HashMap<String, PertSource>();
+    retval.srcDefsSubsetNew = new HashMap<String, PertSource>();
+    Iterator<String> k2dit = defsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertSource psd = (PertSource)sourceDefs_.get(key);
+      String key = k2dit.next();
+      PertSource psd = sourceDefs_.get(key);
       if (!psd.getExpTypeKey().equals(typeKey)) {
         retval.srcDefsSubsetOrig.put(key, psd.clone());
         psd.setExpType(typeKey);
@@ -4265,76 +4265,76 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public void changeUndo(PertDataChange undo) {
     switch (undo.mode) {
-      case PertDataChange.DATA_POINT:
+      case DATA_POINT:
         dataPointUndo(undo);
         return;
-      case PertDataChange.EXPERIMENT:
+      case EXPERIMENT:
         experimentUndo(undo);
         return;
-      case PertDataChange.DATA_POINT_SET:
+      case DATA_POINT_SET:
         dataPointSetUndo(undo);
         return;  
-      case PertDataChange.EXPERIMENT_SET:
+      case EXPERIMENT_SET:
         experimentSetUndo(undo);
         return;   
-      case PertDataChange.SOURCE_DEF:
+      case SOURCE_DEF:
         sourceDefUndo(undo);
         return;  
-      case PertDataChange.USER_FIELD_VALS:
+      case USER_FIELD_VALS:
         userFieldValsUndo(undo);
         return;  
-      case PertDataChange.USER_FIELD_NAME:
+      case USER_FIELD_NAME:
         userFieldNameUndo(undo);
         return; 
-      case PertDataChange.REG_RESTRICT:
+      case REG_RESTRICT:
         regRestrictUndo(undo);
         return;
-      case PertDataChange.DATA_ANNOTS:
+      case DATA_ANNOTS:
         dataAnnotUndo(undo);
         return;
-      case PertDataChange.TARGET_ANNOTS:
+      case TARGET_ANNOTS:
         targetAnnotUndo(undo);
         return;       
-      case PertDataChange.SOURCE_NAME:
+      case SOURCE_NAME:
         sourceNameUndo(undo);
         return;
-      case PertDataChange.EXP_CONTROL:
+      case EXP_CONTROL:
         expControlUndo(undo);
         return;
-      case PertDataChange.INVEST:
+      case INVEST:
         investUndo(undo);
         return;
-      case PertDataChange.DATA_ANNOTS_SET:
+      case DATA_ANNOTS_SET:
         dataPointAnnotSetUndo(undo);
         return;
-      case PertDataChange.SOURCE_DEF_SET:  
+      case SOURCE_DEF_SET:  
         sourceDefSetUndo(undo);
         return;
-      case PertDataChange.MEASURE_PROP:
+      case MEASURE_PROP:
         measurePropUndo(undo);
         return;
-      case PertDataChange.EXP_COND:
+      case EXP_COND:
         expCondUndo(undo);
         return;
-      case PertDataChange.MEAS_SCALE:
+      case MEAS_SCALE:
         measureScaleUndo(undo);
         return;
-      case PertDataChange.TARGET_NAME:
+      case TARGET_NAME:
         targetNameUndo(undo);
         return;
-      case PertDataChange.ANNOTATION:
+      case ANNOTATION:
         annotationUndo(undo);
         return;
-      case PertDataChange.PERT_PROP:
+      case PERT_PROP:
         pertPropUndo(undo);
         return;
-      case PertDataChange.TARG_ANNOTS_SET:
+      case TARG_ANNOTS_SET:
         targetAnnotSetUndo(undo);
         return;
-      case PertDataChange.ANNOT_MODULE:  
+      case ANNOT_MODULE:  
         annotModuleUndo(undo); 
         return;
-      case PertDataChange.NAME_MAPPER:
+      case NAME_MAPPER:
         if (undo.nameMapperMode.equals("targets")) {
           entryMap_.changeUndo(undo);
         } else if (undo.nameMapperMode.equals("sources")) {
@@ -4343,7 +4343,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
           throw new IllegalArgumentException();
         }
         return;  
-      case PertDataChange.MEASURE_PROP_SET:  
+      case MEASURE_PROP_SET:  
         measurePropSetUndo(undo); 
         return; 
       default:
@@ -4358,76 +4358,76 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   public void changeRedo(PertDataChange redo) {
     switch (redo.mode) {
-      case PertDataChange.DATA_POINT:
+      case DATA_POINT:
         dataPointRedo(redo);
         return;
-      case PertDataChange.EXPERIMENT:
+      case EXPERIMENT:
         experimentRedo(redo);
         return;
-      case PertDataChange.DATA_POINT_SET:
+      case DATA_POINT_SET:
         dataPointSetRedo(redo);
         return;
-      case PertDataChange.EXPERIMENT_SET:
+      case EXPERIMENT_SET:
         experimentSetRedo(redo);
         return;
-      case PertDataChange.SOURCE_DEF:
+      case SOURCE_DEF:
         sourceDefRedo(redo);
         return;
-      case PertDataChange.USER_FIELD_VALS:
+      case USER_FIELD_VALS:
         userFieldValsRedo(redo);
         return;  
-      case PertDataChange.USER_FIELD_NAME:
+      case USER_FIELD_NAME:
         userFieldNameRedo(redo);
         return;
-      case PertDataChange.REG_RESTRICT:
+      case REG_RESTRICT:
         regRestrictRedo(redo);
         return;
-      case PertDataChange.DATA_ANNOTS:
+      case DATA_ANNOTS:
         dataAnnotRedo(redo);
         return;
-      case PertDataChange.TARGET_ANNOTS:
+      case TARGET_ANNOTS:
         targetAnnotRedo(redo);
         return;
-      case PertDataChange.SOURCE_NAME:
+      case SOURCE_NAME:
         sourceNameRedo(redo);
         return;
-      case PertDataChange.EXP_CONTROL:
+      case EXP_CONTROL:
         expControlRedo(redo);
         return;
-      case PertDataChange.INVEST:
+      case INVEST:
         investRedo(redo);
         return;
-      case PertDataChange.DATA_ANNOTS_SET:
+      case DATA_ANNOTS_SET:
         dataPointAnnotSetRedo(redo);
         return;
-      case PertDataChange.SOURCE_DEF_SET:  
+      case SOURCE_DEF_SET:  
         sourceDefSetRedo(redo);
         return;
-      case PertDataChange.MEASURE_PROP:
+      case MEASURE_PROP:
         measurePropRedo(redo);
         return;
-      case PertDataChange.EXP_COND:
+      case EXP_COND:
         expCondRedo(redo);
         return;
-      case PertDataChange.MEAS_SCALE:
+      case MEAS_SCALE:
         measureScaleRedo(redo);
         return;
-      case PertDataChange.TARGET_NAME:
+      case TARGET_NAME:
         targetNameRedo(redo);
         return;
-      case PertDataChange.ANNOTATION:
+      case ANNOTATION:
         annotationRedo(redo);
         return;
-      case PertDataChange.PERT_PROP:
+      case PERT_PROP:
         pertPropRedo(redo);
         return;
-      case PertDataChange.TARG_ANNOTS_SET:
+      case TARG_ANNOTS_SET:
         targetAnnotSetRedo(redo);
         return;
-      case PertDataChange.ANNOT_MODULE:  
+      case ANNOT_MODULE:  
         annotModuleRedo(redo);   
         return;
-      case PertDataChange.NAME_MAPPER:
+      case NAME_MAPPER:
         if (redo.nameMapperMode.equals("targets")) {
           entryMap_.changeRedo(redo);
         } else if (redo.nameMapperMode.equals("sources")) {
@@ -4436,7 +4436,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
           throw new IllegalArgumentException();
         }
         return;
-      case PertDataChange.MEASURE_PROP_SET:  
+      case MEASURE_PROP_SET:  
         measurePropSetRedo(redo); 
         return; 
       default:
@@ -4530,9 +4530,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     MinMax retval = (new MinMax()).init();
   
-    Iterator psit = experiments_.values().iterator();
+    Iterator<Experiment> psit = experiments_.values().iterator();
     while (psit.hasNext()) {
-      Experiment prs = (Experiment)psit.next();
+      Experiment prs = psit.next();
       int time = prs.getTime();
       int legMax = prs.getLegacyMaxTime();
       if (time != Experiment.NO_TIME) {
@@ -4594,12 +4594,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (!haveData()) {
       return (false);
     }
-    List mapped = getDataEntryKeysWithDefault(nodeID);
+    List<String> mapped = getDataEntryKeysWithDefault(nodeID);
     if ((mapped == null) || mapped.isEmpty()) {
       return (false);
     }
     
-    List smapped = null;
+    List<String> smapped = null;
     if (sourceID != null) {
       smapped = getDataSourceKeysWithDefault(sourceID);
       if ((smapped == null) || smapped.isEmpty()) {
@@ -4607,24 +4607,24 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }  
     }
      
-    Iterator mit = mapped.iterator();
+    Iterator<String> mit = mapped.iterator();
     while (mit.hasNext()) {
-      String key = (String)mit.next();
+      String key = mit.next();
       
       if (smapped == null) {
         PertFilterExpression pfe = new PertFilterExpression(new PertFilter(PertFilter.TARGET, PertFilter.STR_EQUALS, key));
-        List pertsWithTarg = getPerturbations(pfe);
+        List<PertDataPoint> pertsWithTarg = getPerturbations(pfe);
         if (!pertsWithTarg.isEmpty()) {
           return (true);
         }
       } else {
         PertFilter tfilt = new PertFilter(PertFilter.TARGET, PertFilter.STR_EQUALS, key);
-        Iterator smit = smapped.iterator();
+        Iterator<String> smit = smapped.iterator();
         while (smit.hasNext()) {
-          String skey = (String)smit.next();
+          String skey = smit.next();
           PertFilter sfilt = new PertFilter(PertFilter.SOURCE_NAME, PertFilter.STR_EQUALS, skey);  
           PertFilterExpression pfe = new PertFilterExpression(PertFilterExpression.AND_OP, tfilt, sfilt);
-          List pertsWithSrcAndTarg = getPerturbations(pfe);
+          List<PertDataPoint> pertsWithSrcAndTarg = getPerturbations(pfe);
           if (!pertsWithSrcAndTarg.isEmpty()) {
             return (true);
           }
@@ -4643,7 +4643,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   
   public PertDataChange[] changeName(String oldName, String newName) {
-    ArrayList retlist = new ArrayList();
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     
     String foundTarg = getTargKeyFromName(oldName);
     if (foundTarg != null) {
@@ -4655,7 +4655,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retlist.addAll(Arrays.asList(setSourceName(foundSrc, newName)));
     }
 
-    PertDataChange[] changes = (PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]);
+    PertDataChange[] changes = retlist.toArray(new PertDataChange[retlist.size()]);
     return (changes);
   }  
   
@@ -4665,11 +4665,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setExperiment(Experiment exp) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT); 
-    Experiment currExp = (Experiment)experiments_.get(exp.getID());
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT); 
+    Experiment currExp = experiments_.get(exp.getID());
     retval.expOrig = (currExp == null) ? null : (Experiment)currExp.clone();
     experiments_.put(exp.getID(), exp);
-    retval.expNew = (Experiment)exp.clone();
+    retval.expNew = exp.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -4679,18 +4679,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Find batch IDs for an experiment
   */
   
-  public Map getBatchKeysForExperiment(String expKey) {
-    HashMap retval = new HashMap();
-    Iterator dpit = dataPoints_.keySet().iterator();
+  public Map<String, Set<String>> getBatchKeysForExperiment(String expKey) {
+    HashMap<String, Set<String>> retval = new HashMap<String, Set<String>>();
+    Iterator<String> dpit = dataPoints_.keySet().iterator();
     while (dpit.hasNext()) {
-      String dpKey = (String)dpit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(dpKey);
+      String dpKey = dpit.next();
+      PertDataPoint pdp = dataPoints_.get(dpKey);
       if (expKey.equals(pdp.getExperimentKey())) {
         String batchID = pdp.getBatchKey();
         String targetID = pdp.getTargetKey();
-        HashSet forTarg = (HashSet)retval.get(targetID);
+        Set<String> forTarg = retval.get(targetID);
         if (forTarg == null) {
-          forTarg = new HashSet();
+          forTarg = new HashSet<String>();
           retval.put(targetID, forTarg);
         }     
         forTarg.add(batchID);
@@ -4704,24 +4704,24 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Find batch ID collisions for merging experiments
   */
   
-  public Map mergeExperimentBatchCollisions(Set keyIDs) {
-    HashMap seenKeys = new HashMap();
-    Iterator dpit = dataPoints_.keySet().iterator();
+  public Map<String, Map<String, List<String>>> mergeExperimentBatchCollisions(Set<String> keyIDs) {
+    HashMap<String, Map<String, List<String>>> seenKeys = new HashMap<String, Map<String, List<String>>>();
+    Iterator<String> dpit = dataPoints_.keySet().iterator();
     while (dpit.hasNext()) {
-      String dpKey = (String)dpit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(dpKey);
+      String dpKey = dpit.next();
+      PertDataPoint pdp = dataPoints_.get(dpKey);
       String expKey = pdp.getExperimentKey();
       if (keyIDs.contains(expKey)) {
         String batchID = pdp.getBatchKey();
         String targetID = pdp.getTargetKey();    
-        HashMap forTarg = (HashMap)seenKeys.get(targetID);
+        Map<String, List<String>> forTarg = seenKeys.get(targetID);
         if (forTarg == null) {
-          forTarg = new HashMap();
+          forTarg = new HashMap<String, List<String>>();
           seenKeys.put(targetID, forTarg);
         }
-        ArrayList vals = (ArrayList)forTarg.get(batchID);
+        List<String> vals = forTarg.get(batchID);
         if (vals == null) {
-          vals = new ArrayList();
+          vals = new ArrayList<String>();
           forTarg.put(batchID, vals);
         }
         vals.add(pdp.getDisplayValue());
@@ -4735,22 +4735,22 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Find batch ID collisions for merging experiments
   */
 
-  public Map prepBatchCollisions(Map collisions, String expString) {   
+  public Map<String, Map<String, Map<String, BatchCollision>>> prepBatchCollisions(Map<String, Map<String, List<String>>> collisions, String expString) {   
     boolean haveOne = false;
-    TreeMap retval = new TreeMap();
-    TreeMap perExp = new TreeMap();
+    TreeMap<String, Map<String, Map<String, BatchCollision>>> retval = new TreeMap<String, Map<String, Map<String, BatchCollision>>>();
+    TreeMap<String, Map<String, BatchCollision>> perExp = new TreeMap<String, Map<String, BatchCollision>>();
     retval.put(expString, perExp);
-    Iterator cit = collisions.keySet().iterator();
+    Iterator<String> cit = collisions.keySet().iterator();
     while (cit.hasNext()) {
-      String targetID = (String)cit.next();
-      Map forTarg = (Map)collisions.get(targetID);
-      TreeMap perTarg = new TreeMap();
+      String targetID = cit.next();
+      Map<String, List<String>> forTarg = collisions.get(targetID);
+      TreeMap<String, BatchCollision> perTarg = new TreeMap<String, BatchCollision>();
       String targName = getTarget(targetID);
       perExp.put(targName, perTarg);
-      Iterator ftit = forTarg.keySet().iterator();
+      Iterator<String> ftit = forTarg.keySet().iterator();
       while (ftit.hasNext()) {
-        String batchID = (String)ftit.next();    
-        ArrayList vals = (ArrayList)forTarg.get(batchID);
+        String batchID = ftit.next();    
+        List<String> vals = forTarg.get(batchID);
         int numVal = vals.size();
         if (numVal > 1) {
           BatchCollision bc = new BatchCollision(expString, targName, batchID);
@@ -4769,18 +4769,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge experiments
   */
   
-  public PertDataChange[] mergeExperiments(List keyIDs, String useKey, Experiment revisedExp) { 
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergeExperiments(List<String> keyIDs, String useKey, Experiment revisedExp) { 
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setExperiment(revisedExp));
       } else {
         retlist.add(deleteExperiment(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
   
   /***************************************************************************
@@ -4788,14 +4788,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge all experiment refs to a single one
   */
   
-  public PertDataChange mergeExperimentRefs(Set pointsToMerge, String expKey, Set abandonKeys) {
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT_SET);
-    retval.dataPtsSubsetOrig = new HashMap();
-    retval.dataPtsSubsetNew = new HashMap();
-    Iterator k2dit = pointsToMerge.iterator();
+  public PertDataChange mergeExperimentRefs(Set<String> pointsToMerge, String expKey, Set<String> abandonKeys) {
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT_SET);
+    retval.dataPtsSubsetOrig = new HashMap<String, PertDataPoint>();
+    retval.dataPtsSubsetNew = new HashMap<String, PertDataPoint>();
+    Iterator<String> k2dit = pointsToMerge.iterator();
     while (k2dit.hasNext()) {
-      String key = (String)k2dit.next();
-      PertDataPoint pdp = (PertDataPoint)dataPoints_.get(key);
+      String key = k2dit.next();
+      PertDataPoint pdp = dataPoints_.get(key);
       if (!pdp.getExperimentKey().equals(expKey)) {
         retval.dataPtsSubsetOrig.put(key, pdp.clone());
         pdp.setExperimentKey(expKey);
@@ -4812,8 +4812,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteExperiment(String psiID) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.EXPERIMENT);    
-    retval.expOrig = (Experiment)((Experiment)experiments_.get(psiID)).clone();
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.EXPERIMENT);    
+    retval.expOrig = experiments_.get(psiID).clone();
     experiments_.remove(psiID);
     labels_.removeLabel(psiID);
     retval.expNew = null;
@@ -4832,12 +4832,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       experiments_.remove(repairID);
       labels_.removeLabel(repairID);
     } else if (undo.expNew == null) {  // Undo a delete
-      Experiment expu = (Experiment)undo.expOrig.clone();
+      Experiment expu = undo.expOrig.clone();
       String repairID = expu.getID();
       experiments_.put(repairID, expu);
       labels_.addExistingLabel(repairID);
     } else {  // Change data
-      Experiment expu = (Experiment)undo.expOrig.clone();
+      Experiment expu = undo.expOrig.clone();
       String repairID = expu.getID();
       experiments_.put(repairID, expu);
     }
@@ -4852,7 +4852,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void experimentRedo(PertDataChange redo) {
     if (redo.expOrig == null) {  // Redo an add
-      Experiment expn = (Experiment)redo.expNew.clone();
+      Experiment expn = redo.expNew.clone();
       String repairID = expn.getID();
       experiments_.put(repairID, expn);
       labels_.addExistingLabel(repairID);
@@ -4861,7 +4861,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       experiments_.remove(repairID);
       labels_.removeLabel(repairID);
     } else {  // Change data
-      Experiment expn = (Experiment)redo.expNew.clone();
+      Experiment expn = redo.expNew.clone();
       String repairID = expn.getID();
       experiments_.put(repairID, expn);
     }
@@ -4878,20 +4878,20 @@ public class PerturbationData implements Cloneable, SourceSrc {
     if (undo.expSubsetOrig == null) {
       throw new IllegalStateException();
     } else if (undo.expSubsetNew == null) {  // Undo a delete
-      Iterator kit = undo.expSubsetOrig.keySet().iterator();
+      Iterator<String> kit = undo.expSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        Experiment exp = (Experiment)undo.expSubsetOrig.get(key);
-        Experiment expc = (Experiment)exp.clone();
+        String key = kit.next();
+        Experiment exp = undo.expSubsetOrig.get(key);
+        Experiment expc = exp.clone();
         experiments_.put(key, expc);
         labels_.addExistingLabel(key);
       }
     } else {  // Change data
-      Iterator kit = undo.expSubsetOrig.keySet().iterator();
+      Iterator<String> kit = undo.expSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        Experiment exp = (Experiment)undo.expSubsetOrig.get(key);
-        Experiment expc = (Experiment)exp.clone();
+        String key = kit.next();
+        Experiment exp = undo.expSubsetOrig.get(key);
+        Experiment expc = exp.clone();
         experiments_.put(key, expc);
       }
     }
@@ -4908,18 +4908,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
      if (redo.expSubsetOrig == null) {
       throw new IllegalStateException();
     } else if (redo.expSubsetNew == null) {  // redo a delete
-      Iterator kit = redo.expSubsetOrig.keySet().iterator();
+      Iterator<String> kit = redo.expSubsetOrig.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
+        String key = kit.next();
         experiments_.remove(key);
         labels_.removeLabel(key);
       }
     } else {  // Redo Change data
-      Iterator kit = redo.expSubsetNew.keySet().iterator();
+      Iterator<String> kit = redo.expSubsetNew.keySet().iterator();
       while (kit.hasNext()) {
-        String key = (String)kit.next();
-        Experiment exp = (Experiment)redo.expSubsetNew.get(key);
-        Experiment expc = (Experiment)exp.clone();
+        String key = kit.next();
+        Experiment exp = redo.expSubsetNew.get(key);
+        Experiment expc = exp.clone();
         experiments_.put(key, expc);
       }
     }
@@ -4933,7 +4933,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public Experiment getExperiment(String key) {
-    return ((Experiment)experiments_.get(key));
+    return (experiments_.get(key));
   }
   
   /***************************************************************************
@@ -4951,11 +4951,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setSourceDef(PertSource ps) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF);    
-    PertSource currPs = (PertSource)sourceDefs_.get(ps.getID());
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF);    
+    PertSource currPs = sourceDefs_.get(ps.getID());
     retval.srcDefOrig = (currPs == null) ? null : (PertSource)currPs.clone();
     sourceDefs_.put(ps.getID(), ps);
-    retval.srcDefNew = (PertSource)ps.clone();
+    retval.srcDefNew = ps.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -4966,8 +4966,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteSourceDef(String psID) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.SOURCE_DEF);    
-    retval.srcDefOrig = (PertSource)((PertSource)sourceDefs_.get(psID)).clone();
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.SOURCE_DEF);    
+    retval.srcDefOrig = sourceDefs_.get(psID).clone();
     sourceDefs_.remove(psID);
     retval.srcDefNew = null;
     retval.serialNumberNew = ++serialNumber_;
@@ -4979,18 +4979,18 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Merge perturbation source defs
   */
   
-  public PertDataChange[] mergePertSourceDefs(List keyIDs, String useKey, PertSource revisedPsrc) { 
-    ArrayList retlist = new ArrayList();
+  public PertDataChange[] mergePertSourceDefs(List<String> keyIDs, String useKey, PertSource revisedPsrc) { 
+    ArrayList<PertDataChange> retlist = new ArrayList<PertDataChange>();
     int numIDs = keyIDs.size();
     for (int i = 0; i < numIDs; i++) {
-      String keyID = (String)keyIDs.get(i);
+      String keyID = keyIDs.get(i);
       if (keyID.equals(useKey)) {
         retlist.add(setSourceDef(revisedPsrc));
       } else {
         retlist.add(deleteSourceDef(keyID));
       }
     }
-    return ((PertDataChange[])retlist.toArray(new PertDataChange[retlist.size()]));
+    return (retlist.toArray(new PertDataChange[retlist.size()]));
   }
 
   /***************************************************************************
@@ -5005,12 +5005,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
       labels_.removeLabel(repairID);
     } else if (undo.srcDefNew == null) {  // Undo a delete
       String repairID = undo.srcDefOrig.getID();
-      PertSource psc = (PertSource)undo.srcDefOrig.clone();
+      PertSource psc = undo.srcDefOrig.clone();
       sourceDefs_.put(repairID, psc);
       labels_.addExistingLabel(repairID);
     } else {  // Change data
       String repairID = undo.srcDefOrig.getID();
-      PertSource psc = (PertSource)undo.srcDefOrig.clone();
+      PertSource psc = undo.srcDefOrig.clone();
       sourceDefs_.put(repairID, psc);
     }
     serialNumber_ = undo.serialNumberOrig;
@@ -5025,7 +5025,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   private void sourceDefRedo(PertDataChange redo) {
     if (redo.srcDefOrig == null) { // Redo an add
       String repairID = redo.srcDefNew.getID();
-      PertSource psc = (PertSource)redo.srcDefNew.clone();
+      PertSource psc = redo.srcDefNew.clone();
       sourceDefs_.put(repairID, psc);
       labels_.addExistingLabel(repairID);
     } else if (redo.srcDefNew == null) {  // Redo a delete
@@ -5034,7 +5034,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       labels_.removeLabel(repairID);
     } else {  // Change data
       String repairID = redo.srcDefNew.getID();
-      PertSource psc = (PertSource)redo.srcDefNew.clone();
+      PertSource psc = redo.srcDefNew.clone();
       sourceDefs_.put(repairID, psc);
     }
     serialNumber_ = redo.serialNumberNew;
@@ -5047,11 +5047,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange setDataPoint(PertDataPoint pdp) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT);    
-    PertDataPoint currPdp = (PertDataPoint)dataPoints_.get(pdp.getID());
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT);    
+    PertDataPoint currPdp = dataPoints_.get(pdp.getID());
     retval.pdpOrig = (currPdp == null) ? null : (PertDataPoint)currPdp.clone();
     dataPoints_.put(pdp.getID(), pdp);
-    retval.pdpNew = (PertDataPoint)pdp.clone();
+    retval.pdpNew = pdp.clone();
     retval.serialNumberNew = ++serialNumber_;
     return (retval);
   }
@@ -5072,7 +5072,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       dataPoints_.put(repairID, pdpu);
       labels_.addExistingLabel(repairID);
       if (undo.dataAnnotsOrig != null) {
-        ArrayList notes = (ArrayList)undo.dataAnnotsOrig.clone();
+        ArrayList<String> notes = new ArrayList<String>(undo.dataAnnotsOrig);
         dataPointNotes_.put(repairID, notes);
       }
       if (undo.dataRegResOrig != null) {
@@ -5080,7 +5080,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
         regionRestrictions_.put(repairID, regReg);
       }
       if (undo.userDataOrig != null) {
-        ArrayList values = new ArrayList<String>(undo.userDataOrig);
+        ArrayList<String> values = new ArrayList<String>(undo.userDataOrig);
         userData_.put(repairID, values);
       }
     } else {  // Change data
@@ -5099,7 +5099,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   
   private void dataPointRedo(PertDataChange redo) {
     if (redo.pdpOrig == null) {  // Redo an add
-      PertDataPoint pdpn = (PertDataPoint)redo.pdpNew.clone();
+      PertDataPoint pdpn = redo.pdpNew.clone();
       String repairID = pdpn.getID();
       dataPoints_.put(repairID, pdpn);
       labels_.addExistingLabel(repairID);
@@ -5117,7 +5117,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
         userData_.remove(repairID);
       }
     } else {  // Change data
-      PertDataPoint pdpn = (PertDataPoint)redo.pdpNew.clone();
+      PertDataPoint pdpn = redo.pdpNew.clone();
       String repairID = pdpn.getID();
       dataPoints_.put(repairID, pdpn);
     }
@@ -5131,8 +5131,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange deleteDataPoint(String pdpID) { 
-    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.DATA_POINT);    
-    retval.pdpOrig = (PertDataPoint)((PertDataPoint)dataPoints_.get(pdpID)).clone();
+    PertDataChange retval = new PertDataChange(serialNumber_, PertDataChange.Mode.DATA_POINT);    
+    retval.pdpOrig = dataPoints_.get(pdpID).clone();
     dataPoints_.remove(pdpID);
     labels_.removeLabel(pdpID);
     
@@ -5140,9 +5140,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Remove annotations, if present:
     //
     
-    ArrayList notes = (ArrayList)dataPointNotes_.get(pdpID);  // may be null
+    List<String> notes = dataPointNotes_.get(pdpID);  // may be null
     if (notes != null) {
-      retval.dataAnnotsOrig = (ArrayList)notes.clone();
+      retval.dataAnnotsOrig = new ArrayList<String>(notes);
       dataPointNotes_.remove(pdpID);
     }
     
@@ -5150,9 +5150,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Remove region restrict, if present:
     //
     
-    RegionRestrict regReg = (RegionRestrict)regionRestrictions_.get(pdpID);  // may be null
+    RegionRestrict regReg = regionRestrictions_.get(pdpID);  // may be null
     if (regReg != null) {
-      retval.dataRegResOrig = (RegionRestrict)regReg.clone();
+      retval.dataRegResOrig = regReg.clone();
       regionRestrictions_.remove(pdpID);
     } 
     
@@ -5160,9 +5160,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Remove user data:
     //
     
-    ArrayList values = (ArrayList)userData_.get(pdpID);  // may be null
+    List<String> values = userData_.get(pdpID);  // may be null
     if (values != null) {
-      retval.userDataOrig = (ArrayList)values.clone();
+      retval.userDataOrig = new ArrayList<String>(values);
       userData_.remove(pdpID);
     }
 
@@ -5186,11 +5186,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
    
   public PertDataChange dropPertDataForFilter(PertFilterExpression pfe) {
-    List dropPoints = getPerturbations(pfe);
-    HashSet keysToDrop = new HashSet();
+    List<PertDataPoint> dropPoints = getPerturbations(pfe);
+    HashSet<String> keysToDrop = new HashSet<String>();
     int numNew = dropPoints.size();
     for (int i = 0; i < numNew; i++) {
-      PertDataPoint pdp = (PertDataPoint)dropPoints.get(i);
+      PertDataPoint pdp = dropPoints.get(i);
       keysToDrop.add(pdp.getID());
     }   
     return (deleteDataPoints(keysToDrop));
@@ -5201,12 +5201,12 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Gets network elements for a root network
   */
   
-  public Set getNetworkElements() {
-    HashSet retval = new HashSet();
-    List sigPerts = getSignificantPerturbations();
+  public Set<QpcrSourceSet> getNetworkElements() {
+    HashSet<QpcrSourceSet> retval = new HashSet<QpcrSourceSet>();
+    List<PertDataPoint> sigPerts = getSignificantPerturbations();
     int numSig = sigPerts.size();
     for (int i = 0; i < numSig; i++) {
-      PertDataPoint pdp = (PertDataPoint)sigPerts.get(i);
+      PertDataPoint pdp = sigPerts.get(i);
       String tname = pdp.getTargetName(this);
       retval.add(new QpcrSourceSet(tname, 0));
       Experiment psi = pdp.getExperiment(this);
@@ -5242,7 +5242,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Set the map from a node to a List of target nodes
   */
   
-  public PertDataChange setEntryMap(String key, List entries) {
+  public PertDataChange setEntryMap(String key, List<String> entries) {
     return (entryMap_.setDataMap(key, entries));
   }
   
@@ -5252,7 +5252,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** imports only!
   */
   
-  public void importLegacyEntryMapEntry(String key, List entries) {
+  public void importLegacyEntryMapEntry(String key, List<String> entries) {
     buildInvertTrgNameCache();
     entryMap_.importLegacyMapEntry(key, entries, invertTargNameCache_);
     return;
@@ -5264,7 +5264,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** imports only!
   */
   
-  public void importLegacySourceMapEntry(String key, List entries) {
+  public void importLegacySourceMapEntry(String key, List<String> entries) {
     buildInvertSrcNameCache();
     sourceMap_.importLegacyMapEntry(key, entries, invertSrcNameCache_);
     return;
@@ -5275,7 +5275,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add a map from a gene to a List of source genes
   */
   
-  public PertDataChange setSourceMap(String key, List entries) {
+  public PertDataChange setSourceMap(String key, List<String> entries) {
     return (sourceMap_.setDataMap(key, entries));
   }
   
@@ -5284,8 +5284,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Add both entry and source maps
   */
   
-  public PertDataChange[] addDataMaps(String key, List entries, List sources) { 
-    ArrayList retvalList = new ArrayList();
+  public PertDataChange[] addDataMaps(String key, List<String> entries, List<String> sources) { 
+    ArrayList<PertDataChange> retvalList = new ArrayList<PertDataChange>();
     PertDataChange retval;
     if ((entries != null) && (entries.size() > 0)) {
       retval = setEntryMap(key, entries);
@@ -5295,7 +5295,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       retval = setSourceMap(key, sources);
       retvalList.add(retval);
     }
-    return (PertDataChange[])retvalList.toArray(new PertDataChange[retvalList.size()]);
+    return (retvalList.toArray(new PertDataChange[retvalList.size()]));
   }
   
   /***************************************************************************
@@ -5323,7 +5323,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the list of targets names for the gene ID.  May be empty.
   */ 
   
-  public List getDataEntryKeysWithDefaultGivenName(String nodeId, String nodeName) {  
+  public List<String> getDataEntryKeysWithDefaultGivenName(String nodeId, String nodeName) {  
     return (entryMap_.getDataKeysWithDefault(nodeId, getTargKeyFromName(nodeName)));
   }
   
@@ -5386,7 +5386,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the Set of keys that map to targets.
   */
   
-  public Set getDataEntryKeySet() {
+  public Set<String> getDataEntryKeySet() {
     return (entryMap_.getDataKeySet());
   }
   
@@ -5395,7 +5395,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the Set of keys that map to sources.
   */
   
-  public Set getDataSourceKeySet() {
+  public Set<String> getDataSourceKeySet() {
     return (sourceMap_.getDataKeySet());
   }  
  
@@ -5429,17 +5429,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] dropAllDataEntryKeys() {   
-    ArrayList retval = new ArrayList();
-    Iterator ksit = new HashSet(getDataEntryKeySet()).iterator();
+    ArrayList<PertDataChange> retval = new ArrayList<PertDataChange>();
+    Iterator<String> ksit = new HashSet<String>(getDataEntryKeySet()).iterator();
     while (ksit.hasNext()) {
-      String id = (String)ksit.next(); 
+      String id = ksit.next(); 
       PertDataChange pdc = dropDataEntryKeys(id);
       retval.add(pdc);
     }  
-    return ((PertDataChange[])retval.toArray(new PertDataChange[retval.size()]));    
+    return (retval.toArray(new PertDataChange[retval.size()]));    
   }
-  
-  
   
   /***************************************************************************
   **
@@ -5447,14 +5445,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertDataChange[] dropAllDataSourceKeys() {   
-    ArrayList retval = new ArrayList();
-    Iterator ksit = new HashSet(getDataSourceKeySet()).iterator();
+    ArrayList<PertDataChange> retval = new ArrayList<PertDataChange>();
+    Iterator<String> ksit = new HashSet<String>(getDataSourceKeySet()).iterator();
     while (ksit.hasNext()) {
-      String id = (String)ksit.next(); 
+      String id = ksit.next(); 
       PertDataChange pdc = dropDataSourceKeys(id);
       retval.add(pdc);
     }  
-    return ((PertDataChange[])retval.toArray(new PertDataChange[retval.size()]));    
+    return (retval.toArray(new PertDataChange[retval.size()]));    
   }
     
   /***************************************************************************
@@ -5469,14 +5467,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
     //
     HashSet<String> retval = new HashSet<String>();
   
-    List stPerts = getSrcTargPerts(null, targetID);
+    List<PertDataPoint> stPerts = getSrcTargPerts(null, targetID);
     int numSt = stPerts.size();
     if (numSt == 0) {
       return (retval);
     }
       
     for (int i = 0; i < numSt; i++) {
-      PertDataPoint pdp = (PertDataPoint)stPerts.get(i);
+      PertDataPoint pdp = stPerts.get(i);
       String sskey = pdp.getSingleSourceKey(this);
       if (sskey != null) {
         retval.addAll(getDataSourceKeyInverse(sskey));
@@ -5490,11 +5488,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Return the Ids of source names for proxies
   */
   
-  public Set getProxiedSources() {
-    HashSet retval = new HashSet();
-    Iterator sdit = sourceDefs_.values().iterator();
+  public Set<String> getProxiedSources() {
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<PertSource> sdit = sourceDefs_.values().iterator();
     while (sdit.hasNext()) {
-      PertSource chk = (PertSource)sdit.next();
+      PertSource chk = sdit.next();
       if (chk.isAProxy()) {
         retval.add(chk.getSourceNameKey());
       }
@@ -5507,16 +5505,16 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Return map of proxy ID to proxied sources.
   */
   
-  public Map getMappedProxiedSources() {
-    HashMap retval = new HashMap();
-    Iterator sdit = sourceDefs_.values().iterator();
+  public Map<String, Set<String>> getMappedProxiedSources() {
+    HashMap<String, Set<String>> retval = new HashMap<String, Set<String>>();
+    Iterator<PertSource> sdit = sourceDefs_.values().iterator();
     while (sdit.hasNext()) {
-      PertSource chk = (PertSource)sdit.next();
+      PertSource chk = sdit.next();
       if (chk.isAProxy()) {
         String srcKey = chk.getSourceNameKey();
-        HashSet allProx = (HashSet)retval.get(srcKey);
+        Set<String> allProx = retval.get(srcKey);
         if (allProx == null) {
-          allProx = new HashSet();
+          allProx = new HashSet<String>();
           retval.put(srcKey, allProx);
         }     
         allProx.add(chk.getProxiedSpeciesKey());
@@ -5531,10 +5529,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public Set<String> getPertSourceKeysForProxies() {
-    HashSet retval = new HashSet();
-    Iterator sdit = sourceDefs_.keySet().iterator();
+    HashSet<String> retval = new HashSet<String>();
+    Iterator<String> sdit = sourceDefs_.keySet().iterator();
     while (sdit.hasNext()) {
-      String chkID = (String)sdit.next();
+      String chkID = sdit.next();
       PertSource chk = sourceDefs_.get(chkID);
       if (chk.isAProxy()) {
         retval.add(chkID);
@@ -5548,7 +5546,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get the "significant" perturbations:
   */
   
-  public List getSignificantPerturbations() {
+  public List<PertDataPoint> getSignificantPerturbations() {
     if ((sigPertCache_ == null) || (sigPertCacheVersionSN_ != serialNumber_)) {
       PertFilter pertFilter = new PertFilter(PertFilter.VALUE, PertFilter.ABOVE_THRESH, null);
       PertFilterExpression pfe = new PertFilterExpression(pertFilter);
@@ -5564,8 +5562,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public PertFilterExpression getFilterExpression(String sourceID, String targetID, boolean allowProxy) {
-    List skeys = (sourceID == null) ? null : getDataSourceKeysWithDefault(sourceID);
-    List tkeys = getDataEntryKeysWithDefault(targetID);
+    List<String> skeys = (sourceID == null) ? null : getDataSourceKeysWithDefault(sourceID);
+    List<String> tkeys = getDataEntryKeysWithDefault(targetID);
     return (getFilterExpression((sourceID == null), skeys, tkeys, allowProxy));
   }
   
@@ -5574,7 +5572,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Get a filter expression for the given src and target
   */
   
-  public PertFilterExpression getFilterExpression(boolean skipSource, List skeys, List tkeys, boolean allowProxy) {
+  public PertFilterExpression getFilterExpression(boolean skipSource, List<String> skeys, List<String> tkeys, boolean allowProxy) {
     int srcFilterCat = (allowProxy) ? PertFilter.SOURCE_OR_PROXY_NAME : PertFilter.SOURCE_NAME;
        
     PertFilterExpression srcExp = null;
@@ -5587,7 +5585,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     } else { 
       int numS = skeys.size();
       for (int i = 0; i < numS; i++) {
-        String sKey = (String)skeys.get(i);
+        String sKey = skeys.get(i);
         PertFilter srcFilter = new PertFilter(srcFilterCat, PertFilter.STR_EQUALS, sKey);
         if (srcExp == null) {
           srcExp = new PertFilterExpression(srcFilter);
@@ -5604,7 +5602,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     } else {    
       int numT = tkeys.size();
       for (int i = 0; i < numT; i++) {
-        String tKey = (String)tkeys.get(i);
+        String tKey = tkeys.get(i);
         PertFilter trgFilter = new PertFilter(PertFilter.TARGET, PertFilter.STR_EQUALS, tKey);
         if (trgExp == null) {
           trgExp = new PertFilterExpression(trgFilter);
@@ -5634,10 +5632,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
   */
   
   public boolean haveDataRelaxedMatch(String targetName) {
-    List sigPerts = getSignificantPerturbations();
+    List<PertDataPoint> sigPerts = getSignificantPerturbations();
     int numSig = sigPerts.size();
     for (int i = 0; i < numSig; i++) {
-      PertDataPoint pdp = (PertDataPoint)sigPerts.get(i);
+      PertDataPoint pdp = sigPerts.get(i);
       String tname = pdp.getTargetName(this);
       if (DataUtil.keysEqual(tname, targetName)) {
         return (true);
@@ -5681,7 +5679,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Get the pert data:
     //
     
-    List stPerts = getSrcTargPerts(sourceID, targetID);
+    List<PertDataPoint> stPerts = getSrcTargPerts(sourceID, targetID);
     int numstp = stPerts.size();
     if (numstp == 0) {
       return ("");
@@ -5695,28 +5693,28 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Extract what we want:
     //
       
-    HashMap tipData = new HashMap();
+    HashMap<SrcTarg, SortedMap<MinMax, Map<String, List<String>>>> tipData = new HashMap<SrcTarg, SortedMap<MinMax, Map<String, List<String>>>>();
     for (int i = 0; i < numstp; i++) {
-      PertDataPoint pdp = (PertDataPoint)stPerts.get(i);
+      PertDataPoint pdp = stPerts.get(i);
       
       String display = pdp.getScaledDisplayValueOldStyle(scaleKey, this, false);
       String batchKey = pdp.getDecoratedBatchKey(this, false);
       MinMax time = pdp.getTimeRange(this);
    
       SrcTarg stKey = new SrcTarg(pdp.getPertDisplayString(this, PertSources.NO_FOOTS), pdp.getTargetKey());
-      TreeMap dataForST = (TreeMap)tipData.get(stKey);
+      SortedMap<MinMax, Map<String, List<String>>> dataForST = tipData.get(stKey);
       if (dataForST == null) {
-        dataForST = new TreeMap();
+        dataForST = new TreeMap<MinMax, Map<String, List<String>>>();
         tipData.put(stKey, dataForST);
       }
-      HashMap batchesForTime = (HashMap)dataForST.get(time);
+      Map<String, List<String>> batchesForTime = dataForST.get(time);
       if (batchesForTime == null) {
-        batchesForTime = new HashMap();
+        batchesForTime = new HashMap<String, List<String>>();
         dataForST.put(time, batchesForTime);
       }
-      ArrayList dataForBatch = (ArrayList)batchesForTime.get(batchKey);
+      List<String> dataForBatch = batchesForTime.get(batchKey);
       if (dataForBatch == null) {
-        dataForBatch = new ArrayList();
+        dataForBatch = new ArrayList<String>();
         batchesForTime.put(batchKey, dataForBatch);
       }
       dataForBatch.add(display);
@@ -5726,29 +5724,29 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Merge time points into time ranges, if needed:
     //
    
-    Iterator tdit = tipData.keySet().iterator();
+    Iterator<SrcTarg> tdit = tipData.keySet().iterator();
     while (tdit.hasNext()) {  
-      SrcTarg stKey = (SrcTarg)tdit.next();   
-      TreeMap dataForST = (TreeMap)tipData.get(stKey);
-      Iterator dfstit = dataForST.keySet().iterator();
-      TreeMap reducedForST = new TreeMap();
+      SrcTarg stKey = tdit.next();   
+      SortedMap<MinMax, Map<String, List<String>>> dataForST = tipData.get(stKey);
+      Iterator<MinMax> dfstit = dataForST.keySet().iterator();
+      TreeMap<MinMax, Map<String, List<String>>> reducedForST = new TreeMap<MinMax, Map<String, List<String>>>();
       while (dfstit.hasNext()) {  
-        MinMax time = (MinMax)dfstit.next();
+        MinMax time = dfstit.next();
         if (time.min != time.max) {
           reducedForST.put(time, dataForST.get(time));
         }
       }
       dfstit = dataForST.keySet().iterator();
       while (dfstit.hasNext()) {  
-        MinMax time = (MinMax)dfstit.next();
-        HashMap batchesForTimeSrc = (HashMap)dataForST.get(time);
+        MinMax time = dfstit.next();
+        Map<String, List<String>> batchesForTimeSrc = dataForST.get(time);
         if (time.min == time.max) {
           boolean transferred = false;
-          Iterator redit = reducedForST.keySet().iterator();
+          Iterator<MinMax> redit = reducedForST.keySet().iterator();
           while (redit.hasNext()) {
-            MinMax candidate = (MinMax)redit.next();
+            MinMax candidate = redit.next();
             if ((candidate.min != candidate.max) && candidate.contained(time.min)) {
-              HashMap batchesForTimeTarg = (HashMap)reducedForST.get(candidate);              
+              Map<String, List<String>> batchesForTimeTarg = reducedForST.get(candidate);              
               batchesForTimeTarg.putAll(batchesForTimeSrc);
               transferred = true;
               break;
@@ -5770,26 +5768,26 @@ public class PerturbationData implements Cloneable, SourceSrc {
     buf.append("<html>");
     tdit = tipData.keySet().iterator();
     while (tdit.hasNext()) {  
-      SrcTarg stKey = (SrcTarg)tdit.next();
+      SrcTarg stKey = tdit.next();
       buf.append(stKey.srcID);
       buf.append(": ");
       buf.append(getTarget(stKey.targID));
       buf.append("<br>");        
-      TreeMap dataForST = (TreeMap)tipData.get(stKey);
-      Iterator dfstit = dataForST.keySet().iterator();
+      SortedMap<MinMax, Map<String, List<String>>> dataForST = tipData.get(stKey);
+      Iterator<MinMax> dfstit = dataForST.keySet().iterator();
       while (dfstit.hasNext()) {  
-        MinMax time = (MinMax)dfstit.next();
+        MinMax time = dfstit.next();
         buf.append("&nbsp;&nbsp;"); 
         buf.append(Experiment.getTimeDisplayString(appState_, time, true, true));   
         buf.append(": ");
-        HashMap batchesForTime = (HashMap)dataForST.get(time);
-        Iterator bftit = batchesForTime.keySet().iterator();
+        Map<String, List<String>> batchesForTime = dataForST.get(time);
+        Iterator<String> bftit = batchesForTime.keySet().iterator();
         while (bftit.hasNext()) {  
-          String batchKey = (String)bftit.next();
-          ArrayList dataForBatch = (ArrayList)batchesForTime.get(batchKey);
-          Iterator dfbit = dataForBatch.iterator();
+          String batchKey = bftit.next();
+          List<String> dataForBatch = batchesForTime.get(batchKey);
+          Iterator<String> dfbit = dataForBatch.iterator();
           while (dfbit.hasNext()) {  
-            String dataStr = (String)dfbit.next();
+            String dataStr = dfbit.next();
             buf.append(dataStr);
             if (dfbit.hasNext()) {
               buf.append(",");
@@ -5840,21 +5838,21 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Targets
     //
     
-    TreeSet tKeys = new TreeSet(targets_.keySet());
+    TreeSet<String> tKeys = new TreeSet<String>(targets_.keySet());
     if (!tKeys.isEmpty()) {
       ind.indent();
       out.println("<pertTargs>");
       ind.up();
-      Iterator tkit = tKeys.iterator();
+      Iterator<String> tkit = tKeys.iterator();
       while (tkit.hasNext()) {
-        String tkey = (String)tkit.next();
-        String targ = (String)targets_.get(tkey);
+        String tkey = tkit.next();
+        String targ = targets_.get(tkey);
         ind.indent();
         out.print("<pertTarg id=\"");
         out.print(tkey);
         out.print("\" name=\"");
         out.print(CharacterEntityMapper.mapEntities(targ, false));
-        List notes = getFootnotesForTarget(tkey);
+        List<String> notes = getFootnotesForTarget(tkey);
         if ((notes != null) && !notes.isEmpty()) {
           out.print("\" notes=\"");
           out.print(Splitter.tokenJoin(notes, ","));
@@ -5869,15 +5867,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Source names
     //
     
-    TreeSet snKeys = new TreeSet(sourceNames_.keySet());
+    TreeSet<String> snKeys = new TreeSet<String>(sourceNames_.keySet());
     if (!snKeys.isEmpty()) {
       ind.indent();
       out.println("<pertSrcNames>");
       ind.up();
-      Iterator tkit = snKeys.iterator();
+      Iterator<String> tkit = snKeys.iterator();
       while (tkit.hasNext()) {
-        String snkey = (String)tkit.next();
-        String srcName = (String)sourceNames_.get(snkey);
+        String snkey = tkit.next();
+        String srcName = sourceNames_.get(snkey);
         ind.indent();
         out.print("<pertSrcName id=\"");
         out.print(snkey);
@@ -5893,15 +5891,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Investigators:
     //
     
-    TreeSet iKeys = new TreeSet(investigators_.keySet());
+    TreeSet<String> iKeys = new TreeSet<String>(investigators_.keySet());
     if (!iKeys.isEmpty()) {
       ind.indent();
       out.println("<pertInvests>");
       ind.up();
-      Iterator ikit = iKeys.iterator();
+      Iterator<String> ikit = iKeys.iterator();
       while (ikit.hasNext()) {
-        String ikey = (String)ikit.next();
-        String invest = (String)investigators_.get(ikey);
+        String ikey = ikit.next();
+        String invest = investigators_.get(ikey);
         ind.indent();
         out.print("<pertInvest id=\"");
         out.print(ikey);
@@ -5917,15 +5915,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Perturbation source definitions:
     //
     
-    TreeSet sdKeys = new TreeSet(sourceDefs_.keySet());
+    TreeSet<String> sdKeys = new TreeSet<String>(sourceDefs_.keySet());
     if (!sdKeys.isEmpty()) {
       ind.indent();
       out.println("<pertSourceDefs>");
       ind.up();
-      Iterator sdkit = sdKeys.iterator();
+      Iterator<String> sdkit = sdKeys.iterator();
       while (sdkit.hasNext()) {
-        String sdkey = (String)sdkit.next();
-        PertSource psd = (PertSource)sourceDefs_.get(sdkey);
+        String sdkey = sdkit.next();
+        PertSource psd = sourceDefs_.get(sdkey);
         psd.writeXML(out, ind);
       }   
       ind.down().indent(); 
@@ -5936,15 +5934,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Experiments:
     //  
     
-    TreeSet psKeys = new TreeSet(experiments_.keySet());
+    TreeSet<String> psKeys = new TreeSet<String>(experiments_.keySet());
     if (!psKeys.isEmpty()) {
       ind.indent();
       out.println("<experiments>");
       ind.up();
-      Iterator pskit = psKeys.iterator();
+      Iterator<String> pskit = psKeys.iterator();
       while (pskit.hasNext()) {
-        String pskey = (String)pskit.next();
-        Experiment psi = (Experiment)experiments_.get(pskey);
+        String pskey = pskit.next();
+        Experiment psi = experiments_.get(pskey);
         psi.writeXML(out, ind);
       }   
       ind.down().indent(); 
@@ -5955,15 +5953,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
     // Region restrictions:
     //  
     
-    TreeSet rrKeys = new TreeSet(regionRestrictions_.keySet());
+    TreeSet<String> rrKeys = new TreeSet<String>(regionRestrictions_.keySet());
     if (!rrKeys.isEmpty()) {
       ind.indent();
       out.println("<regRestricts>");
       ind.up();
-      Iterator rrkit = rrKeys.iterator();
+      Iterator<String> rrkit = rrKeys.iterator();
       while (rrkit.hasNext()) {
-        String rrkey = (String)rrkit.next();
-        RegionRestrict rr = (RegionRestrict)regionRestrictions_.get(rrkey);
+        String rrkey = rrkit.next();
+        RegionRestrict rr = regionRestrictions_.get(rrkey);
         rr.writeXML(out, ind, rrkey);
       }   
       ind.down().indent(); 
@@ -5978,9 +5976,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
       ind.indent();
       out.println("<userFields>");
       ind.up();
-      Iterator ufit = userFields_.iterator();
+      Iterator<String> ufit = userFields_.iterator();
       while (ufit.hasNext()) {
-        String fieldName = (String)ufit.next();
+        String fieldName = ufit.next();
         ind.indent();
         out.print("<userField name=\"");
         out.print(CharacterEntityMapper.mapEntities(fieldName, false));
@@ -5989,15 +5987,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
       ind.down().indent(); 
       out.println("</userFields>");
  
-      TreeSet edKeys = new TreeSet(userData_.keySet());
+      TreeSet<String> edKeys = new TreeSet<String>(userData_.keySet());
       if (!edKeys.isEmpty()) {
         ind.indent();
         out.println("<userDataVals>");
         ind.up();
-        Iterator edkit = edKeys.iterator();
+        Iterator<String> edkit = edKeys.iterator();
         while (edkit.hasNext()) {
-          String udfkey = (String)edkit.next();
-          ArrayList udf = (ArrayList)userData_.get(udfkey);
+          String udfkey = edkit.next();
+          List<String> udf = userData_.get(udfkey);
           writeXMLForUserData(out, ind, udf, udfkey);
         }   
         ind.down().indent(); 
@@ -6005,15 +6003,15 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
     }
     
-    TreeSet dpKeys = new TreeSet(dataPoints_.keySet());
+    TreeSet<String> dpKeys = new TreeSet<String>(dataPoints_.keySet());
     if (!dpKeys.isEmpty()) {
       ind.indent();
       out.println("<dataPoints>");
       ind.up();
-      Iterator dpkit = dpKeys.iterator();
+      Iterator<String> dpkit = dpKeys.iterator();
       while (dpkit.hasNext()) {
-        String dpkey = (String)dpkit.next();
-        PertDataPoint pdp = (PertDataPoint)dataPoints_.get(dpkey);
+        String dpkey = dpkit.next();
+        PertDataPoint pdp = dataPoints_.get(dpkey);
         pdp.writeXML(out, ind, this);
       }
       ind.down().indent(); 
@@ -6049,14 +6047,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
   **
   */
   
-  public void writeXMLForUserData(PrintWriter out, Indenter ind, List udf, String udfkey) {
+  public void writeXMLForUserData(PrintWriter out, Indenter ind, List<String> udf, String udfkey) {
     ind.indent();
     out.print("<userData key=\"");
     out.print(udfkey);
     out.print("\"");
     int numUDF = udf.size();
     for (int i = 0; i < numUDF; i++) {
-      String datVal = (String)udf.get(i);
+      String datVal = udf.get(i);
       if (datVal.trim().equals("")) {
         continue;
       }
@@ -6170,27 +6168,27 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** have QPCR id tags in them, not genome ID tags.
   */
   
-  private Set<LinkCandidate> buildFullInteractionNetwork(int collapseMode) {
+  private Set<LinkCandidate> buildFullInteractionNetwork(CollapseMode collapseMode) {
 
-    HashMap resultMap = new HashMap();
-    Map[] collapseMaps = buildCollapseMaps();
+    HashMap<SrcTarg, Integer> resultMap = new HashMap<SrcTarg, Integer>();
+    Map<CollapseMode, Map<Integer, Integer>> collapseMaps = buildCollapseMaps();
  
-    List sigPerts = getSignificantPerturbations();
+    List<PertDataPoint> sigPerts = getSignificantPerturbations();
     int numSig = sigPerts.size();
     for (int i = 0; i < numSig; i++) {
-      PertDataPoint pdp = (PertDataPoint)sigPerts.get(i);
+      PertDataPoint pdp = sigPerts.get(i);
       int linkSign = pdp.getLink(this);
       if (linkSign == PertProperties.NO_LINK) {
         continue;
       }
       int stSign = mapDataSignToSignTag(linkSign);
       Experiment psi = pdp.getExperiment(this);
-      Iterator sit = psi.getSources().getSources();
+      Iterator<String> sit = psi.getSources().getSources();
       while (sit.hasNext()) {
-        String srcID = (String)sit.next();    
+        String srcID = sit.next();    
         PertSource src = getSourceDef(srcID);
         SrcTarg stk = new SrcTarg(src.getSourceNameKey(), pdp.getTargetKey());
-        Integer vals = (Integer)resultMap.get(stk);
+        Integer vals = resultMap.get(stk);
         if (vals == null) {
           vals = new Integer(stSign);
         } else {  
@@ -6205,10 +6203,10 @@ public class PerturbationData implements Cloneable, SourceSrc {
     //
     
     HashSet<LinkCandidate> retval = new HashSet<LinkCandidate>();    
-    Iterator rmit = resultMap.keySet().iterator();
+    Iterator<SrcTarg> rmit = resultMap.keySet().iterator();
     while (rmit.hasNext()) {
-      SrcTarg stk = (SrcTarg)rmit.next();
-      Integer vals = (Integer)resultMap.get(stk);
+      SrcTarg stk = rmit.next();
+      Integer vals = resultMap.get(stk);
       collapseToCandidates(collapseMode, collapseMaps, stk, vals, retval);      
     }
     return (retval);
@@ -6237,10 +6235,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** Applies collape maps and generates LinkCandidates
   */
   
-  private void collapseToCandidates(int collapseMode, Map[] maps, SrcTarg stk, Integer vals, Set<LinkCandidate> retval) {    
-    Map collapse = maps[collapseMode];
+  private void collapseToCandidates(CollapseMode collapseMode, Map<CollapseMode, Map<Integer, Integer>> maps, 
+                                    SrcTarg stk, Integer vals, Set<LinkCandidate> retval) {    
+    Map<Integer, Integer> collapse = maps.get(collapseMode);
 
-    int result = ((Integer)collapse.get(vals)).intValue();
+    int result = collapse.get(vals).intValue();
     if ((result & PLUS_) != 0x00) {
       retval.add(new LinkCandidate(stk.srcID, stk.targID, Linkage.POSITIVE)); 
     } 
@@ -6259,9 +6258,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
   ** of each type (plus, minus, or unsigned).
   */
   
-  private Map[] buildCollapseMaps() {  
+  private Map<CollapseMode, Map<Integer, Integer>> buildCollapseMaps() {  
 
-    HashMap noCollapse = new HashMap();
+    HashMap<Integer, Integer> noCollapse = new HashMap<Integer, Integer>();
     noCollapse.put(new Integer(NO_LINK_), new Integer(NO_LINK_));  
     noCollapse.put(new Integer(PLUS_), new Integer(PLUS_));
     noCollapse.put(new Integer(MINUS_), new Integer(MINUS_));
@@ -6271,7 +6270,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     noCollapse.put(new Integer(M_AND_U_), new Integer(M_AND_U_));
     noCollapse.put(new Integer(ALL_VALS_), new Integer(ALL_VALS_));  
 
-    HashMap distinctPM = new HashMap();
+    HashMap<Integer, Integer> distinctPM = new HashMap<Integer, Integer>();
     distinctPM.put(new Integer(NO_LINK_), new Integer(NO_LINK_));  
     distinctPM.put(new Integer(PLUS_), new Integer(PLUS_));
     distinctPM.put(new Integer(MINUS_), new Integer(MINUS_));
@@ -6281,7 +6280,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     distinctPM.put(new Integer(M_AND_U_), new Integer(M_AND_U_DISTINCT_PM_));
     distinctPM.put(new Integer(ALL_VALS_), new Integer(ALL_VALS_DISTINCT_PM_));  
 
-    HashMap dropSign = new HashMap();
+    HashMap<Integer, Integer> dropSign = new HashMap<Integer, Integer>();
     dropSign.put(new Integer(NO_LINK_), new Integer(NO_LINK_));  
     dropSign.put(new Integer(PLUS_), new Integer(PLUS_));
     dropSign.put(new Integer(MINUS_), new Integer(MINUS_));
@@ -6291,7 +6290,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     dropSign.put(new Integer(M_AND_U_), new Integer(M_AND_U_FULL_COLLAPSE_DROP_SIGN_));
     dropSign.put(new Integer(ALL_VALS_), new Integer(ALL_VALS_FULL_COLLAPSE_DROP_SIGN_));  
 
-    HashMap keepSign = new HashMap();
+    HashMap<Integer, Integer> keepSign = new HashMap<Integer, Integer>();
     keepSign.put(new Integer(NO_LINK_), new Integer(NO_LINK_));  
     keepSign.put(new Integer(PLUS_), new Integer(PLUS_));
     keepSign.put(new Integer(MINUS_), new Integer(MINUS_));
@@ -6301,11 +6300,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
     keepSign.put(new Integer(M_AND_U_), new Integer(M_AND_U_FULL_COLLAPSE_KEEP_SIGN_));
     keepSign.put(new Integer(ALL_VALS_), new Integer(ALL_VALS_FULL_COLLAPSE_KEEP_SIGN_));
 
-    HashMap[] retval = new HashMap[4];
-    retval[NO_COLLAPSE] = noCollapse;
-    retval[DISTINCT_PLUS_MINUS] = distinctPM;
-    retval[FULL_COLLAPSE_DROP_SIGN] = dropSign;  
-    retval[FULL_COLLAPSE_KEEP_SIGN] = keepSign;    
+    Map<CollapseMode, Map<Integer, Integer>> retval = new HashMap<CollapseMode, Map<Integer, Integer>>();
+    retval.put(CollapseMode.NO_COLLAPSE, noCollapse);
+    retval.put(CollapseMode.DISTINCT_PLUS_MINUS, distinctPM);
+    retval.put(CollapseMode.FULL_COLLAPSE_DROP_SIGN, dropSign);  
+    retval.put(CollapseMode.FULL_COLLAPSE_KEEP_SIGN, keepSign);    
 
     return (retval);
   }
@@ -6443,13 +6442,13 @@ public class PerturbationData implements Cloneable, SourceSrc {
       return (valForNull_);
     }
     
-    public boolean containsRegionName(Set dropNames) {
+    public boolean containsRegionName(Set<String> dropNames) {
       if (isNullTargetStyle_) {
         return (false);
       }
       int vfrn = valsForRegular_.size();
       for (int i = 0; i < vfrn; i++) {
-        String vfr = (String)valsForRegular_.get(i);
+        String vfr = valsForRegular_.get(i);
         if (DataUtil.containsKey(dropNames, vfr)) {
           return (true);
         }
@@ -6466,11 +6465,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
       if (isNullTargetStyle_) {
         throw new IllegalStateException();
       }
-      ArrayList newVals = new ArrayList();
+      ArrayList<String> newVals = new ArrayList<String>();
       boolean dropped = false;
       int vfrn = valsForRegular_.size();
       for (int i = 0; i < vfrn; i++) {
-        String vfr = (String)valsForRegular_.get(i);
+        String vfr = valsForRegular_.get(i);
         if (!DataUtil.keysEqual(dropName, vfr)) {
           newVals.add(vfr);        
         } else {
@@ -6487,11 +6486,11 @@ public class PerturbationData implements Cloneable, SourceSrc {
       if (isNullTargetStyle_) {
         return (null);
       }
-      ArrayList newVals = new ArrayList();
+      ArrayList<String> newVals = new ArrayList<String>();
       boolean changed = false;
       int vfrn = valsForRegular_.size();
       for (int i = 0; i < vfrn; i++) {
-        String vfr = (String)valsForRegular_.get(i);
+        String vfr = valsForRegular_.get(i);
         if (DataUtil.keysEqual(oldName, vfr)) {
           newVals.add(newName);
           changed = true;
@@ -6530,9 +6529,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
         retval = getLegacyValue();
       } else {
         StringBuffer buf = new StringBuffer();
-        Iterator rrit = getRegions();
+        Iterator<String> rrit = getRegions();
         while (rrit.hasNext()) {
-          String reg = (String)rrit.next();
+          String reg = rrit.next();
           buf.append(reg);
           if (rrit.hasNext()) {
             buf.append(", ");
@@ -6548,7 +6547,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
         RegionRestrict newVal = (RegionRestrict)super.clone();
         if (this.valsForRegular_ != null) {
           // Strings in list don't need cloning:
-          newVal.valsForRegular_ = (ArrayList)this.valsForRegular_.clone();
+          newVal.valsForRegular_ = new ArrayList<String>(this.valsForRegular_);
         }
         return (newVal);
       } catch (CloneNotSupportedException ex) {
@@ -6570,7 +6569,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
         ind.up();
         int numV = valsForRegular_.size();
         for (int i = 0; i < numV; i++) {          
-          String val = (String)valsForRegular_.get(i);
+          String val = valsForRegular_.get(i);
           ind.indent();
           out.print("<reg name=\"");
           out.print(CharacterEntityMapper.mapEntities(val, false));
@@ -6823,7 +6822,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
         val = CharacterEntityMapper.unmapEntities(val, false);
         retval = new RegionRestrict(val);
       } else {
-        retval = new RegionRestrict(new ArrayList());
+        retval = new RegionRestrict(new ArrayList<String>());
       }
       return (new AugRegRestrict(key, retval));
     }
@@ -6923,9 +6922,9 @@ public class PerturbationData implements Cloneable, SourceSrc {
      
   public static class AugUserData {
     public String key;
-    public Map indexToVal;
+    public Map<String, String> indexToVal;
     
-    public AugUserData(String key, Map indexToVal) {
+    public AugUserData(String key, Map<String, String> indexToVal) {
       this.key = key;
       this.indexToVal = indexToVal;
     }
@@ -6950,7 +6949,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     
     private AugUserData buildFromXML(String elemName, Attributes attrs) throws IOException {
       String id = AttributeExtractor.extractAttribute(elemName, attrs, "userData", "key", true);
-      HashMap indexToVal = new HashMap();
+      HashMap<String, String> indexToVal = new HashMap<String, String>();
       int count = attrs.getLength();
       for (int i = 0; i < count; i++) {
         String key = attrs.getQName(i);
@@ -7095,7 +7094,8 @@ public class PerturbationData implements Cloneable, SourceSrc {
       this.srcMapSN = srcMapSN;
     }
     
-    public Object clone() {
+    @Override
+    public SerialNumberSet clone() {
       try {
         return ((SerialNumberSet)super.clone());
       } catch (CloneNotSupportedException ex) {
@@ -7103,6 +7103,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
     }
     
+    @Override
     public boolean equals(Object o) {
       if (this == o) {
         return (true);
@@ -7119,13 +7120,14 @@ public class PerturbationData implements Cloneable, SourceSrc {
       }
       return (this.srcMapSN == other.srcMapSN);
     }
-       
+    
+    @Override
     public int hashCode() {
       return ((int)(pDataSN + targMapSN + srcMapSN));
     }
         
     public String getDisplayList() {
-      ArrayList currNums = new ArrayList();
+      ArrayList<String> currNums = new ArrayList<String>();
       currNums.add(Long.toString(pDataSN));
       currNums.add(Long.toString(targMapSN));
       currNums.add(Long.toString(srcMapSN));
@@ -7174,7 +7176,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
     }
   }
 
-  public static class SourceInfo implements Comparable {
+  public static class SourceInfo implements Comparable<SourceInfo> {
     
     public String source;
     public int sign;
@@ -7184,8 +7186,7 @@ public class PerturbationData implements Cloneable, SourceSrc {
       this.sign = sign;
     }
     
-    public int compareTo(Object o) {
-      SourceInfo other = (SourceInfo)o;
+    public int compareTo(SourceInfo other) {
       int srcCompare = source.compareTo(other.source);
       if (srcCompare != 0) {
         return (srcCompare);
