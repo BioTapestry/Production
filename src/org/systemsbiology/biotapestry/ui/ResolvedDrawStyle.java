@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -151,7 +151,10 @@ public class ResolvedDrawStyle implements Cloneable {
     }
     if (this.style_ != otherDS.style_) {
       return (false);
-    }   
+    }
+    if (this.calculatedColor_ == null) {
+      return (otherDS.calculatedColor_ == null);
+    }
     return (this.calculatedColor_.equals(otherDS.calculatedColor_));
   }
 

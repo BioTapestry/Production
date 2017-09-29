@@ -212,6 +212,8 @@ public class ShowInfo extends AbstractControlFlow {
     private URL gnuUrl_;
     private URL sunUrl_;
     private URL l4jUrl_;
+    private URL appBuUrl_;
+    private URL jreUrl_;
 
     public String getNextStep() {
       return (nextStep_);
@@ -317,9 +319,13 @@ public class ShowInfo extends AbstractControlFlow {
       }
       // 8/09: COMPLETELY BOGUS, but URLs are breaking everywhere in the latest JVMs, an I don't
       // have time to fix this in a more elegant fashion!
+      // 9/17: STILL COMPLETELY BOGUS, AND STILL BROKEN, AND STILL NO TIME TO FIX!
       gnuUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE");
       sunUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-SUN");
       l4jUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/launch4j-head-LICENSE.txt");
+      appBuUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-APPBUNDLER.txt");
+      jreUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-ORACLE-JRE.txt");
+      
       ResourceManager rMan = appState_.getRMan();
       pane_.setEditable(false);
       frame_ = new JFrame(rMan.getString("window.aboutTitle"));
@@ -332,6 +338,10 @@ public class ShowInfo extends AbstractControlFlow {
                 toUse = sunUrl_;
               } else if (ev.getDescription().indexOf("launch4j-") != -1) {
                 toUse = l4jUrl_;
+              } else if (ev.getDescription().indexOf("APPBUNDLER") != -1) {
+                toUse = appBuUrl_;
+              } else if (ev.getDescription().indexOf("ORACLE-JRE") != -1) {
+                toUse = jreUrl_;
               } else {
                 toUse = gnuUrl_;
               }

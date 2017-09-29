@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,6 +29,8 @@ import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.perturb.MeasureDictionary;
 import org.systemsbiology.biotapestry.perturb.MeasureProps;
 import org.systemsbiology.biotapestry.perturb.MeasureScale;
+import org.systemsbiology.biotapestry.perturb.PertDictionary;
+import org.systemsbiology.biotapestry.perturb.PertProperties;
 import org.systemsbiology.biotapestry.perturb.PerturbationData;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.util.Indenter;
@@ -261,6 +263,49 @@ class QpcrTablePublisher {
       return ("</span>");
     }
   } 
+  
+  /***************************************************************************
+  ** 
+  ** Describe perturbation abbreviations. BOGUS! Jamming in here for 7.1.1, but
+  ** these long-form descriptions belong in the actual perturbation database.
+  */
+
+  void pertAbbrev() { 
+    PerturbationData pd = appState_.getDB().getPertData();
+    PertDictionary pDict = pd.getPertDictionary();
+    ResourceManager rMan = appState_.getRMan();
+    String abbrevNote = rMan.getString("qpcrData.abbrev");
+    
+    out_.println("  <table>");
+    out_.println("    <tr>");
+    out_.println("      <td valign=\"top\" colspan=2 >"); 
+    out_.print("          <b>");
+    out_.print(abbrevNote);
+    out_.println("</b>");
+    out_.println("      </td>");
+    out_.println("    </tr>");
+    
+    Iterator<String> keys = pDict.getKeys();
+    while (keys.hasNext()) {
+      PertProperties pp = pDict.getPerturbProps(keys.next());    
+      out_.println("  <tr>");
+      out_.println("    <td valign=\"top\">");
+      String use = pp.getAbbrev();
+      if (use == null) {
+        use = pp.getType();
+      }
+      out_.print(use);
+      out_.println(":");
+      out_.println("    </td>");
+      out_.println("    <td>");
+      // FIX ME! This belongs in the database
+      out_.println(rMan.getString("qpcrData.bogo" + use));
+      out_.println("    </td>");
+      out_.println("  </tr>");
+    }
+    out_.println("  </table>");
+    return;
+  }
     
   /***************************************************************************
   ** 
