@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2016 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -261,7 +261,16 @@ public class ConsensusNodeProps implements ConsensusProps {
         } else if (!consensusPadOptions.equals(padC)) { // Inconsistent pad options
           consensusPadOptions = new TreeSet<Integer>();
           extraPadCoverage = NO_OPTION_COVERAGE;
-        }    
+        }
+        // BUG #269 is here: (generatePadChoices(Node node) CAN RETURN NULL with unpadded slashes:
+        // (DBNode.onlyOfferForcedPadCount(nodeType) && (padCount == minPad))
+        // If it does, we do NOT want to allow pad change to occur:
+        if (consensusPadOptions == null) {
+          consensusPadOptions = new TreeSet<Integer>();
+          extraPadCoverage = NO_OPTION_COVERAGE;  
+        }     
+        // BUG #269 is here: (generatePadChoices(Node node) CAN RETURN NULL:
+        // (DBNode.onlyOfferForcedPadCount(nodeType) && (padCount == minPad))
         if (!consensusPadOptions.isEmpty()) {
           if (extraPadCoverage == UNDEFINED_OPTION_COVERAGE) {
             extraPadCoverage = FULL_OPTION_COVERAGE;
