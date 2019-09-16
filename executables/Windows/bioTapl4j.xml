@@ -1,0 +1,47 @@
+<launch4jConfig>
+  <dontWrapJar>false</dontWrapJar>
+  <headerType>gui</headerType>
+  <jar>__WJRL_JARLOC__/sBioTapestry-V__WJRL_VERNUM__.jar</jar>
+  <outfile>BioTapestry.exe</outfile>
+  <errTitle>BioTapestry</errTitle>
+  <cmdLine></cmdLine>
+  <chdir></chdir>
+  <priority>normal</priority>
+  <downloadUrl>https://jdk.java.net/</downloadUrl>
+  <supportUrl></supportUrl>
+  <customProcName>false</customProcName>
+  <stayAlive>false</stayAlive>
+  <manifest></manifest>
+  <icon>__WJRL_RESLOC__/BioTapestry.ico</icon>
+  <classPath>
+    <mainClass>org.systemsbiology.biotapestry.app.EditorApplication</mainClass>
+    <cp>sBioTapestry-V__WJRL_VERNUM__.jar</cp>
+  </classPath>
+  <jre>
+    <!-- To bundle a JRE and NOT search for a JRE, we set the path  -->
+    <!-- http://launch4j.sourceforge.net/docs.html (jre tag) -->
+    <path>lib/__WJRL_JDK_VER__</path>
+    <maxVersion></maxVersion>
+    <jdkPreference>preferJre</jdkPreference>
+    <maxHeapSize>8000</maxHeapSize>
+  </jre>
+  <versionInfo>
+    <fileVersion>__WJRL_FILE_VERNUM__</fileVersion>
+    <txtFileVersion>__WJRL_FULL_VERSTRING__</txtFileVersion>
+    <fileDescription>BioTapestry</fileDescription>
+    <copyright>Copyright (C) 2003-__WJRL_CURRYEAR__, Institute for Systems Biology</copyright>
+    <productVersion>__WJRL_FILE_VERNUM__</productVersion>
+    <txtProductVersion>__WJRL_FULL_VERSTRING__</txtProductVersion>
+    <productName>BioTapestry</productName>
+    <companyName>Institute for Systems Biology</companyName>
+    <internalName>BioTapestry</internalName>
+    <originalFilename>BioTapestry.exe</originalFilename>
+  </versionInfo>
+  <messages>
+    <startupErr>There was an error starting up BioTapestry.</startupErr>
+    <bundledJreErr>This application was configured to use a bundled Java Runtime Environment but the runtime is missing or corrupted.</bundledJreErr>
+    <jreVersionErr>BioTapestry needs a different version of Java on your computer to run.</jreVersionErr>
+    <launcherErr>There was an error launching BioTapestry using Java.</launcherErr>
+    <instanceAlreadyExistsMsg>An application instance is already running.</instanceAlreadyExistsMsg>
+  </messages>
+</launch4jConfig>
