@@ -1,0 +1,15 @@
+# /bin/sh
+
+LICENSEDIR=$1
+EXEHOME=$2
+RESHOME=$3
+CURRYEAR=$4
+
+
+cd $EXEHOME
+rm -rf $EXEHOME/Licenses
+mkdir $EXEHOME/Licenses
+cat $RESHOME/../LICENSE-README-TEMPLATE.txt | sed "s#__WJRL_CURRYEAR__#$CURRYEAR#" > Licenses/LICENSE-README.txt
+cp $LICENSEDIR/licenses/*.txt $EXEHOME/Licenses
+cp $RESHOME/INSTALL-README.rtf $EXEHOME
+

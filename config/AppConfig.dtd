@@ -1,0 +1,26 @@
+
+<!-- These are things that change with version-->
+<!-- Beta releases use day numbers for windows file version https://www.epochconverter.com/days/2019 -->
+
+<!ENTITY appName "BioTapestry">
+<!ENTITY appVersionMajor "7">
+<!ENTITY appVersionMinor "1">
+<!ENTITY appVersionPatch "2">
+<!ENTITY appVersionBuild "0">
+<!ENTITY appVersionWinA "258">
+<!ENTITY appVersionWinB "1629">
+<!ENTITY appVersion "&appVersionMajor;.&appVersionMinor;.&appVersionPatch;.&appVersionBuild;">
+<!ENTITY appNDVersion "&appVersionMajor;&appVersionMinor;&appVersionPatch;&appVersionBuild;">
+<!-- <!ENTITY appWinFileVersion "&appVersionMajor;.&appVersionMinor;.&appVersionWinA;.&appVersionWinB;"> -->
+<!ENTITY appWinFileVersion "&appVersionMajor;.&appVersionMinor;.&appVersionPatch;.&appVersionBuild;">
+<!ENTITY appDate "Sun Sep 15 16:28:42 PDT 2019">
+<!ENTITY appDatedVersion "&appVersion; &appDate;">
+<!ENTITY appYear "2019">
+<!ENTITY jdkVer "12.0.1">
+<!ENTITY macName "BioTapestry Editor 7.1.2">
+<!ENTITY macDiskVersion "712">
+<!ENTITY macDiskVolName "BioTapestry Editor 7.1.2" >
+<!ENTITY macDisplayName "BioTapestry Editor 7.1.2">
+<!ENTITY macShortversion "V 7.1.2">	
+<!ENTITY macVersion "7.1.2">
+<!ENTITY macCopyright "Copyright (c) 2003-2019 Institute for Systems Biology.">

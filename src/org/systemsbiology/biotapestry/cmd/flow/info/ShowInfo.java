@@ -212,8 +212,11 @@ public class ShowInfo extends AbstractControlFlow {
     private URL gnuUrl_;
     private URL sunUrl_;
     private URL l4jUrl_;
-    private URL appBuUrl_;
-    private URL jreUrl_;
+    private URL nsisUrl_;
+    private URL apbUrl_ ;
+    private URL jdkUrl_;
+    private URL aliUrl_;
+    private URL aexUrl_; 
 
     public String getNextStep() {
       return (nextStep_);
@@ -317,14 +320,16 @@ public class ShowInfo extends AbstractControlFlow {
       } catch (IOException ioex) {
         return;
       }
-      // 8/09: COMPLETELY BOGUS, but URLs are breaking everywhere in the latest JVMs, an I don't
-      // have time to fix this in a more elegant fashion!
-      // 9/17: STILL COMPLETELY BOGUS, AND STILL BROKEN, AND STILL NO TIME TO FIX!
-      gnuUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE");
-      sunUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-SUN");
+      // 8/09: COMPLETELY BOGUS, but URLs are breaking everywhere in the latest JVMs, and I don't
+      // have time to fix this in a more elegant fashion! 9/19: Same thing!
+      gnuUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE.txt");
+      sunUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-SUN.txt");
       l4jUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/launch4j-head-LICENSE.txt");
-      appBuUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-APPBUNDLER.txt");
-      jreUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-ORACLE-JRE.txt");
+      nsisUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/NSIS-COPYING.txt");
+      apbUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-APPBUNDLER.txt");
+      jdkUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/LICENSE-JDK.txt");
+      aliUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/ADDITIONAL_LICENSE_INFO.txt");
+      aexUrl_ = appState_.getMainCmds().getClass().getResource("/org/systemsbiology/biotapestry/data/licenses/ASSEMBLY_EXCEPTION.txt");  
       
       ResourceManager rMan = appState_.getRMan();
       pane_.setEditable(false);
@@ -338,13 +343,22 @@ public class ShowInfo extends AbstractControlFlow {
                 toUse = sunUrl_;
               } else if (ev.getDescription().indexOf("launch4j-") != -1) {
                 toUse = l4jUrl_;
+              } else if (ev.getDescription().indexOf("NSIS") != -1) {
+                toUse = nsisUrl_;
               } else if (ev.getDescription().indexOf("APPBUNDLER") != -1) {
-                toUse = appBuUrl_;
-              } else if (ev.getDescription().indexOf("ORACLE-JRE") != -1) {
-                toUse = jreUrl_;
+                toUse = apbUrl_;
+              } else if (ev.getDescription().indexOf("JDK") != -1) {
+                toUse = jdkUrl_;
+              } else if (ev.getDescription().indexOf("ADDITIONAL") != -1) {
+                toUse = aliUrl_;
+              } else if (ev.getDescription().indexOf("ASSEMBLY") != -1) {
+                toUse = aexUrl_;
+              } else if (ev.getDescription().indexOf("LICENSE.txt") != -1) {
+                toUse = gnuUrl_;  
               } else {
-                toUse = gnuUrl_;
+                throw new IllegalArgumentException();
               }
+           
               pane_.setPage(toUse);
               buttonB_.setEnabled(true);
             }

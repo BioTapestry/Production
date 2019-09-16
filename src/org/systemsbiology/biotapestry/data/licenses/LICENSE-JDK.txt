@@ -3,7 +3,7 @@ The GNU General Public License (GPL)
 Version 2, June 1991
 
 Copyright (C) 1989, 1991 Free Software Foundation, Inc.
-59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 
 Everyone is permitted to copy and distribute verbatim copies of this license
 document, but changing it is not allowed.
@@ -274,7 +274,7 @@ pointer to where the full notice is found.
 
     One line to give the program's name and a brief idea of what it does.
 
-    Copyright (C) &lt;year&gt; &lt;name of author&gt;
+    Copyright (C) <year> <name of author>
 
     This program is free software; you can redistribute it and/or modify it
     under the terms of the GNU General Public License as published by the Free
@@ -287,8 +287,8 @@ pointer to where the full notice is found.
     more details.
 
     You should have received a copy of the GNU General Public License along
-    with this program; if not, write to the Free Software Foundation, Inc., 59
-    Temple Place, Suite 330, Boston, MA 02111-1307 USA
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 Also add information on how to contact you by electronic and paper mail.
 
@@ -345,4 +345,3 @@ exception as provided by Oracle in the LICENSE file that accompanied this code."
     you modify this library, you may extend this exception to your version of
     the library, but you are not obligated to do so.  If you do not wish to do
     so, delete this exception statement from your version.
-    

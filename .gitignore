@@ -1,0 +1,9 @@
+/bin/
+/dist/
+/build/
+/classes/
+/bin/
+out/
+.DS_Store
+.project
+.classpath
