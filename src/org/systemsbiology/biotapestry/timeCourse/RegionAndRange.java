@@ -525,6 +525,7 @@ public class RegionAndRange {
   ** Figure out extrapolation strategy
   */
   
+  @SuppressWarnings("unused")
   public static int calculateStrategy(String token, boolean isStart) {
   
     //

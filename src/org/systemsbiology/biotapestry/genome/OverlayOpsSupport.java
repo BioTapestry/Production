@@ -89,11 +89,18 @@ public class OverlayOpsSupport implements Cloneable {
   //
   ////////////////////////////////////////////////////////////////////////////  
  
-  //
-  // Overlays and modules have globally unique IDs, so generate new IDs and track the mapping.
-  // We gotta know group mappings, so we do this after groups above.
-  //
+  /***************************************************************************
+  **
+  **
+  ** When changing genomeID, this has to happen too:
+  ** Part of Issue 195 Fix
+  */
   
+  public void resetOwner(String newOwner) {
+    ownerID_ = newOwner;
+    return;
+  }
+ 
   /***************************************************************************
   **
   **
@@ -103,9 +110,11 @@ public class OverlayOpsSupport implements Cloneable {
 
   public void copyWithMap(OverlayOpsSupport other, DBGenome rootGenome, Map<String, String> groupIDMap,
                           Map<String, String> ovrIDMap, Map<String, String> modIDMap, Map<String, String> modLinkIDMap) {
-    this.ownerMode_ = other.ownerMode_;
-    this.appState_ = other.appState_; 
-    this.ownerID_ = other.ownerID_;
+    // Part of Issue 195 Fix
+    // Handled previously in constructor, and ID has actually been switched to new owner:
+    // this.ownerMode_ = other.ownerMode_;
+    // this.appState_ = other.appState_; 
+    // this.ownerID_ = other.ownerID_;
     this.netOverlays_ = new HashMap<String, NetworkOverlay>();
     Iterator<String> noit = other.netOverlays_.keySet().iterator();
    
@@ -115,7 +124,7 @@ public class OverlayOpsSupport implements Cloneable {
       NetworkOverlay nextOver = other.netOverlays_.get(noID);
       ovrIDMap.put(noID, newOvID);
       NetworkOverlay newCopy = new NetworkOverlay(nextOver, newOvID, groupIDMap, null, modIDMap, modLinkIDMap);
-      netOverlays_.put(noID, newCopy);
+      netOverlays_.put(newOvID, newCopy);
     } 
     return;
   }
@@ -290,9 +299,40 @@ public class OverlayOpsSupport implements Cloneable {
 
   /***************************************************************************
   **
+  ** Return info on modules that the node belongs to. (Net Overlay keys map to 
+  ** sets of matching module keys in return map)
+  **
+  */
+
+  public Map<String, Set<String>> getModuleMembership(String nodeID) {
+    HashMap <String, Set<String>> retval = new HashMap <String, Set<String>>(); 
+    Iterator<NetworkOverlay> oit = getNetworkOverlayIterator();
+    while (oit.hasNext()) {
+      NetworkOverlay no = oit.next();
+      String noID = no.getID();
+      Iterator<NetModule> nmit = no.getModuleIterator();
+      while (nmit.hasNext()) {
+        NetModule nmod = nmit.next();
+        String nmID = nmod.getID();
+        if (nmod.isAMember(nodeID)) {
+          Set<String> forOvr = retval.get(noID);
+          if (forOvr == null) {
+            forOvr = new HashSet<String>();
+            retval.put(noID, forOvr);
+          }
+          forOvr.add(nmID);
+        }
+      }
+    }
+    return (retval);
+  }
+      
+  /***************************************************************************
+  **
   ** Clone
   */
 
+  @Override
   public OverlayOpsSupport clone() {
     try {
       OverlayOpsSupport retval = (OverlayOpsSupport)super.clone();

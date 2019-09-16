@@ -445,24 +445,15 @@ public class RemoveLinkage extends AbstractControlFlow {
   
   /***************************************************************************
   **
-  ** Delete a pile of links from the model
+  ** Resolve Links Thru Intersections
   */  
   
-  public static boolean deleteLinksFromModel(BTState appState, Map<String, Intersection> intersections, DataAccessContext rcx, //String genomeKey, 
-                                            // String layoutKey, 
-                                             UndoSupport support) {
-    boolean localUndo = false;
-    if (support == null) {
-      localUndo = true;
-      support = new UndoSupport(appState, "undo.linksDelete");
-    }    
-    
+  public static Set<String> resolveLinksThruIntersections(Map<String, Intersection> intersections, DataAccessContext rcx) {
+  
     //
-    // Crank thru the intersections.  Make up a set of all the linkages that
-    // are being tossed.  Then toss them.
+    // Crank thru the intersections.  Make up a set of all the linkages that resolve
     //
-    
-    
+ 
     Iterator<String> ikit = intersections.keySet().iterator();
     HashSet<String> resolved = new HashSet<String>();
     HashSet<LinkSegmentID> tempSet = new HashSet<LinkSegmentID>();
@@ -484,6 +475,28 @@ public class RemoveLinkage extends AbstractControlFlow {
       }
       resolved.addAll(lp.resolveLinkagesThroughSegments(tempSet, ilp));
     }
+    return (resolved);
+  }   
+
+  /***************************************************************************
+  **
+  ** Delete a pile of links from the model
+  */  
+  
+  public static boolean deleteLinksFromModel(BTState appState, Map<String, Intersection> intersections, DataAccessContext rcx, 
+                                             UndoSupport support) {
+    boolean localUndo = false;
+    if (support == null) {
+      localUndo = true;
+      support = new UndoSupport(appState, "undo.linksDelete");
+    }    
+    
+    //
+    // Crank thru the intersections.  Make up a set of all the linkages that
+    // are being tossed.  Then toss them.
+    //
+      
+    Set<String> resolved = resolveLinksThruIntersections(intersections, rcx);
     doMultiLinkDelete(appState, resolved, rcx, support);
     if ((resolved.size() > 0) && localUndo) {support.finish();} 
     return (resolved.size() > 0);

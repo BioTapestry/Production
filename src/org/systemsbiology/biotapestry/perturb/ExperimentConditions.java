@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -119,7 +119,8 @@ public class ExperimentConditions implements Cloneable {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public ExperimentConditions clone() {
     try {
       ExperimentConditions newVal = (ExperimentConditions)super.clone();
       return (newVal);
@@ -133,7 +134,8 @@ public class ExperimentConditions implements Cloneable {
   ** Standard equals
   **
   */  
-  
+
+  @Override
   public boolean equals(Object other) {
     if (other == null) {
       return (false);

@@ -333,7 +333,7 @@ public class WorksheetLayout implements SpecialtyLayout {
     List<String> ttGroups = ng.findTerminalTargetsByGroups(groups);
     int numTClust = ttGroups.size();
     termClusters_ = GeneAndSatelliteCluster.fillTargetClustersByGroups(sld_.appState, ttGroups, groups, sld_.nps, sld_.rcx,
-                                                                       traceOffset, true, false);
+                                                                       traceOffset, true, false, false);
     
     if ((monitor != null) && !monitor.keepGoing()) {
       throw new AsynchExitRequestException();

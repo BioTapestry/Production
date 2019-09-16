@@ -227,14 +227,14 @@ public class DrawTreeSegment {
   ** Resolve the drawing style to use:
   */
 
-  ResolvedDrawStyle resolveDrawStyle(LinkProperties lp, boolean isGhosted, int activityDrawChange, boolean forModules, ColorResolver cRes) { 
+  ResolvedDrawStyle resolveDrawStyle(LinkProperties lp, boolean isGhosted, int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) { 
 
     //
     // Start with the values for the whole tree, then add on top of it:
     //
 
     SuggestedDrawStyle currStyle = lp.getDrawStyle();
-    ResolvedDrawStyle retval = resolvePerLinkProps(currStyle, isActive_, isGhosted, activityDrawChange, forModules, cRes);
+    ResolvedDrawStyle retval = resolvePerLinkProps(currStyle, isActive_, isGhosted, activityDrawChange, forModules, cRes, dopt);
 
     SuggestedDrawStyle perSeg = getPerSegmentStyle();
     if (perSeg != null) {
@@ -251,7 +251,7 @@ public class DrawTreeSegment {
 
   ResolvedDrawStyle resolvePerLinkProps(SuggestedDrawStyle currStyle, 
                                         boolean isActive, boolean isGhosted, 
-                                        int activityDrawChange, boolean forModules, ColorResolver cRes) {
+                                        int activityDrawChange, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {
     int num = perLinkProps_.size();
     boolean colorMatters = (isActive && !isGhosted);
 
@@ -261,7 +261,7 @@ public class DrawTreeSegment {
     if ((num == 0) && perLinkModulation_.isEmpty()) {
       currStyle = currStyle.clone();
       currStyle.fillWithDefaults();
-      return (new ResolvedDrawStyle(currStyle, colorMatters, forModules, cRes));    
+      return (new ResolvedDrawStyle(currStyle, colorMatters, forModules, cRes, dopt));    
     } 
 
     //
@@ -350,7 +350,7 @@ public class DrawTreeSegment {
     //
     
 
-    ResolvedDrawStyle rds = new ResolvedDrawStyle(currStyle, colorMatters, maxThick, maxStyle, newCol, forModules, cRes);
+    ResolvedDrawStyle rds = new ResolvedDrawStyle(currStyle, colorMatters, maxThick, maxStyle, newCol, forModules, cRes, dopt);
     if (perLinkModulation_.isEmpty()) {
       return (rds);
     }
@@ -377,7 +377,7 @@ public class DrawTreeSegment {
     if (maxLevel != 1.0) {
       if ((activityDrawChange == DisplayOptions.LINK_ACTIVITY_COLOR) ||
           (activityDrawChange == DisplayOptions.LINK_ACTIVITY_BOTH)) {
-        rds.modulateColor(maxLevel);
+        rds.modulateColor(maxLevel, dopt);
       }
       if ((activityDrawChange == DisplayOptions.LINK_ACTIVITY_THICK) ||
           (activityDrawChange == DisplayOptions.LINK_ACTIVITY_BOTH)) {

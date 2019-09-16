@@ -21,7 +21,10 @@
 package org.systemsbiology.biotapestry.app;
 
 import java.awt.Component;
+import java.net.URL;
 
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeCellRenderer;
@@ -48,6 +51,9 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
   private static final long serialVersionUID = 1L;
   private BTState appState_;
   private DataAccessContext dacx_;
+  private Icon vfgIcon_;
+  private Icon vfaIcon_;
+  private Icon vfnIcon_;
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -64,6 +70,12 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
     super();
     appState_ = appState;
     dacx_ = dacx;
+    URL vfgi = getClass().getResource( "/org/systemsbiology/biotapestry/images/VfGIconB.gif");
+    URL vfai = getClass().getResource( "/org/systemsbiology/biotapestry/images/VfAIconB.gif");
+    URL vfni = getClass().getResource( "/org/systemsbiology/biotapestry/images/VfNIconB.gif");
+    vfgIcon_ = new ImageIcon(vfgi);  
+    vfaIcon_ = new ImageIcon(vfai);
+    vfnIcon_ = new ImageIcon(vfni);
   }
     
   ////////////////////////////////////////////////////////////////////////////
@@ -78,6 +90,7 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
   ** Called when the tree is selected
   */
   
+  @Override
   public String getToolTipText() {
     TreeNode[] tn = myNode_.getPath();
     TreePath tp = new TreePath(tn);
@@ -94,14 +107,38 @@ public class PopupCellRenderer extends DefaultTreeCellRenderer {
   ** Return the desired cell
   */
   
+  @Override
   public Component getTreeCellRendererComponent(JTree tree, Object value, 
                                                 boolean selected, boolean expanded, 
                                                 boolean leaf, int row, boolean hasFocus) {
     Component retval = null;                                              
     try {
       myNode_ = (DefaultMutableTreeNode)value;
+
+      //
+      // Getting weird behavior if we acquire retval BEFORE we do these steps. So do these,
+      // then get the renderer...
+      //
+      
+      TreeNode[] tn = myNode_.getPath();
+      Icon icon;
+      if (tn.length <= 2) {
+        icon = vfgIcon_;
+      } else if (leaf) {
+        icon = (tn.length == 3) ? vfaIcon_ : vfnIcon_;
+      } else {
+        icon = vfaIcon_;
+      }
+      if (leaf) {
+       setLeafIcon(icon);
+      } else {
+       setOpenIcon(icon);
+       setClosedIcon(icon);
+      }
+      
       retval = super.getTreeCellRendererComponent(tree, value, selected, expanded, 
-                                                  leaf, row, hasFocus);
+                                                  leaf, row, hasFocus);    
+      
     } catch (Exception ex) {
       appState_.getExceptionHandler().displayException(ex);
     }

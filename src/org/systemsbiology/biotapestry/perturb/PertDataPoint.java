@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -179,11 +179,11 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
     }
     
     out.print("\",\"");
-    HashSet used = new HashSet();
+    HashSet<String> used = new HashSet<String>();
     getAnnotationIDs(used, ss);
-    Iterator uit = used.iterator();
+    Iterator<String> uit = used.iterator();
     while (uit.hasNext()) {
-      String aid = (String)uit.next();
+      String aid = uit.next();
       out.print(pAn.getTag(aid));
       if (uit.hasNext()) {
         out.print("+");
@@ -503,6 +503,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   **
   */ 
   
+  @SuppressWarnings("unused")
   public String getDecoratedBatchKey(SourceSrc ss, boolean superKey) {
     StringBuffer buf = new StringBuffer();
     buf.append(experimentKey_);
@@ -686,7 +687,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Get the candidate values for the given single filter category
   */
   
-  public void getCandidates(BTState appState, int filterCat, SortedSet fillUp, SourceSrc sources) {
+  public void getCandidates(BTState appState, int filterCat, SortedSet<TrueObjChoiceContent> fillUp, SourceSrc sources) {
     Experiment prs = sources.getExperiment(experimentKey_);
     switch (filterCat) {
       case PertFilter.EXPERIMENT:
@@ -713,10 +714,10 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
         fillUp.add(new TrueObjChoiceContent(prs.getTimeDisplayString(true, true), times));
         return;
       case PertFilter.INVEST:
-        List invests = prs.getInvestigators();
+        List<String> invests = prs.getInvestigators();
         int numI = invests.size();
         for (int i = 0; i < numI; i++) {
-          String investKey = (String)invests.get(i);
+          String investKey = invests.get(i);
           String invest = sources.getInvestigator(investKey);
           fillUp.add(new TrueObjChoiceContent(invest, investKey));
         }
@@ -750,7 +751,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Return if our target matches one of those given
   */
   
-  public boolean targetMatches(List trgs) {
+  public boolean targetMatches(List<String> trgs) {
     return (DataUtil.containsKey(trgs, target_));
   } 
     
@@ -799,7 +800,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
         // Three possible matches: this point, the target, or one of the sources.
         //
         String filterStr = pf.getStringValue();
-        List annotIDs = sources.getDataPointNotes(idKey_);
+        List<String> annotIDs = sources.getDataPointNotes(idKey_);
         if ((annotIDs != null) && annotIDs.contains(filterStr)) {
           return (true);
         }
@@ -853,10 +854,10 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
   ** Fill the set of annotation IDs used by this point
   */
   
-  public void getAnnotationIDs(Set usedIDs, SourceSrc sources) {
+  public void getAnnotationIDs(Set<String> usedIDs, SourceSrc sources) {
     Experiment prs = sources.getExperiment(experimentKey_);
     prs.getAnnotationIDs(usedIDs, sources); 
-    List dpn = sources.getDataPointNotes(idKey_);
+    List<String> dpn = sources.getDataPointNotes(idKey_);
     if (dpn != null) {
       usedIDs.addAll(dpn);
     }
@@ -1170,7 +1171,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
       out.print("\"");
     }
     
-    List notes = src.getDataPointNotes(idKey_);
+    List<String> notes = src.getDataPointNotes(idKey_);
     if ((notes != null) && !notes.isEmpty()) {
       String notesStr = Splitter.tokenJoin(notes, ",");
       out.print(" notes=\"");
@@ -1197,7 +1198,7 @@ public class PertDataPoint implements Cloneable, PertFilterTarget {
       buf.append("+");
     }
     buf.append(value_);
-    List annots = ss.getDataPointNotes(idKey_);
+    List<String> annots = ss.getDataPointNotes(idKey_);
     if (annots != null) {
       buf.append(" [");
       String fns = ss.getFootnoteListAsString(annots);

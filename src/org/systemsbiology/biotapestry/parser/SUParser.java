@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -49,6 +49,15 @@ import org.systemsbiology.biotapestry.util.ResourceManager;
 */
 
 public class SUParser extends DefaultHandler {
+
+  
+  ////////////////////////////////////////////////////////////////////////////
+  //
+  // PRIVATE INSTANCES
+  //
+  ////////////////////////////////////////////////////////////////////////////
+  
+  private final String NEW_VER_PREFIX_ = "__BIOTAP_NEW_VERSION_PREFIX__";
   
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -399,12 +408,17 @@ public class SUParser extends DefaultHandler {
     String exMsg = e.getMessage();
     Integer lineNo = null;
     Integer colNo = null;
-    if (e instanceof SAXParseException) {
+    String retval;
+    if (exMsg.startsWith(NEW_VER_PREFIX_)) {
+      String format = rMan.getString("fileRead.SAXParseNewerVersionFormat");
+      String verNum = exMsg.replaceFirst(NEW_VER_PREFIX_, "");
+      retval = MessageFormat.format(format, new Object[] {verNum});
+      return (retval);
+    } else if (e instanceof SAXParseException) {
       SAXParseException spe = (SAXParseException)e;
       lineNo = new Integer(spe.getLineNumber());
       colNo = new Integer(spe.getColumnNumber());
-    }
-    String retval;
+    }  
     if (lineNo == null) {
       String format = rMan.getString("fileRead.SAXErrorFormat");
       retval = MessageFormat.format(format, new Object[] {exMsg});  
@@ -442,7 +456,10 @@ public class SUParser extends DefaultHandler {
     ResourceManager rMan = appState_.getRMan();
     String msg = (e == null) ? null : e.getMessage();
     String retmsg;
-    if ((msg == null) || msg.trim().equals("")) {
+    if (e instanceof NewerVersionIOException) {
+      String version = ((NewerVersionIOException)e).getNewerVersion();
+      retmsg = NEW_VER_PREFIX_ + version;
+    } else if ((msg == null) || msg.trim().equals("")) {
       if (lastElement_ == null) {
         retmsg = rMan.getString("fileRead.IOErrorNoDetails");
       } else {

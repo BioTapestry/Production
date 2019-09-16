@@ -24,6 +24,9 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -226,11 +229,12 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       appState_ = cfh.getBTState();
       parent_ = appState_.getTopFrame();
       ResourceManager rMan = appState_.getRMan();
-      setSize(500, 700);
+      setSize(600, 700);
       JPanel cp = (JPanel)getContentPane();
       cp.setBorder(new EmptyBorder(20, 20, 20, 20));
       cp.setLayout(new GridBagLayout());
-      GridBagConstraints gbc = new GridBagConstraints();    
+      GridBagConstraints gbc = new GridBagConstraints();
+      request_ = new ExistingDrawRequest();
       request_.haveResult = false;
       cfh_ = cfh.getClientHarness();
       
@@ -239,7 +243,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       rootLayoutID_ = rootLayoutID;
       instanceLayoutID_ = instanceLayoutID;      
              
-      JLabel messageLabel = new JLabel(UiUtil.convertMessageToHtml(rMan.getString("nicreateExisting.existingMessage")));    
+      JLabel messageLabel = new JLabel(UiUtil.convertMessageToHtml(rMan.getString("nicreateExisting.existingMessage")), JLabel.CENTER);    
   
       UiUtil.gbcSet(gbc, 0, 0, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);       
       cp.add(messageLabel, gbc);    
@@ -261,7 +265,14 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       //        
       
       if (haveOld_) {
-        drawOld_ = new JRadioButton(rMan.getString("nicreateExisting.drawOld"), false);            
+        String dol = rMan.getString("nicreateExisting.drawOld");
+        String buttonLabel;
+        if (!haveOldInstance_) {
+          buttonLabel = MessageFormat.format(rMan.getString("nicreateExisting.recommendPattern"), new Object[] {dol});
+        } else {
+          buttonLabel = dol;
+        }
+        drawOld_ = new JRadioButton(buttonLabel, false);            
         group.add(drawOld_); 
         drawOld_.addActionListener(bt);
         UiUtil.gbcSet(gbc, 0, currRow++, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
@@ -293,7 +304,9 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       //
       
       if (haveOldInstance_) {
-        drawOldInstance_ = new JRadioButton(rMan.getString("nicreateExisting.drawOldInstance"), false);     
+        String doi = rMan.getString("nicreateExisting.drawOldInstance");
+        String buttonLabel = MessageFormat.format(rMan.getString("nicreateExisting.recommendPattern"), new Object[] {doi});
+        drawOldInstance_ = new JRadioButton(buttonLabel, false);     
         group.add(drawOldInstance_);    
         drawOldInstance_.addActionListener(bt);
         UiUtil.gbcSet(gbc, 0, currRow++, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
@@ -376,7 +389,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       UiUtil.gbcSet(gbc, 0, currRow, 4, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.SE, 1.0, 0.0);
       cp.add(buttonPanel, gbc);
       setLocationRelativeTo(parent_);
-      setActiveFields(false, false);
+      addWindowListener(new OpenListener());
     }
   
     ////////////////////////////////////////////////////////////////////////////
@@ -396,13 +409,44 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
         }
       }
     }
+    
+    /***************************************************************************
+    **
+    ** User input data
+    ** 
+    */
   
+    private class OpenListener extends WindowAdapter {
+      public void windowOpened(WindowEvent e) {
+        setDefaultRadio();
+        setActiveFields((drawOld_ != null) && drawOld_.isSelected(), (drawOldInstance_ != null) && drawOldInstance_.isSelected());
+        return;
+      }
+    }
+
     ////////////////////////////////////////////////////////////////////////////
     //
     // PACKAGE VIZ & PRIVATE METHODS
     //
     ////////////////////////////////////////////////////////////////////////////
   
+   /***************************************************************************
+   **
+   ** Set default choice
+   ** 
+   */    
+    
+    void setDefaultRadio() {       
+      if (haveOldInstance_) {
+        drawOldInstance_.setSelected(true);    
+      } else if (haveOld_) {
+        drawOld_.setSelected(true); 
+      } else {
+        drawNew_.setSelected(true);
+      }
+      return;
+    }
+    
    /***************************************************************************
     **
     ** Set what's active
@@ -485,7 +529,7 @@ public class DrawNodeInstanceExistingOptionsDialogFactory extends DialogFactory 
       return (true);
     }
   }
-  
+ 
   /***************************************************************************
    **
    ** User input data

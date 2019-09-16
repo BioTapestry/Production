@@ -20,11 +20,16 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.link;
 
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import javax.swing.JOptionPane;
 
@@ -33,10 +38,15 @@ import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGene;
+import org.systemsbiology.biotapestry.genome.DBGeneRegion;
+import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DynamicInstanceProxy;
+import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
 import org.systemsbiology.biotapestry.genome.InvertedSrcTrg;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.NetModule;
@@ -52,6 +62,7 @@ import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.NetModuleProperties;
 import org.systemsbiology.biotapestry.ui.NetOverlayProperties;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
+import org.systemsbiology.biotapestry.util.DataUtil;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -271,7 +282,6 @@ public class LinkSupport {
  
   public static boolean swapLinkPads(BTState appState, Intersection cro, Intersection inter, 
                                      Intersection.PadVal newPad, String id, DataAccessContext rcx, 
-                                  //   Layout layout, GenomeSource gSrc, String genomeID,
                                      SwapType swapMode, String myLinkId) {
     
     //
@@ -320,7 +330,30 @@ public class LinkSupport {
         }
       }
     }
- 
+    
+    //
+    // If the target is a gene with modules, we cannot just swap pads if that
+    // changes the module assignment! Source and target modules must be the same (or
+    // both must be holders):
+    //
+    
+    Node targNode = rcx.getGenome().getNode(id);
+    if (targNode.getNodeType() == Node.GENE) {
+      Gene targGene = (Gene)targNode;
+      if (targGene.getNumRegions() > 0) {
+        boolean passes = false;
+        DBGeneRegion targRegOld = targGene.getRegionForPad(oldPad);
+        DBGeneRegion targRegNew = targGene.getRegionForPad(newPad.padNum);
+        if (targRegOld.isHolder() && targRegNew.isHolder()) {
+          passes = true;
+        } else if (targRegOld.getKey().equals(targRegNew.getKey())) {
+          passes = true;
+        }
+        if (!passes) {
+          return (false);
+        }
+      }
+    }
     //
     // Undo/Redo support
     //
@@ -358,9 +391,49 @@ public class LinkSupport {
                                          List<Intersection.PadVal> padCand, String id, DataAccessContext rcxT) {
     
 
-    int numCand = padCand.size();
-    Intersection.PadVal winner = null;
     
+    String lid = cro.getObjectID();  // Remember... this may not be the link we want!
+    BusProperties bp = rcxT.getLayout().getLinkProperties(lid);
+    LinkSegmentID[] linkIDs = cro.segmentIDsFromIntersect();
+    // Only allowed to perform this op if there is only one link through the segment! 
+    Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
+    String myLinkId = throughSeg.iterator().next();
+    Linkage link = rcxT.getGenome().getLinkage(myLinkId);
+    int targPad = link.getLandingPad();
+    
+    //
+    // We reject unless the target we are intersecting matches the
+    // link we are trying to relocate.
+    //
+
+    if (!link.getTarget().equals(id)) {
+      return (false);
+    }
+    
+    //
+    // If the target is a gene with modules, we cannot just swap pads if that
+    // changes the module assignment!
+    //
+    
+    DBGeneRegion targReg = null;
+    Gene targGene = null;
+    boolean needModCheck = false;
+    Node targNode = rcxT.getGenome().getNode(id);
+    if (targNode.getNodeType() == Node.GENE) {
+      targGene = (Gene)targNode;
+      if (targGene.getNumRegions() > 0) {
+        needModCheck = true;
+        targReg = targGene.getRegionForPad(targPad);
+        if ((targReg != null) && targReg.isHolder()) {
+          targReg = null;
+        }
+      }
+    }
+    DBGeneRegion.DBRegKey trk = ((targReg == null) || targReg.isHolder()) ? null : targReg.getKey();
+
+    
+    int numCand = padCand.size();
+    Intersection.PadVal winner = null;       
     for (int i = 0; i < numCand; i++) {
       Intersection.PadVal pad = padCand.get(i);
       if (!pad.okEnd) {
@@ -370,6 +443,16 @@ public class LinkSupport {
         continue;
       }
       
+      if (needModCheck) {
+        DBGeneRegion chkReg = targGene.getRegionForPad(pad.padNum);
+        DBGeneRegion.DBRegKey ctrk = ((chkReg == null) || chkReg.isHolder()) ? null : chkReg.getKey();
+        if ((trk != null) && ((ctrk == null) || !ctrk.equals(trk))) {
+          continue;
+        } else if ((trk == null) && (ctrk != null))  {
+          continue;
+        }
+      }
+
       if ((winner == null) || (winner.distance > pad.distance)) {
         winner = pad;
       }
@@ -385,20 +468,7 @@ public class LinkSupport {
     
     UndoSupport support = new UndoSupport(appState, "undo.changeLinkTarget");     
     
-    //
-    // We reject unless the target we are intersecting matches the
-    // link we are trying to relocate.
-    //
-
-    String lid = cro.getObjectID();  // Remember... this may not be the link we want!
-    BusProperties bp = rcxT.getLayout().getLinkProperties(lid);
-    LinkSegmentID[] linkIDs = cro.segmentIDsFromIntersect();
-    Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
-    String myLinkId = throughSeg.iterator().next();
-    Linkage link = rcxT.getGenome().getLinkage(myLinkId);
-    if (!link.getTarget().equals(id)) {
-      return (false);
-    }
+ 
         
     changeLinkTargetCore(appState, winner.padNum, rcxT, support, myLinkId);   
 
@@ -406,6 +476,125 @@ public class LinkSupport {
     return (true); 
   }
   
+  /***************************************************************************
+  **
+  ** Change the link target gene module.
+  */  
+ 
+  public static boolean changeLinkTargetGeneModule(BTState appState, Intersection cro,
+                                                   List<Intersection.PadVal> padCand, String id, DataAccessContext rcxT) {
+    
+    String lid = cro.getObjectID();  // Remember... this may not be the link we want!
+    BusProperties bp = rcxT.getLayout().getLinkProperties(lid);
+    LinkSegmentID[] linkIDs = cro.segmentIDsFromIntersect();
+    // Only allowed to perform this op if there is only one link through the segment! 
+    Set<String> throughSeg = bp.resolveLinkagesThroughSegment(linkIDs[0]);
+    String myLinkId = throughSeg.iterator().next();
+    Linkage link = rcxT.getGenome().getLinkage(myLinkId);
+    int targPad = link.getLandingPad();
+    
+    //
+    // We reject unless the target we are intersecting matches the
+    // link we are trying to relocate.
+    //
+
+    if (!link.getTarget().equals(id)) {
+      return (false);
+    }
+    
+    //
+    // We must actually be switching modules, or we reject the change. Might be removing from all modules, however:
+    //
+    
+    Node targNode = rcxT.getGenome().getNode(id);
+    if (targNode.getNodeType() != Node.GENE) {
+      return (false);
+    }
+    Gene targGene = (Gene)targNode;
+    if (targGene.getNumRegions() == 0) {
+      return (false);
+    }
+    //
+    // This is the current region assignment:
+    //
+    
+    DBGeneRegion targReg = targGene.getRegionForPad(targPad);
+    if ((targReg != null) && targReg.isHolder()) {
+      targReg = null;
+    }
+    DBGeneRegion.DBRegKey trk = (targReg == null) ? null : targReg.getKey();
+    
+    int numCand = padCand.size();
+    Intersection.PadVal winner = null;       
+    for (int i = 0; i < numCand; i++) {
+      Intersection.PadVal pad = padCand.get(i);
+      if (!pad.okEnd) {
+        continue;
+      }  
+      if (!targPadIsClear(rcxT.getGenome(), rcxT.getLayout(), id, pad.padNum)) {
+        continue;
+      }
+      
+      //
+      // New region assignment:
+      //
+      DBGeneRegion chkReg = targGene.getRegionForPad(pad.padNum);
+      DBGeneRegion.DBRegKey ctrk = (chkReg == null) ? null : chkReg.getKey();
+      if ((trk == null) && (ctrk == null)) { // Not moving in or out of module
+        continue;
+      }
+      boolean moveInOrOut = (((trk != null) && (ctrk == null)) || ((trk == null) && (ctrk != null)));
+      boolean moveBetween = (moveInOrOut) ? false : !trk.equals(ctrk);
+      if (!moveInOrOut && !moveBetween) {
+        continue;
+      }
+
+      if ((winner == null) || (winner.distance > pad.distance)) {
+        winner = pad;
+      }
+    }
+    
+    if (winner == null) {
+      return (false);
+    }
+    
+    //
+    // Undo/Redo support
+    //
+    
+    UndoSupport support = new UndoSupport(appState, "undo.changeLinkTarget");      
+    switchLinkRegion(appState, support, myLinkId, winner.padNum, rcxT);
+    support.finish();     
+    return (true); 
+  }
+  
+  /***************************************************************************
+  **
+  ** Move all links in all modules to new cis-reg region
+  */
+       
+  public static void switchLinkRegion(BTState appState, UndoSupport support, String linkKey, int newPad, DataAccessContext rcxT) {
+
+    String baseLinkID = GenomeItemInstance.getBaseID(linkKey);
+    DataAccessContext rcxR = rcxT.getContextForRoot();
+  
+    //
+    // Go through each link, get its PadOffset, reposition it 
+    //
+  
+    changeLinkTargetCore(appState, newPad, rcxR, support, baseLinkID);
+      
+    Iterator<GenomeInstance> iit = rcxT.getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      for (String liid : gi.returnLinkInstanceIDsForBacking(baseLinkID)) {
+        DataAccessContext daci = new DataAccessContext(rcxT, gi.getID());
+        changeLinkTargetCore(appState, newPad, daci, support, liid);
+      }  
+    }   
+    return;
+  }
+
   /***************************************************************************
   **
   ** Change the link target: core routine
@@ -619,10 +808,15 @@ public class LinkSupport {
     
     
     if (type == IS_FOR_TARGET) {
-      if (rcx.getLayout().segmentSynonymousWithTargetDrop(oid, ids[0]) == null) {
+      String linkID = rcx.getLayout().segmentSynonymousWithTargetDrop(oid, ids[0]);
+      if (linkID == null) {
         return (false);
       }
-      if (!haveTargetDOFs(rcx, oid)) {
+      //
+      // Issue #183. Was using OID, which is for a random link in the link tree. Need to use the
+      // link into the target.
+      //
+      if (!haveTargetDOFs(rcx, linkID)) {
         return (false);
       }
     } else if (type == IS_FOR_SOURCE) {
@@ -639,8 +833,12 @@ public class LinkSupport {
         return (false);
       }
       
-      boolean haveDOF = false;
-      if ((linkID != null) && haveTargetDOFs(rcx, oid)) {
+      boolean haveDOF = false;     
+      //
+      // Issue #183. Was using OID, which is for a random link in the link tree. Need to use the
+      // link into the target.
+      //
+      if ((linkID != null) && haveTargetDOFs(rcx, linkID)) {
         haveDOF = true;
       }
       if (!haveDOF && startOK && haveSourceDOFs(rcx, oid)) {
@@ -758,5 +956,308 @@ public class LinkSupport {
     DataAccessContext rcxU = new DataAccessContext(rcx, useGenome);
     int pads =  nmp.getRenderer().getPadCountForModule(dip, useGroups, mod, ovrKey, nmp, rcxU);
     return (pads > 2);
-  } 
+  }
+  
+  /***************************************************************************
+  **
+  ** Repair links to keep everybody where they belong.
+  */
+       
+  public static List<String> fixCisModLinks(UndoSupport support,
+                                            Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla, 
+                                            BTState appState, DataAccessContext dacx, String theGeneID, boolean logFixes) {
+
+    
+    TreeSet<String> retval = (logFixes) ? new TreeSet<String>() : null;
+    String baseID = GenomeItemInstance.getBaseID(theGeneID);
+    DBGenome dbg = dacx.getDBGenome();
+    Map<String, DBGeneRegion.LinkAnalysis> cla = gla.get(dbg.getID());
+    DBGeneRegion.LinkAnalysis canonls = cla.get(baseID);
+    Gene theGene = dbg.getGene(GenomeItemInstance.getBaseID(theGeneID));
+    int numPads = theGene.getPadCount();
+    int minPad = DBGene.DEFAULT_PAD_COUNT - numPads;
+    int maxPad = DBGene.DEFAULT_PAD_COUNT - 1;
+    
+    //
+    // Go through each link, if it has ORPHAN status, we need to get it in the bounds. If it is TRESSPASS status,
+    // we need to get it out.
+    //
+   
+    Iterator<GenomeInstance> iit = dacx.getGenomeSource().getInstanceIterator();
+    while (iit.hasNext()) {
+      GenomeInstance gi = iit.next();
+      if (!gi.isRootInstance()) { // Kids handled in the changeLinkTargetCore
+        continue;
+      }
+      Map<String, DBGeneRegion.LinkAnalysis> glaI = gla.get(gi.getID()); 
+      for (String geneID : glaI.keySet()) {
+        if (!GenomeItemInstance.getBaseID(geneID).equals(baseID)) { // only care about instances of base gene
+          continue;
+        }
+        DataAccessContext daci = new DataAccessContext(dacx, gi.getID());
+        DBGeneRegion.LinkAnalysis lsi = glaI.get(geneID); 
+        arrange(support, appState, daci, lsi, canonls, minPad, maxPad, gi, retval);
+      }
+    }
+    return ((retval == null) ? null : new ArrayList<String>(retval));
+  }
+  
+
+  /***************************************************************************
+  **
+  ** Assign orphan links into the module based on the newly drawn canonical locations. Toss tresspassers out
+  ** into non-module pads, preferably retaining relative order. If there is pileup due to cross region links,
+  ** try to use empty space first before doubling up on pads.
+  */
+       
+  public static void arrange(UndoSupport support,
+                             BTState appState, DataAccessContext daci,
+                             DBGeneRegion.LinkAnalysis lsiToFix,
+                             DBGeneRegion.LinkAnalysis canonls, 
+                             int minPad, int maxPad, GenomeInstance gi, SortedSet<String> fixLog) {
+    
+    //
+    // Let's find where we have empty space!
+    //
+    
+    ResourceManager rMan = appState.getRMan();
+    SortedSet<Integer> freePads = new TreeSet<Integer>();
+    freePads.add(Integer.valueOf(minPad));
+    freePads.add(Integer.valueOf(maxPad));
+    freePads = DataUtil.fillOutHourly(freePads);
+    freePads.removeAll(canonls.padToReg.keySet());
+    for (String lsikey : lsiToFix.status.keySet()) {
+      DBGeneRegion.LinkModStatus lms = lsiToFix.status.get(lsikey);
+      if (lms == DBGeneRegion.LinkModStatus.NON_MODULE) {
+        int land = gi.getLinkage(lsikey).getLandingPad();
+        freePads.remove(Integer.valueOf(land));
+      }
+    }
+    
+    //
+    // If user has covered the entire gene with modules, then all the inbound links will be in modules
+    // and we don't have to find a place outside a module for them to go. So we must have free pads if
+    // we need them! We can only have trespassers if they are not in modules; links belonging in other
+    // modules will already have a home.
+    //
+    
+    boolean firstTime = true;
+    Integer lastPad = null;
+    
+    for (String lsikey : lsiToFix.status.keySet()) {
+      DBGeneRegion.LinkModStatus lms = lsiToFix.status.get(lsikey);
+      if (lms == DBGeneRegion.LinkModStatus.ORPHANED) {
+        DBGeneRegion.PadOffset poffi = canonls.offsets.get(GenomeItemInstance.getBaseID(lsikey));
+        DBGeneRegion reg = canonls.keyToReg.get(poffi.regKey);
+        int newPadi = reg.getStartPad() + poffi.offset;
+        if (newPadi > reg.getEndPad()) {
+          newPadi = reg.getEndPad();
+        }       
+        if (fixLog != null) {
+          Linkage link = gi.getLinkage(lsikey);
+          String targ = gi.getNode(link.getTarget()).getDisplayString(gi, true);
+          String src = gi.getNode(link.getSource()).getDisplayString(gi, true);
+          String regName = reg.getName();
+          String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.orphaned"), new Object[] {src, targ, regName});  
+          fixLog.add(msg);   
+        }
+        LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, lsikey);
+        
+      } else if (lms == DBGeneRegion.LinkModStatus.TRESSPASS) {
+        DBGeneRegion.PadOffset poffi = canonls.offsets.get(GenomeItemInstance.getBaseID(lsikey));
+        if (poffi != null) {
+          DBGeneRegion reg = canonls.keyToReg.get(poffi.regKey);
+          int newPadi = reg.getStartPad() + poffi.offset;
+          if (newPadi > reg.getEndPad()) {
+            newPadi = reg.getEndPad();
+          }
+          if (fixLog != null) {
+            Linkage link = gi.getLinkage(lsikey);
+            String targ = gi.getNode(link.getTarget()).getDisplayString(gi, true);
+            String src = gi.getNode(link.getSource()).getDisplayString(gi, true);
+            String regName = reg.getName();
+            DBGeneRegion.DBRegKey key = lsiToFix.padToReg.get(Integer.valueOf(link.getLandingPad()));
+            DBGeneRegion fromReg = lsiToFix.keyToReg.get(key);
+            String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.tresspass"), new Object[] {src, targ, fromReg.getName(), regName});  
+            fixLog.add(msg);   
+           }
+           LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, lsikey);
+        } else if (!freePads.isEmpty()) {
+          Integer usePad = freePads.first();
+          freePads.remove(usePad);
+          lastPad = usePad;
+
+          if (fixLog != null) {
+            Linkage link = gi.getLinkage(lsikey);
+            String targ = gi.getNode(link.getTarget()).getDisplayString(gi, true);
+            String src = gi.getNode(link.getSource()).getDisplayString(gi, true);
+            DBGeneRegion.DBRegKey key = lsiToFix.padToReg.get(Integer.valueOf(link.getLandingPad()));
+            DBGeneRegion fromReg = lsiToFix.keyToReg.get(key);
+            String msg = MessageFormat.format(rMan.getString("geneRegLinkFixup.tresspassBanish"), new Object[] {src, targ, fromReg.getName()});  
+            fixLog.add(msg);   
+           }
+           LinkSupport.changeLinkTargetCore(appState, lastPad, daci, support, lsikey);      
+        } else if (firstTime) { 
+          throw new IllegalStateException();
+        }
+        firstTime = false;     
+      }
+    }
+    return;
+  }
+  
+  /***************************************************************************
+  **
+  ** Map may need to be iterated:
+  */
+       
+  public static DBGeneRegion.DBRegKey transitiveGet(Map<DBGeneRegion.DBRegKey, DBGeneRegion.DBRegKey> theMap, DBGeneRegion.DBRegKey key) {
+    if ((theMap == null) || (theMap.get(key) == null)) {
+      return (key);
+    }
+    
+    int count = 1000;
+    DBGeneRegion.DBRegKey currKey = key;
+    while (true) {
+      DBGeneRegion.DBRegKey nextKey = theMap.get(currKey);
+      if (nextKey == null) {
+        return (currKey);
+      }
+      currKey = nextKey;
+      if (count-- < 0) {
+        throw new IllegalStateException();
+      }
+    } 
+  }
+  
+  
+  /***************************************************************************
+  **
+  ** Figure out pad squeeze map if links can no longer fit into smaller region without compression
+  */
+       
+  private static Map<Integer, Integer> getPadSqueeze(SortedSet<Integer> padUse, int width) {  
+    HashMap<Integer, Integer> retval = new HashMap<Integer, Integer>();
+    if (padUse.last().intValue() < width) {
+       for (Integer pad : padUse) {
+         retval.put(pad, pad);
+       }
+       return (retval);
+    } 
+    ArrayList<Integer> indexed = new ArrayList<Integer>(padUse);
+    int numi = indexed.size();
+    int currSlot = width - 1;
+    for (int i = numi - 1; i >= 0; i--) {
+      Integer daPad = indexed.get(i);
+      if (daPad.intValue() >= currSlot) {
+        if (currSlot < 0) {
+          throw new IllegalStateException();
+        }
+        retval.put(daPad, Integer.valueOf(currSlot--));
+      } else {
+        retval.put(daPad, daPad);
+        currSlot = daPad - 1;
+      }
+    }
+    return (retval);
+  }
+ 
+  /***************************************************************************
+  **
+  ** Move links to keep everybody where they belong. Used elsewhere
+  */
+       
+  public static void moveCisRegModLinks(UndoSupport support, List<DBGeneRegion> regs, 
+                                        Map<DBGeneRegion.DBRegKey, DBGeneRegion.DBRegKey> o2nMap,
+                                        Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla,
+                                        Map<DBGeneRegion.DBRegKey, SortedSet<Integer>> lhr,                                       
+                                        BTState appState, DataAccessContext dacx, String theGeneID, 
+                                        Set<String> skipLinks) {
+
+    String baseID = GenomeItemInstance.getBaseID(theGeneID);
+    DBGenome dbg = dacx.getDBGenome();
+    Map<String, DBGeneRegion.LinkAnalysis> cla = gla.get(dbg.getID());
+    DBGeneRegion.LinkAnalysis ls = cla.get(baseID);
+    
+    //
+    // Map from region key to new region definition. We go through the old->new map if required.
+    //
+    
+    Map<DBGeneRegion.DBRegKey, DBGeneRegion> newRegs = new HashMap<DBGeneRegion.DBRegKey, DBGeneRegion>();
+    
+    //
+    // Allow erosion of blank-named regions to zero unless they have links into them.
+    // Insertion and moves. Allow insertion to break up an unnamed region. If drawn, subsumes the links. If moved, can go
+    // in middle of the gap, moving gap space to either side. If any links in the gap, they need to be
+    // accommodated in the edges.
+    //  
+    
+    // If region was renamed, the key changed (yeah, zat sux). We are provided a map to track this.
+    for (DBGeneRegion reg : regs) {
+      DBGeneRegion.DBRegKey currRegKey = reg.getKey();
+      DBGeneRegion.DBRegKey useKey = transitiveGet(o2nMap, currRegKey);  
+      newRegs.put(useKey, reg);
+    }
+    
+    //
+    // Go through each link, get its PadOffset, reposition it. If dealing with a deleted link, we skip it.
+    //
+    Map<DBGeneRegion.DBRegKey, Map<Integer, Integer>> padSqueezes = new HashMap<DBGeneRegion.DBRegKey, Map<Integer, Integer>>();
+    
+    for (String lkey : ls.offsets.keySet()) {
+      if ((skipLinks != null) && skipLinks.contains(lkey)) {
+        continue;
+      }
+      DBGeneRegion.PadOffset poff = ls.offsets.get(lkey);
+      DBGeneRegion reg = newRegs.get(poff.regKey);
+      
+      if ((reg == null) && (o2nMap != null)) {   
+        reg = newRegs.get(o2nMap.get(poff.regKey));
+      }  
+      
+      if (reg == null) {
+        // Should NOT Happen...
+        continue;
+      }
+       
+      SortedSet<Integer> padUse = lhr.get(poff.regKey);
+      
+      Map<Integer, Integer> padSqueeze = padSqueezes.get(reg.getKey());
+      if (padSqueeze == null) {      
+        padSqueeze = getPadSqueeze(padUse, reg.getWidth());
+        padSqueezes.put(reg.getKey(), padSqueeze);
+      }
+      
+      Integer offsetObj = padSqueeze.get(Integer.valueOf(poff.offset));
+      int newPad = reg.getStartPad() + offsetObj.intValue();
+      LinkSupport.changeLinkTargetCore(appState, newPad, dacx, support, lkey);
+      
+      Iterator<GenomeInstance> iit = dacx.getGenomeSource().getInstanceIterator();
+      while (iit.hasNext()) {
+        GenomeInstance gi = iit.next();
+        if (!gi.isRootInstance()) { // Kids handled in the changeLinkTargetCore
+          continue;
+        }
+        Map<String, DBGeneRegion.LinkAnalysis> glaI = gla.get(gi.getID()); 
+        for (String geneID : glaI.keySet()) {
+          if (!GenomeItemInstance.getBaseID(geneID).equals(baseID)) { // only care about instances of base gene
+            continue;
+          }
+          DBGeneRegion.LinkAnalysis lsi = glaI.get(geneID);
+          for (String linkID : lsi.offsets.keySet()) {
+            String base = GenomeItemInstance.getBaseID(linkID);
+            if (!base.equals(lkey)) { // only care about instances of base link
+              continue;
+            }
+            DBGeneRegion.PadOffset poffi = lsi.offsets.get(linkID);
+            Integer offsetObji = padSqueeze.get(Integer.valueOf(poffi.offset));
+            int newPadi = reg.getStartPad() + offsetObji.intValue();
+            DataAccessContext daci = new DataAccessContext(dacx, gi.getID());
+            LinkSupport.changeLinkTargetCore(appState, newPadi, daci, support, linkID);  
+          }
+        }
+      }
+    }
+    return;
+  }
 }

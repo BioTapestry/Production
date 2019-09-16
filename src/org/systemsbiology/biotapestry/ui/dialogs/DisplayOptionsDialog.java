@@ -24,6 +24,7 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -52,6 +53,7 @@ import org.systemsbiology.biotapestry.ui.CustomEvidenceDrawStyle;
 import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsChange;
 import org.systemsbiology.biotapestry.ui.DisplayOptionsManager;
+import org.systemsbiology.biotapestry.util.BrightnessField;
 import org.systemsbiology.biotapestry.util.ChoiceContent;
 import org.systemsbiology.biotapestry.util.FixedJButton;
 import org.systemsbiology.biotapestry.util.MinMax;
@@ -89,6 +91,7 @@ public class DisplayOptionsDialog extends JDialog {
   private FixedJButton buttonCU_;
   private JTextField bigFootField_;
   private JTextField weakLevelField_;
+  private BrightnessField inactiveGray_;
   private JFrame parent_;
   private String layoutKey_;
   private SortedMap<Integer, CustomEvidenceDrawStyle> customEvidence_;
@@ -137,7 +140,7 @@ public class DisplayOptionsDialog extends JDialog {
     currentInvestMode_ = options.breakOutInvestigators();
     currentNullDefaultSpan_ = options.getNullPertDefaultSpan();
      
-    setSize(600, 500);
+    setSize(600, 600);
     JPanel cp = (JPanel)getContentPane();
     cp.setBorder(new EmptyBorder(20, 20, 20, 20));
     cp.setLayout(new GridBagLayout());
@@ -226,6 +229,11 @@ public class DisplayOptionsDialog extends JDialog {
     UiUtil.gbcSet(gbc, 0, rowNum++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.E, 0.0, 1.0);       
     cp.add(showTreeBox_, gbc);
     showTreeBox_.setSelected(options.showExpressionTableTree());
+       
+    inactiveGray_ = new BrightnessField(appState_, "displayOptions.inactiveGray", options.getInactiveBright(), 
+                                        DisplayOptions.INACTIVE_BRIGHT_MIN, DisplayOptions.INACTIVE_BRIGHT_MAX); 
+    UiUtil.gbcSet(gbc, 0, rowNum++, 2, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
+    cp.add(inactiveGray_, gbc);
     
     weakLevelField_ = new JTextField(Double.toString(options.getWeakExpressionLevel()));
     label = new JLabel(rMan.getString("displayOptions.weakExpressionLevel"));
@@ -396,7 +404,20 @@ public class DisplayOptionsDialog extends JDialog {
     } else {
       newOpts.setExtraFootSize(0);
     }
-    
+   
+    if (inactiveGray_.haveResults()) {
+      newOpts.setInactiveBright(inactiveGray_.getResults());
+    } else {
+      String msg = MessageFormat.format(dacx_.rMan.getString("displayOptions.badInactiveGray"),    
+                                           new Object[] {Double.valueOf(DisplayOptions.INACTIVE_BRIGHT_MIN),
+                                                         Double.valueOf(DisplayOptions.INACTIVE_BRIGHT_MAX)});     
+      JOptionPane.showMessageDialog(parent_, 
+                                    msg,
+                                    dacx_.rMan.getString("displayOptions.badInactiveGrayTitle"),
+                                    JOptionPane.ERROR_MESSAGE);
+      return (false);     
+    }
+
     String weakLevelStr = weakLevelField_.getText();
     boolean badWeakVal = false;
     double weakLevelVal = 1.0;
@@ -483,7 +504,8 @@ public class DisplayOptionsDialog extends JDialog {
     firstZoomChoice_.setSelectedItem(DisplayOptions.firstZoomForCombo(appState_, defOptions.getFirstZoomMode()));
     navZoomChoice_.setSelectedItem(DisplayOptions.navZoomForCombo(appState_, defOptions.getNavZoomMode()));
     nodeActivityChoice_.setSelectedItem(DisplayOptions.nodeActivityForCombo(appState_, defOptions.getNodeActivity()));
-    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(appState_, defOptions.getLinkActivity()));    
+    linkActivityChoice_.setSelectedItem(DisplayOptions.linkActivityForCombo(appState_, defOptions.getLinkActivity()));
+    inactiveGray_.resetValue(defOptions.getInactiveBright());
     
     bigFootField_.setText(Integer.toString(defOptions.getExtraFootSize()));   
     weakLevelField_.setText(Double.toString(defOptions.getWeakExpressionLevel()));

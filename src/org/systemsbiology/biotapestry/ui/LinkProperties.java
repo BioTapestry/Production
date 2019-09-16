@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -708,7 +708,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     ThickInfo ti = maxThickForIntersect(gSrc, genome, icx.oso, intersectTol);  // kinda cheap!
     int upperBound = ti.maxThick;
     boolean twoPass = ti.twoPass;
-    double upperTol = (double)upperBound / 2.0;
+    double upperTol = upperBound / 2.0;
     TreeMap<Double, DistancedLinkSegID> bestFits = new TreeMap<Double, DistancedLinkSegID>();
     
     //
@@ -950,7 +950,8 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   **
   ** Check for intersection with a shape.
   */
-  
+ 
+  @SuppressWarnings("unused")
   public List<LinkSegmentID> intersectBusSegmentsWithShape(DataAccessContext icx,
                                                            OverlayStateOracle oso,
                                                            Shape testShape,
@@ -1586,7 +1587,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     return;
   }   
 
- /***************************************************************************
+  /***************************************************************************
   **
   ** Get LinkBusDrop from a segment ID
   */
@@ -1614,6 +1615,34 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     throw new IllegalArgumentException();
   }
   
+  /***************************************************************************
+  **
+  ** Get LinkBusDrop from a segment ID
+  */
+  
+  public LinkBusDrop getDropOrNot(LinkSegmentID segID) {
+    if (!segID.isForDrop()) {
+      throw new IllegalArgumentException();
+    }
+
+    boolean isForStart = segID.isForStartDrop();
+    boolean isForEnd = segID.isForEndDrop();
+    String idDropRef = (isForEnd) ? segID.getEndDropLinkRef() : null;
+        
+    Iterator<LinkBusDrop> dit = getDrops();
+    while (dit.hasNext()) {
+      LinkBusDrop drop = dit.next();
+      String dropRef = drop.getTargetRef();
+      int dropType = drop.getDropType();
+      if (isForStart && (dropType == LinkBusDrop.START_DROP)) {
+        return (drop);
+      } else if (isForEnd && (dropType == LinkBusDrop.END_DROP) && dropRef.equals(idDropRef)) {
+        return (drop);
+      }
+    }
+    return (null);
+  }
+
   /***************************************************************************
   **
   ** Merge another tree with only one path in it
@@ -4124,7 +4153,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     }
     return;
   }
- 
+
  /***************************************************************************
   **
   ** Split an existing drop into a link segment and a drop, using the given
@@ -4562,7 +4591,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
     boolean found = false;
     // Just in case the repair operation is not going to converge, put a cap on
     // the loop:
-    double inc = (maxFrac - minFrac) / (double)REPAIR_CAP_;
+    double inc = (maxFrac - minFrac) / REPAIR_CAP_;
     double currFrac = minFrac;
     for (int j = 0; j < REPAIR_CAP_; j++) {
       // FYI 8/20/13: Each tree taking 4-5000 ms to process on 6.7K node 28.4K link network; mostly in overlap intersection testing.
@@ -5420,6 +5449,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ** that we are gluing into!
   */
   
+  @SuppressWarnings("unused")
   public void mergeReplacementSubTreesToTreeAtSegment(List<GlueJob> glueJobs, Genome genome) {
      
     HashSet<String> refLinks = new HashSet<String>();
@@ -7248,7 +7278,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
       DistancedLinkSegID dlLsid = checkSegmentIntersect(toCheck, pt, type, idTag, upperTol, endsOnly);
       if (dlLsid != null) {
         int segThick = DrawTree.getSegThick(icx, (DrawTreeModelDataSource)this.myRenderer_, dlLsid.segID, this); // kinda expensive!
-        double segTol = (double)segThick / 2.0;
+        double segTol = segThick / 2.0;
         if (segTol < intersectTol) {
           segTol = intersectTol;
         }
@@ -7346,17 +7376,17 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   protected static void shiftSupport(Point2D loc, SortedSet<Integer> rows, 
                                      SortedSet<Integer> cols, Rectangle bounds, double sign, int mult) {
     if (bounds != null) {                            
-      double minX = (double)bounds.x;
-      double maxX = (double)(bounds.x + bounds.width);
-      double minY = (double)bounds.y;
-      double maxY = (double)(bounds.y + bounds.height);    
+      double minX = bounds.x;
+      double maxX = bounds.x + bounds.width;
+      double minY = bounds.y;
+      double maxY = bounds.y + bounds.height;    
       double locY = loc.getY();
       double locX = loc.getX();
       if ((locY < minY) || (locY > maxY) || (locX < minX) || (locX > maxX)) {
         return;
       }                    
     }
-    double dVal = UiUtil.GRID_SIZE * (double)mult;
+    double dVal = UiUtil.GRID_SIZE * mult;
     
     Iterator<Integer> rit = rows.iterator();
     double rowDelta = 0.0;
@@ -7631,6 +7661,7 @@ public abstract class LinkProperties implements Cloneable, CornerOracle {
   ////////////////////////////////////////////////////////////////////////////
 
   
+  @SuppressWarnings("unused")
   protected static void buildFromXMLSupport(String elemName, Attributes attrs, 
                                             LinkProperties emptyProp, 
                                             FactoryWhiteboard board, String xmlTag) throws IOException {  

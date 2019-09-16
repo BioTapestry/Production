@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -23,8 +23,13 @@ import java.awt.Point;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.CheckGutsCache;
@@ -34,8 +39,14 @@ import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.flow.ServerControlFlowHarness;
 import org.systemsbiology.biotapestry.cmd.flow.VisualChangeResult;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.DBGenome;
+import org.systemsbiology.biotapestry.genome.GenomeInstance;
+import org.systemsbiology.biotapestry.genome.GenomeItemInstance;
+import org.systemsbiology.biotapestry.genome.Linkage;
+import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.Note;
 import org.systemsbiology.biotapestry.ui.Intersection;
+import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.TextBoxManager;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 
@@ -58,6 +69,8 @@ public class Selection extends AbstractControlFlow {
     DROP_LINKS("command.DropLinkSelections", "command.DropLinkSelections", "FIXME24.gif", "command.DropLinkSelectionsMnem", null),
     SELECT_NON_ORTHO("command.SelectNonOrthoLinkSegments", "command.SelectNonOrthoLinkSegments", "FIXME24.gif", "command.SelectNonOrthoLinkSegmentsMnem", null),
     SELECT_FULL_LINK("linkPopup.SelectAll", "linkPopup.SelectAll", "FIXME24.gif", "linkPopup.SelectAllMnem", null),
+    SELECT_ROOT_ONLY_NODE("command.SelectRootOnlyNode", "command.SelectRootOnlyNode", "FIXME24.gif", "command.SelectRootOnlyNodeMnem", null),
+    SELECT_ROOT_ONLY_LINK("command.SelectRootOnlyLink", "command.SelectRootOnlyLink", "FIXME24.gif", "command.SelectRootOnlyLinkMnem", null),
     REMOTE_BATCH_SELECT(),
     LOCAL_SINGLE_CLICK_SELECT(),
     LOCAL_SELECTION_BY_RECT(),
@@ -190,6 +203,18 @@ public class Selection extends AbstractControlFlow {
        case SELECT_NON_ORTHO:
          return (cache.genomeNotNull());
        case DROP_NODE_TYPE:
+         return (true);
+       case SELECT_ROOT_ONLY_NODE:
+       case SELECT_ROOT_ONLY_LINK:
+         if (!cache.genomeIsRoot()) {
+           return (false);
+         }
+         if (!cache.genomeNotEmpty()) {
+           return (false);
+         }
+         if (action_ == SelectAction.SELECT_ROOT_ONLY_LINK) {
+           return (cache.canLayoutLinks()); // Not exactly right, but dynamic genome instances already culled above.
+         }
          return (true);
        case SELECT_FULL_LINK:  // for popup only
        case REMOTE_BATCH_SELECT:
@@ -388,9 +413,19 @@ public class Selection extends AbstractControlFlow {
         case LOCAL_SELECTION_BY_RECT:  
           appState_.getGenomePresentation().selectItems(preloadRect_, rcxT_, preloadIsShifted_, appState_.getUndoManager());
           break;
-        case SELECT_FULL_LINK:   
+        case SELECT_ROOT_ONLY_NODE: 
+          Set<String> onlyRootNodes = rcxT_.fgho.findRootOnlyNodes();
+          List<Intersection> onlyNodes = Intersection.nodeIDsToInters(onlyRootNodes);
+          appState_.getGenomePresentation().selectIntersectionList(onlyNodes, rcxT_, appState_.getUndoManager());
+          break;
+        case SELECT_ROOT_ONLY_LINK:      
+          Set<String> onlyRootLinks = rcxT_.fgho.findRootOnlyLinks();
+          List<Intersection> onlyLinks = Intersection.linkIDsToInters(onlyRootLinks, rcxT_.getDBGenome().getID(), rcxT_);
+          appState_.getGenomePresentation().selectIntersectionList(onlyLinks, rcxT_, appState_.getUndoManager());
+          break;
+        case SELECT_FULL_LINK:
           appState_.getGenomePresentation().selectFullItem(intersect_, rcxT_, appState_.getUndoManager());
-          break;                    
+          break;
         default:
           throw new IllegalStateException();
       }
@@ -438,7 +473,7 @@ public class Selection extends AbstractControlFlow {
 
     VisualChangeResult generateVizResult() {
       return (null); // < Change this when the above step results do not change the selection presentation state under the covers.
-    }    
+    }
   }
   
   /***************************************************************************

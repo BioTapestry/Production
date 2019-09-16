@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,6 @@ package org.systemsbiology.biotapestry.ui.freerender;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
@@ -34,11 +33,11 @@ import org.systemsbiology.biotapestry.genome.GenomeItem;
 import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.genome.NodeInstance;
 import org.systemsbiology.biotapestry.ui.AnnotatedFont;
+import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.NodeRenderBase;
-import org.systemsbiology.biotapestry.ui.RenderObjectCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.CommonCacheGroup;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactory;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactoryForDesktop;
@@ -112,8 +111,9 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
       int activityLevel = ((NodeInstance)item).getActivity();
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
     }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.getDisplayOptsSource().getDisplayOptions());
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
     AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
 
     CommonCacheGroup group = new CommonCacheGroup(item.getID(), item.getName(), "bare");
@@ -153,7 +153,7 @@ public class BareNodeFree extends AbstractRectangleNodeFree {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
     }
     Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.dopt);
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
     AnnotatedFont mFont = rcx.fmgr.getOverrideFont(FontManager.MEDIUM, np.getFontOverride());
     Rectangle2D textBounds = new Rectangle2D.Double(); 
     Rectangle2D bounds = renderSupportA(null, item, selected, textBounds, rcx);    

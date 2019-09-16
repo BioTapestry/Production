@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -32,6 +32,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.Vector;
 
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
@@ -45,6 +47,7 @@ import javax.swing.border.EmptyBorder;
 
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.ModificationCommands;
+import org.systemsbiology.biotapestry.cmd.flow.link.LinkSupport;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
@@ -53,6 +56,7 @@ import org.systemsbiology.biotapestry.event.ModelChangeEvent;
 import org.systemsbiology.biotapestry.genome.DBGene;
 import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DynamicGenomeInstance;
+import org.systemsbiology.biotapestry.genome.FullGenomeHierarchyOracle;
 import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.GeneInstance;
 import org.systemsbiology.biotapestry.genome.Genome;
@@ -99,19 +103,15 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
   private ColorSelectionWidget colorWidget_; 
   private JComboBox evidenceCombo_;    
   private JCheckBox localBox_;
-  private JCheckBox regionBox_;
 
   private NodeProperties props_;
   private String layoutKey_;
   private JCheckBox doLinksBox_;
   private BTState appState_;
   private DataAccessContext dacx_;
-  private List regionEvidenceCells_;
   private Gene gene_;
   private Genome genome_;
   
-  private EditableTable est_;
- 
   private NodeAndLinkPropertiesSupport nps_;
   
   private static final long serialVersionUID = 1L;
@@ -317,42 +317,13 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     // Extra pads:
     //
     
-    JPanel xtraPads = nps_.extraPadsUI(false, NodeAndLinkPropertiesSupport.generatePadChoices(gene_), false, null);     
+    Vector<ChoiceContent> forExtra = nps_.padsToCC(NodeAndLinkPropertiesSupport.generatePadChoices(gene_), false);
+    JPanel xtraPads = nps_.extraPadsUI(false, forExtra, false, null);     
     if (xtraPads != null) {
       UiUtil.gbcSet(gbc, 0, rownum++, 11, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 0.0);
       retval.add(xtraPads, gbc);
     }   
     
-    //
-    // Region specification:
-    //
-    
-    regionBox_ = new JCheckBox(rMan.getString("nprop.useRegions"));
-    UiUtil.gbcSet(gbc, 0, rownum++, 2, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 0.0);
-    retval.add(regionBox_, gbc);
-    regionBox_.addActionListener(new ActionListener() {
-      public void actionPerformed(ActionEvent ev) {
-        try {
-          boolean selected = regionBox_.isSelected();
-          est_.setEnabled(selected);
-        } catch (Exception ex) {
-          appState_.getExceptionHandler().displayException(ex);
-        }        
-      }
-    });    
-
-    regionEvidenceCells_ = buildEvidenceCombos();
-    est_ = new EditableTable(appState_, new RegionTableModel(appState_), appState_.getTopFrame());
-    EditableTable.TableParams etp = new EditableTable.TableParams();
-    etp.addAlwaysAtEnd = true;
-    etp.buttons = EditableTable.ADD_BUTTON | EditableTable.DELETE_BUTTON;
-    etp.singleSelectOnly = true;
-    etp.cancelEditOnDisable = true;
-    etp.perColumnEnums = new HashMap<Integer, EditableTable.EnumCellInfo>();
-    etp.perColumnEnums.put(new Integer(3), new EditableTable.EnumCellInfo(false, regionEvidenceCells_));  
-    JPanel tablePan = est_.buildEditableTable(etp);
-    UiUtil.gbcSet(gbc, 0, rownum, 11, 9, UiUtil.BO, 0, 0, 5, 5, 5, 5, UiUtil.CEN, 1.0, 1.0);
-    retval.add(tablePan, gbc);
     return (retval);
   }
   
@@ -471,21 +442,13 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       evidenceCombo_.setSelectedItem(DBGene.evidenceTypeForCombo(appState_, evidence));
       int pads = gene_.getPadCount();
       boolean amBig = (pads > DBGene.DEFAULT_PAD_COUNT);
-      nps_.setExtraPads(pads, amBig, NodeProperties.UNDEFINED_GROWTH);
+      nps_.setExtraPads(new ChoiceContent(Integer.toString(pads), pads), amBig, NodeProperties.UNDEFINED_GROWTH);
     }
 
     colorWidget_.setCurrentColor(props_.getColorName());
     
     nps_.orientDisplay(props_.getOrientation());
-  
-    if (!haveDynInstance) {
-      boolean doRegions = (gene_.getNumRegions() > 0);
-      regionBox_.setSelected(doRegions);
-      est_.setEnabled(doRegions);
-      int pads = gene_.getPadCount();
-      List<DBGeneRegion> regions = buildRegionList();
-      ((RegionTableModel)est_.getModel()).extractValues(regions, pads);
-    }
+ 
     if (topTwoLevels) {
       nps_.displayNodeFreeText();
       nps_.displayNodeURLs();
@@ -516,26 +479,49 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     }
     boolean globalNameChange = false;
     Map<String, Layout.PadNeedsForLayout> globalPadNeeds = dacx_.fgho.getGlobalNetModuleLinkPadNeeds();
-
+    Map<String, Map<String, DBGeneRegion.LinkAnalysis>> gla = null;
+    Map<DBGeneRegion.DBRegKey, SortedSet<Integer>> lhr = null;
+    String baseGene = GenomeItemInstance.getBaseID(gene_.getID());
     //
     // Check for correctness before continuing:
     //
     
-    RegionTableModel rtm = (RegionTableModel)est_.getModel();
-    
-    if (!haveDynInstance && regionBox_.isSelected()) {
-      if (!rtm.tableIntegerCheck()) {
-        return (false);
-      }
+    boolean hasReg = (gene_.getNumRegions() > 0);
+    List<DBGeneRegion> modRegions = null;
+    if (!haveDynInstance && hasReg) {    
       Integer newPadsObj = nps_.getExtraPads();
       int newPads = (newPadsObj == null) ? DBGene.DEFAULT_PAD_COUNT : newPadsObj.intValue();
-      if (!rtm.regionSemanticsCheck(newPads)) {   
-        JOptionPane.showMessageDialog(appState_.getTopFrame(), 
-                                      dacx_.rMan.getString("regTable.badRegions"), 
-                                      dacx_.rMan.getString("regTable.badRegionTitle"),
-                                      JOptionPane.ERROR_MESSAGE);         
-        return (false);
+      int currPads = gene_.getPadCount();
+ 
+      if (newPads != currPads) {
+        gla = dacx_.fgho.analyzeLinksIntoModules(baseGene);
+        lhr = DBGeneRegion.linkPadRequirement(gla, gene_.getID());
+        Set<DBGeneRegion.DBRegKey> linkHolders = dacx_.fgho.holdersWithLinks(baseGene, gla);
+        List<DBGeneRegion> regList = DBGeneRegion.initTheList(gene_);
+        // With growth, we just need to add pads to the region definitions:
+        if (newPads > currPads) {
+          modRegions = DBGeneRegion.stretchTheList(regList, newPads); 
+        } else if (newPads < currPads) {
+          int minRegions = DBGeneRegion.compressedRegionsWidth(baseGene, regList, gla, linkHolders);
+          if (minRegions > newPads) {
+            JOptionPane.showMessageDialog(appState_.getTopFrame(), 
+                                          dacx_.rMan.getString("geneProp.badRegions"), 
+                                          dacx_.rMan.getString("geneProp.badRegionTitle"),
+                                          JOptionPane.ERROR_MESSAGE);         
+            return (false);
+          }
+          modRegions = DBGeneRegion.compressTheList(baseGene, regList, currPads, newPads, gla, linkHolders);
+        }
       }
+    }
+    
+    if (!haveDynInstance ) {
+      //
+      // Starting in 7.1, can't make gene shorter than the links into it:
+      //
+      if (!nps_.checkExtraPads(gene_, false)) {
+        return (false);
+      }  
     }
     
     // One instance of BT-10-27-09:4 crashes here.  Need to not check name field with dynamic instance:
@@ -682,8 +668,18 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
           support.addEdit(gcc);
           rootChange = true;
         }
-      }  
+      }
       
+      if (modRegions != null) {
+        GenomeChange gc = dacx_.getDBGenome().changeGeneRegions(gene_.getID(), modRegions);
+        if (gc != null) {
+          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
+          support.addEdit(gcc);
+          rootChange = true;
+        }
+        LinkSupport.moveCisRegModLinks(support, modRegions, null, gla, lhr, appState_, dacx_, GenomeItemInstance.getBaseID(gene_.getID()), null);
+      }
+        
       //
       // New text description
       //
@@ -700,12 +696,6 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
       //
       // Handle application of region data:
       //
-        
-      if (regionBox_.isSelected()) {
-        rootChange |= rtm.applyValues(support, (newPadsObj != null), newPads);
-      } else {
-        rootChange |= rtm.dumpValues(support);
-      }
     
       if (rootChange) {
         String id = (!haveRoot) ? appState_.getDB().getGenome().getID() : genome_.getID();
@@ -807,7 +797,8 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     }    
     
         
-    support.finish();    
+    support.finish();
+    gene_ = genome_.getGene(ref); // If doing APPLY, this changes!
     return (true);
   }
   
@@ -854,238 +845,6 @@ public class GenePropertiesDialog extends JDialog implements DialogSupport.Dialo
     } 
 
     return;
-  }
- 
-  /***************************************************************************
-  **
-  ** Used for the data table
-  */
-  
-  class RegionTableModel extends EditableTable.TableModel {
-    
-    private final static int NAME_     = 0;
-    private final static int START_    = 1;
-    private final static int END_      = 2;
-    private final static int EVIDENCE_ = 3;
-    private final static int NUM_COL_  = 4; 
-    
-    private static final long serialVersionUID = 1L;
-    
-    private String[] greek_ = {"α","β","γ","δ","ε","ζ","η","θ","ι","κ","λ","μ","ν","ξ","ο","π","ρ","σ","τ","υ","φ","χ","ψ","ω"};
-   
-    RegionTableModel(BTState appState) {      
-      super(appState, NUM_COL_);
-      colNames_ = new String[] {"regtable.name",
-                                "regtable.start",
-                                "regtable.end",
-                                "regtable.evidence"};
-      colClasses_ = new Class[] {String.class,
-                                 ProtoInteger.class,
-                                 ProtoInteger.class,
-                                 EnumCell.class};
-    }
-    
-    public List getValuesFromTable() {
-      throw new UnsupportedOperationException();
-    }
-    
-    public boolean addRow(int[] rows) {
-      super.addRow(rows);
-      int lastIndex = rowCount_ - 1;
-      columns_[NAME_].set(lastIndex, genName());
-      columns_[START_].set(lastIndex, new ProtoInteger(0)); 
-      columns_[END_].set(lastIndex, new ProtoInteger(0));
-      columns_[EVIDENCE_].set(lastIndex, 
-                              getEvidenceForLevel(Gene.LEV_NONE_STR, regionEvidenceCells_));
-      return (true);
-    }
-  
-    private String genName() {
-      int numGreek = greek_.length;
-      int numName = columns_[NAME_].size();
-      StringBuffer buf = new StringBuffer();
-      for (int i = 0; i <= numGreek; i++) {
-        for (int j = 0; j < numGreek; j++) {
-          buf.setLength(0);
-          if (i > 0) {
-            buf.append(greek_[i - 1]);
-          }
-          buf.append(greek_[j]);
-          String retval = buf.toString();
-          boolean skipIt = false;
-          for (int k = 0; k < numName; k++) {
-            if (retval.equals(columns_[NAME_].get(k))) {
-              skipIt = true;
-              break;
-            }
-          }
-          if (!skipIt) {
-            return (retval);
-          }
-        }
-      }
-      ResourceManager rMan = appState_.getRMan();      
-      return (rMan.getString("regtable.newRegion"));
-    }
-    
-    void extractValues(List regions, int padCount) {
-      super.extractValues(regions);
-      Iterator<DBGeneRegion> rit = regions.iterator();
-      while (rit.hasNext()) {
-        DBGeneRegion region = rit.next();
-        columns_[NAME_].add(region.getName());
-        int startPad = region.getStartPad();
-        startPad = mapBoundToDisplay(startPad, padCount);
-        columns_[START_].add(new ProtoInteger(startPad));
-        int endPad = region.getEndPad();
-        endPad = mapBoundToDisplay(endPad, padCount);        
-        columns_[END_].add(new ProtoInteger(endPad));
-        String evtag = DBGene.mapToEvidenceTag(region.getEvidenceLevel());
-        columns_[EVIDENCE_].add(getEvidenceForLevel(evtag, regionEvidenceCells_));
-      }
-      return;
-    }
-
-    boolean applyValues(UndoSupport support, boolean useCount, int padCount) {
-      if (gene_ == null) {
-        return (false);
-      }
-      boolean retval = false;
-      List<DBGeneRegion> newRegions = regionsChanged(useCount, padCount);
-      if (newRegions != null) {
-        GenomeChange gc = genome_.changeGeneRegions(gene_.getID(), newRegions);
-        if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
-          support.addEdit(gcc);
-          retval = true;
-        }
-      }
-      return (retval);
-    }
-    
-    boolean dumpValues(UndoSupport support) {
-      if (gene_.getNumRegions() != 0) {
-        GenomeChange gc = genome_.changeGeneRegions(gene_.getID(), new ArrayList());
-        if (gc != null) {
-          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx_, gc);
-          support.addEdit(gcc);
-          return (true);
-        }
-      }
-      return (false);
-    }
-    
-    private List<DBGeneRegion> regionsChanged(boolean useCount, int padCount) {
-      //
-      // Crank thru the regions and compare to table values.  If we hit a change,
-      // we return the new list of regions:
-      //
-      ArrayList<DBGeneRegion> retval = new ArrayList<DBGeneRegion>();
-      if (rowCount_ != gene_.getNumRegions()) {
-        return (regionTransfer(useCount, padCount));
-      }
-      Iterator<DBGeneRegion> rit = gene_.regionIterator();
-      int count = 0;
-      boolean haveChange = false;
-      while (rit.hasNext()) {
-        DBGeneRegion oldReg = rit.next();
-        String name = (String)columns_[NAME_].get(count);
-        int startPad = ((ProtoInteger)columns_[START_].get(count)).value;
-        startPad = mapBoundToInternal(startPad, useCount, padCount);
-        int endPad = ((ProtoInteger)columns_[END_].get(count)).value;
-        endPad = mapBoundToInternal(endPad, useCount, padCount);
-        int newEvidence = ((EnumCell)columns_[EVIDENCE_].get(count)).value;
-        DBGeneRegion newReg = new DBGeneRegion(name, startPad, endPad, newEvidence);
-        if (!oldReg.equals(newReg)) {
-          haveChange = true;
-        }
-        retval.add(newReg);
-        count++;
-      }
-      return (haveChange ? retval : null);
-    }
-    
-    private List<DBGeneRegion> regionTransfer(boolean useCount, int padCount) {
-      ArrayList<DBGeneRegion> retval = new ArrayList<DBGeneRegion>();
-      for (int i = 0; i < rowCount_; i++) {
-        String name = (String)columns_[NAME_].get(i);
-        int startPad = ((ProtoInteger)columns_[START_].get(i)).value;
-        startPad = mapBoundToInternal(startPad, useCount, padCount);
-        int endPad = ((ProtoInteger)columns_[END_].get(i)).value;
-        endPad = mapBoundToInternal(endPad, useCount, padCount);
-        int newEvidence = ((EnumCell)columns_[EVIDENCE_].get(i)).value;        
-        DBGeneRegion newReg = new DBGeneRegion(name, startPad, endPad, newEvidence);        
-        retval.add(newReg);
-      }
-      return (retval);
-    }
-    
-    boolean tableIntegerCheck() {
-      for (int i = 0; i < rowCount_; i++) {
-        ProtoInteger num = (ProtoInteger)columns_[START_].get(i);
-        if (!num.valid) {
-          IntegerEditor.triggerWarning(appState_, appState_.getTopFrame());
-          return (false);
-        }
-        num = (ProtoInteger)columns_[END_].get(i);
-        if (!num.valid) {
-          IntegerEditor.triggerWarning(appState_, appState_.getTopFrame());
-          return (false);
-        }
-      }
-      return (true);
-    }
-    
-    boolean regionSemanticsCheck(int maxPad) {
-      HashSet<Integer> usedPads = new HashSet<Integer>();
-      HashSet<String> usedNames = new HashSet<String>();
-
-      for (int i = 0; i < rowCount_; i++) {
-        int startPad = ((ProtoInteger)columns_[START_].get(i)).value;          
-        int endPad = ((ProtoInteger)columns_[END_].get(i)).value;
-        if ((startPad < 0) || (endPad < 0)) {
-          return (false);
-        }
-        if ((startPad >= maxPad) || (endPad >= maxPad)) {
-          return (false);
-        }
-        if (startPad > endPad) {
-          return (false);
-        }
-        // Check for overlap: none allowed
-        for (int j = startPad; j <= endPad; j++) {
-          if (!usedPads.add(new Integer(j))) {
-            return (false);
-          }
-        }
-        // duplicate names not allowed, except for multiple blank names
-        String name = (String)columns_[NAME_].get(i);
-        if (name == null) {
-          return (false);
-        }
-        name = name.trim();
-        if (name.equals("")) {
-          continue;
-        }
-        if (DataUtil.containsKey(usedNames, name)) {
-          return (false);
-        }
-        usedNames.add(name);
-      }
-      return (true);
-    }
-   
-  
-    private int mapBoundToInternal(int bound, boolean useCount, int padCount) {
-      int extraPads = (useCount) ? padCount - DBGene.DEFAULT_PAD_COUNT : 0;      
-      return (bound - extraPads);
-    }
-    
-    private int mapBoundToDisplay(int bound, int padCount) {
-      int extraPads = (padCount > DBGene.DEFAULT_PAD_COUNT) ? padCount - DBGene.DEFAULT_PAD_COUNT : 0;
-      return (bound + extraPads);
-    }
-    
   }
   
   /***************************************************************************

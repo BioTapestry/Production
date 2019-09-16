@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -264,7 +264,7 @@ public class PertProperties implements Cloneable {
   */
 
   public String getValue(String key) {
-    return ((String)nameValuePairs_.get(key));
+    return (nameValuePairs_.get(key));
   }
   
   /***************************************************************************
@@ -273,7 +273,7 @@ public class PertProperties implements Cloneable {
   */
 
   public boolean getBooleanValue(String key) {
-    String val = (String)nameValuePairs_.get(key);
+    String val = nameValuePairs_.get(key);
     return ((val != null) && Boolean.valueOf(val).booleanValue());
   }
   

@@ -714,7 +714,9 @@ public class SUPanel implements LayoutChangeListener,
   public class MouseHandler extends MouseAdapter {
 
     private final static int CLICK_SLOP_  = 2;
+    private final static double ACCEPT_DRAG_AS_CLICK_ = 60.0;
     
+    @Override
     public void mousePressed(MouseEvent me) {
       try {
         // IGNORE drags except with button 1 only
@@ -768,6 +770,7 @@ public class SUPanel implements LayoutChangeListener,
       return;
     }
 
+    @Override
     public void mouseClicked(MouseEvent me) {
       if (me.isPopupTrigger()) {
         Point pscreenLoc = me.getComponent().getLocationOnScreen();
@@ -782,6 +785,7 @@ public class SUPanel implements LayoutChangeListener,
     // We want to catch the mouse position when overlaid dialog windows close
     // but the mouse is not moving:
     //
+    @Override
     public void mouseEntered(MouseEvent me) {
       try {
         motionHandle_.mouseMoved(me);
@@ -791,6 +795,7 @@ public class SUPanel implements LayoutChangeListener,
       return;
     }       
     
+    @Override
     public void mouseReleased(MouseEvent me) {
       //
       // On Linux, the popup trigger is a right mouse press.  On Windows, it is
@@ -900,6 +905,11 @@ public class SUPanel implements LayoutChangeListener,
       // Actually rubber band box pulldowns are NOT currently supported!
       if (appState_.getPanelCmds().isModal() && appState_.getIsEditor()) {  // Keep floater alive!
         if (appState_.getPanelCmds().dragNotAllowedForMode()) {
+          Vector2D totalDrag = new Vector2D(ex - sx, ey - sy);
+          if (totalDrag.length() < ACCEPT_DRAG_AS_CLICK_) {
+            clickResult(sx, sy, isShifted, isCtrl, rcx);
+            return;
+          }
           ResourceManager rMan = appState_.getRMan();
           JOptionPane.showMessageDialog(appState_.getTopFrame(),
                                         rMan.getString("addLink.noDragMessage"), 
@@ -1070,12 +1080,12 @@ public class SUPanel implements LayoutChangeListener,
           return;
         }
         Point pt0 = new Point();
-        appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt0);
-        UiUtil.forcePtToGrid(pt0.x, pt0.y, pt0);
+        appState_.getZoomTarget().transformClick(me.getX(), me.getY(), pt0);        
         Point pt2 = new Point();
-        appState_.getZoomTarget().transformClick(lastPress_.getX(), lastPress_.getY(), pt2);
-        UiUtil.forcePtToGrid(pt2.x, pt2.y, pt2); 
+        appState_.getZoomTarget().transformClick(lastPress_.getX(), lastPress_.getY(), pt2);       
         if (dragSelect_) {
+          UiUtil.forcePtToGrid(pt0.x, pt0.y, pt0);
+          UiUtil.forcePtToGrid(pt2.x, pt2.y, pt2); 
           dragFloater_.clear();
           dragFloater_.add(pt0);
           Point pt1 = new Point(pt2.x, pt0.y);
@@ -1089,6 +1099,15 @@ public class SUPanel implements LayoutChangeListener,
           DataAccessContext rcx = new DataAccessContext(appState_, appState_.getGenome());
           dragLayout_ = new Layout(rcx.getLayout());
           if (rmov_ == null) {
+            //
+            // ISSUE #215 RMOV generation now using the original lastPress_, not the gridded lastPress_;
+            // the original one is what is used in the final move operation. Note that if no intersections
+            // arise from this, the rmov_ continues to be null, and we witness no dragging
+            // in progress. So if the original point intersects and the gridded does not, we got
+            // issue #215 cropping up.
+            // Note also that it is crucial we remain consistent with the nothingHit() call, which is what
+            // sets the dragSelect_ == TRUE, and which uses non-gridded points to check for intersections.
+            //
             rmov_ = Mover.generateRMov(myGenomePre_, rcx, pt2);
           }
           if (rmov_ != null) {
@@ -1098,6 +1117,8 @@ public class SUPanel implements LayoutChangeListener,
             }
             appState_.getPanelCmds().visualizeAMove(rmov_, pt0, dragLayout_);
           }
+          // #215 FIX: Do gridding now, not before, to make the floater on-grid.
+          UiUtil.forcePtToGrid(pt0.x, pt0.y, pt0);
         }
         myGenomePre_.setFloaterPosition(pt0);
         drawModel(false);

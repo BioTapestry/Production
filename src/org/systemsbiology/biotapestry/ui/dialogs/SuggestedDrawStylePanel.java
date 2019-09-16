@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -96,8 +96,8 @@ public class SuggestedDrawStylePanel extends JPanel {
   */ 
   
   public SuggestedDrawStylePanel(BTState appState, DataAccessContext dacx,
-                                 boolean optional, List<ColorDeletionListener> colorDeletionListeners) { 
-    this(appState, dacx, true, optional, false, colorDeletionListeners);
+                                 boolean optional, List<ColorDeletionListener> colorListeners) { 
+    this(appState, dacx, true, optional, false, colorListeners);
   }
  
   /***************************************************************************
@@ -107,7 +107,7 @@ public class SuggestedDrawStylePanel extends JPanel {
   
   public SuggestedDrawStylePanel(BTState appState, DataAccessContext dacx,
                                  boolean doColor, boolean optional, 
-                                 boolean forMulti, List<ColorDeletionListener> colorDeletionListeners) {     
+                                 boolean forMulti, List<ColorDeletionListener> colorListeners) {     
     appState_ = appState;
     dacx_ = dacx;
     optional_ = optional;
@@ -139,7 +139,7 @@ public class SuggestedDrawStylePanel extends JPanel {
         });
       }
 
-      colorWidget_ = new ColorSelectionWidget(appState_, dacx_, colorDeletionListeners, !optional, null, true, forMulti);
+      colorWidget_ = new ColorSelectionWidget(appState_, dacx_, colorListeners, !optional, null, true, forMulti);
 
       if (optional) {
         UiUtil.gbcSet(gbc, colNum++, rowNum, 1, 1, UiUtil.NONE, 0, 0, 5, 5, 5, 5, UiUtil.W, 0.0, 1.0);       

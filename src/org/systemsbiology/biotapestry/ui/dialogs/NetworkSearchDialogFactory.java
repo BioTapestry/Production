@@ -547,7 +547,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 			}
 
 			XPlatUIPrimitiveElement matchTypeCombo = this.primElemFac_.makeTxtComboBox(
-				"matchType",getMatchChoices(this.appState_).get(0).val.toString(), null, false, null, matchVals
+				"matchType",getMatchChoices(this.appState_).get(1).val.toString(), null, false, null, matchVals
 			);
 			matchTypeCombo.setFloat(true);
 			matchTypeCombo.setParameter("style", "margin-left: 15px;");
@@ -920,6 +920,7 @@ public class NetworkSearchDialogFactory extends DialogFactory {
 
 			UiUtil.gbcSet(gbc, 2, rowNum++, 1, 1, UiUtil.HOR, 0, 0, 5, 5, 5, 5,UiUtil.CEN, 0.0, 1.0);
 			cp.add(matchTypeCombo_, gbc);
+			matchTypeCombo_.setSelectedIndex(1);
 
 			JPanel extras = new JPanel();
 			extras.setBorder(new EtchedBorder());

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2015 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -150,7 +150,7 @@ public class GridRouterPointSource {
     // the central point.  If that doesn't exist, we build a path from 
     // the root.
     //
-    
+
     PointAndPath retval = new PointAndPath();
     double fractionalRowNum = (direct) ? rowNum + 0.5 : rowNum;
     double fractionalRoot = rootRow_ + 0.5;    
@@ -221,23 +221,24 @@ public class GridRouterPointSource {
     
     if (posForRowCol != null) {
       if (posForRowCol.getRCTrack().getColPadNum() == padNum) {
-        retval.pos = (TrackedGrid.TrackPosRC)posForRowCol.clone();
+        retval.pos = posForRowCol.clone();
         return (retval);
       }
     }
-    
-
-    TrackedGrid.RCTrack lastLoc;
+  
+    TrackedGrid.TrackPosRC lastPos;
     if (!direct) {
       TrackedGrid.TrackSpec rowSpec = posForRow.getRCTrack().getRow();
-      lastLoc = grid_.buildRCTrackForColMidline(appState_, rowSpec, padNum, nodeID, linkID,
-                                                true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
-    } else {
-      lastLoc = rowLoc.clone();
+      TrackedGrid.RCTrack lastLoc = grid_.buildRCTrackForColMidline(appState_, rowSpec, padNum, nodeID, linkID,
+                                                                    true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
+      lastPos = new TrackedGrid.TrackPosRC(lastLoc); 
+    } else if (rowLoc == null) {
+      // This case added to handle Issue 200:
+      lastPos = posForRow.clone();   
+    } else {  
+      lastPos = new TrackedGrid.TrackPosRC(rowLoc); 
     }
-    
-    
-    TrackedGrid.TrackPosRC lastPos = new TrackedGrid.TrackPosRC(lastLoc);    
+      
     perRow.put(new Integer(colNum), lastPos);
     retval.pos = lastPos.clone();    
     return (retval);
@@ -271,7 +272,7 @@ public class GridRouterPointSource {
       double lastRow = Double.NEGATIVE_INFINITY;
       
       if (!wasNoRows) {
-        Double outKey = (Double)((fractionalRowNum <= fractionalRoot) ? posPerRow_.firstKey() : posPerRow_.lastKey());
+        Double outKey = (fractionalRowNum <= fractionalRoot) ? posPerRow_.firstKey() : posPerRow_.lastKey();
         double maybeLast = outKey.doubleValue();
         if ((fractionalRowNum <= fractionalRoot) && (maybeLast <= fractionalRoot)) {
           lastRow = maybeLast;
@@ -326,12 +327,12 @@ public class GridRouterPointSource {
    //   lastLoc = grid_.buildRCTrackForRowMidline(colSpec, padNum, nodeID, linkID,
                                                 //true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
     } else {
-      lastLoc = (TrackedGrid.RCTrack)rowLoc.clone();
+      lastLoc = rowLoc.clone();
     }
     
     TrackedGrid.TrackPosRC lastPos = new TrackedGrid.TrackPosRC(lastLoc);    
     perRow.put(new Integer(colNum), lastPos);
-    return ((TrackedGrid.TrackPosRC)lastPos.clone());
+    return (lastPos.clone());
   }
   
   /***************************************************************************
@@ -507,16 +508,16 @@ public class GridRouterPointSource {
     // Look for the highest numbered column in the highest numbered row that we can find.
     // If nothing shows up, build one.
     //
-        
+     
+    // Issue #251 hotspot:
     PointAndPath retval = new PointAndPath();
     DepartureInfo di = setupDepartingPoint(retval);
-
     TrackedGrid.RCTrack lastLoc = 
       grid_.inheritRCTrackNewColMidline(di.rowTrack, padNum, nodeID, linkID,
                                         true, linkSign, TrackedGrid.RCTrack.NO_TRACK);
     TrackedGrid.TrackPosRC lastPos = new TrackedGrid.TrackPosRC(lastLoc); 
     rightDeparturePerRow_.put(di.useRowNumObj, lastPos);    
-    retval.pos = (TrackedGrid.TrackPosRC)lastPos.clone();
+    retval.pos = lastPos.clone();
     
     return (retval);
   }
@@ -537,7 +538,7 @@ public class GridRouterPointSource {
     TrackedGrid.RCTrack lastLoc = grid_.buildRCTrack(di.rowTrack, colSpec, TrackedGrid.RCTrack.COL_SPEC);
     TrackedGrid.TrackPosRC lastPos = new TrackedGrid.TrackPosRC(lastLoc); 
     rightDeparturePerRow_.put(di.useRowNumObj, lastPos);    
-    retval.pos = (TrackedGrid.TrackPosRC)lastPos.clone(); 
+    retval.pos = lastPos.clone(); 
     
     return (retval);
   }  
@@ -566,7 +567,7 @@ public class GridRouterPointSource {
     Double useRowNumObj = null;
     TrackedGrid.TrackPosRC establishedPosForRow = null;    
     Double establishedRow = null;
-    TrackedGrid.TrackPosRC bottomPosForRow = null;    
+    //TrackedGrid.TrackPosRC bottomPosForRow = null;  ISSUE #251 fix removes
     Double bottomRow = null;    
     
       
@@ -586,10 +587,14 @@ public class GridRouterPointSource {
         establishedPosForRow = perRow.get(outKey);
         establishedRow = rowNumObj;
       }
-      bottomPosForRow = perRow.get(outKey);
+      //
+      // We record this each loop, but it will be the bottom when we are done:
+      // ISSUE #251: We actually don't want to start from the bottom position in the mid-row case:
+      // bottomPosForRow = perRow.get(outKey);
       bottomRow = rowNumObj;
     }
 
+    // Must have had an even key to have a row:
     boolean haveARow = ((useRowNumObj != null) || (establishedRow != null));
     TrackedGrid.RCTrack rowTrack;
     if (haveARow) {
@@ -600,7 +605,11 @@ public class GridRouterPointSource {
       pap.path.add(usePosForRow.clone());
       rowTrack = usePosForRow.getRCTrack();      
     } else if (bottomRow != null) { // only have midrow points
-      pap.path.add(bottomPosForRow.clone());
+      //
+      // ISSUE #251 FIX. We don't want to start from the end of the midrow link, but branch down from the root.
+      // pap.path.add(bottomPosForRow.clone());
+      //
+      pap.path.add(rootPos_.clone());
       SortedMap<Integer, TrackedGrid.TrackPosRC> perRow = new TreeMap<Integer, TrackedGrid.TrackPosRC>();
       useRowNumObj = new Double(bottomRow.doubleValue() + 0.5);
       posPerRow_.put(useRowNumObj, perRow);

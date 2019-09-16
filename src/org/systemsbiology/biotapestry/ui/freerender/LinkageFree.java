@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -53,7 +53,6 @@ import org.systemsbiology.biotapestry.ui.LinkSegment;
 import org.systemsbiology.biotapestry.ui.LinkSegmentID;
 import org.systemsbiology.biotapestry.ui.NodeProperties;
 import org.systemsbiology.biotapestry.ui.ResolvedDrawStyle;
-import org.systemsbiology.biotapestry.ui.modelobjectcache.LinkSegmentExport;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.LinkageCacheGroup;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.LinkageExportForWeb;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalTextShapeFactory;
@@ -182,6 +181,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     dTree.exportLinkages(lefw, rcxNO, bp);
     
     Font mFont = rcx.fmgr.getFont(FontManager.LINK_LABEL);
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
     String label = bp.getLabel(rcx.getGenome());       
     if ((label != null) && (!label.trim().equals(""))) {
       Point2D txtLoc = bp.getTextPosition();
@@ -200,7 +200,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
       }
       AffineTransform trans = new AffineTransform();
       trans.rotate(radians, txtX, txtY);
-      Color textCol = (rcx.isGhosted()) ? Color.LIGHT_GRAY : bp.getColor(rcx.cRes);
+      Color textCol = (rcx.isGhosted()) ? dop.getInactiveGray() : bp.getColor(rcx.cRes);
 
       // In the web application, push the same transformation to the shape stream,
       // because the transform will NOT be serialized from the TextShape in ModalShapeJSONizer..
@@ -530,10 +530,10 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     
     DrawTreeModelDataSource.ModelLineStyleModulation retval = 
       new DrawTreeModelDataSource.ModelLineStyleModulation();
-    retval.linkModulation = (icx.getDisplayOptsSource().getDisplayOptions() == null) ? DisplayOptions.NO_LINK_ACTIVITY_DISPLAY 
-                                               : icx.getDisplayOptsSource().getDisplayOptions().getLinkActivity();
+    DisplayOptions dop = icx.getDisplayOptsSource().getDisplayOptions();
+    retval.linkModulation = (dop == null) ? DisplayOptions.NO_LINK_ACTIVITY_DISPLAY : dop.getLinkActivity();
     retval.checkForActive = (icx.getGenome() instanceof GenomeInstance);
-    retval.branchRenderMode = (icx.getDisplayOptsSource().getDisplayOptions() == null) ? DisplayOptions.NO_BUS_BRANCHES : icx.getDisplayOptsSource().getDisplayOptions().getBranchMode();
+    retval.branchRenderMode = (dop == null) ? DisplayOptions.NO_BUS_BRANCHES : dop.getBranchMode();
     retval.forModules = false;
 
     return (retval);
@@ -556,8 +556,9 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     
     Linkage link = genome.getLinkage(linkID);
     DrawTreeModelDataSource.LinkLineStyleModulation retval = new DrawTreeModelDataSource.LinkLineStyleModulation();
-    int evidence = link.getTargetLevel(); 
-    retval.perLinkForEvidence = (icx.getDisplayOptsSource().getDisplayOptions() == null) ? null : icx.getDisplayOptsSource().getDisplayOptions().getEvidenceDrawChange(evidence); 
+    int evidence = link.getTargetLevel();
+    DisplayOptions dop = icx.getDisplayOptsSource().getDisplayOptions();
+    retval.perLinkForEvidence = (dop == null) ? null : dop.getEvidenceDrawChange(evidence); 
     retval.sign = link.getSign();
     retval.perLinkActivity = null;
     retval.isActive = true;
@@ -595,9 +596,10 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     retval.arrival = render.getArrivalDirection(land, node, icx.getLayout());
     Point2D trgLoc = nProp.getLocation();
     Vector2D lanPO = render.getLandingPadOffset(land, node, retval.sign, icx);
-    retval.lanLoc = lanPO.add(trgLoc);        
+    retval.lanLoc = lanPO.add(trgLoc);
+    DisplayOptions dop = icx.getDisplayOptsSource().getDisplayOptions();
     
-    retval.negLength = retval.padWidth + icx.getDisplayOptsSource().getDisplayOptions().getExtraFootSize();
+    retval.negLength = retval.padWidth + dop.getExtraFootSize();
     retval.negThick = Math.round((float)(NEG_THICK_ * (retval.negLength / retval.padWidth)));
     
     boolean checkForActive = (genome instanceof GenomeInstance);
@@ -613,7 +615,7 @@ public class LinkageFree extends ItemRenderBase implements DrawTreeModelDataSour
     retval.levelFudge = (retval.sign == Linkage.NEGATIVE) ? LEVEL_FUDGE_NEG_ : LEVEL_FUDGE_;
     
     int level = link.getTargetLevel();    
-    retval.hasDiamond = (icx.getDisplayOptsSource().getDisplayOptions() == null) ? false : icx.getDisplayOptsSource().getDisplayOptions().drawEvidenceGlyphs(level);
+    retval.hasDiamond = (dop == null) ? false : dop.drawEvidenceGlyphs(level);
  
     return (retval);   
   }

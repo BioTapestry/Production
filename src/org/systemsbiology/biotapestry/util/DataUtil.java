@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -672,7 +672,7 @@ public class DataUtil {
     int minTime = hours.first().intValue() + 1;
     int maxTime = hours.last().intValue() - 1;
     for (int i = minTime; i <= maxTime; i++) {
-      retval.add(new Integer(i));
+      retval.add(Integer.valueOf(i));
     }
     return (retval);
   }

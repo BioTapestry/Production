@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -22,7 +22,6 @@ package org.systemsbiology.biotapestry.ui.freerender;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Rectangle;
-import java.awt.font.FontRenderContext;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.util.ArrayList;
@@ -100,6 +99,16 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   ////////////////////////////////////////////////////////////////////////////
   
   /***************************************************************************
+  ** 
+  ** Get our preferred target color (bubbles want to be white)
+  */
+   
+  @Override
+  public String getTargetColor() {
+    return ("white");
+  }
+ 
+  /***************************************************************************
   **
   ** Render the bare node using the provided layout
   */
@@ -134,19 +143,21 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
       isGhosted = isGhosted || (activityLevel == NodeInstance.VESTIGIAL) || (activityLevel == NodeInstance.INACTIVE);
       textGhosted = isGhosted && (activityLevel != NodeInstance.VESTIGIAL);
     }
-    Color vac = getVariableActivityColor(item, np.getColor(), false, rcx.getDisplayOptsSource().getDisplayOptions());
-    Color col = (isGhosted) ? Color.LIGHT_GRAY : vac;
-    Color textCol = getVariableActivityColor(item, Color.BLACK, true, rcx.getDisplayOptsSource().getDisplayOptions());  
+    
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color vac = getVariableActivityColor(item, np.getColor(), false, dop);
+    Color col = (isGhosted) ? dop.getInactiveGray() : vac;
+    Color textCol = getVariableActivityColor(item, Color.BLACK, true, dop);  
     
     CommonCacheGroup group = new CommonCacheGroup(item.getID(), item.getName(), "tablet");
     
     tabletSelectionSupport(group, selected, extraPad, origin.getX(), origin.getY(), np, rcx.forWeb);
   
     if (rcx.showBubbles) {
-    	renderPads(group, (isGhosted) ? Color.LIGHT_GRAY : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
+    	renderPads(group, (isGhosted) ? dop.getInactiveGray() : Color.BLACK, item, MAX_PADS_, PAD_WIDTH_, rcx);
     }
     
-    renderGlyph(group, item, origin, extraPad, col, np, rcx.getDisplayOptsSource().getDisplayOptions(), isGhosted);    
+    renderGlyph(group, item, origin, extraPad, col, np, dop, isGhosted);    
     
     double textX = x + TEXT_PAD_;
     double textY = y - TEXT_PAD_;
@@ -159,7 +170,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
       }
     }
     
-    textCol = (textGhosted) ? Color.LIGHT_GRAY : textCol;
+    textCol = (textGhosted) ? dop.getInactiveGray() : textCol;
     Point2D textEnd = renderText(group, (float)textX, (float)textY, name, textCol, np.getHideName(), amFont, np.getLineBreakDef(), rcx.getFrc(), rcx.fmgr, textFactory);
     
     // alpha beta chi "\u03b1 \u03b2 \u03c7"
@@ -170,7 +181,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
     
     Point2D pieCenter = new Point2D.Double(textEnd.getX() + 15.0, textEnd.getY());
     
-    drawVariableActivityPie(group, item, (np.getColor().equals(Color.WHITE)) ? Color.BLACK : col, pieCenter, rcx.getDisplayOptsSource().getDisplayOptions());
+    drawVariableActivityPie(group, item, (np.getColor().equals(Color.WHITE)) ? textCol : col, pieCenter, dop);
 
     setGroupBounds(group, item, rcx);
 
@@ -799,7 +810,7 @@ public abstract class AbstractTabletNodeFree extends NodeRenderBase {
   ** Figure out which pad we intersect 
   */
   
-  protected List<Intersection.PadVal> calcPadIntersects(GenomeItem item, Point2D pt, DataAccessContext rcx) {     
+  public List<Intersection.PadVal> calcPadIntersects(GenomeItem item, Point2D pt, DataAccessContext rcx) {     
     return (calcSharedNamespacePadIntersectSupport(item, pt, MAX_PADS_, PAD_WIDTH_, rcx));  
   }  
   

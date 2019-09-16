@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,9 +19,11 @@
 
 package org.systemsbiology.biotapestry.perturb;
  
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import org.systemsbiology.biotapestry.perturb.PerturbationData.RegionRestrict;
 
 /***************************************************************************
 **
@@ -30,6 +32,43 @@ import java.util.List;
 */
   
 public class PertDataChange {
+ 
+  public enum Mode {
+   UNDEFINED,
+  DATA_POINT ,
+  EXPERIMENT ,
+ DATA_POINT_SET ,
+ EXPERIMENT_SET,
+  SOURCE_DEF  ,
+  USER_FIELD_VALS ,
+ USER_FIELD_NAME ,
+REG_RESTRICT ,
+DATA_ANNOTS   ,
+TARGET_ANNOTS,
+ SOURCE_NAME ,
+EXP_CONTROL  ,
+INVEST      ,
+ DATA_ANNOTS_SET,
+SOURCE_DEF_SET ,
+ MEASURE_PROP ,
+ EXP_COND     ,
+ MEAS_SCALE  ,
+TARGET_NAME    ,
+ ANNOTATION    ,
+ PERT_PROP    ,
+TARG_ANNOTS_SET ,
+ ANNOT_MODULE  ,
+ NAME_MAPPER     ,
+ MEASURE_PROP_SET,
+  };
+  
+  
+  
+  
+  
+  
+  
+  /*
   
   public static final int UNDEFINED       = 0;
   public static final int DATA_POINT      = 1;
@@ -57,19 +96,19 @@ public class PertDataChange {
   public static final int ANNOT_MODULE    = 23;
   public static final int NAME_MAPPER     = 24;
   public static final int MEASURE_PROP_SET = 25;
-
+*/
   public long serialNumberOrig;
   public long serialNumberNew;
-  public int mode;
+  public Mode mode;
 
-  public HashMap<String, List<String>> userDataSubsetOrig;
-  public HashMap<String, List<String>> userDataSubsetNew;
+  public Map<String, List<String>> userDataSubsetOrig;
+  public Map<String, List<String>> userDataSubsetNew;
   
-  public HashMap srcDefsSubsetOrig;
-  public HashMap srcDefsSubsetNew; 
+  public Map<String, PertSource> srcDefsSubsetOrig;
+  public Map<String, PertSource> srcDefsSubsetNew; 
 
-  public HashMap mPropsSubsetOrig;
-  public HashMap mPropsSubsetNew;
+  public Map<String, MeasureProps> mPropsSubsetOrig;
+  public Map<String, MeasureProps> mPropsSubsetNew;
   
   public PertAnnotations pAnnotOrig;
   public PertAnnotations pAnnotNew;
@@ -82,20 +121,20 @@ public class PertDataChange {
   public List<String> userDataOrig;
   public List<String> userDataNew;
   
-  public HashMap dataPtRegResSubsetOrig;
-  public HashMap dataPtRegResSubsetNew;
+  public Map<String, RegionRestrict> dataPtRegResSubsetOrig;
+  public Map<String, RegionRestrict> dataPtRegResSubsetNew;
   
-  public HashMap dataPtNotesSubsetOrig;
-  public HashMap dataPtNotesSubsetNew;
+  public Map<String, List<String>> dataPtNotesSubsetOrig;
+  public Map<String, List<String>> dataPtNotesSubsetNew;
   
-  public HashMap dataPtsSubsetOrig;
-  public HashMap dataPtsSubsetNew;
+  public Map<String, PertDataPoint> dataPtsSubsetOrig;
+  public Map<String, PertDataPoint> dataPtsSubsetNew;
   
-  public HashMap targetNotesSubsetOrig;
-  public HashMap targetNotesSubsetNew;
+  public HashMap<String, List<String>> targetNotesSubsetOrig;
+  public HashMap<String, List<String>> targetNotesSubsetNew;
     
-  public HashMap expSubsetOrig;
-  public HashMap expSubsetNew;
+  public Map<String, Experiment> expSubsetOrig;
+  public Map<String, Experiment> expSubsetNew;
   
   public Experiment expOrig;
   public Experiment expNew;
@@ -129,12 +168,12 @@ public class PertDataChange {
   public String targetNew;
   
   public String targetAnnotKey;
-  public ArrayList targetAnnotOrig;
-  public ArrayList targetAnnotNew; 
+  public List<String> targetAnnotOrig;
+  public List<String> targetAnnotNew; 
   
   public String dataAnnotsKey;
-  public ArrayList dataAnnotsOrig;
-  public ArrayList dataAnnotsNew;
+  public List<String> dataAnnotsOrig;
+  public List<String> dataAnnotsNew;
   
   public String dataRegResKey;
   public PerturbationData.RegionRestrict dataRegResOrig;
@@ -156,14 +195,14 @@ public class PertDataChange {
   
   public String nameMapperMode;
   public String nameMapperKey;
-  public ArrayList<String> nameMapperListOrig;
-  public ArrayList<String> nameMapperListNew;
+  public List<String> nameMapperListOrig;
+  public List<String> nameMapperListNew;
  
   public PertDataChange(long serNum) {
-    this(serNum, UNDEFINED);  // FIX ME!!!!
+    this(serNum, Mode.UNDEFINED);  // FIX ME!!!!
   }
   
-  public PertDataChange(long serNum, int mode) {
+  public PertDataChange(long serNum, Mode mode) {
     this.mode = mode;
     serialNumberOrig = serNum;  
   }  

@@ -20,15 +20,19 @@
 
 package org.systemsbiology.biotapestry.cmd.flow.remove;
 
+import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import javax.swing.JOptionPane;
 
 import org.systemsbiology.biotapestry.app.BTState;
+import org.systemsbiology.biotapestry.cmd.flow.DialogAndInProcessCmd;
 import org.systemsbiology.biotapestry.cmd.instruct.InstanceInstructionSet;
 import org.systemsbiology.biotapestry.cmd.undo.GenomeChangeCmd;
 import org.systemsbiology.biotapestry.cmd.undo.GroupSettingChangeCmd;
@@ -50,6 +54,8 @@ import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.genome.ProxyChange;
 import org.systemsbiology.biotapestry.nav.GroupSettingChange;
 import org.systemsbiology.biotapestry.nav.GroupSettingManager;
+import org.systemsbiology.biotapestry.timeCourse.TemporalInputRangeData;
+import org.systemsbiology.biotapestry.timeCourse.TimeCourseData;
 import org.systemsbiology.biotapestry.util.SimpleUserFeedback;
 import org.systemsbiology.biotapestry.util.UndoSupport;
 
@@ -151,7 +157,186 @@ public class RemoveSupport {
     }
     return;
   }
+   
+    /***************************************************************************
+  **
+  ** User data choice
+  */
+        
+  public static class UserDataChoice  {
     
+    public enum Delete {
+      SINGLE_DELETE,
+      ASK_FOR_ALL,
+      PREVIOUS_NO,
+      PREVIOUS_YES,
+      OFFLINE_NO;
+    }
+   
+    public enum Decision {
+      NO_DELETION,
+      NO_DECISION, 
+      YES_FOR_ALL,  
+      NO_FOR_ALL;  
+    }
+ 
+    public Decision decide;  
+    public boolean deleteUnderlyingTables;
+     
+    UserDataChoice(Decision decide, boolean deleteUnderlyingTables) {
+      this.decide = decide;
+      this.deleteUnderlyingTables = deleteUnderlyingTables;
+    }   
+  } 
+
+  /***************************************************************************
+  **
+  ** Used to return link usage results
+  */
+  
+  public static class DataDeleteQueryState { 
+    
+    public enum NextStep {GO_DELETE,
+                          CHECK_DATA_DELETE,
+                          REGISTER_DATA_DELETE,
+                         };
+   
+    public UserDataChoice.Delete multiDelete;
+    public Map<String, Boolean> dataDelete;
+    public int deadCheck;
+    public NextStep nextStep;
+    public List<String> deadList;
+    public DialogAndInProcessCmd retval;
+   
+    public DataDeleteQueryState(List<String> deadList, DialogAndInProcessCmd daipc) {
+      this.multiDelete = (deadList.size() == 1) ? UserDataChoice.Delete.SINGLE_DELETE : UserDataChoice.Delete.ASK_FOR_ALL;
+      this.dataDelete = new HashMap<String, Boolean>();
+      this.deadCheck = 0;
+      this.nextStep = NextStep.CHECK_DATA_DELETE;
+      this.deadList = new ArrayList<String>(deadList);
+      this.retval = daipc;
+    }
+     
+    public DataDeleteQueryState(List<String> deadList, DialogAndInProcessCmd daipc, boolean isRoot) {
+      this.multiDelete = null;
+      this.dataDelete = null;
+      this.deadCheck = 0;
+      this.nextStep = NextStep.GO_DELETE;
+      this.deadList = new ArrayList<String>(deadList);
+      this.retval = daipc;
+    }
+  }
+
+  /***************************************************************************
+  **
+  ** Do the step
+  */ 
+     
+  public static void stepToCheckDataDelete(DataAccessContext rcx, 
+                                           DataDeleteQueryState ddqs, DialogAndInProcessCmd.CmdState cms) {
+
+    String deadID = ddqs.deadList.get(ddqs.deadCheck);
+    String deadName = rcx.getGenome().getNode(deadID).getRootName();
+
+    //
+    // Under all circumstances, we delete associated mappings to data.
+    // We also give the user the option to delete the underlying data
+    // tables, unless previously specified
+    //
+  
+    TimeCourseData tcd = rcx.getExpDataSrc().getTimeCourseData();
+    TemporalInputRangeData tird = rcx.getExpDataSrc().getTemporalInputRangeData();
+    
+    if (((tcd != null) && tcd.haveDataForNodeOrName(deadID, deadName)) ||
+        ((tird != null) && tird.haveDataForNodeOrName(deadID, deadName))) {    
+      if (ddqs.multiDelete == UserDataChoice.Delete.PREVIOUS_YES) {
+        ddqs.dataDelete.put(deadID, Boolean.valueOf(true));
+        ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, cms); // Keep going
+        ddqs.deadCheck++;
+        ddqs.nextStep = (ddqs.deadCheck >= ddqs.deadList.size()) ? DataDeleteQueryState.NextStep.GO_DELETE 
+                                                                 : DataDeleteQueryState.NextStep.CHECK_DATA_DELETE;
+        return;
+      } else if (ddqs.multiDelete == UserDataChoice.Delete.PREVIOUS_NO) {
+        ddqs.dataDelete.put(deadID, Boolean.valueOf(false));
+        ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, cms); // Keep going
+        ddqs.deadCheck++;
+        ddqs.nextStep = (ddqs.deadCheck >= ddqs.deadList.size()) ? DataDeleteQueryState.NextStep.GO_DELETE 
+                                                                 : DataDeleteQueryState.NextStep.CHECK_DATA_DELETE;
+        return;
+      } else if (ddqs.multiDelete == UserDataChoice.Delete.SINGLE_DELETE) {
+        String daString = MessageFormat.format(rcx.rMan.getString("nodeDelete.doDataMessage"), new Object[] {deadName});
+        SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.YES_NO_CANCEL_OPTION, daString, rcx.rMan.getString("nodeDelete.messageTitle"));
+        ddqs.retval = new DialogAndInProcessCmd(suf, cms);     
+        ddqs.nextStep = DataDeleteQueryState.NextStep.REGISTER_DATA_DELETE;   
+        return;  
+      } else if (ddqs.multiDelete == UserDataChoice.Delete.ASK_FOR_ALL) {       
+        String doData = rcx.rMan.getString("nodeDelete.doDataMessage");
+        String msg = MessageFormat.format(doData, new Object[] {deadName});
+        Object[] args = new Object[] {
+                                      rcx.rMan.getString("dialogs.yesToAll"),
+                                      rcx.rMan.getString("dialogs.noToAll"),
+                                      rcx.rMan.getString("dialogs.yes"),
+                                      rcx.rMan.getString("dialogs.no"),
+                                      rcx.rMan.getString("dialogs.cancel")
+                                     };
+        SimpleUserFeedback suf = new SimpleUserFeedback(SimpleUserFeedback.JOP.OPTION_OPTION, 
+                                                        msg, 
+                                                        rcx.rMan.getString("nodeDelete.messageTitle"),
+                                                        args, rcx.rMan.getString("dialogs.no"));
+        ddqs.retval = new DialogAndInProcessCmd(suf, cms);     
+        ddqs.nextStep = DataDeleteQueryState.NextStep.REGISTER_DATA_DELETE;   
+        return;  
+      }          
+    }
+    ddqs.deadCheck++;
+    ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, cms); // Keep going
+    ddqs.nextStep = (ddqs.deadCheck >= ddqs.deadList.size()) ? DataDeleteQueryState.NextStep.GO_DELETE 
+                                                             : DataDeleteQueryState.NextStep.CHECK_DATA_DELETE;
+    return;
+  } 
+
+  /***************************************************************************
+  **
+  ** Do the step
+  */ 
+     
+  public static void registerCheckDataDelete(DialogAndInProcessCmd daipc,
+                                             DataDeleteQueryState ddqs, DialogAndInProcessCmd.CmdState cms) {
+    if (ddqs.multiDelete == UserDataChoice.Delete.PREVIOUS_YES) {
+      throw new IllegalStateException();    
+    } else if (ddqs.multiDelete == UserDataChoice.Delete.PREVIOUS_NO) {
+      throw new IllegalStateException();
+    } else if (ddqs.multiDelete == UserDataChoice.Delete.SINGLE_DELETE) {
+      int result = daipc.suf.getIntegerResult();
+      if (result == SimpleUserFeedback.CANCEL) {
+        ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, cms);
+        return;
+      }     
+      ddqs.dataDelete.put(ddqs.deadList.get(ddqs.deadCheck), Boolean.valueOf(result == SimpleUserFeedback.YES));
+      ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, cms); // Keep going
+      ddqs.nextStep = DataDeleteQueryState.NextStep.GO_DELETE;
+      return;  
+    } else if (ddqs.multiDelete == UserDataChoice.Delete.ASK_FOR_ALL) {
+      int result = daipc.suf.getIntegerResult();
+      if ((result == 4) || (result == SimpleUserFeedback.CANCEL)) {
+        ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.USER_CANCEL, cms);
+        return;
+      }  
+      ddqs.dataDelete.put(ddqs.deadList.get(ddqs.deadCheck), Boolean.valueOf((result == 0) || (result == 2)));
+      if (result == 0) {
+        ddqs.multiDelete = UserDataChoice.Delete.PREVIOUS_YES;
+      } else if (result == 1) {
+        ddqs.multiDelete = UserDataChoice.Delete.PREVIOUS_NO;
+      }
+    } else {
+      throw new IllegalStateException();
+    }
+    ddqs.retval = new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, cms); // Keep going
+    ddqs.deadCheck++;
+    ddqs.nextStep = (ddqs.deadCheck >= ddqs.deadList.size()) ? DataDeleteQueryState.NextStep.GO_DELETE 
+                                                             : DataDeleteQueryState.NextStep.CHECK_DATA_DELETE;    
+    return;
+  } 
 
   /***************************************************************************
   **

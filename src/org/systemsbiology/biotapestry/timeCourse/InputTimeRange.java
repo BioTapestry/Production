@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -80,7 +80,7 @@ public class InputTimeRange {
     this.ranges_ = new ArrayList<RegionAndRange>();
     int size = other.ranges_.size();
     for (int i = 0; i < size; i++) {
-      RegionAndRange rar = (RegionAndRange)other.ranges_.get(i);
+      RegionAndRange rar = other.ranges_.get(i);
       this.ranges_.add(new RegionAndRange(rar));
     }
   }

@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -39,9 +39,9 @@ public interface SourceSrc  {
   public Experiment getExperiment(String key); 
   public PertSource getSourceDef(String key);
   public String getInvestigator(String key);
-  public List getDataPointNotes(String dpKey);
-  public List getFootnotesForTarget(String targKey);
-  public String getFootnoteListAsString(List annots);
+  public List<String> getDataPointNotes(String dpKey);
+  public List<String> getFootnotesForTarget(String targKey);
+  public String getFootnoteListAsString(List<String> annots);
   public PertDictionary getPertDictionary();
   public MeasureDictionary getMeasureDictionary();
   public PertAnnotations getPertAnnotations();

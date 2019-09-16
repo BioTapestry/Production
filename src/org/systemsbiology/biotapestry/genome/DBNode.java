@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -367,7 +367,16 @@ public class DBNode extends DBGenomeItem implements Node {
     }
     return;
   }
- 
+  
+  /***************************************************************************
+  **
+  ** Check for extra pads:
+  */
+  
+  public boolean haveExtraPads() {  
+    return (padCount_ > DBNode.getDefaultPadCount(nodeType_));
+  }  
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CLASS METHODS
@@ -564,6 +573,15 @@ public class DBNode extends DBGenomeItem implements Node {
   
  /***************************************************************************
   **
+  ** Answer if we only provide the pad count option if forced to do so.
+  */
+
+  public static boolean onlyOfferForcedPadCount(int nodeType) {
+    return (nodeType == SLASH);
+  }   
+  
+ /***************************************************************************
+  **
   ** Get the default pad count
   */
 
@@ -575,10 +593,9 @@ public class DBNode extends DBGenomeItem implements Node {
       case DIAMOND:
         return (4);
       case INTERCELL:
-        return (1);  // Only one landing pad
       case SLASH:
-        return (2);  // Shared pad namespace
-      case GENE:       
+        return (1);  // Only one landing pad
+      case GENE:
         return (DBGene.DEFAULT_PAD_COUNT);        
       default:
         throw new IllegalArgumentException();
@@ -598,10 +615,9 @@ public class DBNode extends DBGenomeItem implements Node {
       case DIAMOND:        
         return (MAX_TEXT_PAD_COUNT_);
       case INTERCELL:
-        return (11); 
       case SLASH:
-        return (2);
-      case GENE:       
+        return (11);
+      case GENE:    
         return (DBGene.MAX_PAD_COUNT);        
       default:
         throw new IllegalArgumentException();
@@ -621,9 +637,8 @@ public class DBNode extends DBGenomeItem implements Node {
       case DIAMOND:        
         return (TEXT_PAD_INCREMENT_);
       case INTERCELL:
-        return (2);
       case SLASH:
-        return (0);
+        return (2);
       case GENE:       
         return (1);        
       default:

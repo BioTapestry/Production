@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2010 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -27,8 +27,6 @@ import org.systemsbiology.biotapestry.genome.Linkage;
 import org.systemsbiology.biotapestry.plugin.InternalDataDisplayPlugInV2;
 import org.systemsbiology.biotapestry.plugin.InternalLinkDataDisplayPlugIn;
 import org.systemsbiology.biotapestry.plugin.PluginCallbackWorker;
-import org.systemsbiology.biotapestry.ui.DisplayOptionsManager;
-import org.systemsbiology.biotapestry.util.ResourceManager;
 
 /****************************************************************************
 **

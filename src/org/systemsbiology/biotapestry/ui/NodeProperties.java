@@ -1004,6 +1004,31 @@ public class NodeProperties implements Cloneable {
   
   /***************************************************************************
   **
+  ** Invert the orient types
+  */
+
+  public static int reverseOrient(int orientType) {
+    switch (orientType) {
+      case NONE: // Synonymous with RIGHT
+        return (LEFT);
+      case LEFT:
+        return (RIGHT);  
+      case RIGHT:
+        return (LEFT);  
+      case UP:
+        return (DOWN);  
+      case DOWN:
+        return (UP);                        
+      default:
+        throw new IllegalArgumentException();
+    }
+  }
+  
+  
+  
+  
+  /***************************************************************************
+  **
   ** map the source type tags
   */
 

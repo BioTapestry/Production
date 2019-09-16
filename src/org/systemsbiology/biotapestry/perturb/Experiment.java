@@ -66,7 +66,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   private int time_;
   private String conditionKey_;
   private int legacyMaxTime_; // Used for legacy data with no specific time point
-  private ArrayList invest_;
+  private ArrayList<String> invest_;
   private BTState appState_;
   
   ////////////////////////////////////////////////////////////////////////////
@@ -80,14 +80,14 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Constructor
   */
 
-  public Experiment(BTState appState, String id, PertSources sources, int time, List investigators, String condKey) {
+  public Experiment(BTState appState, String id, PertSources sources, int time, List<String> investigators, String condKey) {
     appState_ = appState;
     id_ = id;
     sources_ = sources;
     time_ = time;
     legacyMaxTime_ = NO_TIME;
     conditionKey_ = condKey;
-    invest_ = (investigators == null) ? new ArrayList() : new ArrayList(investigators);
+    invest_ = (investigators == null) ? new ArrayList<String>() : new ArrayList<String>(investigators);
   }  
   
   /***************************************************************************
@@ -102,7 +102,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
     time_ = time;
     legacyMaxTime_= legacyMaxTime;
     conditionKey_ = condKey;
-    invest_ = new ArrayList();
+    invest_ = new ArrayList<String>();
   }
 
   ////////////////////////////////////////////////////////////////////////////
@@ -193,7 +193,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill in the experiment choice to the set
   */
   
-  public void addToExperimentSet(Set sourceInfos, SourceSrc ss) {
+  public void addToExperimentSet(Set<TrueObjChoiceContent> sourceInfos, SourceSrc ss) {
     sourceInfos.add(getChoiceContent(ss));
     return;
   }  
@@ -226,7 +226,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill in the sources; sources is a set of PertSources
   */
   
-  public void addToSourceSet(Set sources, SourceSrc ss) {
+  public void addToSourceSet(Set<TrueObjChoiceContent> sources, SourceSrc ss) {
     sources_.addToSourceSet(sources, ss);
     return;
   }  
@@ -236,7 +236,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill in the source (an opt. proxy) name keys
   */
   
-  public void addToSourceNameSet(Set sources, SourceSrc ss, boolean orProxy) {
+  public void addToSourceNameSet(Set<TrueObjChoiceContent> sources, SourceSrc ss, boolean orProxy) {
     sources_.addToSourceNameSet(sources, ss, orProxy);
     return;
   }  
@@ -246,7 +246,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill in the perturbation types
   */
   
-  public void addToPertSet(Set pertTypes, SourceSrc ss, PertDictionary pDict) {
+  public void addToPertSet(Set<TrueObjChoiceContent> pertTypes, SourceSrc ss, PertDictionary pDict) {
     sources_.addToPertSet(pertTypes, ss, pDict);
     return;
   }  
@@ -316,9 +316,9 @@ public class Experiment implements Cloneable, PertFilterTarget {
   public Experiment clone() {
     try {
       Experiment newVal = (Experiment)super.clone();     
-      newVal.sources_ = (PertSources)this.sources_.clone();
+      newVal.sources_ = this.sources_.clone();
       // List of immutable strings; just clone:
-      newVal.invest_ = (ArrayList)this.invest_.clone();      
+      newVal.invest_ = new ArrayList<String>(this.invest_);      
       return (newVal);
     } catch (CloneNotSupportedException ex) {
       throw new IllegalStateException();     
@@ -406,7 +406,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
         String filterInvest = pf.getStringValue();
         int numI = invest_.size();
         for (int i = 0; i < numI; i++) {
-          String investKey = (String)invest_.get(i);
+          String investKey = invest_.get(i);
           if (filterInvest.equals(investKey)) {
             return (true);
           }
@@ -460,7 +460,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Answers if the perturbations in this set matches one of those specified
   */
   
-  public boolean sourceMatch(List skeys) {
+  public boolean sourceMatch(List<String> skeys) {
     return (sources_.sourcesMatch(skeys));
   }
   
@@ -501,7 +501,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Set the investigator(s)
   */
   
-  public void setInvestigators(List invest) {
+  public void setInvestigators(List<String> invest) {
     invest_.clear();
     invest_.addAll(invest);
     return;
@@ -551,7 +551,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Get the investigator(s) (may be null if none)
   */
   
-  public List getInvestigators() {
+  public List<String> getInvestigators() {
     return (invest_);
   }
   
@@ -592,10 +592,10 @@ public class Experiment implements Cloneable, PertFilterTarget {
   */
   
   public String getInvestigatorDisplayString(SourceSrc ss) {
-    ArrayList asNames = new ArrayList();
+    ArrayList<String> asNames = new ArrayList<String>();
     int numSrc = invest_.size();
     for (int i = 0; i < numSrc; i++) {
-      String investKey = (String)invest_.get(i);
+      String investKey = invest_.get(i);
       String invest = ss.getInvestigator(investKey);
       asNames.add(invest);
     }
@@ -608,11 +608,11 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public SortedSet getInvestigatorSortedSet(SourceSrc ss, boolean normalized) {   
-    TreeSet retval = new TreeSet();
+  public SortedSet<String> getInvestigatorSortedSet(SourceSrc ss, boolean normalized) {   
+    TreeSet<String> retval = new TreeSet<String>();
     int numInv = invest_.size();
     for (int i = 0; i < numInv; i++) {
-      String investKey = (String)invest_.get(i);
+      String investKey = invest_.get(i);
       String invest = ss.getInvestigator(investKey);
       if (normalized) {
         invest = DataUtil.normKey(invest);
@@ -648,7 +648,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   **
   */
   
-  public SortedSet getPerturbsSortedSet(SourceSrc ss, boolean normalized) {
+  public SortedSet<String> getPerturbsSortedSet(SourceSrc ss, boolean normalized) {
     return (sources_.getPerturbsSortedSet(ss, normalized));
   } 
  
@@ -667,7 +667,7 @@ public class Experiment implements Cloneable, PertFilterTarget {
   ** Fill the set of annotation IDs used by this set
   */
   
-  public void getAnnotationIDs(Set usedIDs, SourceSrc ss) {
+  public void getAnnotationIDs(Set<String> usedIDs, SourceSrc ss) {
     sources_.getAnnotationIDs(usedIDs, ss);
     return;
   }
@@ -822,20 +822,20 @@ public class Experiment implements Cloneable, PertFilterTarget {
       
       // Add sources:
       PertSources pss = new PertSources(appState_);
-      List srcList = Splitter.stringBreak(srcs, ",", 0, false);
+      List<String> srcList = Splitter.stringBreak(srcs, ",", 0, false);
       int numSrc = srcList.size();
       for (int i = 0; i < numSrc; i++){
-        String srcID = (String)srcList.get(i);
+        String srcID = srcList.get(i);
         pss.addSourceID(srcID);
       }
       retval.setSources(pss);
       
       // Add investigators:
       if (invests != null) {
-        List invList = Splitter.stringBreak(invests, ",", 0, false);
+        List<String> invList = Splitter.stringBreak(invests, ",", 0, false);
         int numI = invList.size();
         for (int i = 0; i < numI; i++){
-          String invID = (String)invList.get(i);
+          String invID = invList.get(i);
           retval.addInvestigator(invID);
         }
       }

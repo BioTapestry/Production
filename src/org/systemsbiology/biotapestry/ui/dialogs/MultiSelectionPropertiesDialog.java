@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -25,10 +25,14 @@ import java.net.URL;
 import javax.swing.JDialog;
 import javax.swing.JPanel;
 import javax.swing.border.EmptyBorder;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 import javax.swing.ImageIcon;
 import javax.swing.JTabbedPane;
 
+import org.systemsbiology.biotapestry.util.ColorDeletionListener;
 import org.systemsbiology.biotapestry.util.ResourceManager;
 import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.app.BTState;
@@ -71,6 +75,7 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
   private ConsensusNodeProps geneCp_;
   private ConsensusNodeProps nodeCp_;
   private ConsensusLinkProps linkCp_;
+  private List<ColorDeletionListener> colorListeners_;
   
   private static final long serialVersionUID = 1L;
   
@@ -90,6 +95,9 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
     super(appState.getTopFrame(), appState.getRMan().getString("multiSelProps.title"), true);
     appState_ = appState;
     dacx_ = dacx;
+    colorListeners_ = new ArrayList<ColorDeletionListener>();
+    
+    
     URL ugif = getClass().getResource("/org/systemsbiology/biotapestry/images/Warn24.gif");  
     warnIcon_ = new ImageIcon(ugif);
  //   layoutKey_ = layoutKey;
@@ -116,19 +124,19 @@ public class MultiSelectionPropertiesDialog extends JDialog implements DialogSup
 
     JTabbedPane tabPane = new JTabbedPane();
     if (!genes.isEmpty()) {
-      geneTab_ = new MultiNodeTab(appState_, dacx_, genes, true);
+      geneTab_ = new MultiNodeTab(appState_, dacx_, genes, true, colorListeners_);
       geneCp_ = new ConsensusNodeProps(dacx.getGenome(), dacx.getLayout(), genes);
       tabPane.addTab(rMan.getString("multiSelProps.geneProp"), geneTab_.buildNodeTab(haveStatInstance, haveDynInstance, geneCp_, warnIcon_));
     }
     
     if (!nodes.isEmpty()) {
-      nodeTab_ = new MultiNodeTab(appState_, dacx_, nodes, false);
+      nodeTab_ = new MultiNodeTab(appState_, dacx_, nodes, false, colorListeners_);
       nodeCp_ = new ConsensusNodeProps(dacx.getGenome(), dacx.getLayout(), nodes);
       tabPane.addTab(rMan.getString("multiSelProps.nodeProp"), nodeTab_.buildNodeTab(haveStatInstance, haveDynInstance, nodeCp_, warnIcon_));
     }
     
     if (!links.isEmpty()) {
-      linkTab_ = new MultiLinkTab(appState_, dacx_, links);
+      linkTab_ = new MultiLinkTab(appState_, dacx_, links, colorListeners_);
       linkCp_ = new ConsensusLinkProps(dacx.getGenome(), dacx.getLayout(), links);
       tabPane.addTab(rMan.getString("multiSelProps.linkProp"), linkTab_.buildLinkTab(haveStatInstance, haveDynInstance, linkCp_, warnIcon_));
     }

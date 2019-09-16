@@ -102,15 +102,17 @@ public class RemoveOverlay extends AbstractControlFlow {
     
     DialogAndInProcessCmd next;
     while (true) {
+      StepState ans;
+      // Allowing the last DAIPC to be null fixes Issues #252
       if (last == null) {
-        throw new IllegalStateException();
+        ans = new StepState(appState_, cfh.getDataAccessContext());
       } else {
-        StepState ans = (StepState)last.currStateX;
-        if (ans.getNextStep().equals("stepToRemove")) {
-          next = ans.stepToRemove();      
-        } else {
-          throw new IllegalStateException();
-        }
+        ans = (StepState)last.currStateX;
+      }
+      if (ans.getNextStep().equals("stepToRemove")) {
+        next = ans.stepToRemove();      
+      } else {
+        throw new IllegalStateException();
       }
       if (!next.state.keepLooping()) {
         return (next);

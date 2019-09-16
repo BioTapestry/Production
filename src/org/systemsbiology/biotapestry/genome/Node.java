@@ -168,4 +168,11 @@ public interface Node extends GenomeItem, Cloneable {
   
   public void writeXML(PrintWriter out, Indenter ind);
   
+  /***************************************************************************
+  **
+  ** Check for extra pads:
+  */
+  
+  public boolean haveExtraPads();
+ 
 }

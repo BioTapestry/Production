@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -76,7 +76,45 @@ public class NamedColor implements Comparable<ColorListRenderer.ColorSource>, Co
     this.key = other.key;
     this.color = other.color;
     this.name = other.name;
-  }  
+  }
+  
+  /***************************************************************************
+  **
+  ** Hash
+  */
+  
+  @Override 
+  public int hashCode() {
+    return (color.hashCode() + name.hashCode() + key.hashCode());
+  }
+
+  /***************************************************************************
+  **
+  ** Equals operator
+  */
+  @Override
+  public boolean equals(Object other) {
+    if (other == null) {
+      return (false);
+    }
+    if (other == this) {
+      return (true);
+    }
+    if (!(other instanceof NamedColor)) {
+      return (false);
+    }
+    NamedColor onc = (NamedColor)other;
+    
+    if (!this.color.equals(onc.color)) {
+      return (false);
+    }
+    
+    if (!this.name.equals(onc.name)) {
+      return (false);
+    }  
+    
+    return (this.key.equals(onc.key));
+  }   
   
   /***************************************************************************
   **

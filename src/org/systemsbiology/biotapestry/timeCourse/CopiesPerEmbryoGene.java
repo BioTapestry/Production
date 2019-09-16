@@ -103,7 +103,8 @@ public class CopiesPerEmbryoGene implements Cloneable {
   ** Clone
   */
 
-  public Object clone() {
+  @Override
+  public CopiesPerEmbryoGene clone() {
     try {
       CopiesPerEmbryoGene newVal = (CopiesPerEmbryoGene)super.clone();
       newVal.data_ = new TreeMap<Integer, Double>(this.data_);

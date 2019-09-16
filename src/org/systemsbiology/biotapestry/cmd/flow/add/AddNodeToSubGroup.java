@@ -165,7 +165,7 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
        
     private DialogAndInProcessCmd stepToProcess() {
       GenomeInstance gi = dacx_.getGenomeAsInstance();
-      addNodeToSubGroup(appState_, dacx_, gi, myGroupID_, myNiID_);
+      addNodeToSubGroup(appState_, dacx_, gi, myGroupID_, myNiID_, null);
     
       return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
     } 
@@ -176,13 +176,17 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
   ** Add a node to a subgroup
   */  
  
-  public static boolean addNodeToSubGroup(BTState appState, DataAccessContext dacx, GenomeInstance gi, String groupID, String niID) {
+  public static boolean addNodeToSubGroup(BTState appState, DataAccessContext dacx, GenomeInstance gi, String groupID, String niID, UndoSupport support) {
       
     //
     // Undo/Redo support
     //
     
-    UndoSupport support = new UndoSupport(appState, "undo.addNewSubGroup");
+    boolean gottaFinish = false;
+    if (support == null) {
+      support = new UndoSupport(appState, "undo.addNewSubGroup");
+      gottaFinish = true;
+    }
     Group group = gi.getGroup(groupID);
     GroupChange grc = group.addMember(new GroupMember(niID), gi.getID());
     if (grc != null) {
@@ -190,8 +194,10 @@ public class AddNodeToSubGroup extends AbstractControlFlow {
       support.addEdit(grcc);
       ModelChangeEvent mcev = new ModelChangeEvent(gi.getID(), ModelChangeEvent.UNSPECIFIED_CHANGE);
       support.addEvent(mcev);      
-    }    
-    support.finish();     
+    }
+    if (gottaFinish) {
+      support.finish(); 
+    }
     return (true); 
   } 
  

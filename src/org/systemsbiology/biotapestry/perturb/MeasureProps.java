@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -233,6 +233,7 @@ public class MeasureProps implements Cloneable {
   ** Answer if we meet the single filtering criteria
   */
   
+  @SuppressWarnings("unused")
   public boolean matchesFilter(PertFilter pf, SourceSrc sources) {    
     switch (pf.getCategory()) {    
       case PertFilter.MEASURE_SCALE:

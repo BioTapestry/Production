@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -170,6 +170,7 @@ public class PertDictionary implements Cloneable {
   ** Clone
   */
 
+  @Override
   public PertDictionary clone() {
     try {
       PertDictionary newVal = (PertDictionary)super.clone();
@@ -441,7 +442,8 @@ public class PertDictionary implements Cloneable {
       }
       return (retval);     
     }  
-        
+    
+    @SuppressWarnings("unused")
     private PertDictionary buildFromXML(String elemName, Attributes attrs) throws IOException {
       PertDictionary pDict = new PertDictionary();
       return (pDict);

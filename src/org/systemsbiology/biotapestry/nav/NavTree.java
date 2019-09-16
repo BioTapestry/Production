@@ -1031,7 +1031,7 @@ public class NavTree extends DefaultTreeModel {
     Rectangle allBounds = appState_.getZoomCommandSupport().allModelsBounds();
     TimeAxisDefinition tad = dacx.getExpDataSrc().getTimeAxisDefinition();
     return (new XPlatModelTree(
-		root, appState_.getDisplayOptMgr().getDisplayOptions(), allBounds, (tad == null ? null : new XPlatTimeAxisDefinition(tad,appState_)))
+		root, appState_.getDisplayOptMgr().getDisplayOptions(), allBounds, ((tad == null || !tad.isInitialized()) ? null : new XPlatTimeAxisDefinition(tad,appState_)))
 	);
   }
 

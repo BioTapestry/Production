@@ -109,7 +109,9 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     super(other, false);
     this.name_ = newName;
     this.id_ = newID;
-    this.vfgParentID_ = newParent;
+    // Part of Issue 195 Fix
+    this.ovrops_.resetOwner(this.id_);
+    this.vfgParentID_ = newParent;   
     if (this.imgKey_ != null) {
       ImageChange ichange = appState_.getImageMgr().registerImageUsage(this.imgKey_);
       if (ichange != null) {
@@ -2015,8 +2017,43 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
     }        
 
     return (retList.toArray(new GenomeChange[retList.size()]));
+  } 
+
+  /***************************************************************************
+  **
+  ** Merge complementary links in the genome. This assumes we have confirmed that
+  ** all links are mergeable.
+  */
+  
+  public GenomeChange[] mergeComplementaryLinks(String masterID, Set<String> dupIDs, Map<String, String> oldToNew) {
+    ArrayList<GenomeChange> retList = new ArrayList<GenomeChange>();
+    Iterator<String> diit = dupIDs.iterator();
+    while (diit.hasNext()) {
+      String dit = diit.next();
+      Set<String> liSet = returnLinkInstanceIDsForBacking(dit);
+      Iterator<String> liit = liSet.iterator();
+      while (liit.hasNext()) {
+        String lit = liit.next();
+        LinkageInstance li = (LinkageInstance)getLinkage(lit);
+        LinkageInstance lin;
+        if (isRootInstance()) {
+          int instanceCount = getNextLinkInstanceNumber(masterID);
+          lin = new LinkageInstance(li, masterID, instanceCount);
+        } else {
+          String newID = oldToNew.get(li.getID());
+          int instanceCount = GenomeItemInstance.getInstanceID(newID);
+          lin = new LinkageInstance(li, masterID, instanceCount);
+        }
+        GenomeChange gc = addLinkage(lin);
+        retList.add(gc);
+        gc = removeLinkage(li.getID());
+        retList.add(gc);
+        oldToNew.put(li.getID(), lin.getID());
+      }     
+    }
+    return (retList.toArray(new GenomeChange[retList.size()]));
   }
-   
+
   /***************************************************************************
   **
   ** Answer if a display string is unique
@@ -2687,7 +2724,7 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
   ** Used to return group tuples
   */
   
-  public static class GroupTuple implements Comparable<GroupTuple> {
+  public static class GroupTuple implements Comparable<GroupTuple>, Cloneable {
     private String srcGroup_;
     private String trgGroup_;
     
@@ -2698,7 +2735,17 @@ public class GenomeInstance extends AbstractGenome implements Genome, Cloneable 
       srcGroup_ = srcGroup;
       trgGroup_ = trgGroup;
     }
-   
+    
+    @Override
+    public GroupTuple clone() {
+      try {
+        GroupTuple retval = (GroupTuple)super.clone();
+        return (retval);
+      } catch (CloneNotSupportedException cnse) {
+        throw new IllegalStateException();
+      }
+    }
+
     //
     // Tuples with matching source and target always beat out
     // mismatches.  Else first group, last group.

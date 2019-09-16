@@ -308,7 +308,14 @@ public class UsageFrameFactory extends DialogFactory {
 		  selectionList.getEvent("dgrid-select").addParameter("conditionValueLoc", "ELEMENT_ROWS");
 		  selectionList.getEvent("dgrid-select").addParameter("conditionCol", "checked_"+validityId);
 		  
+		  selectionList.setEvent("dgrid-deselect", new XPlatUIEvent("dgrid-deselect","CLIENT_SET_ELEMENT_CONDITION"));
+		  selectionList.getEvent("dgrid-deselect").addParameter("conditionValueLoc", "EVENT");
+		  selectionList.getEvent("dgrid-deselect").addParameter("conditionCol", "checked_"+validityId);
+		  selectionList.getEvent("dgrid-deselect").addParameter("conditionValue", false);
+		  
 		  this.xplatDialog_.addElementToCollection("main","center",selectionList);
+		  
+		  this.xplatDialog_.addDefaultState_("checked_"+validityId, "false");
 		   
 	  }
 	  
@@ -461,7 +468,7 @@ public class UsageFrameFactory extends DialogFactory {
 		  
 		  String gotoLabel = (this.linkIds_ == null ? this.rMan_.getString("nudd.goto") : this.rMan_.getString("ludd.goto"));
 		  XPlatUIPrimitiveElement gotoBtn = this.primElemFac_.makeBasicButton(gotoLabel,gotoLabel,"CLIENT_GOTO_MODEL_AND_SELECT",null);
-		  
+		  		  
 		  gotoBtn.getEvent("click").addParameter("mapLinks", (this.linkIds_ != null));
 		  
 		  gotoBtn.setValidity(new XPlatUIValidity("checked_"+validityId,"true"));

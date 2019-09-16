@@ -67,6 +67,7 @@ import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.db.TimeAxisDefinition;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
 import org.systemsbiology.biotapestry.genome.DBNode;
@@ -1263,6 +1264,25 @@ public class BuildSupport {
     } 
     
     //
+    // 9/24/16: With modules now being first-class elements, we must drop them on a rebuild
+    // until the BuildInstruction infrastructure supports them.
+    //
+    
+    DBGenome root = (DBGenome)dacx.getGenome();
+    List<DBGeneRegion> emptyRegions = new ArrayList<DBGeneRegion>();
+    Iterator<Gene> git = root.getGeneIterator();
+    while (git.hasNext()) {
+      Gene gene = git.next();
+      if (gene.getNumRegions() != 0) {
+        GenomeChange gc = root.changeGeneRegions(gene.getID(), emptyRegions);
+        if (gc != null) {
+          GenomeChangeCmd gcc = new GenomeChangeCmd(appState_, dacx, gc);
+          bsd_.support.addEdit(gcc);        
+        }
+      }
+    }
+ 
+    //
     // Get the list of surviving nodes and links.  Kill off those items
     // from the root AND SUBMODELS that do not survive the cut.
     //
@@ -1433,7 +1453,7 @@ public class BuildSupport {
       ArrayList<GenomeSubset> sList = new ArrayList<GenomeSubset>();
       sList.add(subset);
   
-      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null);
+      NetModuleLinkExtractor.SubsetAnalysis sa = (new NetModuleLinkExtractor()).analyzeForMods(sList, null, null);
       SpecialtyLayoutEngine sle = new SpecialtyLayoutEngine(appState_, sList, dacx, bsd_.specLayout, sa, bsd_.center, bsd_.params, true, bsd_.hideNames);
       sle.setModuleRecoveryData(localPadNeeds, moduleShapeRecovery);
       layoutResult = sle.specialtyLayout(bsd_.support, bsd_.monitor, end4, end5);

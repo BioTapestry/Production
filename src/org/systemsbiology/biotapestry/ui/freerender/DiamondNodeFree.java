@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -124,7 +124,7 @@ public class DiamondNodeFree extends AbstractTabletNodeFree {
     
     BasicStroke drawStroke = new BasicStroke((float)LINE_WIDTH_, BasicStroke.CAP_ROUND, BasicStroke.JOIN_MITER);
     Color lineCol = getVariableActivityColor(item, Color.BLACK, false, dopt);
-    Color drawColor = (isGhosted) ? Color.LIGHT_GRAY : lineCol;
+    Color drawColor = (isGhosted) ? dopt.getInactiveGray() : lineCol;
     ModelObjectCache.SegmentedPathShape spath2 = new ModelObjectCache.SegmentedPathShape(DrawMode.DRAW, drawColor, drawStroke, (GeneralPath)path.clone());
     
     group.addShape(spath1, majorLayer, minorLayer);

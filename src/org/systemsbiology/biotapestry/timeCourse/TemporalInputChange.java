@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2004 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -29,12 +29,12 @@ import java.util.List;
   
 public class TemporalInputChange {
   public String mapKey;
-  public List entryMapListOrig;
-  public List entryMapListNew;
-  public List sourceMapListOrig;
-  public List sourceMapListNew;  
-  public List groupMapListOrig;
-  public List groupMapListNew;
+  public List<String> entryMapListOrig;
+  public List<String> entryMapListNew;
+  public List<String> sourceMapListOrig;
+  public List<String> sourceMapListNew;  
+  public List<GroupUsage> groupMapListOrig;
+  public List<GroupUsage> groupMapListNew;
   public TemporalRange eOrig;
   public TemporalRange eNew;
   public int entryPos;

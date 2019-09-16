@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -56,7 +56,11 @@ public class GridLinkRouter {
   // PUBLIC CONSTANTS
   //
   //////////////////////////////////////////////////////////////////////////// 
-
+  
+  //
+  // EAST = Target is EAST of SOURCE
+  // ADJ = ADJACENT columns
+  
   public final static int GRID_LINK_E_ADJ  = 0;
   public final static int GRID_LINK_E_JUMP = 1;
   public final static int GRID_LINK_SE     = 2;  
@@ -199,7 +203,8 @@ public class GridLinkRouter {
                                                                  GridLinkRouter jumperSourceGrid, 
                                                                  Map<String, GridRouterPointSource> jumperPointSources,
                                                                  Set<String> firstSources,
-                                                                 Set<String> coreJumpersAlsoToCore, boolean useDDO) {
+                                                                 Set<String> coreJumpersAlsoToCore, boolean useDDO, 
+                                                                 List<String> bottomJumpers) {
     //
     // Now do each on a per-source basis
     //
@@ -219,6 +224,7 @@ public class GridLinkRouter {
     TreeSet<String> olps = new TreeSet<String>(cc);    
     olps.addAll(linksPerSource.keySet());
     Iterator<String> lpsit = olps.iterator();
+   
     
     if ((firstSources != null) && !firstSources.isEmpty()) {
       while (lpsit.hasNext()) {
@@ -228,9 +234,11 @@ public class GridLinkRouter {
         }
         List<ClassifiedLink> perSrc = linksPerSource.get(src);
         SpecialtyLayoutLinkData sin = new SpecialtyLayoutLinkData(src);
+        int bottomJumpSkipSources = olps.size() - bottomJumpers.indexOf(src);
         fanInboundLinksForSource(src, perSrc, nps, workingPads, sin, 
                                  pointSources, jumperSourceGrid, jumperPointSources, 
-                                 coreJumpersAlsoToCore, useDDO);
+                                 coreJumpersAlsoToCore, useDDO, 
+                                 bottomJumpers.contains(src), bottomJumpSkipSources);
         retval.put(src, sin);
       }    
       // we restock the iterator here for below!!
@@ -246,9 +254,11 @@ public class GridLinkRouter {
       }
       List<ClassifiedLink> perSrc = linksPerSource.get(src);
       SpecialtyLayoutLinkData sin = new SpecialtyLayoutLinkData(src);
+      int bottomJumpSkipSources = olps.size() - bottomJumpers.indexOf(src);
       fanInboundLinksForSource(src, perSrc, nps, workingPads, sin, 
                                pointSources, jumperSourceGrid, jumperPointSources, 
-                               coreJumpersAlsoToCore, useDDO);
+                               coreJumpersAlsoToCore, useDDO, 
+                               bottomJumpers.contains(src), bottomJumpSkipSources);
       retval.put(src, sin);
     }
  
@@ -264,6 +274,15 @@ public class GridLinkRouter {
     return (grid_.getTopReservations()); 
   }
 
+  /***************************************************************************
+  ** 
+  ** Get bottom reservation count (in reservation order)
+  */
+   
+  public List<String> getBottomReservations() {
+    return (grid_.getBottomReservations()); 
+  }
+  
   /***************************************************************************
   ** 
   ** Route feedbacks from a fanout
@@ -380,7 +399,7 @@ public class GridLinkRouter {
       String src = lpsit.next();
       List<GridLinkRouter.ClassifiedLink> perSrc = linksPerSource.get(src);
       int targCount = nps.getTargets(src).size();
-      SpecialtyLayoutLinkData sin = new SpecialtyLayoutLinkData(src);       
+      SpecialtyLayoutLinkData sin = new SpecialtyLayoutLinkData(src);
       boolean coreStatus = fanInternalLinksForSource(src, perSrc, targCount, nps, workingPads, sin, pointSources, traceOrder, srcSkip);
       if ((coreID != null) && coreID.equals(src)) {
         retval = coreStatus;
@@ -432,7 +451,7 @@ public class GridLinkRouter {
   
   /***************************************************************************
   ** 
-  ** Convert parameterized links to absolute
+  ** Convert parameterized links to absolute point coordinates.
   */
 
   public SpecialtyLayoutLinkData convertAndFixInboundLinks(String srcID, Map<String, SpecialtyLayoutLinkData> perSrcPoints, 
@@ -521,8 +540,11 @@ public class GridLinkRouter {
   ** Classify fan link directions: (ADJ = adjacent)
   */
     
-  public int calcGridLinkType(Grid.RowAndColumn srcRC, Grid.RowAndColumn trgRC, 
-                              SpecialtyLayoutEngine.NodePlaceSupport nps, String src, String trg) {
+  public int calcGridLinkType(TrackedGrid grid, SpecialtyLayoutEngine.NodePlaceSupport nps, String src, String trg) {
+    
+    
+    Grid.RowAndColumn srcRC = grid.findPositionRandC(src);
+    Grid.RowAndColumn trgRC = grid.findPositionRandC(trg);
     
     if (srcRC.row == trgRC.row) {
       if (srcRC.col == trgRC.col) {
@@ -535,6 +557,9 @@ public class GridLinkRouter {
         }
       } else { //(srcRC.col < trgRC.col)
         if (srcRC.col == (trgRC.col - 1)) {
+          return (GRID_LINK_E_ADJ);
+        // Fix for ISSUE #253
+        } else if (grid.canEnterOnLeft(src, trg, nps)) {
           return (GRID_LINK_E_ADJ);
         } else {
           return (GRID_LINK_E_JUMP);
@@ -595,20 +620,15 @@ public class GridLinkRouter {
     
   public static int landForAGrid(GridLinkRouter glr, String nodeID, SpecialtyLayoutEngine.NodePlaceSupport nps, 
                                  Set<Integer> usedPads, int landDirection, boolean canEnterLeft, boolean forceTop) {
-    
-    Node node = nps.getNode(nodeID);
-    int type = node.getNodeType();
-    if (type == Node.SLASH) { 
-      return (1);
-    }
+    INodeRenderer rend = nps.getNodeProperties(nodeID).getRenderer();
        
-    // Intercells ignore the force to top argument (Don't want it coming in on
+    // Intercells/slashes ignore the force to top argument (Don't want it coming in on
     // top unless we have to). Everybody else pays attention:
     
     if (canEnterLeft) {
       if (forceTop) {
-        canEnterLeft = (type == Node.INTERCELL) ? true : false;
-        landDirection = (type == Node.INTERCELL) ? landDirection : GridLinkRouter.GRID_LINK_S_ADJ;  
+        canEnterLeft = (rend.ignoreForceTop()) ? true : false;
+        landDirection = (rend.ignoreForceTop()) ? landDirection : GridLinkRouter.GRID_LINK_S_ADJ;  
       }
     }
     
@@ -620,7 +640,7 @@ public class GridLinkRouter {
     //
     
     if (canEnterLeft && (landDirection != GRID_LINK_NE_IMMED))  {
-      Integer leftObj = new Integer((type == Node.INTERCELL) ? 0 : 3);
+      Integer leftObj = Integer.valueOf(rend.getLeftPad());
       if (!usedPads.contains(leftObj)) {
         usedPads.add(leftObj);
         return (leftObj.intValue());
@@ -636,23 +656,20 @@ public class GridLinkRouter {
     int needed = nps.inboundLinkCount(nodeID);
     if ((needed == 3) && (glr != null) && (landDirection != GRID_LINK_NE_IMMED)) {  // only bad case; > 3 and need extension anyway...
       Set<String> srcs = nps.getSources(nodeID);
-      Grid.RowAndColumn trgRC = glr.grid_.findPositionRandC(nodeID);
       Iterator<String> sit = srcs.iterator();
       while (sit.hasNext()) {
         String src = sit.next();
         if (glr.grid_.contains(src)) {
-          Grid.RowAndColumn srcRC = glr.grid_.findPositionRandC(src);
-          int linkDirection = glr.calcGridLinkType(srcRC, trgRC, nps, src, nodeID); 
+          int linkDirection = glr.calcGridLinkType(glr.grid_, nps, src, nodeID); 
           if (linkDirection == GRID_LINK_NE_IMMED) {
             needed = 2;
             break;
           }
         }
       } 
-    }  
-    
-    INodeRenderer rend = nps.getNodeProperties(nodeID).getRenderer();
-    
+    } 
+     
+    Node node = nps.getNode(nodeID);
     switch (landDirection) {
       case GRID_LINK_E_JUMP:
       case GRID_LINK_SE:
@@ -696,16 +713,8 @@ public class GridLinkRouter {
   */
     
   public static boolean landOKForDirect(String nodeID, SpecialtyLayoutEngine.NodePlaceSupport nps, int landing) {
-    
-    Node node = nps.getNode(nodeID);
-    int type = node.getNodeType();
-    if (type == Node.INTERCELL) { 
-      return (landing == 0);
-    } else if (type == Node.SLASH) { 
-      return (landing == 1);
-    } else {
-      return (landing == 3);
-    }
+    INodeRenderer rend = nps.getNodeProperties(nodeID).getRenderer();
+    return (rend.landOKForDirect(landing));
   }  
 
   ////////////////////////////////////////////////////////////////////////////
@@ -732,7 +741,8 @@ public class GridLinkRouter {
                                         Map<String, GridRouterPointSource> pointSources,
                                         GridLinkRouter jumperSourceGrid, 
                                         Map<String, GridRouterPointSource> jumperPointSources,
-                                        Set<String> coreJumpersAlsoToCore, boolean useDDO) {  
+                                        Set<String> coreJumpersAlsoToCore, boolean useDDO, 
+                                        boolean bottomJump, int bottomJumpSkipSources) {  
 
     //
     // If the target count exceeds the internal count, external outbounds will
@@ -774,7 +784,7 @@ public class GridLinkRouter {
         case CORE_JUMPING: 
           planCoreJumperLinks(src, perType, nps, workingPads, sin, 
                                pointSources, jumperSourceGrid, jumperPointSources, 
-                               coreJumpersAlsoToCore, useDDO); 
+                               coreJumpersAlsoToCore, useDDO, bottomJump, bottomJumpSkipSources); 
           break;
         default:
           throw new IllegalArgumentException();
@@ -792,14 +802,15 @@ public class GridLinkRouter {
                                             SpecialtyLayoutEngine.NodePlaceSupport nps,
                                             Map<String, PadCalculatorToo.PadResult> workingPads,
                                             SpecialtyLayoutLinkData sin, 
-                                            Map<String, GridRouterPointSource> pointSources, List<RCRowCompare> traceOrder, int srcSkip) {  
+                                            Map<String, GridRouterPointSource> pointSources, 
+                                            List<RCRowCompare> traceOrder, int srcSkip) {  
 
     //
     // If the target count exceeds the internal count, external outbounds will
     // be needed.  If more than one of a type is needed, we will need to process
     // in appropriate order
     //
-    
+
     TreeMap<Integer, List<String>> linksPerType = new TreeMap<Integer, List<String>>();
     int numPerSrc = perSrc.size();
     for (int i = 0; i < numPerSrc; i++) {
@@ -853,13 +864,14 @@ public class GridLinkRouter {
                                         SpecialtyLayoutEngine.NodePlaceSupport nps,
                                         Map<String, PadCalculatorToo.PadResult> workingPads,
                                         SpecialtyLayoutLinkData sin, 
-                                        Map<String, GridRouterPointSource> pointSources, boolean coreSrc, int srcSkip) {  
+                                        Map<String, GridRouterPointSource> pointSources, 
+                                        boolean coreSrc, int srcSkip) {  
     
     //
     // Get the internal grid locations and figure out the directions.  Per direction,
     // sort by column:
     //
-    
+
     HashSet<String> directLinks = new HashSet<String>();
     HashSet<String> elbowLinks = new HashSet<String>();
     Grid.RowAndColumn srcRC = grid_.findPositionRandC(src);
@@ -874,7 +886,7 @@ public class GridLinkRouter {
       aLink = linkID;
       String ltrg = link.getTarget();
       Grid.RowAndColumn trgRC = grid_.findPositionRandC(ltrg);
-      int linkType = calcGridLinkType(srcRC, trgRC, nps, src, ltrg);
+      int linkType = calcGridLinkType(grid_, nps, src, ltrg);
       int trgPad = gasc_.getCurrentLandingPad(link, workingPads, true);
       if ((linkType == GRID_LINK_E_ADJ) && landOKForDirect(ltrg, nps, trgPad)) {
         directLinks.add(linkID);
@@ -909,8 +921,11 @@ public class GridLinkRouter {
     if (grps == null) {
       int reserveCol = (coreSrc) ? srcRC.col : srcRC.col + 1;
       TrackedGrid.TrackSpec colSpec;
+      // srcSkip is typically the number of corejumpers, i.e. the number of fan-out inputs
+      // coming over from the fan-in. We want the core trace to be between these jumpers
+      // and the inputs going straight to the fan-out.
       if (coreSrc && (srcSkip != 0)) {
-        colSpec = grid_.reserveSkippedColumnTrack(reserveCol, src, srcSkip);        
+        colSpec = grid_.reserveSkippedColumnTrack(reserveCol, src, srcSkip);
       } else {
         colSpec = grid_.reserveColumnTrack(reserveCol, src);
       }
@@ -997,10 +1012,10 @@ public class GridLinkRouter {
     //
     
     if (!grid_.contains(src)) {
-      //System.out.println("what happened to " + src);
       return;
     }
     
+    // Issue #251 hotspot:
     Grid.RowAndColumn srcRC = grid_.findPositionRandC(src);
     String rightmost = grid_.rightmostForRow(srcRC.row, target);
     boolean isDirect = rightmost.equals(src) && (trgCount == 1);
@@ -1044,6 +1059,7 @@ public class GridLinkRouter {
             sin.addPositionToLink(linkID, rootPos.clone());
             sortTrack = rootPos.getRCTrack().clone();
           } else {
+             // Issue #251 hotspot:
             GridRouterPointSource.PointAndPath pap = grps.getDepartingPointToCore(trgPad, trg, linkID, sign);
             sin.addPositionListToLink(linkID, pap.path);
             sin.addPositionToLink(linkID, pap.pos);
@@ -1087,7 +1103,6 @@ public class GridLinkRouter {
     
     String src = link.getSource();
     if (!grid_.contains(src)) {
-      //System.out.println("what happened to " + src);
       return;
     }
     
@@ -1209,6 +1224,7 @@ public class GridLinkRouter {
           TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(0, src);
           Grid.RowAndColumn trgRC = grid_.findPositionRandC(trg);
           TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(trgRC.row, src);
+          // This is the ROOT POINT for entering into the grid!
           TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);
           //
           // If we are entering from the left, we don't specify the inbound column:
@@ -1332,7 +1348,8 @@ public class GridLinkRouter {
                                    Map<String, GridRouterPointSource> pointSources, 
                                    GridLinkRouter jumperSourceGrid, 
                                    Map<String, GridRouterPointSource> jumperPointSources,
-                                   Set<String> coreJumpersAlsoToCore, boolean useDDO) {  
+                                   Set<String> coreJumpersAlsoToCore, boolean useDDO, 
+                                   boolean isABottom, int bottomJumpSkipSources) {  
     
     boolean comingFromTop = (useDDO && (gasc_.getDDOracle() != null)) ? gasc_.getDDOracle().comingFromTop(src, gasc_) : true;  
     
@@ -1347,7 +1364,6 @@ public class GridLinkRouter {
       Linkage link = nps.getLinkage(linkID);
       String ltrg = link.getTarget();
       if (!grid_.contains(ltrg)) {
-        //System.out.println("ri2fl What happened to " + ltrg);
         continue;
       }
       Grid.RowAndColumn trgRC = grid_.findPositionRandC(ltrg);
@@ -1369,7 +1385,7 @@ public class GridLinkRouter {
     // Do in sorted order.  This routing involves getting two grids involved.  We need to
     // route out of the fan-in grid and into the fan-out grid!
     //
-    
+ 
     boolean isFirst = true;
     // Note ordering, since the sin.startNewLink() order is crucial!
     Iterator<LinkLayoutOrdering> loit = linkOrdering.keySet().iterator();
@@ -1379,6 +1395,7 @@ public class GridLinkRouter {
       int numPerLo = linksPerOrder.size();
       for (int i = 0; i < numPerLo; i++) {
         Linkage link = linksPerOrder.get(i);
+        // This gets, e.g. the corner point over right the gene to attach the jumper link to:
         if (isFirst) {
           jumperSourceGrid.routeCoreJumperLinksOutOfFanIn(src, link, sin, jumperPointSources, 
                                                           coreJumpersAlsoToCore, comingFromTop);
@@ -1391,7 +1408,13 @@ public class GridLinkRouter {
         }
         GridRouterPointSource grps = pointSources.get(src);
         if (grps == null) {
-          TrackedGrid.TrackSpec colSpec = grid_.reserveColumnTrack(0, src);
+          // Fix for Issue #249, bottom-of-fan-in core jumpers get reserved on far left tracks:
+          TrackedGrid.TrackSpec colSpec;
+          if (isABottom) {
+            colSpec = grid_.reserveSkippedColumnTrack(0, src, bottomJumpSkipSources);
+          } else {
+            colSpec = grid_.reserveColumnTrack(0, src);
+          }
           Grid.RowAndColumn trgRC = grid_.findPositionRandC(trg);
           TrackedGrid.TrackSpec rowSpec = grid_.reserveRowTrack(trgRC.row, src);
           TrackedGrid.RCTrack inboundLoc = grid_.buildRCTrack(appState_, rowSpec, colSpec);

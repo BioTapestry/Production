@@ -227,6 +227,8 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     this(other);
     this.name_ = newName;
     this.id_ = newID;
+    // Part of Issue 195 Fix
+    this.ovrops_.resetOwner(this.id_);
     this.vfgParent_ = newVfgParentID;
 
     this.labels_ = other.labels_.mappedPrefixCopy(other.id_ + KEY_PREF_, this.id_ + KEY_PREF_);
@@ -2211,6 +2213,16 @@ public class DynamicInstanceProxy implements Cloneable, NetOverlayOwner {
     return (ovrops_.findMatchingNetworkModules(searchMode, key, nvPair));
   }
   
+  /***************************************************************************
+  **
+  ** Return network modules that a node belongs to (Net Overlay keys map to sets of matching module keys in return map)
+  **
+  */
+    
+  public Map<String, Set<String>> getModuleMembership(String nodeID) {
+    return (ovrops_.getModuleMembership(nodeID));
+  }
+   
   /***************************************************************************
   **
   ** Get the firstView preference

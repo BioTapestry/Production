@@ -928,8 +928,10 @@ public class SpecialtyLayoutLinkData implements Cloneable {
     if (rn.border.intValue() == LEFT_BORDER) {
       PlacedPoint ppl = exitFramework_.get(new Integer(LEFT_TIP));
       if (ppl != null) {
-        if (!ppl.placed) { // If it exists and we care about it, it has been placed
-          throw new IllegalStateException();
+        if (!ppl.placed) {
+          rn.path.add(new TrackPos(ppl.point));
+          ppl.placed = true;
+         // throw new IllegalStateException(); Toss for Issue 189
         }
         rn.path.add(new TrackPos(ppl.point));
       }
@@ -957,8 +959,10 @@ public class SpecialtyLayoutLinkData implements Cloneable {
     if (rn.border.intValue() == TOP_BORDER) {
       PlacedPoint ppl = exitFramework_.get(new Integer(LEFT_TIP));
       if (ppl != null) {
-        if (!ppl.placed) { // If it exists and we care about it, it has been placed
-          throw new IllegalStateException();
+        if (!ppl.placed) {
+          rn.path.add(new TrackPos(ppl.point));
+          ppl.placed = true;
+         // throw new IllegalStateException(); Toss for Issue 189
         }
         rn.path.add(new TrackPos(ppl.point));
       }
@@ -982,8 +986,13 @@ public class SpecialtyLayoutLinkData implements Cloneable {
     if (rn.border.intValue() == BOTTOM_BORDER) {
       PlacedPoint ppl = exitFramework_.get(new Integer(LEFT_TIP));
       if (ppl != null) {
-        if (!ppl.placed) { // If it exists and we care about it, it has been placed
-          throw new IllegalStateException();
+        //
+        // Issue 189 cleanup: Previously threw an IllegalStateException if LEFT_TIP has
+        // not been placed. But that is the case if we encounter Issue 189 setup.
+        if (!ppl.placed) {
+          rn.path.add(new TrackPos(ppl.point));
+          ppl.placed = true;
+         // throw new IllegalStateException(); Toss for Issue 189
         }
         rn.path.add(new TrackPos(ppl.point));
       }

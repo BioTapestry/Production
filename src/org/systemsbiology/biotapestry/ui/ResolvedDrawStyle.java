@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2013 Institute for Systems Biology 
+**    Copyright (C) 2003-2017 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -30,28 +30,7 @@ import org.systemsbiology.biotapestry.db.ColorResolver;
 */
 
 public class ResolvedDrawStyle implements Cloneable {
-  
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // CLASS MEMBERS
-  //
-  ////////////////////////////////////////////////////////////////////////////  
-
-  private static final float[] inactiveHSV_;
-  private static final Color inactiveCol_;
-
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // CLASS INITIALIZATION
-  //
-  ////////////////////////////////////////////////////////////////////////////
-
-  static {
-    inactiveCol_ = Color.LIGHT_GRAY;
-    inactiveHSV_ = new float[3];
-    Color.RGBtoHSB(inactiveCol_.getRed(), inactiveCol_.getGreen(), inactiveCol_.getBlue(), inactiveHSV_);
-  } 
-  
+   
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTANTS
@@ -98,9 +77,9 @@ public class ResolvedDrawStyle implements Cloneable {
   ** Constructor: Convert suggestion to resolved values
   */
 
-  public ResolvedDrawStyle(SuggestedDrawStyle currStyle, boolean colorMatters, boolean forModules, ColorResolver cRes) {    
+  public ResolvedDrawStyle(SuggestedDrawStyle currStyle, boolean colorMatters, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {    
     if (!colorMatters) {
-      calculatedColor_ = Color.LIGHT_GRAY;
+      calculatedColor_ = dopt.getInactiveGray();
     } else {
       calculatedColor_ = currStyle.getColor(cRes);
     }
@@ -114,8 +93,8 @@ public class ResolvedDrawStyle implements Cloneable {
   */
 
   public ResolvedDrawStyle(SuggestedDrawStyle currStyle, boolean colorMatters, 
-                           int maxThick, int maxStyle, Color newColor, boolean forModules, ColorResolver cRes) {
-    this(currStyle, colorMatters, forModules, cRes);
+                           int maxThick, int maxStyle, Color newColor, boolean forModules, ColorResolver cRes, DisplayOptions dopt) {
+    this(currStyle, colorMatters, forModules, cRes, dopt);
     if (maxThick != SuggestedDrawStyle.NO_THICKNESS_SPECIFIED) {
       thickness_ = SuggestedDrawStyle.trueThick(maxThick, forModules);
     }
@@ -172,7 +151,10 @@ public class ResolvedDrawStyle implements Cloneable {
     }
     if (this.style_ != otherDS.style_) {
       return (false);
-    }   
+    }
+    if (this.calculatedColor_ == null) {
+      return (otherDS.calculatedColor_ == null);
+    }
     return (this.calculatedColor_.equals(otherDS.calculatedColor_));
   }
 
@@ -190,12 +172,13 @@ public class ResolvedDrawStyle implements Cloneable {
   ** Modulate color by activity
   */
 
-  public void modulateColor(double level) {
+  public void modulateColor(double level, DisplayOptions dopt) {
     float[] colHSB = new float[3];    
     Color.RGBtoHSB(calculatedColor_.getRed(), calculatedColor_.getGreen(), calculatedColor_.getBlue(), colHSB);
+    float[] iag = dopt.getInactiveGrayHSV();
     // Hue stays the same:
-    colHSB[1] = inactiveHSV_[1] + ((float)level * (colHSB[1] - inactiveHSV_[1])); 
-    colHSB[2] = inactiveHSV_[2] + ((float)level * (colHSB[2] - inactiveHSV_[2]));         
+    colHSB[1] = iag[1] + ((float)level * (colHSB[1] - iag[1])); 
+    colHSB[2] = iag[2] + ((float)level * (colHSB[2] - iag[2]));         
     calculatedColor_ = Color.getHSBColor(colHSB[0], colHSB[1], colHSB[2]);
     return;
   }             

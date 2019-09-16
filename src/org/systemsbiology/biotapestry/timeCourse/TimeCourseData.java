@@ -1014,6 +1014,7 @@ public class TimeCourseData implements Cloneable {
   ** Finish an undo transaction
   */
   
+  @SuppressWarnings("unused")
   public TimeCourseChange finishGeneUndoTransaction(String geneName, TimeCourseChange change) {
     TimeCourseGene tg = genes_.get(change.genePos);
     change.gNew = new TimeCourseGene(tg);
@@ -1832,6 +1833,7 @@ public class TimeCourseData implements Cloneable {
   ** Modify existing template entry
   */
   
+  @SuppressWarnings("unused")
   private void modifyTemplate(int index, GeneTemplateEntry newEntry, 
                                          GeneTemplateEntry oldEntry) {
     int size = genes_.size();
@@ -2248,19 +2250,32 @@ public class TimeCourseData implements Cloneable {
     List<TCMapping> retval = tcMap_.get(nodeId);
     if ((retval == null) || (retval.size() == 0)) {
       retval = new ArrayList<TCMapping>();
-      Node node = appState_.getDB().getGenome().getNode(nodeId);      
-      if (node == null) { // for when node has been already deleted...
-        throw new IllegalStateException();
-      }      
-      String nodeName = node.getRootName();
-      if ((nodeName == null) || (nodeName.trim().equals(""))) {
+      TCMapping tcmd = getTimeCourseDefaultMap(nodeId);
+      if (tcmd == null) {
         return (retval);
       }
-      retval.add(new TCMapping(nodeName));
+      retval.add(tcmd);
     }    
     return (retval);
   }
   
+  /***************************************************************************
+  **
+  ** Get the default target name for the node ID.  May be null.
+  */
+  
+  public TCMapping getTimeCourseDefaultMap(String nodeId) {
+    Node node = appState_.getDB().getGenome().getNode(nodeId);      
+    if (node == null) { // for when node has been already deleted...
+      throw new IllegalStateException();
+    }      
+    String nodeName = node.getRootName();
+    if ((nodeName == null) || (nodeName.trim().equals(""))) {
+      return (null);
+    } 
+    return (new TCMapping(nodeName));
+  }
+
   /***************************************************************************
   **
   ** Get the list of targets names for the node ID.  May be empty.
@@ -3533,7 +3548,7 @@ public class TimeCourseData implements Cloneable {
         TopoTimeRange ttr = timeit.next();
         RegionTopology regTopo = tcd.getRegionTopology(ttr);
         TopoTimeRange tRange = regTopo.times;
-        HashMap<String, TopoRegionLoc> locsPerRange = initializeTopoLocData(regTopo, tRange);
+        HashMap<String, TopoRegionLoc> locsPerRange = initializeTopoLocData(regTopo);
         regionTopoLocs_.put(tRange, locsPerRange);
       }
     }
@@ -3680,19 +3695,19 @@ public class TimeCourseData implements Cloneable {
       return;
     }
     
-    private HashMap<String, TopoRegionLoc> initializeTopoLocData(RegionTopology rt, TopoTimeRange ttr) {
+    private HashMap<String, TopoRegionLoc> initializeTopoLocData(RegionTopology rt) {
       HashMap<String, TopoRegionLoc> retval = new HashMap<String, TopoRegionLoc>();
       int num = rt.regions.size();
-      int numSide = (int)Math.ceil(Math.sqrt((double)num));
-      double firstX = -300.0 * (double)(numSide / 2);
-      double firstY = -300.0 * (double)(numSide / 2);      
+      int numSide = (int)Math.ceil(Math.sqrt(num));
+      double firstX = -300.0 * (numSide / 2);
+      double firstY = -300.0 * (numSide / 2);      
 
       for (int i = 0; i < num; i++) {
         String regionID = rt.regions.get(i);
         int col = i % numSide;
         int row = i / numSide;                    
-        double x = firstX + ((double)col * 300.0);
-        double y = firstY + ((double)row * 300.0);        
+        double x = firstX + (col * 300.0);
+        double y = firstY + (row * 300.0);        
         Point2D center = new Point2D.Double(x, y);
         TopoRegionLoc loc = new TopoRegionLoc(regionID, center);
         retval.put(regionID, loc);

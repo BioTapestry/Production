@@ -921,6 +921,7 @@ public class ExpressionEntry implements Cloneable {
   ** Figure out extrapolation strategy
   */
   
+  @SuppressWarnings("unused")
   public static int calculateStrategy(String token, boolean isStart) {
   
     //

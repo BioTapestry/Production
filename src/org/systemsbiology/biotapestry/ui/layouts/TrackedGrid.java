@@ -19,27 +19,30 @@
 
 package org.systemsbiology.biotapestry.ui.layouts;
 
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
-import java.util.HashMap;
-import java.awt.geom.Point2D;
-import java.util.List;
-import java.util.Iterator;
 import java.awt.Dimension;
+import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.SortedMap;
+import java.util.SortedSet;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
-import org.systemsbiology.biotapestry.genome.Node;
-import org.systemsbiology.biotapestry.ui.Layout;
-import org.systemsbiology.biotapestry.ui.INodeRenderer;
-import org.systemsbiology.biotapestry.ui.NodeProperties;
-import org.systemsbiology.biotapestry.util.Vector2D;
-import org.systemsbiology.biotapestry.util.UiUtil;
 import org.systemsbiology.biotapestry.app.BTState;
 import org.systemsbiology.biotapestry.cmd.PadCalculatorToo;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
+import org.systemsbiology.biotapestry.genome.Node;
 import org.systemsbiology.biotapestry.ui.Grid;
+import org.systemsbiology.biotapestry.ui.INodeRenderer;
+import org.systemsbiology.biotapestry.ui.Layout;
+import org.systemsbiology.biotapestry.ui.NodeProperties;
+import org.systemsbiology.biotapestry.util.UiUtil;
+import org.systemsbiology.biotapestry.util.Vector2D;
 
 /***************************************************************************
 **
@@ -76,6 +79,7 @@ public class TrackedGrid implements Cloneable {
   private HashMap<Integer, SortedMap<Integer, String>> colTracks_;
   private HashMap<Integer, SortedMap<Integer, String>> rowTracks_;
   private HashMap<String, Rectangle2D> cellBounds_;
+  private Integer reverseCol_;
  
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -90,6 +94,16 @@ public class TrackedGrid implements Cloneable {
         
   public TrackedGrid(Grid grid, SpecialtyLayoutEngine.NodePlaceSupport nps, 
                      DataAccessContext irx, String coreID, boolean textToo) {
+    this(grid, nps, irx, coreID, textToo, false);
+  }
+  
+   /***************************************************************************
+  ** 
+  ** Constructor
+  */
+        
+  public TrackedGrid(Grid grid, SpecialtyLayoutEngine.NodePlaceSupport nps, 
+                     DataAccessContext irx, String coreID, boolean textToo, boolean revColZero) {
     grid_ = grid;
     widths_ = new HashMap<Integer, Double>();
     heights_= new HashMap<Integer, Double>();
@@ -98,7 +112,9 @@ public class TrackedGrid implements Cloneable {
     exactVerticalOffset_ = Double.NEGATIVE_INFINITY;
     colTracks_ = new HashMap<Integer, SortedMap<Integer, String>>();
     rowTracks_ = new HashMap<Integer, SortedMap<Integer, String>>();
-  }  
+    reverseCol_ = (revColZero) ? Integer.valueOf(0) : null;
+  }
+  
    
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -122,7 +138,9 @@ public class TrackedGrid implements Cloneable {
         retval.colTracks_ = new HashMap<Integer, SortedMap<Integer, String>>();
         for (Integer key : this.colTracks_.keySet()) {
           SortedMap<Integer, String> nextMap = this.colTracks_.get(key);
-          retval.colTracks_.put(key, new TreeMap<Integer, String>(nextMap));
+          SortedMap<Integer, String> retMap = new TreeMap<Integer, String>();
+          retMap.putAll(nextMap);
+          retval.colTracks_.put(key, retMap);
         }
       } 
       
@@ -503,6 +521,7 @@ public class TrackedGrid implements Cloneable {
   */
 
   public TrackSpec reserveColumnTrack(int col, String srcID) {
+    boolean invert = ((this.reverseCol_ != null) && (this.reverseCol_.intValue() == col));
     Integer colKey = new Integer(col);
     SortedMap<Integer, String> trackMap = colTracks_.get(colKey);
     boolean isNew = false;
@@ -511,9 +530,9 @@ public class TrackedGrid implements Cloneable {
       colTracks_.put(colKey, trackMap);
       isNew = true;
     }
-    
+    // If columns are assigned in reverse minor order for fan outs, 249 can be addressed   
     if (isNew) {
-      trackMap.put(new Integer(0), srcID);
+      trackMap.put(Integer.valueOf(0), srcID);
       return (new TrackSpec(col, 0));
     }
     
@@ -528,26 +547,26 @@ public class TrackedGrid implements Cloneable {
         return (new TrackSpec(col, key.intValue()));
       }
     }
-    
+ 
     //
     // Since we can skip, we now have to backfill reservations:
-    //    
- 
-    Integer lastKey = trackMap.lastKey();
+    //
+   
+    int inc = (invert) ? -1 : 1;
+    int useKey = (invert) ? trackMap.firstKey() - 1 : trackMap.lastKey() + 1;
     Set<Integer> trackKeys = trackMap.keySet();
-    int lastKeyVal = lastKey.intValue(); 
     Integer nextKey = null;
-    for (int i = 0; i < lastKeyVal; i++) {
-      Integer testInt = new Integer(i);
+    for (int i = 0; i != useKey; i += inc) {
+      Integer testInt = Integer.valueOf(i);
       if (!trackKeys.contains(testInt)) {
         nextKey = testInt;
         break;
       }
     }
     if (nextKey == null) {
-      nextKey = new Integer(lastKey.intValue() + 1);
-    }    
-  
+      nextKey = Integer.valueOf(useKey);
+    }
+
     trackMap.put(nextKey, srcID);
     return (new TrackSpec(col, nextKey.intValue()));
   }
@@ -558,6 +577,7 @@ public class TrackedGrid implements Cloneable {
   */
 
   public TrackSpec reserveSkippedColumnTrack(int col, String srcID, int srcSkip) {
+    boolean invert = ((this.reverseCol_ != null) && (this.reverseCol_.intValue() == col));
     Integer colKey = new Integer(col);
     SortedMap<Integer, String> trackMap = colTracks_.get(colKey);
     boolean isNew = false;
@@ -567,9 +587,16 @@ public class TrackedGrid implements Cloneable {
       isNew = true;
     }
     
-    if (isNew) {
-      trackMap.put(new Integer(srcSkip), srcID);
-      return (new TrackSpec(col, srcSkip));
+    //
+    // Doing assignment reversal for fan-outs to handle issue #249. Lingering question is
+    // whether the use of the original isNew flag is the correct thing to do here. Seems to
+    // be right, but...?
+    //
+    
+    if (isNew || (srcSkip != 0)) {
+      int useSkip = (invert) ? -srcSkip : srcSkip;
+      trackMap.put(Integer.valueOf(useSkip), srcID);
+      return (new TrackSpec(col, useSkip));
     }
     
     //
@@ -587,20 +614,20 @@ public class TrackedGrid implements Cloneable {
     //
     // Since we can skip, we now have to backfill reservations:
     //
-    
-    Integer lastKey = trackMap.lastKey();
+   
+    int inc = (invert) ? -1 : 1;
+    int useKey = (invert) ? trackMap.firstKey() - 1 : trackMap.lastKey() + 1;
     Set<Integer> trackKeys = trackMap.keySet();
-    int lastKeyVal = lastKey.intValue(); 
     Integer nextKey = null;
-    for (int i = 0; i < lastKeyVal; i++) {
-      Integer testInt = new Integer(i);
+    for (int i = 0; i != useKey; i += inc) {
+      Integer testInt = Integer.valueOf(i);
       if (!trackKeys.contains(testInt)) {
         nextKey = testInt;
         break;
       }
     }
     if (nextKey == null) {
-      nextKey = new Integer(lastKey.intValue() + 1);
+      nextKey = Integer.valueOf(useKey);
     }
     trackMap.put(nextKey, srcID);
     return (new TrackSpec(col, nextKey.intValue()));
@@ -678,7 +705,7 @@ public class TrackedGrid implements Cloneable {
         }
       }     
       int numTracks = (maxKey - minKey) + 1;
-      width += ((double)numTracks * UiUtil.GRID_SIZE);
+      width += (numTracks * UiUtil.GRID_SIZE);
     }
     return (width);
   }  
@@ -693,7 +720,7 @@ public class TrackedGrid implements Cloneable {
     if (rowTracks_.isEmpty()) {
       return (0);
     }
-    SortedMap<Integer, String> topTrackMap = rowTracks_.get(new Integer(0));
+    SortedMap<Integer, String> topTrackMap = rowTracks_.get(Integer.valueOf(0));
     if (topTrackMap == null) {
       return (0);
     }
@@ -715,6 +742,38 @@ public class TrackedGrid implements Cloneable {
   
   /***************************************************************************
   ** 
+  ** Get the reserved slots on the bottom
+   * 
+  */
+
+  public List<String> getBottomReservations() {
+    ArrayList<String> retval = new ArrayList<String>();
+    if (rowTracks_.isEmpty()) {
+      return (retval);
+    }
+        
+    SortedSet<Integer> forBot = new TreeSet<Integer>(rowTracks_.keySet());
+    Integer topBot = forBot.last();
+    //
+    // Issue #256. If there are no bottom tracks, just a single top track, we get a wildly inflated 
+    // bottom reservation count, since the one top track is being mistaken as the bottom track as well.
+    // This fixes it:
+    //
+    
+    if (topBot.intValue() == 0) {
+      return (retval);
+    }
+
+    SortedMap<Integer, String> botTrackMap = rowTracks_.get(topBot);
+    if (botTrackMap == null) {
+      return (retval);
+    }
+    retval.addAll(botTrackMap.values());
+    return (retval);
+  }
+
+  /***************************************************************************
+  ** 
   ** get the height
   */
 
@@ -724,7 +783,7 @@ public class TrackedGrid implements Cloneable {
     while (rtit.hasNext()) {
       SortedMap<Integer, String> trackMap = rtit.next();
       int numTracks = trackMap.size();
-      height += ((double)numTracks * UiUtil.GRID_SIZE);
+      height += (numTracks * UiUtil.GRID_SIZE);
     }
     return (height);
   }
@@ -755,19 +814,21 @@ public class TrackedGrid implements Cloneable {
     int rowNum = grid_.getNumRows();
     
     //
-    // Account for traces between the nodes:
+    // Account for traces between the nodes. Each planned trace between the
+    // row/cols get a grid slot.
     //
     
     HashMap<Integer, Double> rowAllotment = new HashMap<Integer, Double>();
     Iterator<Integer> rtit = rowTracks_.keySet().iterator();
     while (rtit.hasNext()) {
       Integer rowKey = rtit.next();
+      // Top row not included in calculation.
       if (rowKey.intValue() == 0) {
         continue;
       }
       SortedMap<Integer, String> trackMap = rowTracks_.get(rowKey);
       int numTracks = trackMap.size();
-      double height = ((double)numTracks * UiUtil.GRID_SIZE);
+      double height = numTracks * UiUtil.GRID_SIZE;
       rowAllotment.put(rowKey, new Double(height));
     }
     
@@ -777,16 +838,22 @@ public class TrackedGrid implements Cloneable {
       Integer colKey = ctit.next();
       SortedMap<Integer, String> trackMap = colTracks_.get(colKey);
       int numTracks = trackMap.size();
-      double width = ((double)numTracks * UiUtil.GRID_SIZE);
+      double width = numTracks * UiUtil.GRID_SIZE;
       colAllotment.put(colKey, new Double(width));
     }
   
+    //
+    // Loop through and place the nodes W.r.t the upperLeft point. Note that the top overtraces are not
+    // included in the placement calcualtion here.
+    //
+    
    
     double upperLeftX = upperLeft.getX();
     double totalY = upperLeft.getY();
     double centerY = totalY;
     for (int i = 0; i < rowNum; i++) {
       Integer rowKey = new Integer(i);
+      // Calc the centerline of the row:
       double slotHeight = heights_.get(rowKey).doubleValue();
       Double rowHeightObj = rowAllotment.get(rowKey);
       double rowHeight = (rowHeightObj == null) ? 0.0 : rowHeightObj.doubleValue();
@@ -796,6 +863,7 @@ public class TrackedGrid implements Cloneable {
       double centerX = totalX;
       for (int j = 0; j < colNum; j++) {
         Integer colKey = new Integer(j);
+        // Calc the centerline of the column:
         double slotWidth = widths_.get(colKey).doubleValue();
         Double colWidthObj = colAllotment.get(colKey);
         double colWidth = (colWidthObj == null) ? 0.0 : colWidthObj.doubleValue();
@@ -813,6 +881,7 @@ public class TrackedGrid implements Cloneable {
         double yOffset = rend.getStraightThroughOffset();
         Point2D loc = new Point2D.Double();      
         UiUtil.forceToGrid(centerX - cellCenterX, centerY - yOffset, loc, UiUtil.GRID_SIZE);
+        // Place the node:
         nps.setPosition(nodeID, loc);
       }
     }
@@ -845,7 +914,7 @@ public class TrackedGrid implements Cloneable {
     INodeRenderer rend = np.getRenderer();
     Node node = irx.getGenome().getNode(nodeID);
     Rectangle2D rectFuture = rend.getBoundsForLayout(node, irx, NodeProperties.RIGHT, textToo, nps.inboundLinkCount(nodeID));
-    Rectangle2D rectCurrent = rend.getBoundsForLayout(node, irx, NodeProperties.RIGHT, textToo, null);
+    Rectangle2D rectCurrent = rend.getBoundsForLayout(node, irx, NodeProperties.RIGHT, textToo, null);    
     Rectangle2D useRect = (rectFuture.getWidth() > rectCurrent.getWidth()) ? rectFuture : rectCurrent; 
     return (useRect);    
   }
@@ -862,8 +931,6 @@ public class TrackedGrid implements Cloneable {
     if ((type == Node.BOX) || (type == Node.BARE) || 
        (type == Node.BUBBLE) || (type == Node.DIAMOND)) {
       return (1);
-    } else if (type == Node.SLASH) {
-      return (0);
     } else {
       return (0);
     }
@@ -981,7 +1048,9 @@ public class TrackedGrid implements Cloneable {
 
   /***************************************************************************
   ** 
-  ** Calculate the exact vertical offset for straight-in inputs.
+  ** Calculate the exact vertical offset for straight-in inputs. This is following the
+  ** same recipe as the node placement algorithm (ignoring the X dimension). Note again that
+  ** the top 0 row reservations are not included in the calculation. 
   */
 
   private double calcExactVerticalOffset(SpecialtyLayoutEngine.NodePlaceSupport nps, DataAccessContext irx, String coreID) {
@@ -999,7 +1068,7 @@ public class TrackedGrid implements Cloneable {
       }
       SortedMap<Integer, String> trackMap = rowTracks_.get(rowKey);
       int numTracks = trackMap.size();
-      double height = ((double)numTracks * UiUtil.GRID_SIZE);
+      double height = numTracks * UiUtil.GRID_SIZE;
       rowAllotment.put(rowKey, new Double(height));
     }
   
@@ -1490,12 +1559,20 @@ public class TrackedGrid implements Cloneable {
       double trackX = trackRoot.getX();
       double trackY = trackRoot.getY(); 
 
+
       if (row_ != null) {
-        trackY += ((double)row_.minor * UiUtil.GRID_SIZE);
+        trackY += (row_.minor * UiUtil.GRID_SIZE);
       }
+  
+      // >>Every source coming into the grid will get a column reserved in track 0!
       
       if (col_ != null) {
-        trackX += ((double)col_.minor * UiUtil.GRID_SIZE);
+        int useColMinor  = col_.minor;
+        if ((reverseCol_ != null) && (reverseCol_.intValue() == col_.major)) {
+          int fkiv = TrackedGrid.this.colTracks_.get(reverseCol_).firstKey().intValue();
+          useColMinor -= fkiv;
+        }
+        trackX += (useColMinor * UiUtil.GRID_SIZE);
       }      
 
       Point2D retval = new Point2D.Double(trackX, trackY);
@@ -1593,7 +1670,7 @@ public class TrackedGrid implements Cloneable {
           Integer key = new Integer(0);
           SortedMap<Integer, String> trackMap = rowTracks_.get(key);
           int numTracks = trackMap.size();
-          yVal -= ((double)numTracks * UiUtil.GRID_SIZE); 
+          yVal -= (numTracks * UiUtil.GRID_SIZE); 
         } else {
           int prevRow = row_.major - 1;
           int maxCol = grid_.getNumCols();

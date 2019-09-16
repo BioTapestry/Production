@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -21,7 +21,6 @@ package org.systemsbiology.biotapestry.ui.freerender;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
-import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.AffineTransform;
@@ -37,10 +36,8 @@ import org.systemsbiology.biotapestry.ui.DisplayOptions;
 import org.systemsbiology.biotapestry.ui.FontManager;
 import org.systemsbiology.biotapestry.ui.Intersection;
 import org.systemsbiology.biotapestry.ui.ItemRenderBase;
-import org.systemsbiology.biotapestry.ui.Layout;
 import org.systemsbiology.biotapestry.ui.NodeRenderBase;
 import org.systemsbiology.biotapestry.ui.NoteProperties;
-import org.systemsbiology.biotapestry.ui.RenderObjectCache;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.BoundShapeContainer;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.CommonCacheGroup;
 import org.systemsbiology.biotapestry.ui.modelobjectcache.ModalShapeContainer;
@@ -113,7 +110,8 @@ public class NoteFree extends ItemRenderBase {
   	
     NoteProperties np = rcx.getLayout().getNoteProperties(item.getID());
     Point2D origin = np.getLocation();
-    Color col = (rcx.isGhosted()) ? Color.LIGHT_GRAY : np.getColor();
+    DisplayOptions dop = rcx.getDisplayOptsSource().getDisplayOptions();
+    Color col = (rcx.isGhosted()) ? dop.getInactiveGray() : np.getColor();
     AnnotatedFont bFont = rcx.fmgr.getOverrideFont(FontManager.NOTES, np.getFontOverride());
 
     String name = item.getName();

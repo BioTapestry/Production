@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -19,6 +19,7 @@
 
 package org.systemsbiology.biotapestry.ui;
 
+import java.awt.Color;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
@@ -155,6 +156,11 @@ public class DisplayOptions implements Cloneable {
   
   private static final double DEFAULT_WEAK_EXPRESSION_LEVEL_ = 0.50; 
   
+  public static final double INACTIVE_BRIGHT_MIN       = 0.5;  
+  public static final double INACTIVE_BRIGHT_MAX       = 0.75;
+  
+  private static final double DEFAULT_INACTIVE_BRIGHT_ = INACTIVE_BRIGHT_MAX; 
+  
   ////////////////////////////////////////////////////////////////////////////
   //
   // PRIVATE VARIABLES
@@ -177,7 +183,10 @@ public class DisplayOptions implements Cloneable {
   private HashMap<String, String> pertMeasureColors_;
   private String currentScaleTag_;
   private boolean breakOutInvestigators_;
-   
+  private float[] inactiveHSV_;
+  private double inactiveBright_;
+  private Color inactiveCol_;
+    
   ////////////////////////////////////////////////////////////////////////////
   //
   // PUBLIC CONSTRUCTORS
@@ -207,6 +216,7 @@ public class DisplayOptions implements Cloneable {
     MeasureDictionary md = appState_.getDB().getPertData().getMeasureDictionary();
     currentScaleTag_ = md.getStandardScaleKeys()[MeasureDictionary.DEFAULT_INDEX];
     pertMeasureColors_ = new HashMap<String, String>();
+    inactiveBright_ = DEFAULT_INACTIVE_BRIGHT_;
   }
 
   /***************************************************************************
@@ -219,7 +229,7 @@ public class DisplayOptions implements Cloneable {
                         String nodeActivity, String linkActivity, 
                         String weakLevel, String dispTreeStr,
                         String pertDefMin, String pertDefMax, 
-                        String scaleTag, String breakOutStr) throws IOException {
+                        String scaleTag, String breakOutStr, String inactiveBright) throws IOException {
     
     appState_ = appState;
     try {
@@ -258,6 +268,19 @@ public class DisplayOptions implements Cloneable {
       weakExpressionLevel_ = DEFAULT_WEAK_EXPRESSION_LEVEL_;
     }
     
+    if (inactiveBright != null) {
+      try {
+        inactiveBright_ = Double.parseDouble(inactiveBright);
+      } catch (NumberFormatException ex) {
+        throw new IOException();
+      }
+      if ((inactiveBright_ < INACTIVE_BRIGHT_MIN) || (inactiveBright_ > INACTIVE_BRIGHT_MAX)) {
+        throw new IOException();
+      }
+    } else {
+      inactiveBright_ = DEFAULT_INACTIVE_BRIGHT_;
+    }
+
     customEvidence_ = new TreeMap<Integer, CustomEvidenceDrawStyle>();
     timeSpanCols_ = new ArrayList<MinMax>();
     pertMeasureColors_ = new HashMap<String, String>();
@@ -500,6 +523,34 @@ public class DisplayOptions implements Cloneable {
   
   /***************************************************************************
   **
+  ** Get inactive color
+  **
+  */
+  
+  public Color getInactiveGray() {
+    if (inactiveCol_ == null) {
+      inactiveCol_ = new Color((int)(255.0 * inactiveBright_), (int)(255.0 * inactiveBright_), (int)(255.0 * inactiveBright_));
+    }
+    return (inactiveCol_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Get inactive color
+  **
+  */
+  
+  public float[] getInactiveGrayHSV() {
+    if (inactiveHSV_ == null) {
+      inactiveHSV_ = new float[3];
+      Color inactive = getInactiveGray();
+      Color.RGBtoHSB(inactive.getRed(), inactive.getGreen(), inactive.getBlue(), inactiveHSV_);
+    } 
+    return (inactiveHSV_);
+  }
+
+  /***************************************************************************
+  **
   ** Get how link drawing style changes with link activity.
   */
 
@@ -739,6 +790,25 @@ public class DisplayOptions implements Cloneable {
   
   /***************************************************************************
   **
+  ** Get inactive gray brightness
+  */
+
+  public double getInactiveBright() {
+    return (inactiveBright_);
+  }
+  
+  /***************************************************************************
+  **
+  ** Set inactive gray brightness
+  */
+
+  public void setInactiveBright(double ibright) {
+    inactiveBright_ = ibright;
+    return;
+  }
+
+  /***************************************************************************
+  **
   ** Set if we show an expression table tree
   */
 
@@ -877,6 +947,12 @@ public class DisplayOptions implements Cloneable {
       out.print(weakExpressionLevel_);    
       out.print("\" ");
     }
+    if (inactiveBright_ != DEFAULT_INACTIVE_BRIGHT_) {
+      out.print("inactiveBright=\"");
+      out.print(inactiveBright_);    
+      out.print("\" ");
+    }
+
     if (!displayExpressionTableTree_) {
       out.print("showTree=\"false\" ");
     }
@@ -1292,6 +1368,7 @@ public class DisplayOptions implements Cloneable {
       String nodeActivity = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "nodeActivity", false);
       String linkActivity = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "linkActivity", false);
       String weakLevel = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "weakLevel", false);
+      String inactiveBright = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "inactiveBright", false);
       String showTreeStr = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "showTree", false);     
       String pertDefMin = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "pdMin", false);
       String pertDefMax = AttributeExtractor.extractAttribute(elemName, attrs, "displayOptions", "pdMax", false);
@@ -1300,7 +1377,7 @@ public class DisplayOptions implements Cloneable {
  
       return (new DisplayOptions(appState_, branchStr, evidenceStr, footStr, firstZoom, 
                                  navZoom, nodeActivity, linkActivity, weakLevel, 
-                                 showTreeStr, pertDefMin, pertDefMax, scaleTag, breakOutStr));
+                                 showTreeStr, pertDefMin, pertDefMax, scaleTag, breakOutStr, inactiveBright));
     }
   }
   

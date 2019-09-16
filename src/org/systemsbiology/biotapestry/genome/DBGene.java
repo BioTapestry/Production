@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -51,7 +51,7 @@ public class DBGene extends DBNode implements Gene {
   //////////////////////////////////////////////////////////////////////////// 
 
   public static final int DEFAULT_PAD_COUNT = 7;
-  public static final int MAX_PAD_COUNT = 30;
+  public static final int MAX_PAD_COUNT = 200;
 
   ////////////////////////////////////////////////////////////////////////////
   //
@@ -228,6 +228,20 @@ public class DBGene extends DBNode implements Gene {
     return (regions_.size());
   }
   
+  /***************************************************************************
+  **
+  ** Get the region holding a pad. May be null. BUT RETURNS HOLDERS!!
+  */
+  
+  public DBGeneRegion getRegionForPad(int padNum) {
+    for (DBGeneRegion reg : regions_) {
+      if ((padNum >= reg.getStartPad()) && (padNum <= reg.getEndPad())) {
+        return (reg);
+      }
+    }
+    return (null);
+  } 
+   
   /***************************************************************************
   **
   ** Get the experimental verification level

@@ -55,8 +55,10 @@ import org.systemsbiology.biotapestry.cmd.undo.PropChangeCmd;
 import org.systemsbiology.biotapestry.db.DataAccessContext;
 import org.systemsbiology.biotapestry.event.LayoutChangeEvent;
 import org.systemsbiology.biotapestry.event.ModelChangeEvent;
+import org.systemsbiology.biotapestry.genome.DBGeneRegion;
 import org.systemsbiology.biotapestry.genome.DBGenome;
 import org.systemsbiology.biotapestry.genome.DBLinkage;
+import org.systemsbiology.biotapestry.genome.Gene;
 import org.systemsbiology.biotapestry.genome.Genome;
 import org.systemsbiology.biotapestry.genome.GenomeChange;
 import org.systemsbiology.biotapestry.genome.GenomeInstance;
@@ -222,6 +224,8 @@ public class AddLink extends AbstractControlFlow {
   @Override    
   public DialogAndInProcessCmd processClick(Point theClick, boolean isShifted, double pixDiam, DialogAndInProcessCmd.CmdState cmds) {
     StepState ans = (StepState)cmds;
+    ans.origX = theClick.x;
+    ans.origY = theClick.y;
     ans.x = UiUtil.forceToGridValueInt(theClick.x, UiUtil.GRID_SIZE);
     ans.y = UiUtil.forceToGridValueInt(theClick.y, UiUtil.GRID_SIZE);  
     // Handles shift key forcing to orthogonal directions:
@@ -235,6 +239,8 @@ public class AddLink extends AbstractControlFlow {
       Point2D canonicalPt = vec.add(lastPoint);
       ans.x = (int)canonicalPt.getX();
       ans.y = (int)canonicalPt.getY();
+      ans.origX = ans.x;
+      ans.origY = ans.y;
     }
     ans.nextStep_ = (forModules_) ? "stepGrowOrFinishNetModuleLink" : "stepGrowOrFinishLink"; 
     return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.KEEP_PROCESSING, ans));
@@ -260,7 +266,9 @@ public class AddLink extends AbstractControlFlow {
      
     private String nextStep_;
     private int x;
-    private int y; 
+    private int y;
+    private int origX;
+    private int origY;
     private BTState appState_;
      
     public String getNextStep() {
@@ -396,7 +404,7 @@ public class AddLink extends AbstractControlFlow {
     */
       
     private DialogAndInProcessCmd stepStart() { 
-  
+ 
       currentLinkCandidate_ = addNewLinkStart(appState_, rcxT_, rcxR_);
       if (currentLinkCandidate_ == null) {
         return (new DialogAndInProcessCmd(DialogAndInProcessCmd.Progress.DONE, this));
@@ -582,13 +590,25 @@ public class AddLink extends AbstractControlFlow {
             }
             NodeProperties nprop = rcxT_.getLayout().getNodeProperties(id);
             INodeRenderer render = nprop.getRenderer();
-            List<Intersection.PadVal> pads = inter.getPadCand();
+            //
+            // Issue #209: Working with gridded points (x,y) to choose pad is a mess when pads are off-grid (slashes, intercell). For the final
+            // winner, we need to use the actual click point:
+            //
+            Node theNode = rcxT_.getGenome().getNode(id);
+            List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), rcxT_);
             int numCand = pads.size();
             Intersection.PadVal winner = null;
+            boolean flipIt = false;
             for (int i = 0; i < numCand; i++) {
               Intersection.PadVal pad = pads.get(i);
               if (!pad.okStart) {
-                continue;
+                if ((theNode.getNodeType() == Node.SLASH) && !theNode.haveExtraPads())  {
+                  flipIt = true;
+                  pad.okStart = true;
+                  pad.okEnd = false;
+                } else {
+                  continue;
+                }
               }
               if (!LinkSupport.sourcePadIsClear(appState_, rcxT_.getGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
                 continue;
@@ -605,12 +625,15 @@ public class AddLink extends AbstractControlFlow {
             if (winner == null) {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
             }
-            Vector2D loff = render.getLaunchPadOffset(winner.padNum, rcxT_.getGenome().getNode(id), rcxT_);
+            // Want to hide the flip from the user: use the landing offset up until we flip the node orientation:
+            Vector2D loff = (flipIt) ? render.getLandingPadOffset(winner.padNum, rcxT_.getGenome().getNode(id), Linkage.NONE, rcxT_)
+                                     : render.getLaunchPadOffset(winner.padNum, rcxT_.getGenome().getNode(id), rcxT_);
             Point2D cent = loff.add(nprop.getLocation());
             x = (int)cent.getX();
             y = (int)cent.getY();
             recenter = false;
             currentLinkCandidate_.srcID = id;
+            currentLinkCandidate_.slashFlipSrc = flipIt;
           }
           if (gotRegions) {
             Map<String, Set<String>> okstm = currentLinkCandidate_.okSrcTrgMap;
@@ -653,13 +676,26 @@ public class AddLink extends AbstractControlFlow {
           }
           String id = inter.getObjectID();
           INodeRenderer render = rcxT_.getLayout().getNodeProperties(id).getRenderer();
-          List<Intersection.PadVal> pads = inter.getPadCand();
-          int numCand = pads.size();
+          //
+          // Issue #209: Working with gridded points (x,y) to choose pad is a mess when pads are off-grid (slashes, intercell). For the final
+          // winner, we need to use the actual click point:
+          //
+          Node theNode = rcxT_.getGenome().getNode(id);
+          List<Intersection.PadVal> pads = render.calcPadIntersects(theNode, new Point2D.Double(origX, origY), rcxT_);
+          // Fixing ISSUE #247: calcPadIntersects can return null!
+          int numCand = (pads == null) ? 0 : pads.size();
           Intersection.PadVal winner = null;
+          boolean flipIt = false;
           for (int i = 0; i < numCand; i++) {
             Intersection.PadVal pad = pads.get(i);
             if (!pad.okEnd) {
-              continue;
+              if ((theNode.getNodeType() == Node.SLASH) && !theNode.haveExtraPads())  {
+                flipIt = true;
+                pad.okStart = false;
+                pad.okEnd = true;
+              } else {
+                continue;
+              }
             }
             if (!LinkSupport.targPadIsClear(rcxT_.getGenome(), id, pad.padNum, render.sharedPadNamespaces())) {
               continue;
@@ -685,6 +721,34 @@ public class AddLink extends AbstractControlFlow {
               return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
             }
           }
+          
+          //
+          // If we are targeting a gene with a region, gotta match the region!
+          //
+          if (theNode.getNodeType() == Node.GENE) {
+            Gene theGene = (Gene)theNode;
+            DBGeneRegion reg = (theGene.getNumRegions() > 0) ? theGene.getRegionForPad(winner.padNum) : null; // May be null
+            if ((reg != null) && reg.isHolder()) {
+              reg = null;
+            }
+            if (currentLinkCandidate_.existingLinkID != null) {
+              DBGenome dbg = rcxT_.getDBGenome();
+              Linkage dbLink = dbg.getLinkage(currentLinkCandidate_.existingLinkID);
+              Gene dbGene = dbg.getGene(GenomeItemInstance.getBaseID(theGene.getID()));
+              DBGeneRegion regR = dbGene.getRegionForPad(dbLink.getLandingPad()); // may be null
+              if (regR != null) { // Parent link in module, we do not match it
+                if ((reg == null) || !reg.equals(regR)) {
+                  return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
+                }      
+              } else { // Parent link not in module, be we are:
+                if (reg != null) {
+                  return (new DialogAndInProcessCmd(ServerControlFlowHarness.ClickResult.REJECT, this));
+                } 
+              }
+            }
+            currentLinkCandidate_.modTarg = (reg == null) ? null : reg.getKey();              
+          }
+
           ArrayList<Intersection.PadVal> onePad = new ArrayList<Intersection.PadVal>();
           onePad.add(winner);
           currentLinkCandidate_.target = new Intersection(inter.getObjectID(), onePad);
@@ -701,7 +765,7 @@ public class AddLink extends AbstractControlFlow {
             }
           }        
           currentLinkCandidate_.buildState = LinkCandidate.DONE;
-          
+          currentLinkCandidate_.slashFlipTrg = flipIt;
           addNewLinkFinish(appState_, rcxT_, currentLinkCandidate_);
          
           appState_.getGenomePresentation().setFloater(null);
@@ -988,6 +1052,15 @@ public class AddLink extends AbstractControlFlow {
       //
         
       PropagateSupport.propagateLinkProperties(appState, rcxR, lp, linkID, support);
+      
+      
+      if (lc.slashFlipSrc) {
+        flipASlashNode(appState, rcxR, src, support, null);
+      }
+      if (lc.slashFlipTrg) {
+        flipASlashNode(appState, rcxR, targ, support, null);
+      }
+           
       support.addEvent(new ModelChangeEvent(rcxR.getGenomeID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
       support.finish();
       return (true); 
@@ -995,11 +1068,32 @@ public class AddLink extends AbstractControlFlow {
      
     /***************************************************************************
     **
+    ** Flip a slash node
+    */  
+   
+    private int flipASlashNode(BTState appState, DataAccessContext rcx, String nodeID, UndoSupport support, Integer otherOldOrient) {   
+      NodeProperties oldProps = rcx.getLayout().getNodeProperties(nodeID); 
+      int oldOrient = oldProps.getOrientation();
+      if ((otherOldOrient != null) && (otherOldOrient.intValue() != oldOrient)) {
+        return (oldOrient);
+      } 
+      Layout.PropChange[] lpc = new Layout.PropChange[1];
+      NodeProperties newProps = oldProps.clone();
+      newProps.setOrientation(NodeProperties.reverseOrient(oldOrient));
+      lpc[0] = rcx.getLayout().replaceNodeProperties(oldProps, newProps);
+      if (lpc != null) {
+        PropChangeCmd pcc = new PropChangeCmd(appState, rcx, lpc);
+        support.addEdit(pcc);
+      }
+      return (oldOrient);
+    }
+
+    /***************************************************************************
+    **
     ** Suggest the user uses links with no arrow or foot for some nodes
     */  
    
     private void switchLinkSign(BTState appState, Genome genome, String targ, LinkCandidate lc) {
-    
       Node trgNode = genome.getNode(targ);
       int trgType = trgNode.getNodeType();
       if ((trgType == Node.INTERCELL) || (trgType == Node.SLASH)) {
@@ -1278,6 +1372,14 @@ public class AddLink extends AbstractControlFlow {
       InstanceAndCeiling iAndC;
      
       //
+      // Suggest the user uses links with no arrow or foot for some nodes
+      //
+
+      if (lc.existingLinkID == null) {
+        switchLinkSign(appState, rcxI.getGenome(), lc.target.getObjectID(), lc);
+      }
+      
+      //
       // User has drawn a link, i.e. we have a non-null link candidate.
       // This drawn link can occur either without an existing link ID
       // already chosen, or with an existing link ID chosen.  If the
@@ -1308,7 +1410,7 @@ public class AddLink extends AbstractControlFlow {
         instanceOptions = null;
         iAndC = findInstanceMatch(lc.existingLinkID, ancestry);
       }
-       
+ 
       //
       // If we have some root or parent instance options that fill the requirement, 
       // ask if we are to use that one instead of creating a new one.
@@ -1357,6 +1459,11 @@ public class AddLink extends AbstractControlFlow {
       
       UndoSupport support = new UndoSupport(appState, "undo.addLink");        
     
+      
+
+    
+         
+      
       // Now we work top-down from ceiling:
       Collections.reverse(ancestry);    
       //
@@ -1526,9 +1633,21 @@ public class AddLink extends AbstractControlFlow {
         if (newInRoot) {
           changeRootColor(bp, rcxR, newLinkID, support);
         }
+        if (lc.slashFlipSrc) {
+          int oldOrient = flipASlashNode(appState, rcxI, src, support, null);
+          String rootSrc = GenomeItemInstance.getBaseID(src);
+          flipASlashNode(appState, rcxR, rootSrc, support, Integer.valueOf(oldOrient));
+          
+        }
         PropagateSupport.propagateLinkProperties(appState, rcxI, bp, newLinkID, support);   
       }
       
+      if (lc.slashFlipTrg) {
+        int oldOrient = flipASlashNode(appState, rcxI, targ, support, null);
+        String rootTrg = GenomeItemInstance.getBaseID(targ);
+        flipASlashNode(appState, rcxR, rootTrg, support, Integer.valueOf(oldOrient));        
+      }
+
       support.addEvent(new ModelChangeEvent(rcxI.getGenomeAsInstance().getID(), ModelChangeEvent.UNSPECIFIED_CHANGE));
   
       return (newLink); 
@@ -1580,8 +1699,15 @@ public class AddLink extends AbstractControlFlow {
       }    
       String targ = lc.target.getObjectID();
       String rootSrc = GenomeItemInstance.getBaseID(srcID);
-      String rootTarg = GenomeItemInstance.getBaseID(targ);    
-      
+      String rootTarg = GenomeItemInstance.getBaseID(targ); 
+      Node targNode = rootGenome.getNode(rootTarg);
+      Gene targGeneForMod = null;
+      if (targNode.getNodeType() == Gene.GENE) {
+        if (((Gene)targNode).getNumRegions() > 0) {     
+         targGeneForMod = (Gene)targNode;   
+        }
+      }
+         
       HashSet<String> rootCand = new HashSet<String>();
       Iterator<Linkage> lit = rootGenome.getLinkageIterator();
       while (lit.hasNext()) {
@@ -1595,6 +1721,19 @@ public class AddLink extends AbstractControlFlow {
         if (link.getSign() != lc.sign) {
           continue;
         }
+        int targPad = link.getLandingPad();
+        DBGeneRegion regR = (targGeneForMod != null) ? targGeneForMod.getRegionForPad(targPad) : null;
+        if ((regR != null) && regR.isHolder()) {
+          regR = null;
+        }
+        
+        if (lc.modTarg != null) {
+          if ((regR == null) || !lc.modTarg.equals(regR.getKey())) {
+            continue;
+          }
+        } else if (regR != null) {
+          continue;
+        }      
         rootCand.add(link.getID());
       }
       
@@ -1668,6 +1807,25 @@ public class AddLink extends AbstractControlFlow {
           continue;
         }
         if (link.getSign() != lc.sign) {
+          continue;
+        }
+        int targPad = link.getLandingPad();
+        Node targNode = gi.getNode(link.getTarget());
+        Gene targGeneForMod = null;
+        if (targNode.getNodeType() == Gene.GENE) {
+          if (((Gene)targNode).getNumRegions() > 0) {     
+           targGeneForMod = (Gene)targNode;   
+          }
+        }
+        DBGeneRegion regR = (targGeneForMod != null) ? targGeneForMod.getRegionForPad(targPad) : null;
+        if ((regR != null) && regR.isHolder()) {
+          regR = null;
+        } 
+        if (lc.modTarg != null) {
+          if ((regR == null) || !lc.modTarg.equals(regR.getKey())) {
+            continue;
+          }
+        } else if (regR != null) {
           continue;
         }
         retval.add(link.getID());
@@ -1963,6 +2121,9 @@ public class AddLink extends AbstractControlFlow {
     public String label;
     public String srcID;
     public String builtID;
+    public boolean slashFlipSrc;
+    public boolean slashFlipTrg;
+    public DBGeneRegion.DBRegKey modTarg;
     
     public Layout targetLayout;
     public String existingLinkID;

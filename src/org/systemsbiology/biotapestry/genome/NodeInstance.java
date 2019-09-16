@@ -520,7 +520,16 @@ public class NodeInstance extends GenomeItemInstance implements Node {
     return (((DBNode)getBacking()).getPadCount());
   } 
   
-   /***************************************************************************
+  /***************************************************************************
+  **
+  ** Check for extra pads:
+  */
+  
+  public boolean haveExtraPads() {  
+    return (getPadCount() > DBNode.getDefaultPadCount(nodeType_));
+  } 
+
+  /***************************************************************************
   **
   ** Add a URL (I/O usage)
   **

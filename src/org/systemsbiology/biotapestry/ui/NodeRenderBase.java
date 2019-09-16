@@ -1,5 +1,5 @@
 /*
-**    Copyright (C) 2003-2014 Institute for Systems Biology 
+**    Copyright (C) 2003-2016 Institute for Systems Biology 
 **                            Seattle, Washington, USA. 
 **
 **    This library is free software; you can redistribute it and/or
@@ -72,23 +72,9 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   //
   ////////////////////////////////////////////////////////////////////////////  
   
-  private static final float[] inactiveHSV_;
-  private static final Color inactiveCol_ = Color.LIGHT_GRAY;
-  
   public static final Integer NODE_MAJOR_LAYER = new Integer(0);
   public static final Integer NODE_MINOR_LAYER = new Integer(0);
   
-  ////////////////////////////////////////////////////////////////////////////
-  //
-  // CLASS INITIALIZATION
-  //
-  ////////////////////////////////////////////////////////////////////////////
-
-  static {
-    inactiveHSV_ = new float[3];
-    Color.RGBtoHSB(inactiveCol_.getRed(), inactiveCol_.getGreen(), inactiveCol_.getBlue(), inactiveHSV_);
-  } 
-
   ////////////////////////////////////////////////////////////////////////////
   //
   // PROTECTED CONSTANTS
@@ -119,6 +105,52 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   //
   ////////////////////////////////////////////////////////////////////////////
 
+  /***************************************************************************
+  ** 
+  ** Get our preferred target color (bubbles want to be white)
+  */
+    
+  public String getTargetColor() {
+    return ("black");
+  }
+
+  /***************************************************************************
+  ** 
+  ** Answer if we can be in a simple fan in
+  */
+    
+  public boolean simpleFanInOK() {
+    return (false);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Answer if assigning landing is consistent with direct landing:
+  */
+    
+  public boolean landOKForDirect(int landing) {
+    // Direct refactor of code, but likely not correct for Gene type (probably never called)
+    return (landing == 3);
+  }
+  
+  /***************************************************************************
+  ** 
+  ** Answer if node ignores force top directive
+  */
+    
+  public boolean ignoreForceTop() {
+    return (false);
+  }
+ 
+  /***************************************************************************
+  ** 
+  ** Get the left pad number
+  */
+    
+  public int getLeftPad() {
+    return (3);
+  }
+  
   /***************************************************************************
   **
   ** Get the actual available source pad range (not checking for occupancy)
@@ -416,25 +448,15 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
   
   /***************************************************************************
   **
-  ** Check for extra pads:
-  */
-  
-  protected boolean haveExtraPads(GenomeItem item) {
-    Node theNode = (Node)item;    
-    int newPadCount = theNode.getPadCount();
-    int defaultPadCount = DBNode.getDefaultPadCount(theNode.getNodeType());
-    return (newPadCount > defaultPadCount);
-  }  
-  
-  /***************************************************************************
-  **
   ** Get a list of pads that are nearby to the given one.  Only goes as far as the 
   ** total bank of pads on the side.  Only use for box and tablet nodes, else override.
   */
 
-  public List<Integer> getNearbyPads(GenomeItem item, int startPad, Layout layout) {
+  public List<Integer> getNearbyPads(GenomeItem item, int startPad, NodeProperties np) {
     
-    if (!haveExtraPads(item)) {
+    
+    Node theNode = (Node)item;
+    if (!theNode.haveExtraPads()) {
       return (null);
     }
     final int TOP = 0;
@@ -445,7 +467,6 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
     Node node = (Node)item;
     boolean horiz = true;
     if (NodeProperties.usesGrowth(node.getNodeType())) {
-      NodeProperties np = layout.getNodeProperties(item.getID());
       horiz = (np.getExtraGrowthDirection() == NodeProperties.HORIZONTAL_GROWTH);
     } 
 
@@ -1165,12 +1186,12 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
     if (item instanceof DBNode) {  // Root items don't do variable activity
       return (col);
     }
-
+   
     NodeInstance ni = (NodeInstance)item;    
     int activity = ni.getActivity();
     switch (activity) {
       case NodeInstance.INACTIVE:
-        return (inactiveCol_);
+        return (dopt.getInactiveGray());
       case NodeInstance.ACTIVE:
         return (col);
       case NodeInstance.VARIABLE:
@@ -1184,9 +1205,10 @@ public abstract class NodeRenderBase extends ItemRenderBase implements INodeRend
         float[] colHSB = new float[3];    
         Color.RGBtoHSB(col.getRed(), col.getGreen(), col.getBlue(), colHSB);
         double level = (activity == NodeInstance.VESTIGIAL) ? 0.0 : ni.getActivityLevel();
+        float[] iag = dopt.getInactiveGrayHSV();
         // Hue stays the same:
-        colHSB[1] = inactiveHSV_[1] + ((float)level * (colHSB[1] - inactiveHSV_[1])); 
-        colHSB[2] = inactiveHSV_[2] + ((float)level * (colHSB[2] - inactiveHSV_[2]));         
+        colHSB[1] = iag[1] + ((float)level * (colHSB[1] - iag[1])); 
+        colHSB[2] = iag[2] + ((float)level * (colHSB[2] - iag[2]));         
         return (Color.getHSBColor(colHSB[0], colHSB[1], colHSB[2]));        
       default:
         throw new IllegalStateException();
